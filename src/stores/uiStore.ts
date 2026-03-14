@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type PanelType = 'combat' | 'market' | 'companies' | 'government' | 'chat' | null
+export type PanelType = 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'chat' | null
 
 export interface Notification {
   id: string
@@ -16,17 +16,28 @@ export interface ChatMessage {
   timestamp: number
 }
 
+export interface FloatingText {
+  id: string
+  text: string
+  x: number
+  y: number
+  color: string
+}
+
 export interface UIState {
   activePanel: PanelType
   showModal: boolean
   modalContent: string | null
   notifications: Notification[]
   chatMessages: ChatMessage[]
+  floatingTexts: FloatingText[]
   setActivePanel: (panel: PanelType) => void
   togglePanel: (panel: PanelType) => void
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void
   removeNotification: (id: string) => void
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
+  addFloatingText: (text: string, x: number, y: number, color?: string) => void
+  removeFloatingText: (id: string) => void
   openModal: (content: string) => void
   closeModal: () => void
 }
@@ -39,6 +50,7 @@ export const useUIStore = create<UIState>((set) => ({
   showModal: false,
   modalContent: null,
   notifications: [],
+  floatingTexts: [],
   chatMessages: [
     {
       id: 'welcome',
@@ -54,6 +66,22 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({
       activePanel: state.activePanel === panel ? null : panel,
     })),
+
+  addFloatingText: (text, x, y, color = '#22d38a') => {
+    const id = `float-${Date.now()}-${Math.random()}`
+    set((state) => ({
+      floatingTexts: [...state.floatingTexts, { id, text, x, y, color }]
+    }))
+    setTimeout(() => {
+      set((state) => ({
+        floatingTexts: state.floatingTexts.filter((f) => f.id !== id)
+      }))
+    }, 2000)
+  },
+
+  removeFloatingText: (id) => set((state) => ({
+    floatingTexts: state.floatingTexts.filter((f) => f.id !== id)
+  })),
 
   addNotification: (notification) =>
     set((state) => ({

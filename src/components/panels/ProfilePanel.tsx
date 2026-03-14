@@ -1,0 +1,79 @@
+import { useState } from 'react'
+import { usePlayerStore } from '../../stores/playerStore'
+import ProfileTab from './ProfileTab'
+import InventoryTab from './InventoryTab'
+import SkillsTab from './SkillsTab'
+import CompaniesTab from './CompaniesTab'
+import AccountTab from './AccountTab'
+
+type SubTab = 'profile' | 'inventory' | 'skills' | 'companies' | 'account'
+
+const SUB_TABS: { id: SubTab; label: string; icon: string }[] = [
+  { id: 'profile', label: 'Profile', icon: '👤' },
+  { id: 'inventory', label: 'Inventory', icon: '🎒' },
+  { id: 'skills', label: 'Skills', icon: '⭐' },
+  { id: 'companies', label: 'Companies', icon: '🏢' },
+  { id: 'account', label: 'Account', icon: '⚙️' },
+]
+
+export default function ProfilePanel() {
+  const [activeTab, setActiveTab] = useState<SubTab>('profile')
+  const player = usePlayerStore()
+
+  const barData = [
+    { label: 'HEALTH', value: player.health, max: player.maxHealth, color: '#ef4444', icon: '❤️' },
+    { label: 'HUNGER', value: player.hunger, max: player.maxHunger, color: '#f59e0b', icon: '🍖' },
+    { label: 'ENTERPRISE', value: player.entrepreneurship, max: player.maxEntrepreneurship, color: '#a855f7', icon: '💼' },
+    { label: 'WORK', value: player.work, max: player.maxWork, color: '#3b82f6', icon: '🔨' },
+  ]
+  return (
+    <div className="profile-panel">
+      {/* Player Bars */}
+      <div className="profile-bars">
+        {barData.map((bar) => (
+          <div key={bar.label} className="profile-bar">
+            <div className="profile-bar__header">
+              <span className="profile-bar__icon">{bar.icon}</span>
+              <span className="profile-bar__label">{bar.label}</span>
+              <span className="profile-bar__value">{Math.round(bar.value)}/{bar.max}</span>
+            </div>
+            <div className="profile-bar__track">
+              <div
+                className="profile-bar__fill"
+                style={{
+                  width: `${(bar.value / bar.max) * 100}%`,
+                  background: bar.color,
+                  boxShadow: `0 0 8px ${bar.color}66`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Production moved to per-company in Companies tab */}
+
+      {/* Sub-Tab Switcher */}
+      <div className="profile-tabs">
+        {SUB_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`profile-tabs__btn ${activeTab === tab.id ? 'profile-tabs__btn--active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <span>{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div className="profile-content">
+        {activeTab === 'profile' && <ProfileTab />}
+        {activeTab === 'inventory' && <InventoryTab />}
+        {activeTab === 'skills' && <SkillsTab />}
+        {activeTab === 'companies' && <CompaniesTab />}
+        {activeTab === 'account' && <AccountTab />}
+      </div>
+    </div>
+  )
+}

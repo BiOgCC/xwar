@@ -5,6 +5,7 @@ import './styles/variables.css'
 import './styles/index.css'
 import './styles/components.css'
 import './styles/layout.css'
+import './styles/profile.css'
 import './styles/map.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 

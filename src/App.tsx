@@ -1,12 +1,15 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useUIStore } from './stores/uiStore'
 import { usePlayerStore } from './stores/playerStore'
 import { useWorldStore } from './stores/worldStore'
+import { useCompanyStore } from './stores/companyStore'
 import GameMap from './components/map/GameMap'
 import type { GameMapHandle } from './components/map/GameMap'
 import RegionPopup from './components/map/RegionPopup'
+import ProfilePanel from './components/panels/ProfilePanel'
 
 const SIDEBAR_ITEMS = [
+  { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
   { id: 'combat' as const, icon: '⚔️', label: 'COMBAT' },
   { id: 'chat' as const, icon: '💬', label: 'CHAT' },
   { id: 'market' as const, icon: '📊', label: 'MARKET' },
@@ -28,10 +31,37 @@ interface RegionInfo {
 function App() {
   const player = usePlayerStore()
   const world = useWorldStore()
-  const { activePanel, togglePanel } = useUIStore()
+  const { activePanel, togglePanel, floatingTexts } = useUIStore()
   const [mousePos, setMousePos] = useState({ lat: '0.00° N', lng: '0.00° E' })
   const [selectedRegion, setSelectedRegion] = useState<RegionInfo | null>(null)
   const mapRef = useRef<GameMapHandle>(null)
+
+  // 30 min (1800s) Game Tick Timer
+  const [timeLeft, setTimeLeft] = useState(1800)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          useCompanyStore.getState().processTick()
+          return 1800
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleManualTick = () => {
+    useCompanyStore.getState().processTick()
+    setTimeLeft(1800)
+  }
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0')
+    const s = (secs % 60).toString().padStart(2, '0')
+    return `${m}:${s}`
+  }
 
   const handleMouseMove = useCallback((lat: string, lng: string) => {
     setMousePos({ lat, lng })
@@ -45,15 +75,28 @@ function App() {
     <div className="xwar-root">
       {/* ====== TOP BAR ====== */}
       <header className="hud-topbar">
-        <div className="hud-topbar__left">
+        <div className="hud-topbar__left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span className="hud-topbar__logo">⬡ XWAR</span>
           <span className="hud-topbar__beta">BETA</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '12px', background: 'rgba(34,211,138,0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(34,211,138,0.2)' }}>
+            <span style={{ fontSize: '10px' }}>⏱️</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: '#22d38a' }}>{formatTime(timeLeft)}</span>
+            <button onClick={handleManualTick} style={{ background: '#22d38a', color: '#000', border: 'none', borderRadius: '2px', fontSize: '8px', fontWeight: 'bold', padding: '2px 4px', cursor: 'pointer', marginLeft: '4px' }}>+30m</button>
+          </div>
         </div>
         <div className="hud-topbar__center">
           <button className="hud-tab hud-tab--active">THE MAP</button>
           <button className="hud-tab">LEADERBOARD</button>
         </div>
         <div className="hud-topbar__right">
+          <div className="hud-wealth-display" style={{ display: 'flex', gap: '16px', marginRight: '16px', alignItems: 'center' }}>
+            <span style={{ color: '#22d38a', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '14px' }}>
+              ${player.money.toLocaleString()}
+            </span>
+            <span style={{ color: '#f59e0b', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '14px' }}>
+              ₿ {player.bitcoin.toLocaleString()}
+            </span>
+          </div>
           <button className="hud-btn-outline">
             <span className="hud-btn-icon">⚡</span> SIGN IN
           </button>
@@ -119,6 +162,7 @@ function App() {
               <button className="hud-panel__close" onClick={() => togglePanel(activePanel)}>✕</button>
             </div>
             <div className="hud-panel__body">
+              {activePanel === 'profile' && <ProfilePanel />}
               {activePanel === 'combat' && (
                 <>
                   <div className="hud-card">
@@ -191,6 +235,23 @@ function App() {
 
       {/* ====== SCANLINE OVERLAY ====== */}
       <div className="hud-scanlines" />
+
+      {/* ====== FLOATING TEXTS ====== */}
+      <div className="hud-floating-container">
+        {floatingTexts.map((ft) => (
+          <div
+            key={ft.id}
+            className="hud-floating-text"
+            style={{
+              left: `${ft.x}px`,
+              top: `${ft.y}px`,
+              color: ft.color,
+            }}
+          >
+            {ft.text}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
