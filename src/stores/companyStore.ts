@@ -36,8 +36,8 @@ const COMPANY_DEPOSIT_MAP: Partial<Record<CompanyType, DepositType>> = {
   wagyu_grill: 'steak',
 }
 
-const getProductionContribution = (prodSkill: number) => {
-  const baseProd = 10 + (prodSkill * 5)
+const getProductionContribution = (prodSkill: number, companyLevel: number = 1) => {
+  const baseProd = 10 + (prodSkill * 5) + companyLevel
   const variance = Math.max(1, Math.floor(baseProd * 0.1))
   const minProd = baseProd - variance
   const maxProd = baseProd + variance
@@ -190,8 +190,10 @@ export function getUpgradeCost(currentLevel: number) {
   return { bitcoin: 1 }
 }
 
+export const COMPANY_MAX_LEVEL = 7
+
 export function getProductionBonus(level: number): number {
-  return level * 5
+  return 0 // Company level does not add production bonus %
 }
 
 /** Get the full location-aware bonus for a company */
@@ -324,6 +326,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const state = get()
     const company = state.companies.find((c) => c.id === companyId)
     if (!company) return false
+    if (company.level >= COMPANY_MAX_LEVEL) return false
 
     const cost = getUpgradeCost(company.level)
     const player = usePlayerStore.getState()
@@ -409,7 +412,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const prodSkill = skills.economic.production
 
     // Production input = base + skill variance
-    const prodInput = getProductionContribution(prodSkill)
+    const prodInput = getProductionContribution(prodSkill, company.level)
     const bonus = getLocationBonus(company)
     const fill = prodInput * (1 + bonus / 100)
 
@@ -606,7 +609,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const prodSkill = skills.economic.production
 
     // Production input = base + skill variance
-    const prodInput = getProductionContribution(prodSkill)
+    const prodInput = getProductionContribution(prodSkill, job.companyLevel)
     const contribution = Math.floor(prodInput * (1 + job.productionBonus / 100))
 
     // Pay = contribution * payPerPP
@@ -655,10 +658,18 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
 
     const player = usePlayerStore.getState()
     if (player.bitcoin < 1) return null
+    if (player.stamina < 10) return null
 
+    // Spend resources
     usePlayerStore.setState({ bitcoin: player.bitcoin - 1 })
+    player.consumeBar('stamina', 10)
 
-    const chance = 0.10 + company.level * 0.05
+    // Get prospection skill level for bonus chance
+    const skills = useSkillsStore.getState()
+    const prospectionLevel = skills.economic.prospection || 0
+
+    // Base chance from company level + prospection skill bonus (5% per level)
+    const chance = 0.10 + company.level * 0.05 + prospectionLevel * 0.05
     const found = Math.random() < chance
 
     if (found) {

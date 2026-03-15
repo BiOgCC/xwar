@@ -292,9 +292,9 @@ export default function CompaniesTab() {
                       <button
                         className="comp-action comp-action--prospect"
                         onClick={() => handleProspect(company.id)}
-                        disabled={player.bitcoin < 1}
+                        disabled={player.bitcoin < 1 || player.stamina < 10}
                       >
-                        ⛏️ Prospect (1₿)
+                        ⛏️ Prospect (1₿ + 10 STA)
                       </button>
                     ) : (
                       <>
