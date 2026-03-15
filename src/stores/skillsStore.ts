@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 
-export type MilitarySkill = 'attack' | 'critRate' | 'critDamage' | 'health' | 'hunger' | 'armor' | 'dodge'
+export type MilitarySkill = 'attack' | 'critRate' | 'critDamage' | 'precision' | 'stamina' | 'hunger' | 'armor' | 'dodge'
 export type EconomicSkill = 'work' | 'entrepreneurship' | 'production' | 'prospection' | 'industrialist'
 export type SkillName = MilitarySkill | EconomicSkill
 
@@ -9,7 +9,8 @@ export const MILITARY_SKILLS: { key: MilitarySkill; label: string; icon: string;
   { key: 'attack', label: 'Attack', icon: '⚔️', desc: 'Increases base attack damage' },
   { key: 'critRate', label: 'Crit Rate', icon: '🎯', desc: 'Increases critical hit chance' },
   { key: 'critDamage', label: 'Crit Damage', icon: '💥', desc: 'Increases critical hit multiplier' },
-  { key: 'health', label: 'Health', icon: '❤️', desc: 'Increases max health bar' },
+  { key: 'precision', label: 'Hit Rate', icon: '💢', desc: 'Increases chance to land a hit (+5% per level)' },
+  { key: 'stamina', label: 'Stamina', icon: '⚡', desc: 'Increases max stamina bar' },
   { key: 'hunger', label: 'Hunger', icon: '🍖', desc: 'Increases max hunger bar' },
   { key: 'armor', label: 'Armor', icon: '🛡️', desc: 'Reduces incoming damage' },
   { key: 'dodge', label: 'Dodge', icon: '💨', desc: 'Chance to avoid damage' },
@@ -36,7 +37,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     attack: 0,
     critRate: 0,
     critDamage: 0,
-    health: 0,
+    precision: 0,
+    stamina: 0,
     hunger: 0,
     armor: 0,
     dodge: 0,
@@ -77,17 +79,17 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         military: { ...s.military, [skill]: currentLevel + 1 },
       }))
       // Update player bar maximums based on skills
-      if (skill === 'health') {
-        usePlayerStore.setState({ maxHealth: 100 + (currentLevel + 1) * 20 })
+      if (skill === 'stamina') {
+        usePlayerStore.setState({ maxStamina: 100 + (currentLevel + 1) * 20 })
       } else if (skill === 'hunger') {
-        usePlayerStore.setState({ maxHunger: 100 + (currentLevel + 1) * 15 })
+        usePlayerStore.setState({ maxHunger: 5 + (currentLevel + 1) })
       }
     } else {
       set((s) => ({
         economic: { ...s.economic, [skill]: currentLevel + 1 },
       }))
       if (skill === 'work') {
-        usePlayerStore.setState({ maxWork: 100 + (currentLevel + 1) * 15 })
+        usePlayerStore.setState({ maxWork: 100 + (currentLevel + 1) * 20 })
       } else if (skill === 'entrepreneurship') {
         usePlayerStore.setState({ maxEntrepreneurship: 100 + (currentLevel + 1) * 15 })
       }

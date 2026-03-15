@@ -10,6 +10,8 @@ export interface Country {
   military: number
   treasury: number
   color: string
+  conqueredResources: ConqueredResourceType[]
+  activeDepositBonus: { type: DepositType; bonus: number } | null
 }
 
 export interface War {
@@ -20,32 +22,169 @@ export interface War {
   status: 'active' | 'ceasefire' | 'ended'
 }
 
+// ── Regional Deposits ──
+export type DepositType = 'wheat' | 'fish' | 'steak' | 'oil' | 'materialx'
+
+export interface RegionalDeposit {
+  id: string
+  type: DepositType
+  countryCode: string
+  bonus: number        // 30
+  discoveredBy: string | null
+  active: boolean
+}
+
+// ── Conquered Resources ──
+export type ConqueredResourceType = 'Iron' | 'Titanium' | 'Saltpeter' | 'Rubber' | 'Silicon' | 'Uranium'
+export const CONQUERED_RESOURCE_TYPES: ConqueredResourceType[] = ['Iron', 'Titanium', 'Saltpeter', 'Rubber', 'Silicon', 'Uranium']
+
+/** Calculate the total production bonus from a country's conquered resources */
+export function getCountryResourceBonus(resources: ConqueredResourceType[]): number {
+  const counts: Record<string, number> = {}
+  resources.forEach(r => { counts[r] = (counts[r] || 0) + 1 })
+  let bonus = 0
+  Object.values(counts).forEach((count) => {
+    if (count >= 1) bonus += 5     // 1st of type = +5%
+    if (count >= 2) bonus += 0.5   // 2nd of same = +0.5%
+    if (count >= 3) bonus += 0.25  // 3rd of same = +0.25%
+  })
+  return bonus
+}
+
+// Map of ISO codes to array of adjacent ISO codes
+export const ADJACENCY_MAP: Record<string, string[]> = {
+  'US': ['CA', 'MX', 'CU', 'BS', 'RU', 'GB', 'BR', 'DE'],
+  'CA': ['US'],
+  'MX': ['US', 'CU'],
+  'CU': ['US', 'MX', 'BS'],
+  'BS': ['US', 'CU'],
+  'RU': ['US', 'CN', 'JP', 'TR', 'DE'],
+  'CN': ['RU', 'IN', 'JP'],
+  'DE': ['RU', 'GB', 'TR', 'US'],
+  'BR': ['US', 'NG'],
+  'IN': ['CN'],
+  'NG': ['BR', 'TR'],
+  'JP': ['CN', 'RU', 'US'],
+  'GB': ['US', 'DE'],
+  'TR': ['RU', 'DE', 'NG'],
+}
+
+// Seed some undiscovered deposits across countries
+const INITIAL_DEPOSITS: RegionalDeposit[] = [
+  { id: 'dep-1',  type: 'wheat',     countryCode: 'US', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-2',  type: 'oil',       countryCode: 'US', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-3',  type: 'fish',      countryCode: 'JP', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-4',  type: 'steak',     countryCode: 'BR', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-5',  type: 'materialx', countryCode: 'RU', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-6',  type: 'oil',       countryCode: 'RU', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-7',  type: 'wheat',     countryCode: 'IN', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-8',  type: 'fish',      countryCode: 'GB', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-9',  type: 'materialx', countryCode: 'CN', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-10', type: 'steak',     countryCode: 'DE', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-11', type: 'oil',       countryCode: 'NG', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-12', type: 'wheat',     countryCode: 'CA', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-13', type: 'fish',      countryCode: 'MX', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-14', type: 'materialx', countryCode: 'TR', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-15', type: 'steak',     countryCode: 'CU', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-16', type: 'oil',       countryCode: 'BS', bonus: 30, discoveredBy: null, active: false },
+]
+
+const makeCountry = (name: string, code: string, controller: string, empire: string | null, population: number, regions: number, military: number, treasury: number, color: string, conqueredResources: ConqueredResourceType[] = []): Country => ({
+  name, code, controller, empire, population, regions, military, treasury, color, conqueredResources, activeDepositBonus: null,
+})
+
 export interface WorldState {
   countries: Country[]
   wars: War[]
+  deposits: RegionalDeposit[]
   turn: number
   nextTurnIn: number
+  
+  // Actions
+  declareWar: (attackerIso: string, defenderIso: string) => void
+  canAttack: (attackerIso: string, defenderIso: string) => boolean
+  addTreasuryTax: (countryCode: string, amount: number) => void
+  discoverDeposit: (depositId: string, playerName: string) => void
+  getCountry: (code: string) => Country | undefined
 }
 
-export const useWorldStore = create<WorldState>(() => ({
+export const useWorldStore = create<WorldState>((set, get) => ({
   turn: 247,
   nextTurnIn: 342,
 
+  deposits: INITIAL_DEPOSITS,
+
   countries: [
-    { name: 'United States', code: 'US', controller: 'Player Alliance', empire: 'NATO', population: 32000, regions: 12, military: 95, treasury: 1200000, color: '#22d38a' },
-    { name: 'Russia', code: 'RU', controller: 'Red Army', empire: 'Eastern Bloc', population: 28000, regions: 18, military: 88, treasury: 890000, color: '#ef4444' },
-    { name: 'China', code: 'CN', controller: 'Dragon Force', empire: null, population: 45000, regions: 14, military: 82, treasury: 1500000, color: '#f59e0b' },
-    { name: 'Germany', code: 'DE', controller: 'Euro Corps', empire: 'NATO', population: 18000, regions: 4, military: 65, treasury: 720000, color: '#22d38a' },
-    { name: 'Brazil', code: 'BR', controller: 'Amazonia', empire: null, population: 22000, regions: 8, military: 55, treasury: 340000, color: '#a855f7' },
-    { name: 'India', code: 'IN', controller: 'Bengal Tigers', empire: null, population: 38000, regions: 10, military: 70, treasury: 680000, color: '#06b6d4' },
-    { name: 'Nigeria', code: 'NG', controller: 'West African Union', empire: null, population: 15000, regions: 5, military: 40, treasury: 180000, color: '#10b981' },
-    { name: 'Japan', code: 'JP', controller: 'Rising Sun', empire: null, population: 20000, regions: 3, military: 72, treasury: 950000, color: '#f43f5e' },
-    { name: 'United Kingdom', code: 'GB', controller: 'Crown Forces', empire: 'NATO', population: 16000, regions: 3, military: 68, treasury: 560000, color: '#22d38a' },
-    { name: 'Turkey', code: 'TR', controller: 'Ottoman Revival', empire: 'Eastern Bloc', population: 14000, regions: 4, military: 58, treasury: 290000, color: '#ef4444' },
+    makeCountry('United States', 'US', 'Player Alliance', 'NATO', 32000, 12, 95, 1200000, '#3b82f6', ['Iron', 'Titanium']),
+    makeCountry('Russia', 'RU', 'Red Army', 'Eastern Bloc', 28000, 18, 88, 890000, '#ef4444', ['Saltpeter', 'Iron']),
+    makeCountry('China', 'CN', 'Dragon Force', 'Eastern Bloc', 45000, 14, 82, 1500000, '#ef4444', ['Silicon', 'Rubber']),
+    makeCountry('Germany', 'DE', 'Euro Corps', 'NATO', 18000, 4, 65, 720000, '#3b82f6', ['Titanium']),
+    makeCountry('Brazil', 'BR', 'Amazonia', null, 22000, 8, 55, 340000, '#10b981', ['Rubber']),
+    makeCountry('India', 'IN', 'Bengal Tigers', null, 38000, 10, 70, 680000, '#10b981', ['Iron']),
+    makeCountry('Nigeria', 'NG', 'West African Union', null, 15000, 5, 40, 180000, '#10b981', ['Uranium']),
+    makeCountry('Japan', 'JP', 'Rising Sun', 'NATO', 20000, 3, 72, 950000, '#3b82f6', ['Silicon']),
+    makeCountry('United Kingdom', 'GB', 'Crown Forces', 'NATO', 16000, 3, 68, 560000, '#3b82f6', ['Saltpeter']),
+    makeCountry('Turkey', 'TR', 'Ottoman Revival', 'Eastern Bloc', 14000, 4, 58, 290000, '#ef4444', ['Rubber']),
+    makeCountry('Canada', 'CA', 'Northern Guard', 'NATO', 12000, 8, 45, 380000, '#3b82f6', ['Uranium']),
+    makeCountry('Mexico', 'MX', 'Cartel Coalition', null, 18000, 6, 40, 250000, '#10b981', []),
+    makeCountry('Cuba', 'CU', 'Caribbean Command', 'Eastern Bloc', 6000, 2, 35, 90000, '#ef4444', []),
+    makeCountry('Bahamas', 'BS', 'Island Syndicate', null, 2000, 1, 15, 150000, '#10b981', []),
   ],
 
   wars: [
     { id: 'w1', attacker: 'United States', defender: 'Russia', startedAt: Date.now() - 86400000 * 3, status: 'active' },
     { id: 'w2', attacker: 'China', defender: 'Japan', startedAt: Date.now() - 86400000 * 1, status: 'active' },
   ],
+
+  getCountry: (code) => get().countries.find(c => c.code === code),
+
+  addTreasuryTax: (countryCode, amount) => set((s) => ({
+    countries: s.countries.map(c =>
+      c.code === countryCode ? { ...c, treasury: c.treasury + amount } : c
+    )
+  })),
+
+  discoverDeposit: (depositId, playerName) => set((s) => ({
+    deposits: s.deposits.map(d =>
+      d.id === depositId ? { ...d, discoveredBy: playerName, active: true } : d
+    ),
+    // Set country active deposit bonus (non-cumulative, replaces any existing)
+    countries: s.countries.map(c => {
+      const dep = s.deposits.find(d => d.id === depositId)
+      if (!dep || c.code !== dep.countryCode) return c
+      return { ...c, activeDepositBonus: { type: dep.type, bonus: 10 } }
+    })
+  })),
+
+  canAttack: (attackerIso, defenderIso) => {
+    const adjacent = ADJACENCY_MAP[attackerIso] || []
+    if (!adjacent.includes(defenderIso)) return false
+    
+    const state = get()
+    const activeWar = state.wars.find(w => 
+      w.status === 'active' && 
+      ((w.attacker === attackerIso && w.defender === defenderIso) || 
+       (w.attacker === defenderIso && w.defender === attackerIso))
+    )
+    return !!activeWar
+  },
+
+  declareWar: (attackerIso, defenderIso) => set((state) => {
+    const existing = state.wars.find(w => 
+      w.status === 'active' && 
+      ((w.attacker === attackerIso && w.defender === defenderIso) || 
+       (w.attacker === defenderIso && w.defender === attackerIso))
+    )
+    if (existing) return state
+
+    const newWar: War = {
+      id: `war_${Date.now()}_${attackerIso}_${defenderIso}`,
+      attacker: attackerIso,
+      defender: defenderIso,
+      startedAt: Date.now(),
+      status: 'active'
+    }
+
+    return { wars: [...state.wars, newWar] }
+  })
 }))

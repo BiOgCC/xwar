@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
+import { useUIStore } from '../../stores/uiStore'
 import ProfileTab from './ProfileTab'
 import InventoryTab from './InventoryTab'
 import SkillsTab from './SkillsTab'
@@ -17,11 +18,20 @@ const SUB_TABS: { id: SubTab; label: string; icon: string }[] = [
 ]
 
 export default function ProfilePanel() {
-  const [activeTab, setActiveTab] = useState<SubTab>('profile')
+  const uiStore = useUIStore()
+  const defaultTab = uiStore.profileDefaultTab as SubTab | null
+  const [activeTab, setActiveTab] = useState<SubTab>(defaultTab || 'profile')
+
+  useEffect(() => {
+    if (defaultTab && defaultTab !== activeTab) {
+      setActiveTab(defaultTab)
+      uiStore.setProfileDefaultTab(null)
+    }
+  }, [defaultTab])
   const player = usePlayerStore()
 
   const barData = [
-    { label: 'HEALTH', value: player.health, max: player.maxHealth, color: '#ef4444', icon: '❤️' },
+    { label: 'STAMINA', value: player.stamina, max: player.maxStamina, color: '#ef4444', icon: '⚡' },
     { label: 'HUNGER', value: player.hunger, max: player.maxHunger, color: '#f59e0b', icon: '🍖' },
     { label: 'ENTERPRISE', value: player.entrepreneurship, max: player.maxEntrepreneurship, color: '#a855f7', icon: '💼' },
     { label: 'WORK', value: player.work, max: player.maxWork, color: '#3b82f6', icon: '🔨' },

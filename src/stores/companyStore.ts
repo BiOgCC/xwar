@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
+import { useWorldStore, getCountryResourceBonus, type DepositType } from './worldStore'
 
 export type CompanyType = 
   | 'bitcoin_miner' 
@@ -16,6 +17,86 @@ export interface Company {
   autoProduction: boolean
   productionProgress: number
   productionMax: number
+  location: string // Country ISO code
+}
+
+// Employment tax rate (10%)
+const TAX_RATE = 0.10
+
+// Map company types to deposit types for bonus matching
+const COMPANY_DEPOSIT_MAP: Partial<Record<CompanyType, DepositType>> = {
+  wheat_farm: 'wheat',
+  fish_farm: 'fish',
+  steak_farm: 'steak',
+  oil_refinery: 'oil',
+  materialx_refiner: 'materialx',
+  bakery: 'wheat',
+  sushi_bar: 'fish',
+  wagyu_grill: 'steak',
+}
+
+const getProductionContribution = (prodSkill: number) => {
+  const baseProd = 10 + (prodSkill * 5)
+  const variance = Math.max(1, Math.floor(baseProd * 0.1))
+  const minProd = baseProd - variance
+  const maxProd = baseProd + variance
+  return Math.floor(minProd + Math.random() * (maxProd - minProd + 1))
+}
+
+const triggerEconomicModifiers = (): string => {
+  const skills = useSkillsStore.getState()
+  const worldStore = useWorldStore.getState()
+  let msg = ''
+  
+  // Prospection (5% per level) – discover a regional deposit
+  const prospChance = skills.economic.prospection * 0.05
+  if (Math.random() < prospChance) {
+    const undiscovered = worldStore.deposits.filter(d => !d.discoveredBy)
+    if (undiscovered.length > 0) {
+      const deposit = undiscovered[Math.floor(Math.random() * undiscovered.length)]
+      const player = usePlayerStore.getState()
+      
+      // Reward: 100-166 items, 3 BTC, $100-166
+      const itemAmount = 100 + Math.floor(Math.random() * 67)
+      const cashAmount = 100 + Math.floor(Math.random() * 67)
+      
+      // Grant items based on deposit type
+      switch (deposit.type) {
+        case 'wheat': usePlayerStore.setState(s => ({ wheat: s.wheat + itemAmount })); break
+        case 'fish': usePlayerStore.setState(s => ({ fish: s.fish + itemAmount })); break
+        case 'steak': usePlayerStore.setState(s => ({ steak: s.steak + itemAmount })); break
+        case 'oil': usePlayerStore.setState(s => ({ oil: s.oil + itemAmount })); break
+        case 'materialx': usePlayerStore.setState(s => ({ materialX: s.materialX + itemAmount })); break
+      }
+      usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + 3, money: s.money + cashAmount }))
+      
+      // Discover it in worldStore
+      worldStore.discoverDeposit(deposit.id, player.name)
+      
+      const country = worldStore.getCountry(deposit.countryCode)
+      msg += ` 🎉 Discovered ${deposit.type} deposit in ${country?.name || deposit.countryCode}! +${itemAmount} ${deposit.type}, +3₿, +$${cashAmount}`
+    } else {
+      // Fallback: small resource bonus
+      const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
+      const resource = resources[Math.floor(Math.random() * resources.length)]
+      const bonusAmount = 50
+      if (resource === 'Oil') {
+        usePlayerStore.setState((s) => ({ oil: s.oil + bonusAmount }))
+      } else {
+        usePlayerStore.setState((s) => ({ materialX: s.materialX + Math.floor(bonusAmount / 5) }))
+      }
+      msg += ` 🎉 Found ${resource}!`
+    }
+  }
+
+  // Industrialist (5% per level)
+  const indChance = skills.economic.industrialist * 0.05
+  if (Math.random() < indChance) {
+    usePlayerStore.setState((s) => ({ bitcoin: s.bitcoin + 1 }))
+    msg += ` ₿ Found Bitcoin!`
+  }
+  
+  return msg
 }
 
 export interface CompanyTemplate {
@@ -92,7 +173,7 @@ export const COMPANY_TEMPLATES: Record<CompanyType, CompanyTemplate> = {
   },
   prospection_center: {
     type: 'prospection_center', label: 'Prospection Center', icon: '⛏️', color: '#ef4444',
-    desc: 'Spends ₿ to scan for MaterialX & Oil deposits. Rewards country + citizen + businessman.', produces: 'Deposits',
+    desc: 'Spends ₿ to scan for deposits. Rewards country + citizen + businessman.', produces: 'Deposits',
     buildCost: { money: 25000, bitcoin: 1 }, baseProductionMax: 100,
   },
 }
@@ -112,6 +193,35 @@ export function getProductionBonus(level: number): number {
   return level * 5
 }
 
+/** Get the full location-aware bonus for a company */
+export function getLocationBonus(company: Company): number {
+  const worldStore = useWorldStore.getState()
+  const country = worldStore.getCountry(company.location)
+  if (!country) return getProductionBonus(company.level)
+
+  let bonus = getProductionBonus(company.level)
+
+  // Add country conquered resource bonus
+  bonus += getCountryResourceBonus(country.conqueredResources)
+
+  // Add deposit bonus (30%) if there's an active deposit matching this company type
+  const depositType = COMPANY_DEPOSIT_MAP[company.type]
+  if (depositType) {
+    const hasDeposit = worldStore.deposits.some(
+      d => d.countryCode === company.location && d.type === depositType && d.active
+    )
+    if (hasDeposit) bonus += 30
+  }
+
+  // Add citizen deposit bonus (10%) if player is citizen and country has any active deposit
+  const player = usePlayerStore.getState()
+  if (player.country === company.location && country.activeDepositBonus) {
+    bonus += country.activeDepositBonus.bonus
+  }
+
+  return bonus
+}
+
 export interface DepositEvent {
   id: string
   resource: 'Oil' | 'MaterialX'
@@ -122,19 +232,21 @@ export interface DepositEvent {
 
 export interface JobListing {
   id: string
+  companyId: string       // Links to a real company
   employerName: string
   companyType: CompanyType
   companyLevel: number
-  payPerWork: number
+  payPerPP: number        // Payment per Production Point
   productionBonus: number
+  location: string        // Country ISO code
 }
 
 const MOCK_JOBS: JobListing[] = [
-  { id: 'job-1', employerName: 'AgriCorp', companyType: 'wheat_farm', companyLevel: 3, payPerWork: 120, productionBonus: 15 },
-  { id: 'job-2', employerName: 'PetroMax', companyType: 'oil_refinery', companyLevel: 2, payPerWork: 200, productionBonus: 10 },
-  { id: 'job-3', employerName: 'SushiTown', companyType: 'sushi_bar', companyLevel: 4, payPerWork: 150, productionBonus: 20 },
-  { id: 'job-4', employerName: 'RefineX Labs', companyType: 'materialx_refiner', companyLevel: 2, payPerWork: 250, productionBonus: 10 },
-  { id: 'job-5', employerName: 'MegaMeats', companyType: 'steak_farm', companyLevel: 5, payPerWork: 180, productionBonus: 25 },
+  { id: 'job-1', companyId: 'npc-1', employerName: 'AgriCorp', companyType: 'wheat_farm', companyLevel: 3, payPerPP: 2.0, productionBonus: 15, location: 'US' },
+  { id: 'job-2', companyId: 'npc-2', employerName: 'PetroMax', companyType: 'oil_refinery', companyLevel: 2, payPerPP: 3.0, productionBonus: 10, location: 'RU' },
+  { id: 'job-3', companyId: 'npc-3', employerName: 'SushiTown', companyType: 'sushi_bar', companyLevel: 4, payPerPP: 2.5, productionBonus: 20, location: 'JP' },
+  { id: 'job-4', companyId: 'npc-4', employerName: 'RefineX Labs', companyType: 'materialx_refiner', companyLevel: 2, payPerPP: 4.0, productionBonus: 10, location: 'DE' },
+  { id: 'job-5', companyId: 'npc-5', employerName: 'MegaMeats', companyType: 'steak_farm', companyLevel: 5, payPerPP: 2.0, productionBonus: 25, location: 'BR' },
 ]
 
 export interface CompanyTransaction {
@@ -152,10 +264,13 @@ export interface CompanyState {
 
   buildCompany: (type: CompanyType) => boolean
   upgradeCompany: (companyId: string) => boolean
+  moveCompany: (companyId: string, newCountryCode: string) => boolean
   doEnterprise: (companyId: string) => { message: string, type: string } | null
   produceCompany: (companyId: string) => { message: string, type: string } | null
   doWork: () => { message: string, type: string, cashFound?: number } | null
   setActiveJob: (jobId: string | null) => void
+  postJob: (companyId: string, payPerPP: number) => boolean
+  removeJob: (companyId: string) => void
   prospect: (companyId: string) => DepositEvent | null
   getBuildableTypes: () => CompanyType[]
   processTick: () => void
@@ -165,8 +280,8 @@ let companyCounter = 2
 
 export const useCompanyStore = create<CompanyState>((set, get) => ({
   companies: [
-    { id: 'comp-1', type: 'bitcoin_miner', level: 1, autoProduction: false, productionProgress: 0, productionMax: 100 },
-    { id: 'comp-2', type: 'wheat_farm', level: 1, autoProduction: false, productionProgress: 0, productionMax: 80 },
+    { id: 'comp-1', type: 'bitcoin_miner', level: 1, autoProduction: false, productionProgress: 0, productionMax: 100, location: 'US' },
+    { id: 'comp-2', type: 'wheat_farm', level: 1, autoProduction: false, productionProgress: 0, productionMax: 80, location: 'US' },
   ],
 
   deposits: [],
@@ -195,6 +310,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       autoProduction: false,
       productionProgress: 0,
       productionMax: template.baseProductionMax,
+      location: player.country, // Defaults to player's country
     }
 
     set((s) => ({ companies: [...s.companies, newComp] }))
@@ -228,6 +344,55 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     return true
   },
 
+  moveCompany: (companyId, newCountryCode) => {
+    const state = get()
+    const company = state.companies.find(c => c.id === companyId)
+    if (!company) return false
+
+    const player = usePlayerStore.getState()
+    const moveCost = 500
+    if (player.money < moveCost) return false
+
+    player.spendMoney(moveCost)
+    set(s => ({
+      companies: s.companies.map(c =>
+        c.id === companyId ? { ...c, location: newCountryCode } : c
+      ),
+    }))
+    return true
+  },
+
+  postJob: (companyId, payPerPP) => {
+    const state = get()
+    const company = state.companies.find(c => c.id === companyId)
+    if (!company || company.type === 'prospection_center') return false
+
+    // Remove any existing job for this company
+    const filtered = state.jobs.filter(j => j.companyId !== companyId)
+
+    const player = usePlayerStore.getState()
+    const template = COMPANY_TEMPLATES[company.type]
+    const bonus = getLocationBonus(company)
+
+    const newJob: JobListing = {
+      id: `job-player-${Date.now()}`,
+      companyId: company.id,
+      employerName: player.name,
+      companyType: company.type,
+      companyLevel: company.level,
+      payPerPP,
+      productionBonus: bonus,
+      location: company.location,
+    }
+
+    set({ jobs: [...filtered, newJob] })
+    return true
+  },
+
+  removeJob: (companyId) => {
+    set(s => ({ jobs: s.jobs.filter(j => j.companyId !== companyId) }))
+  },
+
   /** Enterprise: owner works on their OWN company to fill its production bar */
   doEnterprise: (companyId) => {
     const state = get()
@@ -239,12 +404,12 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     if (player.entrepreneurship <= 0) return { message: 'No entrepreneurship points left', type: 'error' }
 
     const skills = useSkillsStore.getState()
-    const entSkill = skills.economic.entrepreneurship
     const prodSkill = skills.economic.production
 
-    // Base fill = 20 + entrepreneurship skill bonus + production skill bonus
-    const bonus = getProductionBonus(company.level)
-    const fill = (20 + entSkill * 2 + prodSkill) * (1 + bonus / 100)
+    // Production input = base + skill variance
+    const prodInput = getProductionContribution(prodSkill)
+    const bonus = getLocationBonus(company)
+    const fill = prodInput * (1 + bonus / 100)
 
     usePlayerStore.setState((s) => ({
       entrepreneurship: Math.max(0, s.entrepreneurship - 10),
@@ -260,8 +425,10 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     }))
 
     player.gainXP(10)
+    const bonusMsg = triggerEconomicModifiers()
+
     return { 
-      message: `+${Math.floor(fill)} production (${bonus}% bonus)`,
+      message: `+${Math.floor(fill)} production (${bonus}% bonus)${bonusMsg}`,
       type: 'enterprise' 
     }
   },
@@ -274,7 +441,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
 
     const points = company.productionProgress
     const player = usePlayerStore.getState()
-    const bonus = getProductionBonus(company.level)
+    const bonus = getLocationBonus(company)
 
     let result = ''
     let usedPoints = points
@@ -409,6 +576,9 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     }))
     player.gainXP(20)
 
+    const bonusMsg = triggerEconomicModifiers()
+    result += bonusMsg
+
     const tx: CompanyTransaction = {
       id: `tx-${Date.now()}`,
       message: `${COMPANY_TEMPLATES[company.type].label}: ${result}`,
@@ -431,40 +601,48 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     if (player.work <= 0) return { message: 'No work points left', type: 'error' }
 
     const skills = useSkillsStore.getState()
-    const workSkill = skills.economic.work
     const prodSkill = skills.economic.production
 
-    // Production contribution = base + worker skills + employer bonus
-    const contribution = Math.floor((15 + workSkill * 2 + prodSkill) * (1 + job.productionBonus / 100))
+    // Production input = base + skill variance
+    const prodInput = getProductionContribution(prodSkill)
+    const contribution = Math.floor(prodInput * (1 + job.productionBonus / 100))
 
-    // Consume work bar
+    // Pay = contribution * payPerPP
+    const grossPay = Math.floor(contribution * job.payPerPP)
+    const totalTax = Math.floor(grossPay * TAX_RATE)
+    const employeeTax = Math.floor(totalTax / 2)
+    const employerTax = totalTax - employeeTax
+    const netPay = grossPay - employeeTax
+
+    // Consume work bar, give net pay to employee
     usePlayerStore.setState((s) => ({
       work: Math.max(0, s.work - 10),
-      money: s.money + job.payPerWork,
+      money: s.money + netPay,
       specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
     }))
 
-    // Prospection: chance to find deposit for country
-    const prospSkill = skills.economic.prospection
-    const prospChance = prospSkill * 0.02
-    let depositMsg = ''
-    if (Math.random() < prospChance) {
-      const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
-      const resource = resources[Math.floor(Math.random() * resources.length)]
-      const bonusAmount = 50
-      if (resource === 'Oil') {
-        usePlayerStore.setState((s) => ({ oil: s.oil + bonusAmount }))
-      } else {
-        usePlayerStore.setState((s) => ({ materialX: s.materialX + Math.floor(bonusAmount / 5) }))
-      }
-      depositMsg = ` 🎉 Found ${resource} deposit!`
+    // Send tax to country treasury
+    useWorldStore.getState().addTreasuryTax(job.location, totalTax)
+
+    // Add contribution to the employer's company production (if it's a player company)
+    const employerCompany = state.companies.find(c => c.id === job.companyId)
+    if (employerCompany) {
+      set(s => ({
+        companies: s.companies.map(c =>
+          c.id === job.companyId
+            ? { ...c, productionProgress: c.productionProgress + contribution }
+            : c
+        )
+      }))
     }
+
+    const bonusMsg = triggerEconomicModifiers()
 
     player.gainXP(8)
     return {
-      message: `+$${job.payPerWork} pay, +${contribution} contributed${depositMsg}`,
+      message: `+$${netPay} pay (${contribution}PP × $${job.payPerPP}/PP, Tax: $${totalTax})${bonusMsg}`,
       type: 'work',
-      cashFound: job.payPerWork
+      cashFound: netPay
     }
   },
 
@@ -482,18 +660,15 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const found = Math.random() < chance
 
     if (found) {
-      // Only MaterialX and Oil deposits
       const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
       const resource = resources[Math.floor(Math.random() * resources.length)]
       const btcReward = 3 + company.level * 2
 
-      // Businessman jackpot
       usePlayerStore.setState((s) => ({
         bitcoin: s.bitcoin + btcReward,
         money: s.money + 5000,
       }))
 
-      // Country + citizen bonus
       const bonusAmount = 100 * company.level
       if (resource === 'Oil') {
         usePlayerStore.setState((s) => ({ oil: s.oil + bonusAmount }))
@@ -525,11 +700,10 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     // Add production points to companies
     set(s => ({
       companies: s.companies.map(c => {
-        // Only normal producing companies gain points, prospection_center doesn't
         if (c.type === 'prospection_center') return c
         
         const effectiveLevel = Math.min(6, c.level)
-        const bonus = getProductionBonus(c.level)
+        const bonus = getLocationBonus(c)
         const pointsGenerated = effectiveLevel * (1 + bonus / 100)
         
         return {

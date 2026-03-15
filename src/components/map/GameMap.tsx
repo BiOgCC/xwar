@@ -38,6 +38,10 @@ const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
   'Japan': [138, 36.2],
   'United Kingdom': [-3.4, 55.4],
   'Turkey': [35.2, 39],
+  'Canada': [-106.3, 56.1],
+  'Mexico': [-102.5, 23.6],
+  'Cuba': [-79.0, 21.5],
+  'Bahamas': [-77.3, 25.0],
 }
 
 // ISO A3 for GeoJSON matching
@@ -52,6 +56,10 @@ const COUNTRY_ISO: Record<string, string> = {
   'Japan': 'JPN',
   'United Kingdom': 'GBR',
   'Turkey': 'TUR',
+  'Canada': 'CAN',
+  'Mexico': 'MEX',
+  'Cuba': 'CUB',
+  'Bahamas': 'BHS',
 }
 
 const DEFAULT_CENTER: [number, number] = [20, 25]
@@ -346,7 +354,22 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
     map.current = m
 
+    // Force resize to fix WebGL projection vs container height bugs
+    const resizeObserver = new ResizeObserver(() => {
+      map.current?.resize()
+    })
+    resizeObserver.observe(mapContainer.current)
+
+    // Initial resize delay to ensure flex layout settled
+    setTimeout(() => {
+      map.current?.resize()
+    }, 100)
+    setTimeout(() => {
+      map.current?.resize()
+    }, 500)
+
     return () => {
+      resizeObserver.disconnect()
       if (map.current) {
         map.current.remove()
         map.current = null

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
-export type PanelType = 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'chat' | null
+export type PanelType = 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'chat' | 'resources' | null
+export type ResourceViewMode = 'deposits' | 'strategic' | 'political'
 
 export interface Notification {
   id: string
@@ -31,8 +32,12 @@ export interface UIState {
   notifications: Notification[]
   chatMessages: ChatMessage[]
   floatingTexts: FloatingText[]
+  profileDefaultTab: string | null
+  resourceViewMode: ResourceViewMode
   setActivePanel: (panel: PanelType) => void
   togglePanel: (panel: PanelType) => void
+  setProfileDefaultTab: (tab: string | null) => void
+  cycleResourceView: () => void
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void
   removeNotification: (id: string) => void
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
@@ -51,6 +56,8 @@ export const useUIStore = create<UIState>((set) => ({
   modalContent: null,
   notifications: [],
   floatingTexts: [],
+  profileDefaultTab: null,
+  resourceViewMode: 'political' as ResourceViewMode,
   chatMessages: [
     {
       id: 'welcome',
@@ -66,6 +73,14 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({
       activePanel: state.activePanel === panel ? null : panel,
     })),
+
+  setProfileDefaultTab: (tab) => set({ profileDefaultTab: tab }),
+
+  cycleResourceView: () => set((state) => {
+    const modes: ResourceViewMode[] = ['deposits', 'strategic', 'political']
+    const idx = modes.indexOf(state.resourceViewMode)
+    return { resourceViewMode: modes[(idx + 1) % modes.length] }
+  }),
 
   addFloatingText: (text, x, y, color = '#22d38a') => {
     const id = `float-${Date.now()}-${Math.random()}`

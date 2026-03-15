@@ -11,6 +11,31 @@ export default function SkillsTab() {
   const player = usePlayerStore()
   const skills = useSkillsStore()
 
+  const getMilValue = (key: string, level: number) => {
+    switch (key) {
+      case 'attack': return `${100 + level * 20}`
+      case 'critRate': return `${10 + level * 5}%`
+      case 'critDamage': return `${100 + level * 20}%`
+      case 'precision': return `${Math.min(100, 50 + level * 5)}%`
+      case 'stamina': return `${100 + level * 20}`
+      case 'hunger': return `${5 + level * 1}`
+      case 'armor': return `${0 + level * 5}%`
+      case 'dodge': return `${5 + level * 5}%`
+      default: return ''
+    }
+  }
+
+  const getEcoValue = (key: string, level: number) => {
+    switch (key) {
+      case 'work': return `${100 + level * 20}`
+      case 'entrepreneurship': return `${100 + level * 15}`
+      case 'production': return `${10 + level * 5}`
+      case 'prospection': return `${10 + level * 5}%`
+      case 'industrialist': return `${10 + level * 5}%`
+      default: return ''
+    }
+  }
+
   return (
     <div className="skills-tab">
       {/* Skill Points Header */}
@@ -33,8 +58,11 @@ export default function SkillsTab() {
             return (
               <div key={s.key} className="skill-row">
                 <span className="skill-row__icon">{s.icon}</span>
-                <div className="skill-row__info">
-                  <span className="skill-row__name">{s.label}</span>
+                <div className="skill-row__info" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="skill-row__name">{s.label}</span>
+                    <span style={{ fontSize: '10px', color: '#22d38a', fontWeight: 'bold', marginLeft: '8px' }}>{getMilValue(s.key, level)}</span>
+                  </div>
                   <span className="skill-row__desc">{s.desc}</span>
                 </div>
                 <div className="skill-row__dots">
@@ -73,8 +101,11 @@ export default function SkillsTab() {
             return (
               <div key={s.key} className="skill-row">
                 <span className="skill-row__icon">{s.icon}</span>
-                <div className="skill-row__info">
-                  <span className="skill-row__name">{s.label}</span>
+                <div className="skill-row__info" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="skill-row__name">{s.label}</span>
+                    <span style={{ fontSize: '10px', color: '#3b82f6', fontWeight: 'bold', marginLeft: '8px' }}>{getEcoValue(s.key, level)}</span>
+                  </div>
                   <span className="skill-row__desc">{s.desc}</span>
                 </div>
                 <div className="skill-row__dots">

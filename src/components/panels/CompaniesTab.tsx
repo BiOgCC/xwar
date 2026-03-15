@@ -1,14 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useSkillsStore } from '../../stores/skillsStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useWorldStore } from '../../stores/worldStore'
 import {
   useCompanyStore,
   COMPANY_TEMPLATES,
   getUpgradeCost,
-  getProductionBonus,
-  CompanyType,
+  getLocationBonus,
+  type CompanyType,
 } from '../../stores/companyStore'
 
 export default function CompaniesTab() {
@@ -16,22 +17,26 @@ export default function CompaniesTab() {
   const skills = useSkillsStore()
   const companyStore = useCompanyStore()
   const uiStore = useUIStore()
+  const worldStore = useWorldStore()
   const [showBuild, setShowBuild] = useState(false)
   const [showJobs, setShowJobs] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [postJobCompanyId, setPostJobCompanyId] = useState<string | null>(null)
+  const [postJobPayPerPP, setPostJobPayPerPP] = useState('2.0')
+  const [moveCompanyId, setMoveCompanyId] = useState<string | null>(null)
 
   const flash = (msg: string, duration = 3000) => {
     setToast(msg)
     setTimeout(() => setToast(null), duration)
   }
 
-  const spawnFloating = (e: MouseEvent, text: string, color?: string) => {
+  const spawnFloating = (e: React.MouseEvent, text: string, color?: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     // Spawn just above the button
     uiStore.addFloatingText(text, rect.left + rect.width / 2, rect.top, color)
   }
 
-  const handleEnterprise = (e: MouseEvent, companyId: string) => {
+  const handleEnterprise = (e: React.MouseEvent, companyId: string) => {
     const result = companyStore.doEnterprise(companyId)
     if (result) {
       if (result.type === 'error') flash(result.message)
@@ -39,7 +44,7 @@ export default function CompaniesTab() {
     }
   }
 
-  const handleProduce = (e: MouseEvent, companyId: string) => {
+  const handleProduce = (e: React.MouseEvent, companyId: string) => {
     const result = companyStore.produceCompany(companyId)
     if (result) {
       if (result.type === 'error') flash(result.message)
@@ -81,7 +86,7 @@ export default function CompaniesTab() {
     setShowJobs(false) // Send them back to My Business
   }
 
-  const handleWork = (e: MouseEvent) => {
+  const handleWork = (e: React.MouseEvent) => {
     const result = companyStore.doWork()
     if (result) {
       if (result.type === 'error') {
@@ -94,10 +99,14 @@ export default function CompaniesTab() {
 
   const renderJobCard = (job: typeof companyStore.jobs[0], isMyBusinessView: boolean) => {
     const template = COMPANY_TEMPLATES[job.companyType]
-    const workSkill = skills.economic.work
     const prodSkill = skills.economic.production
-    const contribution = Math.floor((15 + workSkill * 2 + prodSkill) * (1 + job.productionBonus / 100))
+    const baseProd = 10 + (prodSkill * 5)
+    const contribution = Math.floor(baseProd * (1 + job.productionBonus / 100))
+    const estimatedPay = Math.floor(contribution * job.payPerPP)
+    const estimatedTax = Math.floor(estimatedPay * 0.10)
+    const netPay = estimatedPay - Math.floor(estimatedTax / 2)
     const isActiveJob = companyStore.activeJobId === job.id
+    const country = worldStore.getCountry(job.location)
 
     return (
       <div key={job.id} className="comp-card comp-card--job" style={{ borderColor: `${template.color}33` }}>
@@ -112,17 +121,18 @@ export default function CompaniesTab() {
                 {template.label} LVL {job.companyLevel}
               </span>
               <span className="comp-card__bonus">+{job.productionBonus}%</span>
+              <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>📍{country?.code || job.location}</span>
             </div>
           </div>
           <div className="comp-job-pay">
-            <span className="comp-job-pay__amount">${job.payPerWork}</span>
-            <span className="comp-job-pay__label">per work</span>
+            <span className="comp-job-pay__amount">${job.payPerPP.toFixed(1)}</span>
+            <span className="comp-job-pay__label">per PP</span>
           </div>
         </div>
 
         <div className="comp-job-stats">
-          <span>Your contribution: <strong>{contribution}</strong> pts</span>
-          <span>Prospection chance: <strong>{(skills.economic.prospection * 2)}%</strong></span>
+          <span>~{contribution} PP → <strong>~${netPay}</strong> net</span>
+          <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>Tax: ${estimatedTax} (50/50)</span>
         </div>
 
         {isMyBusinessView && isActiveJob ? (
@@ -131,7 +141,7 @@ export default function CompaniesTab() {
             onClick={(e) => handleWork(e)}
             disabled={player.work <= 0}
           >
-            🔨 Work (-10 Work, +${job.payPerWork})
+            🔨 Work (-10 Work, ~${netPay}/PP)
           </button>
         ) : isActiveJob ? (
           <button className="comp-action comp-action--work" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
@@ -224,10 +234,11 @@ export default function CompaniesTab() {
           <div className="comp-list">
             {companyStore.companies.map((company) => {
               const template = COMPANY_TEMPLATES[company.type]
-              const upgCost = getUpgradeCost(company.level)
-              const bonus = getProductionBonus(company.level)
+              const bonus = getLocationBonus(company)
               const isProspector = company.type === 'prospection_center'
               const isFull = company.productionProgress >= company.productionMax
+              const hasActiveJob = companyStore.jobs.some(j => j.companyId === company.id)
+              const countryObj = worldStore.getCountry(company.location)
 
               return (
                 <div key={company.id} className="comp-card" style={{ borderColor: `${template.color}33` }}>
@@ -244,6 +255,10 @@ export default function CompaniesTab() {
                         <span className="comp-card__bonus">+{bonus}%</span>
                         {company.autoProduction && (
                           <span className="comp-card__auto">⚡ AUTO</span>
+                        )}
+                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>📍{countryObj?.code || company.location}</span>
+                        {hasActiveJob && (
+                          <span style={{ fontSize: '9px', color: '#22d38a', marginLeft: '4px' }}>📋 Job Active</span>
                         )}
                       </div>
                     </div>
@@ -312,6 +327,77 @@ export default function CompaniesTab() {
                     <span>Upgrade: </span>
                     <span className="comp-cost-item" style={{ color: '#f59e0b' }}>₿ 1</span>
                   </div>
+
+                  {/* Post Job / Move buttons */}
+                  {!isProspector && (
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                      {postJobCompanyId === company.id ? (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', width: '100%' }}>
+                          <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)' }}>$/PP:</span>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            value={postJobPayPerPP}
+                            onChange={e => setPostJobPayPerPP(e.target.value)}
+                            style={{ width: '50px', fontSize: '10px', padding: '2px 4px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px' }}
+                          />
+                          <button
+                            style={{ fontSize: '9px', padding: '2px 6px', background: '#22d38a', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            onClick={() => {
+                              const val = parseFloat(postJobPayPerPP)
+                              if (val > 0 && companyStore.postJob(company.id, val)) {
+                                flash(`📋 Job posted at $${val}/PP`)
+                              }
+                              setPostJobCompanyId(null)
+                            }}
+                          >✓</button>
+                          <button
+                            style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            onClick={() => setPostJobCompanyId(null)}
+                          >✕</button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            style={{ fontSize: '9px', padding: '2px 8px', background: 'transparent', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '4px', cursor: 'pointer', flex: 1 }}
+                            onClick={() => setPostJobCompanyId(company.id)}
+                          >
+                            {hasActiveJob ? '✏️ Edit Job' : '📋 Post Job'}
+                          </button>
+                          {hasActiveJob && (
+                            <button
+                              style={{ fontSize: '9px', padding: '2px 8px', background: 'transparent', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', cursor: 'pointer' }}
+                              onClick={() => { companyStore.removeJob(company.id); flash('Job removed') }}
+                            >🗑️</button>
+                          )}
+                          {moveCompanyId === company.id ? (
+                            <select
+                              style={{ fontSize: '9px', padding: '2px', background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px' }}
+                              value={company.location}
+                              onChange={(e) => {
+                                if (companyStore.moveCompany(company.id, e.target.value)) {
+                                  flash(`🚚 Moved to ${e.target.value}`)
+                                } else {
+                                  flash('❌ Need $500 to move')
+                                }
+                                setMoveCompanyId(null)
+                              }}
+                            >
+                              {worldStore.countries.map(c => (
+                                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <button
+                              style={{ fontSize: '9px', padding: '2px 8px', background: 'transparent', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', cursor: 'pointer' }}
+                              onClick={() => setMoveCompanyId(company.id)}
+                            >🚚 Move</button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}

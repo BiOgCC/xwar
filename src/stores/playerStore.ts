@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useInventoryStore } from './inventoryStore'
+import { useSkillsStore } from './skillsStore'
 
 export type PlayerRole = 'military' | 'business' | 'politics'
 
@@ -31,6 +32,7 @@ export interface PlayerState {
   bitcoin: number
   companiesOwned: number
   lootBoxes: number
+  lootChancePool: number
 
   // XP & Leveling
   level: number
@@ -39,8 +41,8 @@ export interface PlayerState {
   skillPoints: number
 
   // Bars
-  health: number
-  maxHealth: number
+  stamina: number
+  maxStamina: number
   hunger: number
   maxHunger: number
   entrepreneurship: number
@@ -59,13 +61,13 @@ export interface PlayerState {
   equippedAmmo: 'none' | 'green' | 'blue' | 'purple' | 'red'
 
   // Actions
-  attack: () => void
+  attack: () => { damage: number, isCrit: boolean, isDodged: boolean }
   equipAmmo: (type: 'none' | 'green' | 'blue' | 'purple' | 'red') => void
   consumeFood: (type: 'bread' | 'sushi' | 'wagyu') => boolean
   buyResource: (resource: 'food' | 'oil' | 'materialX', amount: number, cost: number) => void
   earnMoney: (amount: number) => void
   gainXP: (amount: number) => void
-  consumeBar: (bar: 'health' | 'hunger' | 'entrepreneurship' | 'work', amount: number) => void
+  consumeBar: (bar: 'stamina' | 'hunger' | 'entrepreneurship' | 'work', amount: number) => void
   doWork: () => void
   doEntrepreneurship: () => void
   produce: (industrialistLevel: number) => void
@@ -89,32 +91,33 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   money: 45200,
   food: 1840,
-  wheat: 0,
-  fish: 0,
-  steak: 0,
-  bread: 0,
-  sushi: 0,
-  wagyu: 0,
-  greenBullets: 0,
+  wheat: 10,
+  fish: 10,
+  steak: 10,
+  bread: 10,
+  sushi: 10,
+  wagyu: 10,
+  greenBullets: 300,
   blueBullets: 0,
   purpleBullets: 0,
   redBullets: 0,
   oil: 920,
   materialX: 38,
   scrap: 0,
-  bitcoin: 0,
+  bitcoin: 10,
   companiesOwned: 3,
   lootBoxes: 5,
+  lootChancePool: 0,
 
-  level: 1,
-  experience: 0,
-  experienceToNext: 100,
-  skillPoints: 5,
+  level: 12,
+  experience: 450,
+  experienceToNext: 650,
+  skillPoints: 49,
 
-  health: 100,
-  maxHealth: 100,
-  hunger: 80,
-  maxHunger: 100,
+  stamina: 100,
+  maxStamina: 100,
+  hunger: 5,
+  maxHunger: 5,
   entrepreneurship: 100,
   maxEntrepreneurship: 100,
   work: 100,
@@ -135,100 +138,137 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set((s) => {
       if (s[type] <= 0 || s.hunger <= 0) return {}
       
-      const healthGain = type === 'wagyu' ? 30 : type === 'sushi' ? 20 : 10
+      const staminaGain = type === 'wagyu' ? 30 : type === 'sushi' ? 20 : 10
       consumed = true
       
       return {
         [type]: s[type] - 1,
         hunger: Math.max(0, s.hunger - 1),
-        health: Math.min(s.maxHealth, s.health + healthGain)
+        stamina: Math.min(s.maxStamina, s.stamina + staminaGain)
       }
     })
     return consumed
   },
 
-  attack: () =>
-    set((s) => {
-      // Handle Ammo Consumption & Multiplier
-      let damageMultiplier = 1.0
-      let usedAmmo = s.equippedAmmo
-      let ammoCount = usedAmmo !== 'none' ? s[`${usedAmmo}Bullets` as keyof PlayerState] as number : 0
+  attack: () => {
+    const s = get()
+    // Handle Ammo Consumption & Multiplier
+    let damageMultiplier = 1.0
+    let usedAmmo = s.equippedAmmo
+    let ammoCount = usedAmmo !== 'none' ? s[`${usedAmmo}Bullets` as keyof PlayerState] as number : 0
 
-      if (usedAmmo !== 'none' && ammoCount > 0) {
-        if (usedAmmo === 'green') damageMultiplier = 1.1
-        else if (usedAmmo === 'blue') damageMultiplier = 1.2
-        else if (usedAmmo === 'purple') damageMultiplier = 1.4
-        else if (usedAmmo === 'red') damageMultiplier = 1.4 // Crit handled by combat engine later
+    if (usedAmmo !== 'none' && ammoCount > 0) {
+      if (usedAmmo === 'green') damageMultiplier = 1.1
+      else if (usedAmmo === 'blue') damageMultiplier = 1.2
+      else if (usedAmmo === 'purple') damageMultiplier = 1.4
+      else if (usedAmmo === 'red') damageMultiplier = 1.4
+      ammoCount -= 1
+    } else {
+      usedAmmo = 'none'
+    }
 
-        ammoCount -= 1
-      } else {
-        usedAmmo = 'none' // Force unequip if empty
-      }
+    // Base attack logic & Stats Integration
+    let totalDmg = 100
+    let totalCritRate = 10
+    let totalCritDmg = 100
+    
+    const invStore = useInventoryStore.getState()
+    const equipped = invStore.getEquipped()
+    
+    let totalArmor = 0
+    let totalDodge = 5
+    let totalPrecision = 0
+    equipped.forEach((item: any) => {
+      if (item.stats.damage) totalDmg += item.stats.damage
+      if (item.stats.critRate) totalCritRate += item.stats.critRate
+      if (item.stats.critDamage) totalCritDmg += item.stats.critDamage
+      if (item.stats.armor) totalArmor += item.stats.armor
+      if (item.stats.dodge) totalDodge += item.stats.dodge
+      if (item.stats.precision) totalPrecision += item.stats.precision
+    })
 
-      // Base attack logic & Stats Integration
-      let totalDmg = 150
-      let totalCritRate = 0
-      let totalCritDmg = 0
+    const milSkills = useSkillsStore.getState().military
+    totalDmg += milSkills.attack * 20
+    totalCritRate += milSkills.critRate * 5
+    totalCritDmg += milSkills.critDamage * 20
+    totalArmor += milSkills.armor * 5
+    totalDodge += milSkills.dodge * 5
+    totalPrecision += milSkills.precision * 5
 
-      const invStore = useInventoryStore.getState()
-      const equipped = invStore.getEquipped()
-      
-      equipped.forEach((item: any) => {
-        if (item.stats.damage) totalDmg += item.stats.damage
-        if (item.stats.critRate) totalCritRate += item.stats.critRate
-        if (item.stats.critDamage) totalCritDmg += item.stats.critDamage
-      })
+    // Hit Rate Check: base 50% + equipment + skills
+    const totalHitRate = Math.min(100, 50 + totalPrecision)
+    const didHit = Math.random() * 100 < totalHitRate
 
-      if (usedAmmo === 'red') {
-        totalCritRate += 10
-      }
+    // Dodge Check & Stamina Cost Calculation
+    const isDodged = Math.random() < (totalDodge / 100)
+    let staminaCost = 0
+    
+    if (!isDodged) {
+      staminaCost = Math.max(0, 10 - (10 * (totalArmor / 100)))
+      invStore.degradeEquippedItems(1) // Item durability damage
+    }
 
-      const isCrit = Math.random() < (totalCritRate / 100)
-      let finalMultiplier = damageMultiplier
-      
-      if (isCrit) {
-        finalMultiplier *= (1.5 + (totalCritDmg / 100))
-      }
+    if (s.stamina < staminaCost) return { damage: 0, isCrit: false, isDodged: false } // Not enough stamina
 
-      const finalDamage = Math.floor(totalDmg * finalMultiplier)
+    if (usedAmmo === 'red') {
+      totalCritRate += 10
+    }
 
-      const xpGain = 25
-      let newXP = s.experience + xpGain
-      let newLevel = s.level
-      let newSP = s.skillPoints
-      let nextXP = s.experienceToNext
-      while (newXP >= nextXP) {
-        newXP -= nextXP
-        newLevel++
-        newSP++
-        nextXP = xpForLevel(newLevel)
-      }
+    const isCrit = Math.random() < (totalCritRate / 100)
+    let finalMultiplier = damageMultiplier
+    
+    if (isCrit) {
+      finalMultiplier *= (1.5 + (totalCritDmg / 100))
+    }
 
-      const updates: Partial<PlayerState> = {
-        food: Math.max(0, s.food - 50),
-        oil: Math.max(0, s.oil - 25),
-        money: s.money + 800,
-        rank: Math.min(s.maxRank, s.rank + 0.5),
-        experience: newXP,
-        level: newLevel,
-        skillPoints: newSP,
-        experienceToNext: nextXP,
-        damageDone: s.damageDone + finalDamage,
-        specialization: { ...s.specialization, military: s.specialization.military + 1 },
-        equippedAmmo: usedAmmo
-      }
+    const finalDamage = didHit ? Math.floor(totalDmg * finalMultiplier) : Math.floor(totalDmg * finalMultiplier * 0.66)
 
-      if (usedAmmo !== 'none') {
-        (updates as any)[`${usedAmmo}Bullets`] = ammoCount
-      }
+    const xpGain = 25
+    let newXP = s.experience + xpGain
+    let newLevel = s.level
+    let newSP = s.skillPoints
+    let nextXP = s.experienceToNext
+    while (newXP >= nextXP) {
+      newXP -= nextXP
+      newLevel++
+      newSP += 4
+      nextXP = xpForLevel(newLevel)
+    }
 
-      // 30% chance to drop a lootbox
-      if (Math.random() < 0.3) {
-        updates.lootBoxes = s.lootBoxes + 1
-      }
+    const updates: Partial<PlayerState> = {
+      stamina: Math.max(0, s.stamina - staminaCost),
+      rank: Math.min(s.maxRank, s.rank + 0.5),
+      experience: newXP,
+      level: newLevel,
+      skillPoints: newSP,
+      experienceToNext: nextXP,
+      damageDone: s.damageDone + finalDamage,
+      specialization: { ...s.specialization, military: s.specialization.military + 1 },
+      equippedAmmo: usedAmmo
+    }
 
-      return updates
-    }),
+    if (usedAmmo !== 'none') {
+      (updates as any)[`${usedAmmo}Bullets`] = ammoCount
+    }
+
+    // 7% accumulative loot chance
+    let newPool = s.lootChancePool + 7
+    let boxesGranted = Math.floor(newPool / 100)
+    newPool -= boxesGranted * 100
+    
+    if (Math.random() * 100 < newPool) {
+      boxesGranted++
+      newPool = 0
+    }
+
+    if (boxesGranted > 0) {
+      updates.lootBoxes = s.lootBoxes + boxesGranted
+    }
+    updates.lootChancePool = newPool
+
+    set(updates)
+    return { damage: finalDamage, isCrit, isDodged }
+  },
 
   buyResource: (resource, amount, cost) =>
     set((s) => ({
@@ -248,7 +288,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       while (newXP >= nextXP) {
         newXP -= nextXP
         newLevel++
-        newSP++
+        newSP += 4
         nextXP = xpForLevel(newLevel)
       }
       return {
@@ -287,7 +327,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   produce: (industrialistLevel: number) =>
     set((s) => {
       if (s.productionBar < s.productionBarMax) return {}
-      const chance = industrialistLevel * 0.03
+      const chance = industrialistLevel * 0.05
       const foundBitcoin = Math.random() < chance
       const xpGain = 30
       let newXP = s.experience + xpGain
@@ -297,7 +337,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       while (newXP >= nextXP) {
         newXP -= nextXP
         newLevel++
-        newSP++
+        newSP += 4
         nextXP = xpForLevel(newLevel)
       }
       return {
@@ -331,7 +371,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   regenerateBars: () => set((state) => {
     const p = 0.05
     return {
-      health: Math.min(state.maxHealth, state.health + (state.maxHealth * p)),
+      stamina: Math.min(state.maxStamina, state.stamina + (state.maxStamina * p)),
       hunger: Math.min(state.maxHunger, state.hunger + (state.maxHunger * p)),
       entrepreneurship: Math.min(state.maxEntrepreneurship, state.entrepreneurship + (state.maxEntrepreneurship * p)),
       work: Math.min(state.maxWork, state.work + (state.maxWork * p)),

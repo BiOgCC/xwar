@@ -23,6 +23,7 @@ export interface EquipItem {
   category: EquipCategory
   tier: EquipTier
   equipped: boolean
+  durability: number
   stats: EquipStats
 }
 
@@ -75,6 +76,7 @@ export interface InventoryState {
   dismantleItem: (itemId: string) => number // returns scrap gained
   equipItem: (itemId: string) => void
   unequipItem: (itemId: string) => void
+  degradeEquippedItems: (amount: number) => void
   getEquipped: () => EquipItem[]
 }
 
@@ -114,7 +116,11 @@ function generateStats(category: EquipCategory, slot: EquipSlot, tier: EquipTier
       case 'chest': return { name: `${namePrefix} Chestplate`, stats: { armor: 5 * tLevel } }
       case 'legs': return { name: `${namePrefix} Legging`, stats: { armor: 5 * tLevel } }
       case 'boots': return { name: `${namePrefix} Boots`, stats: { dodge: 5 * tLevel } }
-      case 'gloves': return { name: `${namePrefix} Gloves`, stats: { precision: 5 * tLevel } }
+      case 'gloves': {
+        const base = 5 * tLevel
+        const variation = randomInt(base - 4, base)
+        return { name: `${namePrefix} Gloves`, stats: { precision: Math.max(1, variation) } }
+      }
     }
   }
   return { name: 'Unknown Item', stats: {} }
@@ -147,15 +153,36 @@ function rollLootBoxItem(): EquipItem {
     category,
     tier,
     equipped: false,
+    durability: 100,
     stats,
   }
 }
 
+function getStarterKit(): EquipItem[] {
+  const kit: EquipItem[] = []
+  const slots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots', 'weapon']
+  
+  for (let i = 0; i < 3; i++) {
+    slots.forEach(slot => {
+      const category: EquipCategory = slot === 'weapon' ? 'weapon' : 'armor'
+      const { name, stats } = generateStats(category, slot, 't3')
+      kit.push({
+        id: `start-${slot}-${i}-${Math.random().toString(36).substring(2, 9)}`,
+        name,
+        slot,
+        category,
+        tier: 't3',
+        equipped: i === 0, // Equip first set only
+        durability: 100,
+        stats
+      })
+    })
+  }
+  return kit
+}
+
 export const useInventoryStore = create<InventoryState>((set, get) => ({
-  items: [
-    { ...rollLootBoxItem(), equipped: true, tier: 't1', slot: 'weapon', category: 'weapon', name: 'Starter Knife', stats: { damage: 25, critRate: 5 }, id: 'start-1' },
-    { ...rollLootBoxItem(), equipped: true, tier: 't1', slot: 'chest', category: 'armor', name: 'Worn Vest', stats: { armor: 5 }, id: 'start-2' },
-  ],
+  items: getStarterKit(),
 
   openLootBox: () => {
     const playerStore = usePlayerStore.getState()
@@ -205,6 +232,13 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       items: s.items.map((i) =>
         i.id === itemId ? { ...i, equipped: false } : i
       ),
+    })),
+
+  degradeEquippedItems: (amount: number) =>
+    set((s) => ({
+      items: s.items.map((i) =>
+        i.equipped ? { ...i, durability: Math.max(0, (i.durability || 100) - amount) } : i
+      )
     })),
 
   getEquipped: () => get().items.filter((i) => i.equipped),
