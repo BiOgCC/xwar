@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useUIStore } from '../../stores/uiStore'
+import { useSkillsStore } from '../../stores/skillsStore'
 import {
   useInventoryStore,
   generateStats,
@@ -367,9 +368,24 @@ export default function InventoryTab() {
                         player.spendScraps(cost.scrap)
                         // Use generateStats for randomized stats matching loot system
                         const { name, stats } = generateStats(category, craftSlot, tier)
+
+                        // Superforge check: industrialist skill gives up to 20% chance
+                        const indLevel = useSkillsStore.getState().economic.industrialist || 0
+                        const superforgeChance = Math.min(0.20, indLevel * 0.02)
+                        const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
+
+                        if (isSuperforged) {
+                          // +10% to all stat values
+                          for (const key of Object.keys(stats) as Array<keyof typeof stats>) {
+                            if (typeof stats[key] === 'number') {
+                              (stats as any)[key] = Math.ceil(stats[key]! * 1.10)
+                            }
+                          }
+                        }
+
                         const newItem: EquipItem = {
                           id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-                          name,
+                          name: isSuperforged ? `⚡ ${name}` : name,
                           slot: craftSlot,
                           category,
                           tier,
@@ -378,7 +394,11 @@ export default function InventoryTab() {
                           stats,
                         }
                         inventory.addItem(newItem)
-                        ui.addFloatingText(`CRAFTED ${name}!`, window.innerWidth / 2, window.innerHeight / 2, TIER_COLORS[tier])
+                        if (isSuperforged) {
+                          ui.addFloatingText(`⚡ SUPERFORGED ${name}! +10% STATS`, window.innerWidth / 2, window.innerHeight / 2, '#fbbf24')
+                        } else {
+                          ui.addFloatingText(`CRAFTED ${name}!`, window.innerWidth / 2, window.innerHeight / 2, TIER_COLORS[tier])
+                        }
                       }}
                     >
                       🔨 CRAFT

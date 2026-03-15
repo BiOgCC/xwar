@@ -90,11 +90,12 @@ const triggerEconomicModifiers = (): string => {
     }
   }
 
-  // Industrialist (5% per level)
-  const indChance = skills.economic.industrialist * 0.05
-  if (Math.random() < indChance) {
-    usePlayerStore.setState((s) => ({ bitcoin: s.bitcoin + 1 }))
-    msg += ` ₿ Found Bitcoin!`
+  // Industrialist: chance to find red bullets on any produce (2% per level, max 20%)
+  const indLevel = skills.economic.industrialist || 0
+  const redBulletChance = Math.min(0.20, indLevel * 0.02)
+  if (redBulletChance > 0 && Math.random() < redBulletChance) {
+    usePlayerStore.setState((s) => ({ redBullets: s.redBullets + 1 }))
+    msg += ` 🔴 Industrialist found a RED BULLET!`
   }
   
   return msg
@@ -519,7 +520,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         usePlayerStore.setState(s => ({ materialX: s.materialX - count, greenBullets: s.greenBullets + count }))
         result = `+${count} Green Bullets`
         usedPoints = count * 1
-        if (points >= company.productionMax && Math.random() < 0.10) {
+        if (points >= company.productionMax && Math.random() < (0.10 + (useSkillsStore.getState().economic.industrialist || 0) * 0.02)) {
           usePlayerStore.setState(s => ({ redBullets: s.redBullets + 1 }))
           result += ' & 1 🔴 RED BULLET!'
         }
@@ -533,7 +534,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         usePlayerStore.setState(s => ({ materialX: s.materialX - count * 3, blueBullets: s.blueBullets + count }))
         result = `+${count} Blue Bullets`
         usedPoints = count * 3
-        if (points >= company.productionMax && Math.random() < 0.10) {
+        if (points >= company.productionMax && Math.random() < (0.10 + (useSkillsStore.getState().economic.industrialist || 0) * 0.02)) {
           usePlayerStore.setState(s => ({ redBullets: s.redBullets + 1 }))
           result += ' & 1 🔴 RED BULLET!'
         }
@@ -547,7 +548,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         usePlayerStore.setState(s => ({ materialX: s.materialX - count * 9, purpleBullets: s.purpleBullets + count }))
         result = `+${count} Purple Bullets`
         usedPoints = count * 9
-        if (points >= company.productionMax && Math.random() < 0.10) {
+        if (points >= company.productionMax && Math.random() < (0.10 + (useSkillsStore.getState().economic.industrialist || 0) * 0.02)) {
           usePlayerStore.setState(s => ({ redBullets: s.redBullets + 1 }))
           result += ' & 1 🔴 RED BULLET!'
         }
@@ -699,6 +700,14 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
 
       set((s) => ({ deposits: [...s.deposits, deposit] }))
       player.gainXP(100)
+
+      // Industrialist bonus: extra bitcoin on successful prospect
+      const indLevel = useSkillsStore.getState().economic.industrialist || 0
+      if (indLevel > 0) {
+        const bonusBtc = Math.min(indLevel, 5)
+        usePlayerStore.setState((s) => ({ bitcoin: s.bitcoin + bonusBtc }))
+      }
+
       return deposit
     }
 

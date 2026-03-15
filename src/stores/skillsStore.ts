@@ -21,7 +21,7 @@ export const ECONOMIC_SKILLS: { key: EconomicSkill; label: string; icon: string;
   { key: 'entrepreneurship', label: 'Enterprise', icon: '💼', desc: 'Increases max entrepreneurship bar' },
   { key: 'production', label: 'Production', icon: '⚙️', desc: 'Increases production output' },
   { key: 'prospection', label: 'Prospection', icon: '⛏️', desc: 'Chance to find country resource deposit when working' },
-  { key: 'industrialist', label: 'Industrialist', icon: '₿', desc: 'Chance to find bitcoin when producing' },
+  { key: 'industrialist', label: 'Industrialist', icon: '🏭', desc: 'Increased red bullet chance on produce, up to 20% superforge chance on craft (+10% stats)' },
 ]
 
 export interface SkillsState {
