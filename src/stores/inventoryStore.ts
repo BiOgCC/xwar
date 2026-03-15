@@ -4,8 +4,9 @@ import { usePlayerStore } from './playerStore'
 export type EquipTier = 't1' | 't2' | 't3' | 't4' | 't5' | 't6'
 export type ArmorSlot = 'helmet' | 'chest' | 'legs' | 'gloves' | 'boots'
 export type WeaponSlot = 'weapon'
-export type EquipSlot = ArmorSlot | WeaponSlot
-export type EquipCategory = 'armor' | 'weapon'
+export type VehicleSlot = 'vehicle'
+export type EquipSlot = ArmorSlot | WeaponSlot | VehicleSlot
+export type EquipCategory = 'armor' | 'weapon' | 'vehicle'
 
 export interface EquipStats {
   damage?: number
@@ -49,6 +50,7 @@ export const TIER_LABELS: Record<EquipTier, string> = {
 
 export const ARMOR_SLOTS: ArmorSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
 export const WEAPON_SLOTS: WeaponSlot[] = ['weapon']
+export const VEHICLE_SLOTS: VehicleSlot[] = ['vehicle']
 
 export const SLOT_ICONS: Record<EquipSlot, string> = {
   helmet: '⛑️',
@@ -57,6 +59,7 @@ export const SLOT_ICONS: Record<EquipSlot, string> = {
   gloves: '🧤',
   boots: '🥾',
   weapon: '⚔️',
+  vehicle: '🚢',
 }
 
 // Scrap returns per tier
@@ -106,6 +109,12 @@ export function generateStats(category: EquipCategory, slot: EquipSlot, tier: Eq
       case 't5': return { name: 'Tank', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) } }
       case 't6': return { name: 'Jet', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) } }
     }
+  } else if (category === 'vehicle') {
+    if (tier === 't6') {
+      return { name: 'T6 Warship', stats: { damage: randomInt(301, 400), critRate: randomInt(40, 49) } }
+    } else {
+      return { name: `T${tLevel} Vehicle`, stats: { damage: randomInt(10 * tLevel, 20 * tLevel) } } // Fallback
+    }
   } else {
     // Armor
     // Helmet: 20% crit damage per tier
@@ -149,11 +158,14 @@ function rollLootBoxItem(): EquipItem {
   else if (rT < 11.00) tier = 't3'
   else if (rT < 50.00) tier = 't2'
 
-  // Type chance (66% Armor, 34% Weapon)
-  const category: EquipCategory = Math.random() < 0.66 ? 'armor' : 'weapon'
+  // Type chance (66% Armor, 34% Weapon, but if T6, 20% chance of Vehicle)
+  let category: EquipCategory = Math.random() < 0.66 ? 'armor' : 'weapon'
   let slot: EquipSlot = 'weapon'
   
-  if (category === 'armor') {
+  if (tier === 't6' && Math.random() < 0.20) {
+    category = 'vehicle'
+    slot = 'vehicle'
+  } else if (category === 'armor') {
     slot = ARMOR_SLOTS[Math.floor(Math.random() * ARMOR_SLOTS.length)]
   }
 

@@ -135,7 +135,6 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
     m.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
 
     m.on('load', () => {
-      // Add country boundaries GeoJSON source
       m.addSource('xwar-countries', {
         type: 'geojson',
         data: 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',

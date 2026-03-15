@@ -3,6 +3,7 @@ import { usePlayerStore } from '../../stores/playerStore'
 import { useGovernmentStore, NUKE_COST } from '../../stores/governmentStore'
 import type { NationalFundKey } from '../../stores/governmentStore'
 import { useCyberStore, CYBER_OPERATIONS, type CyberOperationType } from '../../stores/cyberStore'
+import { MILITARY_OPERATIONS } from '../../stores/militaryStore'
 import { useWorldStore } from '../../stores/worldStore'
 import { useInventoryStore } from '../../stores/inventoryStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -146,6 +147,69 @@ export default function MissionsPanel() {
                     fontSize: '8px', padding: '3px 8px',
                     borderColor: canAfford ? '#22d38a' : '#333',
                     color: canAfford ? '#22d38a' : '#555',
+                    cursor: canAfford ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  ACTIVATE
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ====== MILITARY OPERATIONS MISSIONS ====== */}
+      <div className="hud-card">
+        <div className="hud-card__title" style={{ color: '#ef4444' }}>🎖️ MILITARY OPERATIONS MISSIONS</div>
+        <p style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px' }}>
+          Each military operation requires a contribution mission. Pay 10% of the operation's cost to activate.
+          {isPresident ? '' : ' Anyone can activate after paying.'}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {MILITARY_OPERATIONS.map(op => {
+            const activationCost = {
+              oil: Math.ceil(op.cost.oil * 0.1),
+              materialX: Math.ceil(op.cost.materialX * 0.1),
+              bitcoin: Math.ceil(op.cost.bitcoin * 0.1),
+            }
+            const canAfford = player.oil >= activationCost.oil &&
+              player.materialX >= activationCost.materialX &&
+              player.bitcoin >= activationCost.bitcoin
+
+            const handleActivateMil = () => {
+              if (!canAfford) {
+                ui.addFloatingText('NOT ENOUGH', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+                return
+              }
+              const p = usePlayerStore.getState()
+              p.spendOil(activationCost.oil)
+              p.spendMaterialX(activationCost.materialX)
+              if (activationCost.bitcoin > 0) p.spendBitcoin(activationCost.bitcoin)
+              govStore.donateToFund(iso, 'oil', activationCost.oil)
+              govStore.donateToFund(iso, 'materialX', activationCost.materialX)
+              if (activationCost.bitcoin > 0) govStore.donateToFund(iso, 'bitcoin', activationCost.bitcoin)
+              ui.addFloatingText(`ACTIVATED ${op.name}`, window.innerWidth / 2, window.innerHeight / 2, '#22d38a')
+            }
+
+            return (
+              <div key={op.id} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '6px 8px', background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(239,68,68,0.1)', borderRadius: '3px',
+              }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600 }}>{op.icon} {op.name}</div>
+                  <div style={{ fontSize: '8px', color: '#64748b' }}>
+                    Cost: {activationCost.oil} Oil · {activationCost.materialX} MatX{activationCost.bitcoin > 0 ? ` · ${activationCost.bitcoin}₿` : ''}
+                  </div>
+                </div>
+                <button
+                  className="hud-btn-outline"
+                  onClick={handleActivateMil}
+                  style={{
+                    fontSize: '8px', padding: '3px 8px',
+                    borderColor: canAfford ? '#ef4444' : '#333',
+                    color: canAfford ? '#ef4444' : '#555',
                     cursor: canAfford ? 'pointer' : 'not-allowed',
                   }}
                 >

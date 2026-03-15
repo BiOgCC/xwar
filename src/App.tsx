@@ -3,7 +3,7 @@ import { useUIStore } from './stores/uiStore'
 import { usePlayerStore } from './stores/playerStore'
 import { useWorldStore } from './stores/worldStore'
 import { useCompanyStore } from './stores/companyStore'
-import { useBattleStore } from './stores/battleStore'
+import { useBattleStore, getCountryFlag, getCountryName } from './stores/battleStore'
 import { useInventoryStore } from './stores/inventoryStore'
 import { useSkillsStore } from './stores/skillsStore'
 import GameMap from './components/map/GameMap'
@@ -11,20 +11,28 @@ import type { GameMapHandle } from './components/map/GameMap'
 import RegionPopup from './components/map/RegionPopup'
 import ProfilePanel from './components/panels/ProfilePanel'
 import GovernmentPanel from './components/panels/GovernmentPanel'
+import MilitaryPanel from './components/panels/MilitaryPanel'
 import CyberwarfarePanel from './components/panels/CyberwarfarePanel'
 import MissionsPanel from './components/panels/MissionsPanel'
 import PrestigePanel from './components/panels/PrestigePanel'
 
-const SIDEBAR_ITEMS = [
+const SIDEBAR_CIVILIAN = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
-  { id: 'cyberwarfare' as const, icon: '🖥️', label: 'CYBER' },
-  { id: 'combat' as const, icon: '⚔️', label: 'COMBAT' },
-  { id: 'chat' as const, icon: '💬', label: 'CHAT' },
   { id: 'market' as const, icon: '📊', label: 'MARKET' },
-  { id: 'missions' as const, icon: '📋', label: 'MISSIONS' },
   { id: 'companies' as const, icon: '🏭', label: 'COMPANIES' },
   { id: 'resources' as const, icon: '💰', label: 'RESOURCES' },
+  { id: 'chat' as const, icon: '💬', label: 'CHAT' },
+]
+
+const SIDEBAR_WAR = [
   { id: 'government' as const, icon: '🏛️', label: 'GOV' },
+  { id: 'missions' as const, icon: '📋', label: 'MISSIONS' },
+  { id: 'combat' as const, icon: '⚔️', label: 'COMBAT' },
+  { id: 'cyberwarfare' as const, icon: '🖥️', label: 'CYBER' },
+  { id: 'military' as const, icon: '🎖️', label: 'MILITARY' },
+]
+
+const SIDEBAR_EXTRA = [
   { id: 'prestige' as const, icon: '⭐', label: 'PRESTIGE' },
 ]
 
@@ -86,6 +94,8 @@ function App() {
   const [mousePos, setMousePos] = useState({ lat: '0.00° N', lng: '0.00° E' })
   const [selectedRegion, setSelectedRegion] = useState<RegionInfo | null>(null)
   const mapRef = useRef<GameMapHandle>(null)
+  const [expandedBattle, setExpandedBattle] = useState<string | null>(null)
+  const [swapSlot, setSwapSlot] = useState<string | null>(null)
 
   // 30 min (1800s) Game Tick Timer
   const [timeLeft, setTimeLeft] = useState(1800)
@@ -211,36 +221,63 @@ function App() {
 
         {/* ====== LEFT SIDEBAR ====== */}
         <nav className="hud-sidebar">
-          {SIDEBAR_ITEMS.map((item) => (
+          {/* CIVILIAN GROUP (Blue) */}
+          <div style={{ border: '1px solid rgba(59,130,246,0.35)', borderRadius: '8px', padding: '4px 0', marginBottom: '6px', position: 'relative' }}>
+            {SIDEBAR_CIVILIAN.map((item) => (
+              <button
+                key={item.id}
+                className={`hud-sidebar__item ${(item.id === 'companies' ? activePanel === 'profile' : activePanel === item.id) ? 'hud-sidebar__item--active' : ''}`}
+                onClick={() => {
+                  if (item.id === 'companies') {
+                    setProfileDefaultTab('companies')
+                    setActivePanel('profile')
+                  } else if (item.id === 'resources') {
+                    if (activePanel === 'resources') {
+                      cycleResourceView()
+                    } else {
+                      togglePanel('resources')
+                    }
+                  } else {
+                    togglePanel(item.id)
+                  }
+                }}
+              >
+                <span className="hud-sidebar__icon">{item.icon}</span>
+                <span className="hud-sidebar__label">
+                  {item.id === 'resources' && activePanel === 'resources'
+                    ? resourceViewMode === 'deposits' ? 'DEPOSITS'
+                    : resourceViewMode === 'strategic' ? 'STRATEGIC'
+                    : 'POLITICAL'
+                  : item.label}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* WAR GROUP (Red) */}
+          <div style={{ border: '1px solid rgba(239,68,68,0.35)', borderRadius: '8px', padding: '4px 0', marginBottom: '6px', position: 'relative' }}>
+            {SIDEBAR_WAR.map((item) => (
+              <button
+                key={item.id}
+                className={`hud-sidebar__item ${activePanel === item.id ? 'hud-sidebar__item--active' : ''}`}
+                onClick={() => togglePanel(item.id)}
+              >
+                <span className="hud-sidebar__icon">{item.icon}</span>
+                <span className="hud-sidebar__label">{item.label}</span>
+                {item.id === 'combat' && <span className="hud-sidebar__dot" />}
+              </button>
+            ))}
+          </div>
+
+          {/* EXTRA (Prestige) */}
+          {SIDEBAR_EXTRA.map((item) => (
             <button
               key={item.id}
-              className={`hud-sidebar__item ${(item.id === 'companies' ? activePanel === 'profile' : activePanel === item.id) ? 'hud-sidebar__item--active' : ''}`}
-              onClick={() => {
-                if (item.id === 'companies') {
-                  // Open Profile panel with Companies tab
-                  setProfileDefaultTab('companies')
-                  setActivePanel('profile')
-                } else if (item.id === 'resources') {
-                  if (activePanel === 'resources') {
-                    // Cycle through views: deposits → strategic → political
-                    cycleResourceView()
-                  } else {
-                    togglePanel('resources')
-                  }
-                } else {
-                  togglePanel(item.id)
-                }
-              }}
+              className={`hud-sidebar__item ${activePanel === item.id ? 'hud-sidebar__item--active' : ''}`}
+              onClick={() => togglePanel(item.id)}
             >
               <span className="hud-sidebar__icon">{item.icon}</span>
-              <span className="hud-sidebar__label">
-                {item.id === 'resources' && activePanel === 'resources'
-                  ? resourceViewMode === 'deposits' ? 'DEPOSITS'
-                  : resourceViewMode === 'strategic' ? 'STRATEGIC'
-                  : 'POLITICAL'
-                : item.label}
-              </span>
-              {item.id === 'combat' && <span className="hud-sidebar__dot" />}
+              <span className="hud-sidebar__label">{item.label}</span>
             </button>
           ))}
         </nav>
@@ -271,6 +308,7 @@ function App() {
             </div>
             <div className="hud-panel__body">
               {activePanel === 'profile' && <ProfilePanel />}
+              {activePanel === 'military' && <MilitaryPanel />}
               {activePanel === 'combat' && (
                 <>
                   {Object.values(battleStore.battles).filter(b => b.status === 'active').map(battle => {
@@ -279,93 +317,207 @@ function App() {
                     const topDefenderArr = Object.entries(battle.defenderDamageDealers || {}).sort((a, b) => b[1] - a[1])[0]
                     const feed = battle.damageFeed || []
                     const timeRemaining = Math.max(0, Math.floor((battle.currentTick.endTime - Date.now()) / 1000))
+                    const atkFlag = getCountryFlag(battle.attackerId)
+                    const defFlag = getCountryFlag(battle.defenderId)
+                    const atkName = getCountryName(battle.attackerId)
+                    const defName = getCountryName(battle.defenderId)
+                    const atkPts = activeRound?.attackerPoints || 0
+                    const defPts = activeRound?.defenderPoints || 0
+                    const totalPts = Math.max(1, atkPts + defPts)
+                    const isExpanded = expandedBattle === battle.id
                     
                     return (
-                      <div key={battle.id} className="hud-card" style={{ borderColor: '#ef4444' }}>
-                        <div className="hud-card__title">🔥 ACTIVE BATTLE: {battle.regionName.toUpperCase()}</div>
-                        <div style={{ fontSize: '10px', color: '#fca5a5', marginBottom: '8px', letterSpacing: '1px' }}>
-                          TICK ENDS IN: {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
-                        </div>
-                        
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '11px', lineHeight: '1.4' }}>
-                           <div style={{ color: '#22d38a', width: '45%', display: 'flex', flexDirection: 'column' }}>
-                             <div style={{ fontWeight: 700, borderBottom: '1px solid rgba(34,211,138,0.3)', marginBottom: '4px' }}>ATTACKER ({battle.attackerRoundsWon} WON)</div>
-                             <div>DMG: {battle.currentTick.attackerDamage}</div>
-                             <div>PTS: {activeRound?.attackerPoints || 0}/300</div>
-                             {topAttackerArr && <div style={{ marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>👑 {topAttackerArr[0]} ({topAttackerArr[1]})</div>}
-                             <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
-                               <button className="hud-btn-primary" style={{ width: '100%', padding: '4px', fontSize: '9px' }} onClick={() => { const { damage, isCrit, isDodged } = player.attack(); if (damage > 0 || isDodged) battleStore.addDamage(battle.id, 'attacker', damage, isCrit, isDodged, player.name) }}>⚔️ FIGHT FOR ATTACKER</button>
-                             </div>
-                           </div>
-                           <div style={{ color: '#ef4444', textAlign: 'right', width: '45%', display: 'flex', flexDirection: 'column' }}>
-                             <div style={{ fontWeight: 700, borderBottom: '1px solid rgba(239,68,68,0.3)', marginBottom: '4px' }}>DEFENDER ({battle.defenderRoundsWon} WON)</div>
-                             <div>DMG: {battle.currentTick.defenderDamage}</div>
-                             <div>PTS: {activeRound?.defenderPoints || 0}/300</div>
-                             {topDefenderArr && <div style={{ marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>👑 {topDefenderArr[0]} ({topDefenderArr[1]})</div>}
-                             <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
-                               <button className="hud-btn-primary" style={{ width: '100%', padding: '4px', fontSize: '9px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: '0 0 12px rgba(239, 68, 68, 0.3)' }} onClick={() => { const { damage, isCrit, isDodged } = player.attack(); if (damage > 0 || isDodged) battleStore.addDamage(battle.id, 'defender', damage, isCrit, isDodged, player.name) }}>🛡️ FIGHT FOR DEFENDER</button>
-                             </div>
-                           </div>
-                        </div>
-
-                        <div style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                          <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>RECOVER STAMINA</div>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                             <button onClick={() => player.consumeFood('bread')} disabled={player.bread <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '4px', fontSize: '9px' }}>🍞 Bread ({player.bread}) <span style={{color: '#22c55e'}}>+10</span></button>
-                             <button onClick={() => player.consumeFood('sushi')} disabled={player.sushi <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '4px', fontSize: '9px' }}>🍣 Sushi ({player.sushi}) <span style={{color: '#22c55e'}}>+20</span></button>
-                             <button onClick={() => player.consumeFood('wagyu')} disabled={player.wagyu <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '4px', fontSize: '9px' }}>🥩 Wagyu ({player.wagyu}) <span style={{color: '#22c55e'}}>+30</span></button>
-                          </div>
-                        </div>
-
-                        <div style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                          <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>MILITARY PARAMETERS</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px', fontSize: '9px', color: '#cbd5e1' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>⚔️ Attack</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalDmg}</span></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>🎯 Crit Rate</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalCritRate}%</span></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💥 Crit Amp</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalCritDmg}%</span></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>🛡️ Armor</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalArmor}%</span></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💨 Dodge</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalDodge}%</span></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💢 Hit Rate</span><span style={{ color: '#f59e0b', fontWeight: 'bold' }}>{finalHitRate}%</span></div>
-                          </div>
-                        </div>
-
-                        <div style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                          <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>LOADOUT EQUIPPED</div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
-                             {equipped.map((item: any) => (
-                               <div key={item.id} style={{ background: 'rgba(0,0,0,0.3)', padding: '6px', borderRadius: '2px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: '2px' }}>
-                                    <span style={{ fontSize: '8px', color: '#94a3b8', letterSpacing: '1px' }}>{item.slot.toUpperCase()}</span>
-                                    <span style={{ fontSize: '8px', color: (item.durability || 100) < 50 ? '#ef4444' : '#22d38a' }}>{(item.durability || 100).toFixed(0)}%</span>
-                                  </div>
-                                  <span style={{ fontSize: '9px', fontWeight: 'bold', color: item.tier === 't6' ? '#ef4444' : item.tier === 't5' ? '#f59e0b' : item.tier === 't4' ? '#a855f7' : item.tier === 't3' ? '#3b82f6' : item.tier === 't2' ? '#22c55e' : '#cbd5e1' }}>{item.name}</span>
-                               </div>
-                             ))}
-                          </div>
-                        </div>
-
-                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '8px' }}>
-                          <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px', fontWeight: 700 }}>LIVE COMBAT FEED</div>
-                          <div style={{ maxHeight: '80px', overflowY: 'hidden', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            {feed.length === 0 ? (
-                              <div style={{ fontSize: '10px', color: '#64748b' }}>No hits recorded yet...</div>
-                            ) : feed.slice(0, 5).map((event, i) => (
-                              <div key={`${event.time}-${i}`} style={{ fontSize: '10px', color: event.side === 'attacker' ? '#22d38a' : '#ef4444', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px', display: 'flex', justifyContent: 'space-between', animation: 'fadeInDown 0.3s ease-out' }}>
-                                <span>⚔️ {event.playerName}</span>
-                                <span style={{ fontWeight: 'bold' }}>
-                                  {event.amount} DMG
-                                  {event.isCrit && !event.isDodged && <span style={{ color: '#ef4444', marginLeft: '4px' }}>!</span>}
-                                  {event.isDodged && <span style={{ color: '#ffffff', marginLeft: '4px' }}>! (Dodged)</span>}
-                                </span>
+                      <div key={battle.id} className="hud-card" style={{ borderColor: isExpanded ? '#f59e0b' : '#ef4444', padding: 0, overflow: 'hidden', transition: 'border-color 0.2s' }}>
+                        {/* Clickable Header */}
+                        <div
+                          onClick={() => setExpandedBattle(isExpanded ? null : battle.id)}
+                          style={{ background: 'linear-gradient(135deg, rgba(34,211,138,0.08), rgba(239,68,68,0.08))', padding: '8px 12px', borderBottom: isExpanded ? '1px solid rgba(255,255,255,0.06)' : 'none', cursor: 'pointer', userSelect: 'none' }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <span style={{ fontSize: '20px' }}>{atkFlag}</span>
+                              <div>
+                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#22d38a' }}>{battle.attackerId}</div>
+                                <div style={{ fontSize: '7px', color: '#64748b' }}>{atkName}</div>
                               </div>
-                            ))}
+                              <span style={{ fontSize: '14px', fontWeight: 900, color: '#22d38a', margin: '0 2px' }}>{battle.attackerRoundsWon}</span>
+                            </div>
+                            <div style={{ textAlign: 'center' }}>
+                              <div style={{ fontSize: '9px', fontWeight: 900, color: '#f59e0b', letterSpacing: '2px' }}>VS</div>
+                              <div style={{ fontSize: '7px', color: '#fca5a5' }}>
+                                {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', textAlign: 'right' }}>
+                              <span style={{ fontSize: '14px', fontWeight: 900, color: '#ef4444', margin: '0 2px' }}>{battle.defenderRoundsWon}</span>
+                              <div>
+                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#ef4444' }}>{battle.defenderId}</div>
+                                <div style={{ fontSize: '7px', color: '#64748b' }}>{defName}</div>
+                              </div>
+                              <span style={{ fontSize: '20px' }}>{defFlag}</span>
+                            </div>
+                          </div>
+                          {/* Points bar */}
+                          <div style={{ display: 'flex', height: '4px', borderRadius: '2px', overflow: 'hidden', marginTop: '6px', background: 'rgba(255,255,255,0.06)' }}>
+                            <div style={{ width: `${(atkPts / totalPts) * 100}%`, background: 'linear-gradient(90deg, #22d38a, #10b981)', transition: 'width 0.5s ease' }} />
+                            <div style={{ width: `${(defPts / totalPts) * 100}%`, background: 'linear-gradient(90deg, #dc2626, #ef4444)', transition: 'width 0.5s ease' }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
+                            <span style={{ fontSize: '7px', color: '#64748b' }}>{isExpanded ? '▲ COLLAPSE' : '▼ EXPAND'}</span>
                           </div>
                         </div>
+
+                        {/* Expanded Content */}
+                        {isExpanded && (
+                          <div style={{ padding: '10px 12px' }}>
+                            {/* Score cards */}
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                              <div style={{ flex: 1, background: 'rgba(34,211,138,0.06)', border: '1px solid rgba(34,211,138,0.15)', borderRadius: '4px', padding: '5px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '8px', color: '#22d38a', fontWeight: 700 }}>ATTACKER</div>
+                                <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>DMG: {battle.currentTick.attackerDamage} • PTS: {atkPts}/300</div>
+                                {topAttackerArr && <div style={{ fontSize: '8px', color: '#22d38a', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👑 {topAttackerArr[0]} ({topAttackerArr[1]})</div>}
+                              </div>
+                              <div style={{ flex: 1, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '4px', padding: '5px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700 }}>DEFENDER</div>
+                                <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>DMG: {battle.currentTick.defenderDamage} • PTS: {defPts}/300</div>
+                                {topDefenderArr && <div style={{ fontSize: '8px', color: '#ef4444', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👑 {topDefenderArr[0]} ({topDefenderArr[1]})</div>}
+                              </div>
+                            </div>
+
+                            {/* Fight Buttons */}
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                              <button className="hud-btn-primary" style={{ flex: 1, padding: '8px', fontSize: '10px', fontWeight: 700 }} onClick={() => { const { damage, isCrit, isDodged } = player.attack(); if (damage > 0 || isDodged) battleStore.addDamage(battle.id, 'attacker', damage, isCrit, isDodged, player.name) }}>
+                                {atkFlag} ⚔️ ATTACK
+                              </button>
+                              <button className="hud-btn-primary" style={{ flex: 1, padding: '8px', fontSize: '10px', fontWeight: 700, background: 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: '0 0 12px rgba(239, 68, 68, 0.3)' }} onClick={() => { const { damage, isCrit, isDodged } = player.attack(); if (damage > 0 || isDodged) battleStore.addDamage(battle.id, 'defender', damage, isCrit, isDodged, player.name) }}>
+                                {defFlag} 🛡️ DEFEND
+                              </button>
+                            </div>
+
+                            {/* Recover Stamina */}
+                            <div style={{ padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                              <div style={{ fontSize: '8px', color: '#94a3b8', marginBottom: '3px', fontWeight: 700 }}>RECOVER STAMINA</div>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button onClick={() => player.consumeFood('bread')} disabled={player.bread <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '3px', fontSize: '8px' }}>🍞 ({player.bread}) <span style={{color: '#22c55e'}}>+10</span></button>
+                                <button onClick={() => player.consumeFood('sushi')} disabled={player.sushi <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '3px', fontSize: '8px' }}>🍣 ({player.sushi}) <span style={{color: '#22c55e'}}>+20</span></button>
+                                <button onClick={() => player.consumeFood('wagyu')} disabled={player.wagyu <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '3px', fontSize: '8px' }}>🥩 ({player.wagyu}) <span style={{color: '#22c55e'}}>+30</span></button>
+                              </div>
+                            </div>
+
+                            {/* Live Combat Feed */}
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '5px' }}>
+                              <div style={{ fontSize: '8px', color: '#94a3b8', marginBottom: '3px', fontWeight: 700 }}>LIVE FEED</div>
+                              <div style={{ maxHeight: '60px', overflowY: 'hidden', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                {feed.length === 0 ? (
+                                  <div style={{ fontSize: '9px', color: '#475569' }}>No hits recorded yet...</div>
+                                ) : feed.slice(0, 4).map((event, i) => (
+                                  <div key={`${event.time}-${i}`} style={{ fontSize: '9px', color: event.side === 'attacker' ? '#22d38a' : '#ef4444', background: 'rgba(0,0,0,0.2)', padding: '2px 6px', borderRadius: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>{event.side === 'attacker' ? atkFlag : defFlag} {event.playerName}</span>
+                                    <span style={{ fontWeight: 'bold' }}>
+                                      {event.amount} DMG
+                                      {event.isCrit && !event.isDodged && <span style={{ color: '#f59e0b', marginLeft: '3px' }}>💥</span>}
+                                      {event.isDodged && <span style={{ color: '#94a3b8', marginLeft: '3px' }}>💨</span>}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
 
+                  {/* Combat Stats */}
+                  <div className="hud-card">
+                    <div className="hud-card__title">📊 YOUR COMBAT STATS</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', fontSize: '9px', color: '#cbd5e1' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>⚔️ ATK</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalDmg}</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>🎯 CR</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalCritRate}%</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💥 CD</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalCritDmg}%</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>🛡️ ARM</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalArmor}%</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💨 DOD</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalDodge}%</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💢 HIT</span><span style={{ color: '#f59e0b', fontWeight: 'bold' }}>{finalHitRate}%</span></div>
+                    </div>
+                  </div>
 
+                  {/* Food Quick Use */}
+                  <div className="hud-card">
+                    <div className="hud-card__title">🍽️ FOOD</div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button onClick={() => player.consumeFood('bread')} disabled={player.bread <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '6px 4px', fontSize: '9px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                        <span style={{ fontSize: '16px' }}>🍞</span>
+                        <span>{player.bread}</span>
+                        <span style={{ color: '#22c55e', fontSize: '8px' }}>+10 HP</span>
+                      </button>
+                      <button onClick={() => player.consumeFood('sushi')} disabled={player.sushi <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '6px 4px', fontSize: '9px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                        <span style={{ fontSize: '16px' }}>🍣</span>
+                        <span>{player.sushi}</span>
+                        <span style={{ color: '#22c55e', fontSize: '8px' }}>+20 HP</span>
+                      </button>
+                      <button onClick={() => player.consumeFood('wagyu')} disabled={player.wagyu <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '6px 4px', fontSize: '9px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                        <span style={{ fontSize: '16px' }}>🥩</span>
+                        <span>{player.wagyu}</span>
+                        <span style={{ color: '#22c55e', fontSize: '8px' }}>+30 HP</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Loadout with fast-swap */}
+                  <div className="hud-card">
+                    <div className="hud-card__title">🎒 LOADOUT <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 400 }}>click to swap</span></div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+                       {equipped.map((item: any) => {
+                         const isSwapping = swapSlot === item.slot
+                         const sameSlotItems = inventory.items.filter((i: any) => i.slot === item.slot && !i.equipped)
+                         const tierColor = item.tier === 't6' ? '#ef4444' : item.tier === 't5' ? '#f59e0b' : item.tier === 't4' ? '#a855f7' : item.tier === 't3' ? '#3b82f6' : item.tier === 't2' ? '#22c55e' : '#cbd5e1'
+                         const s = item.stats || {}
+                         const statLine = s.damage ? `⚔${s.damage}` : s.critDamage ? `💥${s.critDamage}%` : s.armor ? `🛡${s.armor}%` : s.dodge ? `💨${s.dodge}%` : s.precision ? `🎯${s.precision}%` : ''
+                         return (
+                           <div key={item.id} style={{ position: 'relative' }}>
+                             <button
+                               onClick={() => setSwapSlot(isSwapping ? null : item.slot)}
+                               style={{ width: '100%', background: isSwapping ? 'rgba(245,158,11,0.1)' : 'rgba(0,0,0,0.3)', padding: '5px', borderRadius: '2px', border: `1px solid ${isSwapping ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.05)'}`, cursor: 'pointer', textAlign: 'left' }}
+                             >
+                               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
+                                 <span style={{ fontSize: '7px', color: '#94a3b8', letterSpacing: '1px' }}>{item.slot.toUpperCase()}</span>
+                                 <span style={{ fontSize: '7px', color: (item.durability || 100) < 50 ? '#ef4444' : '#22d38a' }}>{(item.durability || 100).toFixed(0)}%</span>
+                               </div>
+                               <div style={{ fontSize: '8px', fontWeight: 'bold', color: tierColor }}>{item.name}</div>
+                               {statLine && <div style={{ fontSize: '7px', color: '#94a3b8', marginTop: '1px' }}>{statLine}{s.critRate ? ` 🎯${s.critRate}%` : ''}</div>}
+                             </button>
+                             {/* Swap dropdown */}
+                             {isSwapping && (
+                               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'rgba(15,23,42,0.98)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '3px', maxHeight: '120px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                                 {sameSlotItems.length === 0 ? (
+                                   <div style={{ padding: '6px', fontSize: '8px', color: '#64748b', textAlign: 'center' }}>No alternatives</div>
+                                 ) : sameSlotItems.map((alt: any) => {
+                                   const ac = alt.tier === 't6' ? '#ef4444' : alt.tier === 't5' ? '#f59e0b' : alt.tier === 't4' ? '#a855f7' : alt.tier === 't3' ? '#3b82f6' : alt.tier === 't2' ? '#22c55e' : '#cbd5e1'
+                                   const as2 = alt.stats || {}
+                                   const altStat = as2.damage ? `⚔${as2.damage}` : as2.critDamage ? `💥${as2.critDamage}%` : as2.armor ? `🛡${as2.armor}%` : as2.dodge ? `💨${as2.dodge}%` : as2.precision ? `🎯${as2.precision}%` : ''
+                                   return (
+                                   <button
+                                     key={alt.id}
+                                     onClick={(e) => { e.stopPropagation(); inventory.equipItem(alt.id); setSwapSlot(null) }}
+                                     style={{ display: 'block', width: '100%', padding: '4px 6px', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+                                     onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(245,158,11,0.1)')}
+                                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                                   >
+                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                       <span style={{ fontSize: '8px', fontWeight: 700, color: ac }}>{alt.name}</span>
+                                       <span style={{ fontSize: '7px', color: '#94a3b8' }}>{(alt.durability || 100).toFixed(0)}%</span>
+                                     </div>
+                                     {altStat && <div style={{ fontSize: '7px', color: '#64748b' }}>{altStat}{as2.critRate ? ` 🎯${as2.critRate}%` : ''}</div>}
+                                   </button>
+                                   )
+                                 })}
+                               </div>
+                             )}
+                           </div>
+                         )
+                       })}
+                    </div>
+                  </div>
                 </>
               )}
               {activePanel === 'market' && (

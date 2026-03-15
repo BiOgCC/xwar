@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type LawType = 'declare_war' | 'propose_peace' | 'impeach_president' | 'tax_change' | 'declare_sworn_enemy' | 'authorize_nuclear_action'
+export type LawType = 'declare_war' | 'propose_peace' | 'impeach_president' | 'tax_change' | 'declare_sworn_enemy' | 'authorize_nuclear_action' | 'propose_alliance' | 'break_alliance'
 export type LawStatus = 'active' | 'passed' | 'failed'
 
 // ── National Fund ──
@@ -66,6 +66,24 @@ export interface Candidate {
   votes: number
 }
 
+export type IdeologyType = 'militarist' | 'capitalist' | 'technocrat' | 'expansionist'
+
+export interface IdeologyPoints {
+  warBonus: number       // +2% attack per point
+  economyBonus: number   // +2% company production per point
+  techBonus: number      // +2% cyber success per point
+  defenseBonus: number   // +2% bunker/infra strength per point
+  diplomacyBonus: number // +1 alliance slot per point
+}
+
+export const DEFAULT_IDEOLOGY_POINTS: IdeologyPoints = {
+  warBonus: 0,
+  economyBonus: 0,
+  techBonus: 0,
+  defenseBonus: 0,
+  diplomacyBonus: 0,
+}
+
 export interface Government {
   countryId: string
   president: string | null
@@ -73,6 +91,10 @@ export interface Government {
   candidates: Candidate[]
   taxRate: number
   swornEnemy: string | null
+  alliances: string[] // ISO codes of allied countries
+  empireName: string | null
+  ideology: IdeologyType | null
+  ideologyPoints: IdeologyPoints
   nuclearAuthorized: boolean
   nationalFund: NationalFund
   citizens: Citizen[]
@@ -92,6 +114,7 @@ export interface GovernmentState {
   donateToFund: (countryId: string, resource: NationalFundKey, amount: number) => boolean
   spendFromFund: (countryId: string, costs: Partial<NationalFund>) => boolean
   launchNuke: (fromCountry: string, targetCountry: string) => void
+  stealNationalFund: (targetId: string, attackerId: string, percentage: number) => void
 }
 
 // Helper to create mock citizens
@@ -118,6 +141,10 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     candidates: [],
     taxRate: 10,
     swornEnemy: null,
+    alliances: [],
+    empireName: null,
+    ideology: null,
+    ideologyPoints: { ...DEFAULT_IDEOLOGY_POINTS },
     nuclearAuthorized: false,
     nationalFund: { ...DEFAULT_NATIONAL_FUND },
     citizens: mockCitizens(code, president, congress),
@@ -288,16 +315,11 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   },
 
   launchNuke: (fromCountry, targetCountry) => set((state) => {
+    // Mostly handled outside, just deducting funds here if necessary
     const gov = state.governments[fromCountry]
     if (!gov || !gov.nuclearAuthorized) return state
-
     const fund = gov.nationalFund
-    if (fund.oil < NUKE_COST.oil || fund.scraps < NUKE_COST.scraps ||
-        fund.materialX < NUKE_COST.materialX || fund.bitcoin < NUKE_COST.bitcoin ||
-        fund.jets < NUKE_COST.jets) {
-      return state
-    }
-
+    
     return {
       governments: {
         ...state.governments,
@@ -314,6 +336,31 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
           },
         },
       },
+    }
+  }),
+
+  stealNationalFund: (targetId, attackerId, percentage) => set((state) => {
+    const target = state.governments[targetId]
+    const attacker = state.governments[attackerId]
+    if (!target || !attacker) return state
+
+    const newTargetFund = { ...target.nationalFund }
+    const newAttackerFund = { ...attacker.nationalFund }
+    const pct = percentage / 100
+
+    const keys: NationalFundKey[] = ['money', 'oil', 'scraps', 'materialX', 'bitcoin', 'jets']
+    keys.forEach(k => {
+      const amount = Math.floor(target.nationalFund[k] * pct)
+      newTargetFund[k] -= amount
+      newAttackerFund[k] += amount
+    })
+
+    return {
+      governments: {
+        ...state.governments,
+        [targetId]: { ...target, nationalFund: newTargetFund },
+        [attackerId]: { ...attacker, nationalFund: newAttackerFund }
+      }
     }
   }),
 }))

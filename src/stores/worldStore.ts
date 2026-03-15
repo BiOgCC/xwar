@@ -12,6 +12,11 @@ export interface Country {
   color: string
   conqueredResources: ConqueredResourceType[]
   activeDepositBonus: { type: DepositType; bonus: number } | null
+  portLevel: number
+  airportLevel: number
+  bunkerLevel: number
+  militaryBaseLevel: number
+  taxExempt: boolean
 }
 
 export interface War {
@@ -90,7 +95,7 @@ const INITIAL_DEPOSITS: RegionalDeposit[] = [
 ]
 
 const makeCountry = (name: string, code: string, controller: string, empire: string | null, population: number, regions: number, military: number, treasury: number, color: string, conqueredResources: ConqueredResourceType[] = []): Country => ({
-  name, code, controller, empire, population, regions, military, treasury, color, conqueredResources, activeDepositBonus: null,
+  name, code, controller, empire, population, regions, military, treasury, color, conqueredResources, activeDepositBonus: null, portLevel: 1, airportLevel: 1, bunkerLevel: 1, militaryBaseLevel: 1, taxExempt: false,
 })
 
 export interface WorldState {
@@ -106,6 +111,7 @@ export interface WorldState {
   addTreasuryTax: (countryCode: string, amount: number) => void
   discoverDeposit: (depositId: string, playerName: string) => void
   getCountry: (code: string) => Country | undefined
+  occupyCountry: (targetIso: string, conquerorIso: string, taxExempt: boolean) => void
 }
 
 export const useWorldStore = create<WorldState>((set, get) => ({
@@ -137,6 +143,15 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   ],
 
   getCountry: (code) => get().countries.find(c => c.code === code),
+
+  occupyCountry: (targetIso, conquerorIso, taxExempt) => set((state) => ({
+    countries: state.countries.map(c => {
+      if (c.code === targetIso) {
+        return { ...c, empire: conquerorIso, taxExempt }
+      }
+      return c
+    })
+  })),
 
   addTreasuryTax: (countryCode, amount) => set((s) => ({
     countries: s.countries.map(c =>

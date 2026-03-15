@@ -1,5 +1,8 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
+import { useGovernmentStore } from './governmentStore'
+
+export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike'
 
 export interface BattleTick {
   startTime: number
@@ -26,6 +29,7 @@ export interface BattleRound {
 
 export interface Battle {
   id: string
+  type: BattleType
   attackerId: string // ISO
   defenderId: string // ISO
   regionName: string // Target piece of land
@@ -48,7 +52,7 @@ export interface Battle {
 export interface BattleState {
   battles: Record<string, Battle>
   
-  launchAttack: (attackerId: string, defenderId: string, regionName: string) => void
+  launchAttack: (attackerId: string, defenderId: string, regionName: string, type?: BattleType) => void
   addDamage: (battleId: string, side: 'attacker' | 'defender', amount: number, isCrit: boolean, isDodged: boolean, playerName: string) => void
   resolveTicksAndRounds: () => void // Should be called frequently by a game loop
 }
@@ -57,11 +61,64 @@ const TICK_DURATION = 3 * 60 * 1000 // 3 minutes
 const POINTS_TO_WIN_ROUND = 300
 const ROUNDS_TO_WIN_BATTLE = 2
 
-export const useBattleStore = create<BattleState>((set, get) => ({
-  battles: {},
+// Country flag emojis from ISO codes
+const FLAG_EMOJIS: Record<string, string> = {
+  US: '🇺🇸', RU: '🇷🇺', CN: '🇨🇳', DE: '🇩🇪', BR: '🇧🇷', IN: '🇮🇳',
+  NG: '🇳🇬', JP: '🇯🇵', GB: '🇬🇧', TR: '🇹🇷', CA: '🇨🇦', MX: '🇲🇽',
+  CU: '🇨🇺', BS: '🇧🇸',
+}
 
-  launchAttack: (attackerId, defenderId, regionName) => set((state) => {
-    // Only launch if there are no existing active battles in that specific region
+export function getCountryFlag(iso: string): string {
+  return FLAG_EMOJIS[iso] || '🏳️'
+}
+
+// Country name lookup
+const COUNTRY_NAMES: Record<string, string> = {
+  US: 'United States', RU: 'Russia', CN: 'China', DE: 'Germany', BR: 'Brazil', IN: 'India',
+  NG: 'Nigeria', JP: 'Japan', GB: 'United Kingdom', TR: 'Turkey', CA: 'Canada', MX: 'Mexico',
+  CU: 'Cuba', BS: 'Bahamas',
+}
+
+export function getCountryName(iso: string): string {
+  return COUNTRY_NAMES[iso] || iso
+}
+
+function mkBattle(id: string, attackerId: string, defenderId: string, regionName: string): Battle {
+  const now = Date.now()
+  return {
+    id,
+    type: 'invasion',
+    attackerId,
+    defenderId,
+    regionName,
+    startedAt: now,
+    attackerRoundsWon: 0,
+    defenderRoundsWon: 0,
+    attackerDamageDealers: {},
+    defenderDamageDealers: {},
+    damageFeed: [],
+    rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active' }],
+    currentTick: {
+      startTime: now,
+      endTime: now + TICK_DURATION,
+      attackerDamage: 0,
+      defenderDamage: 0,
+      resolved: false,
+    },
+    tickDurationMs: TICK_DURATION,
+    status: 'active',
+  }
+}
+
+export const useBattleStore = create<BattleState>((set, get) => ({
+  battles: {
+    'battle_us_ca': mkBattle('battle_us_ca', 'US', 'CA', 'Canada'),
+    'battle_us_mx': mkBattle('battle_us_mx', 'US', 'MX', 'Mexico'),
+    'battle_de_mx': mkBattle('battle_de_mx', 'DE', 'MX', 'Mexico City'),
+  },
+
+  launchAttack: (attackerId, defenderId, regionName, type = 'invasion') => set((state) => {
+    // Check if there's already an active battle for this region
     const existing = Object.values(state.battles).find(b => b.regionName === regionName && b.status === 'active')
     if (existing) return state
 
@@ -72,6 +129,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         ...state.battles,
         [id]: {
           id,
+          type,
           attackerId,
           defenderId,
           regionName,
@@ -103,9 +161,24 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // Ensure we are inside the window
     const now = Date.now()
     if (now > battle.currentTick.endTime) {
-       // Tick expired but hasn't been resolved yet by the loop, ignore damage or stash it? 
-       // For simplicity, if loop is lagging, ignore it.
        return state 
+    }
+
+    // ── Infrastructure Bonuses ──
+    let finalAmount = amount
+    const world = useWorldStore.getState()
+    const attackerCountry = world.countries.find(c => c.code === battle.attackerId)
+
+    // Military Base bonus: +5% to +20% RNG bonus to ALL damage from attacking country
+    if (side === 'attacker' && attackerCountry && attackerCountry.militaryBaseLevel > 0) {
+      const baseBonus = 0.05 + Math.random() * 0.15 // 5% to 20%
+      finalAmount = Math.round(finalAmount * (1 + baseBonus))
+    }
+
+    // Air Strike / Naval Strike: +5% to +20% RNG bonus vs defending bunkers
+    if (side === 'attacker' && (battle.type === 'air_strike' || battle.type === 'naval_strike')) {
+      const bunkerBonus = 0.05 + Math.random() * 0.15 // 5% to 20%
+      finalAmount = Math.round(finalAmount * (1 + bunkerBonus))
     }
 
     const { currentTick, attackerDamageDealers, defenderDamageDealers, damageFeed } = battle
@@ -113,12 +186,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const newAttackerDealers = { ...attackerDamageDealers }
     const newDefenderDealers = { ...defenderDamageDealers }
     if (side === 'attacker') {
-      newAttackerDealers[playerName] = (newAttackerDealers[playerName] || 0) + amount
+      newAttackerDealers[playerName] = (newAttackerDealers[playerName] || 0) + finalAmount
     } else {
-      newDefenderDealers[playerName] = (newDefenderDealers[playerName] || 0) + amount
+      newDefenderDealers[playerName] = (newDefenderDealers[playerName] || 0) + finalAmount
     }
 
-    const newFeed = [{ playerName, side, amount, isCrit, isDodged, time: now }, ...damageFeed].slice(0, 20) // Keep last 20 hits
+    const newFeed = [{ playerName, side, amount: finalAmount, isCrit, isDodged, time: now }, ...damageFeed].slice(0, 20)
 
     return {
       battles: {
@@ -130,8 +203,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           damageFeed: newFeed,
           currentTick: {
             ...currentTick,
-            attackerDamage: side === 'attacker' ? currentTick.attackerDamage + amount : currentTick.attackerDamage,
-            defenderDamage: side === 'defender' ? currentTick.defenderDamage + amount : currentTick.defenderDamage,
+            attackerDamage: side === 'attacker' ? currentTick.attackerDamage + finalAmount : currentTick.attackerDamage,
+            defenderDamage: side === 'defender' ? currentTick.defenderDamage + finalAmount : currentTick.defenderDamage,
           }
         }
       }
@@ -185,7 +258,21 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           if (attackerRoundsWon >= ROUNDS_TO_WIN_BATTLE || defenderRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
             const battleWinner = attackerRoundsWon >= ROUNDS_TO_WIN_BATTLE ? 'attacker_won' : 'defender_won'
             
-            // Note: Transferring region logic will happen in the external integration (e.g., Game.tsx calling worldStore if battle ends)
+            // Execute win conditions if attacker won
+            if (battleWinner === 'attacker_won') {
+              const world = useWorldStore.getState()
+              const govStore = useGovernmentStore.getState()
+              
+              if (battle.type === 'invasion' || battle.type === 'naval_strike' || battle.type === 'air_strike') {
+                world.occupyCountry(battle.defenderId, battle.attackerId, false)
+              } else if (battle.type === 'occupation') {
+                world.occupyCountry(battle.defenderId, battle.attackerId, true)
+              } else if (battle.type === 'assault') {
+                govStore.stealNationalFund(battle.defenderId, battle.attackerId, 10)
+              } else if (battle.type === 'sabotage') {
+                // Allows opening new battles against infrastructure (state handled elsewhere)
+              }
+            }
             
             newBattles[battle.id] = {
               ...battle,

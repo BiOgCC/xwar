@@ -78,58 +78,57 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   // ESPIONAGE
   {
     id: 'resource_intel', pillar: 'espionage', name: 'Resource Intelligence Report',
-    icon: '📊', description: 'Gather economic intelligence on a target country.',
+    icon: '📊', description: 'Gather economic intelligence: national funds, citizen-owned food & ammo supplies.',
     cost: { energy: 1000, materialX: 5000, oil: 2000, bitcoin: 1 },
     targetType: 'country', successChance: 80, detectionChance: 30,
-    duration: 0, effectDescription: 'Report: Total money, food, oil, material X reserves.',
+    duration: 0, effectDescription: 'Report: National fund breakdown, citizen food & bullet reserves.',
   },
   {
     id: 'military_intel', pillar: 'espionage', name: 'Military Intelligence Report',
-    icon: '🎖️', description: 'Scan military installations in a target region.',
+    icon: '🎖️', description: 'Scan ports, airports, bunkers, military bases and report citizen-owned jets, warships & tanks.',
     cost: { energy: 1500, materialX: 7000, oil: 2500, bitcoin: 1 },
-    targetType: 'region', successChance: 80, detectionChance: 30,
-    duration: 0, effectDescription: 'Report: Bunker level, defense bonus, capture threshold.',
+    targetType: 'country', successChance: 80, detectionChance: 30,
+    duration: 0, effectDescription: 'Report: Infrastructure levels, jets, warships, tanks owned by citizens.',
   },
   {
     id: 'infrastructure_scan', pillar: 'espionage', name: 'Regional Infrastructure Scan',
-    icon: '🏗️', description: 'Map out companies and infrastructure in a region.',
+    icon: '🏗️', description: 'Scan active companies, worker counts, owned materials, and tax revenue in a region.',
     cost: { energy: 2000, materialX: 9000, oil: 3000, bitcoin: 1 },
-    targetType: 'region', successChance: 80, detectionChance: 30,
-    duration: 0, effectDescription: 'Report: Companies, levels, production types, bonuses.',
+    targetType: 'country', successChance: 80, detectionChance: 30,
+    duration: 0, effectDescription: 'Report: Active companies, workers, materials, tax generated.',
   },
   {
     id: 'blueprint_loot', pillar: 'espionage', name: 'Blueprint Loot Operation',
-    icon: '🔓', description: 'Copy a blueprint from a target player. Every citizen receives the reward.',
+    icon: '🔓', description: 'Copy a prestigious blueprint from a top player and distribute untradable copies to your citizens.',
     cost: { energy: 3000, materialX: 12000, oil: 3500, bitcoin: 1 },
     targetType: 'player', successChance: 80, detectionChance: 30,
-    duration: 0, effectDescription: 'Copy a prestigious blueprint. ALL citizens receive it. Target is notified.',
+    duration: 0, effectDescription: 'Copy prestigious blueprint. Citizens receive untradable copy. Enables crafting.',
   },
 
   // SABOTAGE
   {
     id: 'company_sabotage', pillar: 'sabotage', name: 'Company Sabotage',
-    icon: '🔌', description: 'Infiltrate companies and steal 20% of their production for 4 hours. Rewards distributed to all citizens.',
+    icon: '🔌', description: 'Infiltrate any company and steal 20% of production for 24 hours. Distributed to attacker citizens.',
     cost: { energy: 2000, materialX: 10000, oil: 4000, bitcoin: 1 },
-    targetType: 'company_type', targetOptions: ['farms', 'oil_rigs', 'material_mines'],
-    successChance: 80, detectionChance: 30,
-    duration: 4 * 60 * 60 * 1000, // 4 hours
-    effectDescription: 'Steal 20% production for 4 hours. ALL citizens receive stolen goods.',
+    targetType: 'country', successChance: 80, detectionChance: 30,
+    duration: 24 * 60 * 60 * 1000, // 24 hours
+    effectDescription: 'Steal 20% production from ALL companies for 24h. Distributed to citizens.',
   },
   {
     id: 'logistics_disruption', pillar: 'sabotage', name: 'Logistics Disruption',
-    icon: '🚚', description: 'Disrupt supply lines, increasing military costs.',
+    icon: '🚚', description: 'Disable ports or airports in the target region for 48 hours.',
     cost: { energy: 2500, materialX: 12000, oil: 4500, bitcoin: 1 },
-    targetType: 'country', successChance: 80, detectionChance: 30,
-    duration: 1 * 60 * 60 * 1000, // 1 hour
-    effectDescription: 'Food cost +100%, Oil cost +40% for 1 hour.',
+    targetType: 'country', successChance: 85, detectionChance: 20,
+    duration: 48 * 60 * 60 * 1000, // 48 hours
+    effectDescription: 'Disables Port or Airport in target country for 48h. Blocks Naval/Air Strikes.',
   },
   {
     id: 'bunker_override', pillar: 'sabotage', name: 'Bunker Override',
-    icon: '🏰', description: 'Override bunker defenses in a target region.',
+    icon: '🏰', description: 'Override bunker defenses, reducing defense by 50% for 24 hours.',
     cost: { energy: 3000, materialX: 15000, oil: 5000, bitcoin: 1 },
-    targetType: 'region', successChance: 80, detectionChance: 30,
-    duration: 45 * 60 * 1000, // 45 min
-    effectDescription: 'Bunker effectiveness -40% for 45 minutes.',
+    targetType: 'country', successChance: 80, detectionChance: 30,
+    duration: 24 * 60 * 60 * 1000, // 24 hours
+    effectDescription: 'Bunker defense -50% for 24 hours.',
   },
   {
     id: 'power_grid_attack', pillar: 'sabotage', name: 'Power Grid Attack',
@@ -346,55 +345,105 @@ function generateEspionageReport(
   let generatedData: Record<string, any> = {}
 
   if (opType === 'resource_intel' && target.country) {
-    const country = useWorldStore.getState().getCountry(target.country)
+    const world = useWorldStore.getState()
+    const country = world.countries.find(c => c.code === target.country)
+    const govStore = useGovernmentStore.getState()
+    const gov = govStore.governments[target.country]
+    const fund = gov?.nationalFund || { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
+    const citizens = gov?.citizens || []
+
+    // Simulate citizen-owned supplies (food & bullets)
+    const citizenFoodSupply = citizens.length * (50 + Math.floor(Math.random() * 150))
+    const citizenBulletSupply = citizens.length * (20 + Math.floor(Math.random() * 80))
+
     generatedData = {
       country: target.country,
       countryName: country?.name || target.country,
-      treasury: country?.treasury || 0,
+      nationalFund: {
+        money: fund.money,
+        oil: fund.oil,
+        scraps: fund.scraps,
+        materialX: fund.materialX,
+        bitcoin: fund.bitcoin,
+      },
+      citizenCount: citizens.length,
+      estimatedFoodSupply: citizenFoodSupply,
+      estimatedBulletSupply: citizenBulletSupply,
       conqueredResources: country?.conqueredResources || [],
-      deposits: (useWorldStore.getState() as any).deposits
-        ?.filter((d: any) => d.countryCode === target.country) || [],
     }
   }
 
-  if (opType === 'military_intel' && target.region) {
-    const country = useWorldStore.getState().countries.find(c => c.name === target.region)
+  if (opType === 'military_intel' && target.country) {
+    const world = useWorldStore.getState()
+    const country = world.countries.find(c => c.code === target.country)
+    const govStore = useGovernmentStore.getState()
+    const gov = govStore.governments[target.country]
+    const citizens = gov?.citizens || []
+
+    // Simulate citizen vehicle counts
+    const jetsOwned = Math.floor(citizens.length * (0.1 + Math.random() * 0.3))
+    const warshipsOwned = Math.floor(citizens.length * (0.05 + Math.random() * 0.15))
+    const tanksOwned = Math.floor(citizens.length * (0.2 + Math.random() * 0.4))
+
     generatedData = {
-      region: target.region,
-      controller: country?.controller || 'Unknown',
-      military: country?.military || 0,
-      empire: country?.empire || 'None',
-      regions: country?.regions || 0,
+      country: target.country,
+      countryName: country?.name || target.country,
+      infrastructure: {
+        portLevel: country?.portLevel || 0,
+        airportLevel: country?.airportLevel || 0,
+        bunkerLevel: country?.bunkerLevel || 0,
+        militaryBaseLevel: country?.militaryBaseLevel || 0,
+      },
+      citizenVehicles: {
+        jets: jetsOwned,
+        warships: warshipsOwned,
+        tanks: tanksOwned,
+      },
+      militaryStrength: country?.military || 0,
+      citizenCount: citizens.length,
     }
   }
 
-  if (opType === 'infrastructure_scan' && target.region) {
-    const companies = useCompanyStore.getState().companies
-    const country = useWorldStore.getState().countries.find(c => c.name === target.region)
-    const countryCode = country?.code || ''
-    const regionCompanies = companies.filter(c => c.location === countryCode)
+  if (opType === 'infrastructure_scan' && target.country) {
+    const world = useWorldStore.getState()
+    const country = world.countries.find(c => c.code === target.country)
+    const companyStore = useCompanyStore.getState()
+    const govStore = useGovernmentStore.getState()
+    const gov = govStore.governments[target.country]
+    const citizens = gov?.citizens || []
+    const regionCompanies = companyStore.companies.filter(c => c.location === target.country)
+    const activeCompanies = regionCompanies.filter(c => !c.disabledUntil || c.disabledUntil <= Date.now())
+
+    // Simulate worker count and materials
+    const activeWorkers = citizens.length * (1 + Math.floor(Math.random() * 3))
+    const taxGenerated = regionCompanies.reduce((sum, c) => sum + c.level * 500, 0)
+    const citizenMaterials = citizens.length * (100 + Math.floor(Math.random() * 500))
+
     generatedData = {
-      region: target.region,
-      countryCode,
+      country: target.country,
+      countryName: country?.name || target.country,
       companies: regionCompanies.map(c => ({
-        id: c.id,
-        type: c.type,
+        type: c.type.replace(/_/g, ' '),
         level: c.level,
-        production: c.productionProgress,
-        disabled: c.disabledUntil && c.disabledUntil > Date.now(),
+        active: !c.disabledUntil || c.disabledUntil <= Date.now(),
+        production: Math.floor(c.productionProgress),
       })),
       totalCompanies: regionCompanies.length,
+      activeCompanies: activeCompanies.length,
+      disabledCompanies: regionCompanies.length - activeCompanies.length,
+      activeWorkers,
+      estimatedCitizenMaterials: citizenMaterials,
+      estimatedTaxRevenue: taxGenerated,
     }
   }
 
   if (opType === 'blueprint_loot' && target.player) {
-    // Generate a prestigious blueprint — ALL citizens of the launching country receive it
+    // Copy a prestigious blueprint — spawn untradable copies for all citizens
     const blueprintTypes = ['Weapon Schematic', 'Armor Design', 'Ammo Formula', 'Vehicle Plan', 'Defense Matrix']
     const tiers = ['T4', 'T5', 'T6']
     const blueprintName = blueprintTypes[Math.floor(Math.random() * blueprintTypes.length)]
     const tier = tiers[Math.floor(Math.random() * tiers.length)]
 
-    // Get launching country's citizens
     const player = usePlayerStore.getState()
     const countryCode = player.countryCode || 'US'
     const gov = useGovernmentStore.getState().governments[countryCode]
@@ -402,17 +451,15 @@ function generateEspionageReport(
 
     generatedData = {
       targetPlayer: target.player,
-      blueprintName,
+      blueprintName: `${tier} ${blueprintName}`,
       tier,
       copiedFrom: target.player,
-      notification: `You have been cyber-probed and a blueprint was copied.`,
-      rewardDistribution: citizens.map(c => ({
-        citizenName: c.name,
-        citizenRole: c.role,
-        reward: `${tier} ${blueprintName}`,
-      })),
+      untradable: true,
+      craftingEnabled: true,
+      notification: `⚠️ ${target.player} was probed. Blueprint "${tier} ${blueprintName}" was copied.`,
+      recipients: citizens.map(c => c.name),
       totalRecipients: citizens.length,
-      rewardSummary: `${tier} ${blueprintName} distributed to all ${citizens.length} citizens of ${countryCode}`,
+      rewardSummary: `Untradable ${tier} ${blueprintName} distributed to ${citizens.length} citizens of ${countryCode}. Crafting now unlocked.`,
     }
   }
 
@@ -431,32 +478,25 @@ function applySabotageEffect(opType: CyberOperationType, target: { country?: str
   const companyStore = useCompanyStore.getState()
 
   if (opType === 'company_sabotage' && target.country) {
-    // Steal 20% production from matching company types — distribute rewards to all citizens
-    const typeMap: Record<string, string[]> = {
-      'farms': ['wheat_farm', 'fish_farm', 'steak_farm'],
-      'oil_rigs': ['oil_refinery'],
-      'material_mines': ['materialx_refiner'],
-    }
-    const targetTypes = typeMap[target.companyType || ''] || []
-    const targetCompanies = companyStore.companies.filter(
-      c => c.location === target.country && targetTypes.includes(c.type)
-    )
+    // Steal 20% production from ALL companies in target country for 24h
+    const targetCompanies = companyStore.companies.filter(c => c.location === target.country)
 
-    // Calculate stolen production (20% of affected companies' output)
-    const stolenPerCompany = 20 // 20% production value per company
+    // Calculate stolen production (20% of each company's level-based output)
+    const stolenPerCompany = 20 // base value per company
     const totalStolen = targetCompanies.length * stolenPerCompany
 
-    // Distribute to all citizens of the launching country
+    // Distribute to all citizens of the attacking country
     const player = usePlayerStore.getState()
     const countryCode = player.countryCode || 'US'
     const gov = useGovernmentStore.getState().governments[countryCode]
     const citizens = gov?.citizens || []
-    const perCitizen = citizens.length > 0 ? Math.floor(totalStolen / citizens.length) : 0
 
-    // Add stolen goods to national fund
+    // Add stolen goods to national fund — split across resource types
     if (totalStolen > 0) {
-      const resourceType = target.companyType === 'oil_rigs' ? 'oil' : target.companyType === 'material_mines' ? 'materialX' : 'money'
-      useGovernmentStore.getState().donateToFund(countryCode, resourceType as any, totalStolen)
+      const perResource = Math.floor(totalStolen / 3)
+      useGovernmentStore.getState().donateToFund(countryCode, 'money' as any, perResource * 100)
+      useGovernmentStore.getState().donateToFund(countryCode, 'oil' as any, perResource)
+      useGovernmentStore.getState().donateToFund(countryCode, 'materialX' as any, perResource)
     }
   }
 
@@ -473,6 +513,32 @@ function applySabotageEffect(opType: CyberOperationType, target: { country?: str
         disableIds.has(c.id) ? { ...c, disabledUntil: disableUntil } : c
       )
     })
+  }
+
+  if (opType === 'logistics_disruption' && target.country) {
+    // Randomly disable either port or airport for 48 hours
+    const pick = Math.random() < 0.5 ? 'portLevel' : 'airportLevel'
+    const world = useWorldStore.getState()
+    const country = world.countries.find(c => c.code === target.country)
+    if (country && country[pick] > 0) {
+      const prevLevel = country[pick]
+      // Set to 0 (disabled) — will be restored after duration via activeEffects cleanup
+      useWorldStore.setState(s => ({
+        countries: s.countries.map(c => c.code === target.country ? { ...c, [pick]: 0 } : c)
+      }))
+    }
+  }
+
+  if (opType === 'bunker_override' && target.country) {
+    // Reduce bunker defense by 50% (halve bunker level) for 24 hours
+    const world = useWorldStore.getState()
+    const country = world.countries.find(c => c.code === target.country)
+    if (country && country.bunkerLevel > 1) {
+      const newLevel = Math.max(1, Math.floor(country.bunkerLevel / 2))
+      useWorldStore.setState(s => ({
+        countries: s.countries.map(c => c.code === target.country ? { ...c, bunkerLevel: newLevel } : c)
+      }))
+    }
   }
 }
 
