@@ -71,6 +71,11 @@ input, select, textarea {
   transition: border-color var(--transition-fast);
 }
 
+select option {
+  color: #000;
+  background: #fff;
+}
+
 input:focus, select:focus, textarea:focus {
   border-color: var(--accent-primary);
   box-shadow: var(--shadow-glow-sm);

@@ -18,6 +18,7 @@ export interface Company {
   productionProgress: number
   productionMax: number
   location: string // Country ISO code
+  disabledUntil?: number // Timestamp when company becomes active again (nuke effect)
 }
 
 // Employment tax rate (10%)
@@ -274,6 +275,7 @@ export interface CompanyState {
   prospect: (companyId: string) => DepositEvent | null
   getBuildableTypes: () => CompanyType[]
   processTick: () => void
+  nukeCountry: (targetCountryCode: string) => number
 }
 
 let companyCounter = 2
@@ -701,6 +703,8 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     set(s => ({
       companies: s.companies.map(c => {
         if (c.type === 'prospection_center') return c
+        // Skip disabled companies
+        if (c.disabledUntil && Date.now() < c.disabledUntil) return c
         
         const effectiveLevel = Math.min(6, c.level)
         const bonus = getLocationBonus(c)
@@ -712,5 +716,27 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         }
       })
     }))
+  },
+
+  nukeCountry: (targetCountryCode: string) => {
+    const state = get()
+    const targetCompanies = state.companies.filter(c => c.location === targetCountryCode)
+    if (targetCompanies.length === 0) return 0
+
+    // Disable 50% of companies randomly
+    const shuffled = [...targetCompanies].sort(() => Math.random() - 0.5)
+    const toDisable = shuffled.slice(0, Math.ceil(shuffled.length / 2))
+    const disableIds = new Set(toDisable.map(c => c.id))
+    const disableUntil = Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+
+    set({
+      companies: state.companies.map(c =>
+        disableIds.has(c.id)
+          ? { ...c, disabledUntil: disableUntil }
+          : c
+      )
+    })
+
+    return toDisable.length
   }
 }))

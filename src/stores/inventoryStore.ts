@@ -76,6 +76,7 @@ export interface InventoryState {
   dismantleItem: (itemId: string) => number // returns scrap gained
   equipItem: (itemId: string) => void
   unequipItem: (itemId: string) => void
+  removeItem: (itemId: string) => void
   degradeEquippedItems: (amount: number) => void
   getEquipped: () => EquipItem[]
 }
@@ -232,6 +233,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       items: s.items.map((i) =>
         i.id === itemId ? { ...i, equipped: false } : i
       ),
+    })),
+
+  removeItem: (itemId) =>
+    set((s) => ({
+      items: s.items.filter((i) => i.id !== itemId),
     })),
 
   degradeEquippedItems: (amount: number) =>
