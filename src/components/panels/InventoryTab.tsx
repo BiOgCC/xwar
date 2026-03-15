@@ -369,9 +369,9 @@ export default function InventoryTab() {
                         // Use generateStats for randomized stats matching loot system
                         const { name, stats } = generateStats(category, craftSlot, tier)
 
-                        // Superforge check: industrialist skill gives up to 20% chance
+                        // Superforge check: industrialist skill gives up to 50% chance
                         const indLevel = useSkillsStore.getState().economic.industrialist || 0
-                        const superforgeChance = Math.min(0.20, indLevel * 0.02)
+                        const superforgeChance = Math.min(0.50, indLevel * 0.05)
                         const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
 
                         if (isSuperforged) {
