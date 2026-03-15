@@ -3,6 +3,7 @@ import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
 import { useCompanyStore } from './companyStore'
 import { useBattleStore } from './battleStore'
+import { useGovernmentStore } from './governmentStore'
 
 // ====== TYPES ======
 
@@ -98,10 +99,10 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   },
   {
     id: 'blueprint_loot', pillar: 'espionage', name: 'Blueprint Loot Operation',
-    icon: '🔓', description: 'Copy a blueprint from a target player. Creates drama and rivalry.',
+    icon: '🔓', description: 'Copy a blueprint from a target player. Every citizen receives the reward.',
     cost: { energy: 3000, materialX: 12000, oil: 3500, bitcoin: 1 },
     targetType: 'player', successChance: 80, detectionChance: 30,
-    duration: 0, effectDescription: 'Copy a blueprint from target. Target is notified.',
+    duration: 0, effectDescription: 'Copy a prestigious blueprint. ALL citizens receive it. Target is notified.',
   },
 
   // SABOTAGE
@@ -387,15 +388,31 @@ function generateEspionageReport(
   }
 
   if (opType === 'blueprint_loot' && target.player) {
-    // Generate a mock "blueprint" loot
+    // Generate a prestigious blueprint — ALL citizens of the launching country receive it
     const blueprintTypes = ['Weapon Schematic', 'Armor Design', 'Ammo Formula', 'Vehicle Plan', 'Defense Matrix']
-    const tiers = ['T3', 'T4', 'T5', 'T6']
+    const tiers = ['T4', 'T5', 'T6']
+    const blueprintName = blueprintTypes[Math.floor(Math.random() * blueprintTypes.length)]
+    const tier = tiers[Math.floor(Math.random() * tiers.length)]
+
+    // Get launching country's citizens
+    const player = usePlayerStore.getState()
+    const countryCode = player.countryCode || 'US'
+    const gov = useGovernmentStore.getState().governments[countryCode]
+    const citizens = gov?.citizens || []
+
     generatedData = {
       targetPlayer: target.player,
-      blueprintName: blueprintTypes[Math.floor(Math.random() * blueprintTypes.length)],
-      tier: tiers[Math.floor(Math.random() * tiers.length)],
+      blueprintName,
+      tier,
       copiedFrom: target.player,
       notification: `You have been cyber-probed and a blueprint was copied.`,
+      rewardDistribution: citizens.map(c => ({
+        citizenName: c.name,
+        citizenRole: c.role,
+        reward: `${tier} ${blueprintName}`,
+      })),
+      totalRecipients: citizens.length,
+      rewardSummary: `${tier} ${blueprintName} distributed to all ${citizens.length} citizens of ${countryCode}`,
     }
   }
 
