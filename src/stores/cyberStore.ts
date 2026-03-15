@@ -10,7 +10,7 @@ import { useGovernmentStore } from './governmentStore'
 export type CyberPillar = 'espionage' | 'sabotage' | 'propaganda'
 
 export type EspionageOp = 'resource_intel' | 'military_intel' | 'infrastructure_scan' | 'blueprint_loot'
-export type SabotageOp = 'company_shutdown' | 'logistics_disruption' | 'bunker_override' | 'power_grid_attack'
+export type SabotageOp = 'company_sabotage' | 'logistics_disruption' | 'bunker_override' | 'power_grid_attack'
 export type PropagandaOp = 'disinformation' | 'botnet_attack'
 
 export type CyberOperationType = EspionageOp | SabotageOp | PropagandaOp
@@ -107,13 +107,13 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
 
   // SABOTAGE
   {
-    id: 'company_shutdown', pillar: 'sabotage', name: 'Company Shutdown',
-    icon: '🔌', description: 'Shut down specific company types in a target country.',
+    id: 'company_sabotage', pillar: 'sabotage', name: 'Company Sabotage',
+    icon: '🔌', description: 'Infiltrate companies and steal 20% of their production for 4 hours. Rewards distributed to all citizens.',
     cost: { energy: 2000, materialX: 10000, oil: 4000, bitcoin: 1 },
     targetType: 'company_type', targetOptions: ['farms', 'oil_rigs', 'material_mines'],
     successChance: 80, detectionChance: 30,
-    duration: 2 * 60 * 60 * 1000, // 2 hours
-    effectDescription: 'Production -70% for targeted company type for 2 hours.',
+    duration: 4 * 60 * 60 * 1000, // 4 hours
+    effectDescription: 'Steal 20% production for 4 hours. ALL citizens receive stolen goods.',
   },
   {
     id: 'logistics_disruption', pillar: 'sabotage', name: 'Logistics Disruption',
@@ -430,9 +430,8 @@ function generateEspionageReport(
 function applySabotageEffect(opType: CyberOperationType, target: { country?: string; region?: string; companyType?: string }) {
   const companyStore = useCompanyStore.getState()
 
-  if (opType === 'company_shutdown' && target.country) {
-    // Disable 70% production for matching company types in the country
-    // We'll use disabledUntil for a simpler approach
+  if (opType === 'company_sabotage' && target.country) {
+    // Steal 20% production from matching company types — distribute rewards to all citizens
     const typeMap: Record<string, string[]> = {
       'farms': ['wheat_farm', 'fish_farm', 'steak_farm'],
       'oil_rigs': ['oil_refinery'],
@@ -442,13 +441,22 @@ function applySabotageEffect(opType: CyberOperationType, target: { country?: str
     const targetCompanies = companyStore.companies.filter(
       c => c.location === target.country && targetTypes.includes(c.type)
     )
-    if (targetCompanies.length > 0) {
-      const disableUntil = Date.now() + 2 * 60 * 60 * 1000
-      useCompanyStore.setState({
-        companies: companyStore.companies.map(c =>
-          targetCompanies.some(tc => tc.id === c.id) ? { ...c, disabledUntil: disableUntil } : c
-        )
-      })
+
+    // Calculate stolen production (20% of affected companies' output)
+    const stolenPerCompany = 20 // 20% production value per company
+    const totalStolen = targetCompanies.length * stolenPerCompany
+
+    // Distribute to all citizens of the launching country
+    const player = usePlayerStore.getState()
+    const countryCode = player.countryCode || 'US'
+    const gov = useGovernmentStore.getState().governments[countryCode]
+    const citizens = gov?.citizens || []
+    const perCitizen = citizens.length > 0 ? Math.floor(totalStolen / citizens.length) : 0
+
+    // Add stolen goods to national fund
+    if (totalStolen > 0) {
+      const resourceType = target.companyType === 'oil_rigs' ? 'oil' : target.companyType === 'material_mines' ? 'materialX' : 'money'
+      useGovernmentStore.getState().donateToFund(countryCode, resourceType as any, totalStolen)
     }
   }
 
