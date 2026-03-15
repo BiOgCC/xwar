@@ -11,12 +11,16 @@ import type { GameMapHandle } from './components/map/GameMap'
 import RegionPopup from './components/map/RegionPopup'
 import ProfilePanel from './components/panels/ProfilePanel'
 import GovernmentPanel from './components/panels/GovernmentPanel'
+import CyberwarfarePanel from './components/panels/CyberwarfarePanel'
+import MissionsPanel from './components/panels/MissionsPanel'
 
 const SIDEBAR_ITEMS = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
+  { id: 'cyberwarfare' as const, icon: '🖥️', label: 'CYBER' },
   { id: 'combat' as const, icon: '⚔️', label: 'COMBAT' },
   { id: 'chat' as const, icon: '💬', label: 'CHAT' },
   { id: 'market' as const, icon: '📊', label: 'MARKET' },
+  { id: 'missions' as const, icon: '📋', label: 'MISSIONS' },
   { id: 'companies' as const, icon: '🏭', label: 'COMPANIES' },
   { id: 'resources' as const, icon: '💰', label: 'RESOURCES' },
   { id: 'government' as const, icon: '🏛️', label: 'GOV' },
@@ -466,6 +470,12 @@ function App() {
               )}
               {activePanel === 'government' && (
                 <GovernmentPanel />
+              )}
+              {activePanel === 'cyberwarfare' && (
+                <CyberwarfarePanel />
+              )}
+              {activePanel === 'missions' && (
+                <MissionsPanel />
               )}
               {activePanel === 'chat' && (
                 <div className="hud-card">
