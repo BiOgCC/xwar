@@ -13,6 +13,7 @@ import ProfilePanel from './components/panels/ProfilePanel'
 import GovernmentPanel from './components/panels/GovernmentPanel'
 import CyberwarfarePanel from './components/panels/CyberwarfarePanel'
 import MissionsPanel from './components/panels/MissionsPanel'
+import PrestigePanel from './components/panels/PrestigePanel'
 
 const SIDEBAR_ITEMS = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
@@ -24,6 +25,7 @@ const SIDEBAR_ITEMS = [
   { id: 'companies' as const, icon: '🏭', label: 'COMPANIES' },
   { id: 'resources' as const, icon: '💰', label: 'RESOURCES' },
   { id: 'government' as const, icon: '🏛️', label: 'GOV' },
+  { id: 'prestige' as const, icon: '⭐', label: 'PRESTIGE' },
 ]
 
 interface RegionInfo {
@@ -476,6 +478,9 @@ function App() {
               )}
               {activePanel === 'missions' && (
                 <MissionsPanel />
+              )}
+              {activePanel === 'prestige' && (
+                <PrestigePanel />
               )}
               {activePanel === 'chat' && (
                 <div className="hud-card">
