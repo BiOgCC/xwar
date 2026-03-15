@@ -30,8 +30,8 @@ export default function SkillsTab() {
       case 'work': return `${100 + level * 20}`
       case 'entrepreneurship': return `${100 + level * 15}`
       case 'production': return `${10 + level * 5}`
-      case 'prospection': return `${10 + level * 5}%`
-      case 'industrialist': return `${10 + level * 5}%`
+      case 'prospection': return `${level * 5}%`
+      case 'industrialist': return `${level * 5}%`
       default: return ''
     }
   }
