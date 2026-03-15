@@ -120,7 +120,12 @@ export default function CompaniesTab() {
               <span className="comp-card__level" style={{ color: template.color }}>
                 {template.label} LVL {job.companyLevel}
               </span>
-              <span className="comp-card__bonus">+{job.productionBonus}%</span>
+              {job.productionBonus > 0 && <span className="comp-card__bonus">+{job.productionBonus}%</span>}
+              {job.companyType === 'prospection_center' ? (
+                <span className="comp-card__bonus" style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>+{(job.companyLevel * 5) + ((skills.economic.prospection || 0) * 5)}% CHANCE</span>
+              ) : (
+                <span className="comp-card__bonus" style={{ background: 'rgba(34,211,138,0.2)', color: '#22d38a' }}>+{job.companyLevel} PP</span>
+              )}
               <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>📍{country?.code || job.location}</span>
             </div>
           </div>
@@ -252,7 +257,12 @@ export default function CompaniesTab() {
                         <span className="comp-card__level" style={{ color: template.color }}>
                           LVL {company.level}
                         </span>
-                        <span className="comp-card__bonus">+{bonus}%</span>
+                        {bonus > 0 && <span className="comp-card__bonus">+{bonus}%</span>}
+                        {isProspector ? (
+                          <span className="comp-card__bonus" style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>+{(company.level * 5) + ((skills.economic.prospection || 0) * 5)}% CHANCE</span>
+                        ) : (
+                          <span className="comp-card__bonus" style={{ background: 'rgba(34,211,138,0.2)', color: '#22d38a' }}>+{company.level} PP</span>
+                        )}
                         {company.autoProduction && (
                           <span className="comp-card__auto">⚡ AUTO</span>
                         )}
