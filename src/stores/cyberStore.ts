@@ -49,7 +49,12 @@ export interface CyberCampaign {
   successChance: number
   detectionChance: number
   duration: number
-  status: 'active' | 'completed' | 'failed' | 'detected'
+  
+  // Deployment mechanics
+  status: 'deploying' | 'active' | 'completed' | 'failed' | 'detected'
+  deploymentStartTime: number
+  deploymentAcceleratedMs: number
+  
   wasDetected: boolean
   createdAt: number
   expiresAt: number
@@ -175,6 +180,10 @@ export interface CyberState {
     invitedPlayers: string[]
   ) => { success: boolean; message: string; campaignId?: string }
 
+  contributeToCampaign: (campaignId: string, amount: number, type: 'work' | 'stamina') => boolean
+  processDetectionTicks: () => void
+  resolveDeployment: (campaignId: string) => void
+
   getCampaignReports: (campaignId: string) => CyberReport[]
   getActiveEffectsForCountry: (countryCode: string) => ActiveEffect[]
   getActiveEffectsForRegion: (regionName: string) => ActiveEffect[]
@@ -208,14 +217,6 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     player.spendMaterialX(cost.materialX)
     player.spendBitcoin(cost.bitcoin)
 
-    // Roll success
-    const roll = Math.random() * 100
-    const succeeded = roll <= opDef.successChance
-
-    // Roll detection
-    const detectRoll = Math.random() * 100
-    const wasDetected = detectRoll <= opDef.detectionChance
-
     const campaignId = `cyber_${++campaignCounter}_${Date.now()}`
     const now = Date.now()
 
@@ -235,11 +236,13 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       bitcoinCost: cost.bitcoin,
       successChance: opDef.successChance,
       detectionChance: opDef.detectionChance,
-      duration: opDef.duration,
-      status: succeeded ? 'completed' : 'failed',
-      wasDetected,
+      duration: Math.max(1800000, opDef.duration), // Default 30 min deployment if duration is 0
+      status: 'deploying',
+      deploymentStartTime: now,
+      deploymentAcceleratedMs: 0,
+      wasDetected: false,
       createdAt: now,
-      expiresAt: opDef.duration > 0 ? now + opDef.duration : now,
+      expiresAt: 0, // Will be set when deployment finishes
     }
 
     const state = get()
@@ -248,14 +251,130 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     const newEffects = [...state.activeEffects]
     const newNotifications = [...state.notifications]
 
+    set({
+      campaigns: { ...state.campaigns, [campaignId]: campaign },
+    })
+
+    return { success: true, message: `Operation ${opDef.name} entering deployment phase.`, campaignId }
+  },
+
+  contributeToCampaign: (campaignId, amount, type) => {
+    const state = get()
+    const campaign = state.campaigns[campaignId]
+    if (!campaign || campaign.status !== 'deploying') return false
+
+    const p = usePlayerStore.getState()
+    if (type === 'work') {
+      if (p.work < amount) return false
+      p.consumeBar('work', amount)
+    } else {
+      if (p.stamina < amount) return false
+      p.consumeBar('stamina', amount)
+    }
+
+    // 10 points = 60,000 ms saved
+    const msSaved = (amount / 10) * 60000
+
+    set({
+      campaigns: {
+        ...state.campaigns,
+        [campaignId]: {
+          ...campaign,
+          deploymentAcceleratedMs: campaign.deploymentAcceleratedMs + msSaved
+        }
+      }
+    })
+
+    // Check if finished
+    const updated = get().campaigns[campaignId]
+    if (Date.now() >= updated.deploymentStartTime + updated.duration - updated.deploymentAcceleratedMs) {
+      get().resolveDeployment(campaignId)
+    }
+
+    return true
+  },
+
+  processDetectionTicks: () => {
+    const state = get()
+    const now = Date.now()
+    const newNotifications = [...state.notifications]
+    const updatedCampaigns = { ...state.campaigns }
+    let changed = false
+
+    Object.values(state.campaigns).forEach(c => {
+      if (c.status === 'deploying') {
+        // Resolve if timer is up
+        if (now >= c.deploymentStartTime + c.duration - c.deploymentAcceleratedMs) {
+          get().resolveDeployment(c.id)
+          changed = true
+          return
+        }
+
+        // Otherwise roll for detection
+        if (!c.wasDetected) {
+          const detectRoll = Math.random() * 100
+          if (detectRoll <= c.detectionChance) {
+            updatedCampaigns[c.id] = { ...c, wasDetected: true }
+            changed = true
+            
+            const opDef = CYBER_OPERATIONS.find(op => op.id === c.operationType)
+            const targetName = c.targetCountry || c.targetRegion || c.targetPlayer || 'Unknown'
+            newNotifications.push({
+              id: `notif_${c.id}_detect_${now}`,
+              message: `⚠️ CYBER ALERT: Unknown operation detected targeting ${targetName}!`,
+              timestamp: now,
+            })
+          }
+        }
+      }
+    })
+
+    if (changed) {
+      set({ campaigns: updatedCampaigns, notifications: newNotifications })
+    }
+  },
+
+  resolveDeployment: (campaignId) => {
+    const state = get()
+    const campaign = state.campaigns[campaignId]
+    if (!campaign || campaign.status !== 'deploying') return
+
+    const opDef = CYBER_OPERATIONS.find(op => op.id === campaign.operationType)
+    if (!opDef) return
+
+    const target = { country: campaign.targetCountry, region: campaign.targetRegion, player: campaign.targetPlayer }
+    const now = Date.now()
+
+    // Roll success
+    const roll = Math.random() * 100
+    const succeeded = roll <= opDef.successChance
+
+    const newCampaigns = { ...state.campaigns }
+    const newReports = { ...state.reports }
+    const newEffects = [...state.activeEffects]
+    const newNotifications = [...state.notifications]
+
+    newCampaigns[campaignId] = {
+      ...campaign,
+      status: succeeded ? 'completed' : 'failed',
+      expiresAt: opDef.duration > 0 ? now + opDef.duration : now,
+    }
+
     if (!succeeded) {
-      set({ campaigns: newCampaigns })
-      return { success: false, message: 'Operation FAILED. Resources spent.', campaignId }
+      if (campaign.wasDetected) {
+         newNotifications.push({
+           id: `notif_${campaignId}_fail`,
+           message: `⚠️ CYBER ALERT: A failed ${opDef.name} was traced to ${campaign.countryId}.`,
+           timestamp: now,
+         })
+      }
+      set({ campaigns: newCampaigns, notifications: newNotifications })
+      return
     }
 
     // Generate report / apply effect based on operation type
     if (opDef.pillar === 'espionage') {
-      const report = generateEspionageReport(campaignId, operationType, target)
+      const report = generateEspionageReport(campaignId, campaign.operationType, target)
       newReports[report.id] = report
     }
 
@@ -264,23 +383,23 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       newEffects.push({
         id: effectId,
         campaignId,
-        effectType: operationType,
+        effectType: campaign.operationType,
         targetCountry: target.country,
         targetRegion: target.region,
         expiresAt: now + opDef.duration,
       })
 
       // Apply immediate sabotage effects
-      applySabotageEffect(operationType, target)
+      applySabotageEffect(campaign.operationType, target)
     }
 
     if (opDef.pillar === 'propaganda') {
-      applyPropagandaEffect(operationType, target)
+      applyPropagandaEffect(campaign.operationType, target)
       if (opDef.duration > 0) {
         newEffects.push({
           id: `eff_${campaignId}`,
           campaignId,
-          effectType: operationType,
+          effectType: campaign.operationType,
           targetCountry: target.country,
           targetRegion: target.region,
           expiresAt: now + opDef.duration,
@@ -288,13 +407,13 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       }
     }
 
-    // Detection notification
-    if (wasDetected) {
-      campaign.status = 'detected'
+    // Detection post-success notification
+    if (campaign.wasDetected) {
+      newCampaigns[campaignId].status = 'detected'
       const targetName = target.country || target.region || target.player || 'Unknown'
       newNotifications.push({
-        id: `notif_${campaignId}`,
-        message: `⚠️ CYBER ALERT: ${opDef.name} detected against ${targetName}! Origin partially traced to ${campaign.countryId}.`,
+        id: `notif_${campaignId}_success`,
+        message: `⚠️ CYBER ALERT: ${opDef.name} executed against ${targetName}! Origin traced to ${campaign.countryId}.`,
         timestamp: now,
       })
     }
@@ -305,9 +424,6 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       activeEffects: newEffects,
       notifications: newNotifications,
     })
-
-    const statusMsg = wasDetected ? 'SUCCESS (but DETECTED!)' : 'SUCCESS'
-    return { success: true, message: `Operation ${statusMsg}`, campaignId }
   },
 
   getCampaignReports: (campaignId) => {

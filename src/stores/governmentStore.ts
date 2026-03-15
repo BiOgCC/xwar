@@ -16,12 +16,12 @@ export interface NationalFund {
 export type NationalFundKey = keyof NationalFund
 
 export const DEFAULT_NATIONAL_FUND: NationalFund = {
-  money: 5000,
-  oil: 0,
-  scraps: 0,
-  materialX: 0,
-  bitcoin: 0,
-  jets: 0,
+  money: 50000000,
+  oil: 5000000,
+  scraps: 5000000,
+  materialX: 5000000,
+  bitcoin: 50000,
+  jets: 100,
 }
 
 // Keep NUKE_COST for backward compatibility

@@ -6,6 +6,7 @@ import { useCompanyStore } from './stores/companyStore'
 import { useBattleStore, getCountryFlag, getCountryName } from './stores/battleStore'
 import { useInventoryStore } from './stores/inventoryStore'
 import { useSkillsStore } from './stores/skillsStore'
+import { useCyberStore } from './stores/cyberStore'
 import GameMap from './components/map/GameMap'
 import type { GameMapHandle } from './components/map/GameMap'
 import RegionPopup from './components/map/RegionPopup'
@@ -25,7 +26,7 @@ const SIDEBAR_CIVILIAN = [
 ]
 
 const SIDEBAR_WAR = [
-  { id: 'government' as const, icon: '🏛️', label: 'GOV' },
+  { id: 'government' as const, icon: '🏛️', label: 'COUNTRY' },
   { id: 'missions' as const, icon: '📋', label: 'MISSIONS' },
   { id: 'combat' as const, icon: '⚔️', label: 'COMBAT' },
   { id: 'cyberwarfare' as const, icon: '🖥️', label: 'CYBER' },
@@ -114,6 +115,25 @@ function App() {
       })
     }, 1000)
     return () => clearInterval(interval)
+  }, [])
+
+  // ====== MOCK ACTIVE CAMPAIGNS FOR TESTING ======
+  useEffect(() => {
+    const cyberState = useCyberStore.getState()
+    const militaryState = import('./stores/militaryStore').then(mod => {
+      const ms = mod.useMilitaryStore.getState()
+      
+      // Only init if empty
+      if (Object.keys(cyberState.campaigns).length === 0) {
+        cyberState.launchCampaign('company_sabotage', { country: 'RU' }, ['Player2', 'Player3'])
+        cyberState.launchCampaign('resource_intel', { country: 'CN' }, [])
+      }
+
+      if (Object.keys(ms.campaigns).length === 0) {
+        ms.launchCampaign('assault', 'CA', ['General_Y'])
+        ms.launchCampaign('naval_strike', 'CU', [])
+      }
+    })
   }, [])
 
   const handleManualTick = () => {
@@ -303,7 +323,13 @@ function App() {
         {activePanel && (
           <aside className="hud-panel">
             <div className="hud-panel__header">
-              <h3 className="hud-panel__title">{activePanel.toUpperCase()}</h3>
+              <h3 className="hud-panel__title">
+                {activePanel === 'government' 
+                  ? `COUNTRY — ${getCountryName(player.countryCode || 'US').toUpperCase()}` 
+                  : activePanel === 'missions'
+                  ? 'MISSIONS: ENABLE OPERATIONS BY COMPLETING THEM'
+                  : activePanel.toUpperCase()}
+              </h3>
               <button className="hud-panel__close" onClick={() => togglePanel(activePanel)}>✕</button>
             </div>
             <div className="hud-panel__body">

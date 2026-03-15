@@ -77,9 +77,17 @@ export default function CyberwarfarePanel() {
     }
   }
 
-  // Reports
+  // Reports and Deployments
   const allReports = Object.values(cyber.reports).sort((a, b) => b.timestamp - a.timestamp)
   const allCampaigns = Object.values(cyber.campaigns).sort((a, b) => b.createdAt - a.createdAt)
+  const myDeployments = allCampaigns.filter(c => c.status === 'deploying' && (c.initiatorPlayer === player.name || c.invitedPlayers.includes(player.name) || c.countryId === iso))
+
+  // Live timer for deployments
+  const [now, setNow] = useState(Date.now())
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -112,6 +120,58 @@ export default function CyberwarfarePanel() {
               <button onClick={() => cyber.dismissNotification(n.id)} style={{ fontSize: '9px', color: '#666', cursor: 'pointer' }}>✕</button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Deploying Operations */}
+      {viewMode === 'operations' && myDeployments.length > 0 && (
+        <div className="hud-card" style={{ borderColor: '#3b82f6', background: 'rgba(59,130,246,0.05)' }}>
+          <div className="hud-card__title" style={{ color: '#60a5fa' }}>🔄 DEPLOYING OPERATIONS ({myDeployments.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+            {myDeployments.map(dep => {
+              const opDef = CYBER_OPERATIONS.find(op => op.id === dep.operationType)
+              const remainingMs = Math.max(0, (dep.deploymentStartTime + dep.duration - dep.deploymentAcceleratedMs) - now)
+              const mins = Math.floor(remainingMs / 60000).toString().padStart(2, '0')
+              const secs = Math.floor((remainingMs % 60000) / 1000).toString().padStart(2, '0')
+              const targetStr = dep.targetCountry || dep.targetRegion || dep.targetPlayer || dep.targetCompanyType || 'Unknown'
+              
+              const handleContribute = (type: 'work' | 'stamina') => {
+                 const res = cyber.contributeToCampaign(dep.id, 10, type)
+                 if (res) ui.addFloatingText(`+10 ${type.toUpperCase()}`, window.innerWidth / 2, window.innerHeight / 2, '#3b82f6')
+                 else ui.addFloatingText(`NOT ENOUGH ${type.toUpperCase()}`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+              }
+
+              return (
+                <div key={dep.id} style={{ padding: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#e0f2fe' }}>{opDef?.icon} {opDef?.name}</div>
+                      <div style={{ fontSize: '9px', color: '#94a3b8' }}>Target: {targetStr}</div>
+                    </div>
+                    {dep.wasDetected && (
+                      <div style={{ fontSize: '9px', fontWeight: 700, color: '#ef4444', border: '1px solid #ef4444', padding: '2px 4px', borderRadius: '2px', background: 'rgba(239,68,68,0.1)' }}>
+                        ⚠️ DETECTED
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '3px' }}>
+                    <span style={{ fontSize: '10px', color: '#bae6fd' }}>Time Remaining:</span>
+                    <span style={{ fontSize: '12px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#38bdf8' }}>{mins}:{secs}</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '6px' }}>
+                     <button className="hud-btn-outline" style={{ fontSize: '8px', padding: '6px', borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleContribute('work')}>
+                       CONTRIBUTE 10 WORK (-1m)
+                     </button>
+                     <button className="hud-btn-outline" style={{ fontSize: '8px', padding: '6px', borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleContribute('stamina')}>
+                       CONTRIBUTE 10 STAMINA (-1m)
+                     </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 

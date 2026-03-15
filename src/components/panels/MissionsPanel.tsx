@@ -160,7 +160,7 @@ export default function MissionsPanel() {
 
       {/* ====== MILITARY OPERATIONS MISSIONS ====== */}
       <div className="hud-card">
-        <div className="hud-card__title" style={{ color: '#ef4444' }}>🎖️ MILITARY OPERATIONS MISSIONS</div>
+        <div className="hud-card__title" style={{ color: '#ef4444' }}>🎖️ MILITARY MISSIONS</div>
         <p style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px' }}>
           Each military operation requires a contribution mission. Pay 10% of the operation's cost to activate.
           {isPresident ? '' : ' Anyone can activate after paying.'}
@@ -221,28 +221,56 @@ export default function MissionsPanel() {
         </div>
       </div>
 
-      {/* ====== ACTIVE CAMPAIGNS ====== */}
+      {/* ====== ACTIVE CAMPAIGNS & LOG ====== */}
       <div className="hud-card">
-        <div className="hud-card__title">📂 MY CAMPAIGNS ({myCampaigns.length})</div>
+        <div className="hud-card__title">📂 CAMPAIGN LOG</div>
         {myCampaigns.length === 0 ? (
           <p style={{ fontSize: '10px', color: '#64748b', marginTop: '6px' }}>No campaigns. Launch from Cyber panel.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
-            {myCampaigns.slice(0, 10).map(c => {
-              const opDef = CYBER_OPERATIONS.find(op => op.id === c.operationType)
-              const sc: Record<string, string> = { active: '#3b82f6', completed: '#22d38a', detected: '#f59e0b', failed: '#ef4444' }
+            {(() => {
+              const active = myCampaigns.filter(c => c.status === 'active')
+              const log = myCampaigns.filter(c => c.status !== 'active')
+              
               return (
-                <div key={c.id} style={{ padding: '6px 8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '3px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 600 }}>{opDef?.icon} {opDef?.name}</span>
-                    <span style={{ fontSize: '8px', color: sc[c.status] || '#666', fontWeight: 700, textTransform: 'uppercase' }}>{c.status}</span>
-                  </div>
-                  <div style={{ fontSize: '8px', color: '#94a3b8' }}>
-                    {c.targetCountry || c.targetRegion || c.targetPlayer || 'N/A'} {c.wasDetected ? '⚠️ DETECTED' : ''}
-                  </div>
-                </div>
+                <>
+                  {active.length > 0 && <div style={{ fontSize: '8px', color: '#3b82f6', fontWeight: 700, marginBottom: '2px' }}>ONGOING OPERATIONS</div>}
+                  {active.map(c => {
+                    const opDef = CYBER_OPERATIONS.find(op => op.id === c.operationType)
+                    return (
+                      <div key={c.id} style={{ padding: '6px 8px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '3px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 600, color: '#60a5fa' }}>{opDef?.icon} {opDef?.name}</span>
+                          <span style={{ fontSize: '8px', color: '#3b82f6', fontWeight: 700, textTransform: 'uppercase' }}>{c.status}</span>
+                        </div>
+                        <div style={{ fontSize: '8px', color: '#94a3b8' }}>
+                          {c.targetCountry || c.targetRegion || c.targetPlayer || 'N/A'} {c.wasDetected ? '⚠️ DETECTED' : ''}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  
+                  {log.length > 0 && (
+                     <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginTop: '4px', marginBottom: '2px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '6px' }}>PAST OPERATIONS LOG</div>
+                  )}
+                  {log.slice(0, 10).map(c => {
+                    const opDef = CYBER_OPERATIONS.find(op => op.id === c.operationType)
+                    const sc: Record<string, string> = { completed: '#22d38a', detected: '#f59e0b', failed: '#ef4444' }
+                    return (
+                      <div key={c.id} style={{ padding: '6px 8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '3px', opacity: 0.8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 600 }}>{opDef?.icon} {opDef?.name}</span>
+                          <span style={{ fontSize: '8px', color: sc[c.status] || '#666', fontWeight: 700, textTransform: 'uppercase' }}>{c.status}</span>
+                        </div>
+                        <div style={{ fontSize: '8px', color: '#64748b' }}>
+                          {c.targetCountry || c.targetRegion || c.targetPlayer || 'N/A'} {c.wasDetected ? '⚠️ DETECTED' : ''}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </>
               )
-            })}
+            })()}
           </div>
         )}
       </div>

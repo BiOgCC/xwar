@@ -212,6 +212,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   }),
 
   resolveTicksAndRounds: () => set((state) => {
+    // Process cyber detection on every tick evaluation call
+    import('./cyberStore').then(mod => {
+      mod.useCyberStore.getState().processDetectionTicks()
+    })
+
     const now = Date.now()
     let hasChanges = false
     const newBattles = { ...state.battles }

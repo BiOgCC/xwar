@@ -46,7 +46,7 @@ export default function GovernmentPanel() {
     { id: 'war', label: 'WAR', icon: '⚔️' },
     { id: 'defense', label: 'REGION', icon: '🏗️' },
     { id: 'empire', label: 'EMPIRE', icon: '👑' },
-    { id: 'laws', label: 'LAWS', icon: '📜' },
+    { id: 'laws', label: 'GOV', icon: '📜' },
   ]
 
   // ====== HANDLERS ======
@@ -534,7 +534,7 @@ export default function GovernmentPanel() {
                     onChange={(e) => setEmpireName(e.target.value)}
                     maxLength={30}
                     placeholder="Enter empire name..."
-                    style={{ ...ss, flex: 1 }}
+                    style={{ flex: 1, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '10px' }}
                   />
                   <button
                     className="hud-btn-primary"
