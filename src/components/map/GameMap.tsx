@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import maplibregl from 'maplibre-gl'
 import type { Country } from '../../stores/worldStore'
+import { useWorldStore } from '../../stores/worldStore'
+import { useRegionStore } from '../../stores/regionStore'
 
 interface RegionInfo {
   name: string
@@ -24,10 +26,11 @@ export interface GameMapHandle {
   zoomOut: () => void
   resetView: () => void
   flyTo: (lng: number, lat: number, zoom?: number) => void
+  getMap: () => maplibregl.Map | null
 }
 
-// Country centroids (lng, lat)
-const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
+// Country centroids (lng, lat) — exported for battle overlay
+export const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
   'United States': [-98.5, 39.8],
   'Russia': [90, 62],
   'China': [104, 35],
@@ -114,6 +117,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
         duration: 800,
       })
     },
+    getMap: () => map.current,
   }), [])
 
   useEffect(() => {
@@ -135,208 +139,354 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
     m.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
 
     m.on('load', () => {
-      m.addSource('xwar-countries', {
-        type: 'geojson',
-        data: 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
+      // ── 1. STRIP BASEMAP — hide EVERYTHING except background + water ──
+      const style = m.getStyle()
+      ;(style?.layers || []).forEach((l: any) => {
+        const id = l.id.toLowerCase()
+        const type = l.type
+        // Keep background layer (we'll restyle it)
+        if (type === 'background') return
+        // Keep water layers (we'll restyle them)
+        if (id.includes('water') || id.includes('ocean')) return
+        // Hide everything else — land, roads, labels, buildings, ALL of it
+        try { m.setLayoutProperty(l.id, 'visibility', 'none') } catch {}
       })
 
-      // Build color match expression for controlled countries
-      const colorExpr: any[] = ['match', ['get', 'ISO_A3']]
-      const controlledISOs: string[] = []
-
-      countries.forEach(c => {
-        const iso = COUNTRY_ISO[c.name]
-        if (iso) {
-          colorExpr.push(iso, c.color)
-          controlledISOs.push(iso)
+      // ── 2. STYLE WATER — dark blue ocean ──
+      try {
+        const bgLayer = (style?.layers || []).find((l: any) => l.type === 'background')
+        if (bgLayer) m.setPaintProperty(bgLayer.id, 'background-color', '#101828')
+      } catch {}
+      ;(style?.layers || []).forEach((l: any) => {
+        if (l.type === 'fill' && l.id.toLowerCase().includes('water')) {
+          try { m.setPaintProperty(l.id, 'fill-color', '#0c1322') } catch {}
         }
       })
-      colorExpr.push('transparent') // default: invisible for uncontrolled
 
-      // Glow fill for controlled countries
-      m.addLayer({
-        id: 'xwar-country-fill',
-        type: 'fill',
-        source: 'xwar-countries',
-        paint: {
-          'fill-color': colorExpr as any,
-          'fill-opacity': [
-            'case',
-            ['in', ['get', 'ISO_A3'], ['literal', controlledISOs]],
-            0.2,
-            0
-          ],
-        },
-      })
+      // ── 3. ADD COUNTRIES GEOJSON & COLOR ALL COUNTRIES ──
+      const GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
 
-      // Borders for controlled countries
-      m.addLayer({
-        id: 'xwar-country-border',
-        type: 'line',
-        source: 'xwar-countries',
-        paint: {
-          'line-color': [
-            'case',
-            ['in', ['get', 'ISO_A3'], ['literal', controlledISOs]],
-            colorExpr as any,
-            'rgba(34, 211, 138, 0.06)'
-          ],
-          'line-width': [
-            'case',
-            ['in', ['get', 'ISO_A3'], ['literal', controlledISOs]],
-            1.5,
-            0.3
-          ],
-        },
-      })
+      // Fetch GeoJSON to build complete color map for ALL countries
+      fetch(GEOJSON_URL)
+        .then(r => r.json())
+        .then((geojson: any) => {
+          m.addSource('xwar-countries', { type: 'geojson', data: geojson })
 
-      // Hover highlight layer
-      m.addLayer({
-        id: 'xwar-country-hover',
-        type: 'fill',
-        source: 'xwar-countries',
-        paint: {
-          'fill-color': '#22d38a',
-          'fill-opacity': 0,
-        },
-        filter: ['==', ['get', 'ISO_A3'], ''],
-      })
+          // Build game country color map
+          const gameColors: Record<string, string> = {}
+          const controlledISOs: string[] = []
+          countries.forEach(c => {
+            const iso = COUNTRY_ISO[c.name]
+            if (iso) { gameColors[iso] = c.color; controlledISOs.push(iso) }
+          })
 
-      // Add interactive markers for each controlled country
-      countries.forEach(c => {
-        const centroid = COUNTRY_CENTROIDS[c.name]
-        if (!centroid) return
-
-        const size = Math.max(30, Math.min(54, c.military / 1.8))
-        const hitPad = 16 // extra invisible padding for easier clicking
-        const totalSize = size + hitPad * 2
-
-        // Outer wrapper: large invisible hit area that eats ALL mouse events
-        const wrapper = document.createElement('div')
-        wrapper.style.cssText = `
-          width: ${totalSize}px;
-          height: ${totalSize}px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          position: relative;
-          z-index: 10;
-        `
-
-        // Block drag-starting events from reaching the map canvas
-        // (mousedown/pointerdown start map drags — block these in capture phase)
-        const blockDragEvent = (e: Event) => {
-          e.stopPropagation()
-          e.preventDefault()
-        }
-        wrapper.addEventListener('mousedown', blockDragEvent, true)
-        wrapper.addEventListener('pointerdown', blockDragEvent, true)
-        wrapper.addEventListener('touchstart', blockDragEvent, { capture: true })
-        wrapper.addEventListener('dblclick', blockDragEvent, true)
-
-        // Inner visible circle
-        const circle = document.createElement('div')
-        circle.style.cssText = `
-          width: ${size}px;
-          height: ${size}px;
-          background: ${c.color};
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 0 12px ${c.color}55, inset 0 0 6px rgba(0,0,0,0.3);
-          transition: box-shadow 200ms ease, border-color 200ms ease;
-          border: 2px solid rgba(255,255,255,0.15);
-          pointer-events: none;
-        `
-
-        const count = document.createElement('span')
-        count.style.cssText = `
-          font-family: 'Orbitron', monospace;
-          font-size: ${c.regions > 9 ? '10px' : '12px'};
-          font-weight: 700;
-          color: #080c12;
-          line-height: 1;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-          pointer-events: none;
-        `
-        count.textContent = String(c.regions)
-        circle.appendChild(count)
-
-        // Pulse ring
-        const pulse = document.createElement('div')
-        pulse.style.cssText = `
-          position: absolute;
-          inset: ${hitPad - 5}px;
-          border-radius: 50%;
-          border: 1.5px solid ${c.color};
-          opacity: 0;
-          animation: marker-pulse 3s ease-out infinite;
-          animation-delay: ${Math.random() * 2}s;
-          pointer-events: none;
-        `
-
-        wrapper.appendChild(circle)
-        wrapper.appendChild(pulse)
-
-        // Hover: glow effect only (NO scale transform — avoids jitter)
-        wrapper.addEventListener('mouseenter', () => {
-          circle.style.boxShadow = `0 0 28px ${c.color}99, inset 0 0 8px rgba(0,0,0,0.2)`
-          circle.style.borderColor = 'rgba(255,255,255,0.4)'
-          wrapper.style.zIndex = '20'
-        })
-        wrapper.addEventListener('mouseleave', () => {
-          circle.style.boxShadow = `0 0 12px ${c.color}55, inset 0 0 6px rgba(0,0,0,0.3)`
-          circle.style.borderColor = 'rgba(255,255,255,0.15)'
-          wrapper.style.zIndex = '10'
-        })
-
-        // Click handler — on the wrapper so the whole hit area works
-        wrapper.addEventListener('click', (e) => {
-          e.stopPropagation()
-          handleRegionClick(c.name, centroid)
-        })
-
-        new maplibregl.Marker({ element: wrapper, anchor: 'center' })
-          .setLngLat(centroid)
-          .addTo(m)
-      })
-
-      // Hover interactions on the polygon fill
-      let hoveredISO: string | null = null
-
-      m.on('mousemove', 'xwar-country-fill', (e) => {
-        if (e.features && e.features.length > 0) {
-          const iso = e.features[0].properties?.ISO_A3
-          if (iso && iso !== hoveredISO) {
-            hoveredISO = iso
-            m.setFilter('xwar-country-hover', ['==', ['get', 'ISO_A3'], iso])
-            m.setPaintProperty('xwar-country-hover', 'fill-opacity', 0.1)
-            m.getCanvas().style.cursor = 'pointer'
+          // HSL to hex converter
+          const hslToHex = (h: number, s: number, l: number): string => {
+            s /= 100; l /= 100
+            const a = s * Math.min(l, 1 - l)
+            const f = (n: number) => {
+              const k = (n + h / 30) % 12
+              const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)
+              return Math.round(255 * color).toString(16).padStart(2, '0')
+            }
+            return `#${f(0)}${f(8)}${f(4)}`
           }
-        }
-      })
 
-      m.on('mouseleave', 'xwar-country-fill', () => {
-        hoveredISO = null
-        m.setFilter('xwar-country-hover', ['==', ['get', 'ISO_A3'], ''])
-        m.setPaintProperty('xwar-country-hover', 'fill-opacity', 0)
-        m.getCanvas().style.cursor = 'crosshair'
-      })
+          // Generate unique hex color for every country
+          const colorExpr: any[] = ['match', ['get', 'ISO3166-1-Alpha-3']]
+          const seenISOs = new Set<string>()
+          let hueIndex = 0
+          const goldenAngle = 137.508
 
-      // Click on country polygon
-      m.on('click', 'xwar-country-fill', (e) => {
-        if (e.features && e.features.length > 0) {
-          const props = e.features[0].properties
-          const name = props?.ADMIN
-          if (name) {
-            handleRegionClick(name, [e.lngLat.lng, e.lngLat.lat])
+          ;(geojson.features || []).forEach((feat: any) => {
+            const iso3 = feat.properties?.['ISO3166-1-Alpha-3']
+            if (!iso3 || iso3 === '-99' || seenISOs.has(iso3)) return
+            seenISOs.add(iso3)
+
+            if (gameColors[iso3]) {
+              colorExpr.push(iso3, gameColors[iso3])
+            } else {
+              const hue = (hueIndex * goldenAngle) % 360
+              const sat = 45 + (hueIndex % 4) * 10  // 45-75%
+              const lit = 40 + (hueIndex % 5) * 5   // 40-60%
+              colorExpr.push(iso3, hslToHex(hue, sat, lit))
+              hueIndex++
+            }
+          })
+          colorExpr.push('#384860') // fallback
+
+          // ── 4. TERRITORY FILL — ALL COUNTRIES COLORED ──
+          m.addLayer({
+            id: 'xwar-country-fill',
+            type: 'fill',
+            source: 'xwar-countries',
+            paint: {
+              'fill-color': seenISOs.size > 0 ? (colorExpr as any) : '#384860',
+              'fill-opacity': [
+                'case',
+                ['in', ['get', 'ISO3166-1-Alpha-3'], ['literal', controlledISOs]],
+                0.9,
+                0.7
+              ],
+            },
+          })
+
+          // ── 5. COUNTRY BORDERS — ALL countries get black borders ──
+          m.addLayer({
+            id: 'xwar-country-border',
+            type: 'line',
+            source: 'xwar-countries',
+            paint: {
+              'line-color': '#000000',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 1, 1, 3, 2.5, 6, 3.5],
+            },
+          })
+
+          // ── 6. STATE/PROVINCE BORDERS & LABELS ──
+          try {
+            const vtSource = Object.keys(style?.sources || {}).find(s => {
+              const src = style?.sources?.[s] as any
+              return src?.type === 'vector'
+            })
+            if (vtSource) {
+              // State/province border lines (admin_level 3-4)
+              m.addLayer({
+                id: 'xwar-admin1-borders',
+                type: 'line',
+                source: vtSource,
+                'source-layer': 'boundary',
+                filter: ['all', ['>=', 'admin_level', 3], ['<=', 'admin_level', 4]],
+                paint: {
+                  'line-color': 'rgba(0, 0, 0, 0.55)',
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.3, 4, 0.8, 6, 1.2, 8, 1.8],
+                },
+              })
+
+              // County/district borders (admin_level 5-6) — visible at higher zoom
+              m.addLayer({
+                id: 'xwar-admin2-borders',
+                type: 'line',
+                source: vtSource,
+                'source-layer': 'boundary',
+                filter: ['all', ['>=', 'admin_level', 5], ['<=', 'admin_level', 6]],
+                paint: {
+                  'line-color': 'rgba(0, 0, 0, 0.3)',
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.1, 6, 0.3, 8, 0.6],
+                },
+                minzoom: 5,
+              })
+
+              // State/province name labels (English)
+              m.addLayer({
+                id: 'xwar-state-labels',
+                type: 'symbol',
+                source: vtSource,
+                'source-layer': 'place',
+                filter: ['in', 'class', 'state', 'province'],
+                layout: {
+                  'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']],
+                  'text-size': ['interpolate', ['linear'], ['zoom'], 4, 9, 6, 12, 8, 15],
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-transform': 'uppercase',
+                  'text-letter-spacing': 0.08,
+                  'text-max-width': 8,
+                  'text-allow-overlap': false,
+                  'text-padding': 6,
+                },
+                paint: {
+                  'text-color': 'rgba(230, 240, 250, 0.7)',
+                  'text-halo-color': 'rgba(0, 0, 0, 0.9)',
+                  'text-halo-width': 1.5,
+                },
+                minzoom: 7,
+              })
+
+              // City labels at higher zoom (English)
+              m.addLayer({
+                id: 'xwar-city-labels',
+                type: 'symbol',
+                source: vtSource,
+                'source-layer': 'place',
+                filter: ['in', 'class', 'city', 'town'],
+                layout: {
+                  'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']],
+                  'text-size': ['interpolate', ['linear'], ['zoom'], 6, 8, 8, 11, 10, 14],
+                  'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                  'text-max-width': 8,
+                  'text-allow-overlap': false,
+                  'text-padding': 3,
+                },
+                paint: {
+                  'text-color': 'rgba(200, 210, 225, 0.55)',
+                  'text-halo-color': 'rgba(0, 0, 0, 0.8)',
+                  'text-halo-width': 1,
+                },
+                minzoom: 6,
+              })
+
+              // Country name labels (English, large)
+              m.addLayer({
+                id: 'xwar-country-labels',
+                type: 'symbol',
+                source: vtSource,
+                'source-layer': 'place',
+                filter: ['==', 'class', 'country'],
+                layout: {
+                  'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']],
+                  'text-size': ['interpolate', ['linear'], ['zoom'], 1, 10, 3, 14, 5, 18],
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-transform': 'uppercase',
+                  'text-letter-spacing': 0.2,
+                  'text-max-width': 10,
+                  'text-allow-overlap': false,
+                  'text-padding': 10,
+                },
+                paint: {
+                  'text-color': 'rgba(255, 255, 255, 0.7)',
+                  'text-halo-color': 'rgba(0, 0, 0, 0.9)',
+                  'text-halo-width': 2.5,
+                },
+              })
+            }
+          } catch {}
+
+          // ── 7. HOVER HIGHLIGHT ──
+          m.addLayer({
+            id: 'xwar-country-hover',
+            type: 'fill',
+            source: 'xwar-countries',
+            paint: { 'fill-color': '#ffffff', 'fill-opacity': 0 },
+            filter: ['==', ['get', 'ISO3166-1-Alpha-3'], ''],
+          })
+
+          // ── 8. PLAYER & ALLY TERRITORY GLOW ──
+          // Find player country ISO
+          const playerCountry = countries.find(c => c.controller === 'Player Alliance')
+          const playerISO = playerCountry ? COUNTRY_ISO[playerCountry.name] : null
+
+          // Find ally ISOs (same empire as player)
+          const playerEmpire = playerCountry?.empire
+          const allyISOs = countries
+            .filter(c => c.empire === playerEmpire && c.controller !== 'Player Alliance')
+            .map(c => COUNTRY_ISO[c.name])
+            .filter(Boolean) as string[]
+
+          // Player territory — bright green glow
+          if (playerISO) {
+            m.addLayer({
+              id: 'xwar-player-glow',
+              type: 'line',
+              source: 'xwar-countries',
+              filter: ['==', ['get', 'ISO3166-1-Alpha-3'], playerISO],
+              paint: {
+                'line-color': '#22d38a',
+                'line-width': 4,
+                'line-opacity': 0.6,
+                'line-blur': 6,
+              },
+            })
+            // Player territory bright tint overlay
+            m.addLayer({
+              id: 'xwar-player-tint',
+              type: 'fill',
+              source: 'xwar-countries',
+              filter: ['==', ['get', 'ISO3166-1-Alpha-3'], playerISO],
+              paint: {
+                'fill-color': '#22d38a',
+                'fill-opacity': 0.08,
+              },
+            })
           }
-        }
-      })
 
-      setMapLoaded(true)
+          // Ally territories — subtle blue glow
+          if (allyISOs.length > 0) {
+            m.addLayer({
+              id: 'xwar-ally-glow',
+              type: 'line',
+              source: 'xwar-countries',
+              filter: ['in', ['get', 'ISO3166-1-Alpha-3'], ['literal', allyISOs]],
+              paint: {
+                'line-color': '#60a5fa',
+                'line-width': 2.5,
+                'line-opacity': 0.35,
+                'line-blur': 4,
+              },
+            })
+          }
+
+          // ── 9. ACTIVE WAR — ENEMY TERRITORY INDICATORS ──
+          const wars = useWorldStore.getState().wars
+          const enemyISOs = new Set<string>()
+          wars.forEach(w => {
+            if (w.status !== 'active') return
+            if (w.attacker === (playerCountry?.code || 'US')) enemyISOs.add(w.defender)
+            if (w.defender === (playerCountry?.code || 'US')) enemyISOs.add(w.attacker)
+          })
+
+          // Convert 2-letter codes to 3-letter ISOs for GeoJSON matching
+          const ISO2_TO_ISO3: Record<string, string> = {
+            'US': 'USA', 'RU': 'RUS', 'CN': 'CHN', 'DE': 'DEU', 'BR': 'BRA',
+            'IN': 'IND', 'NG': 'NGA', 'JP': 'JPN', 'GB': 'GBR', 'TR': 'TUR',
+            'CA': 'CAN', 'MX': 'MEX', 'CU': 'CUB', 'BS': 'BHS',
+          }
+          const enemyISO3s = [...enemyISOs].map(iso2 => ISO2_TO_ISO3[iso2]).filter(Boolean)
+
+          if (enemyISO3s.length > 0) {
+            // Red danger tint on enemy territory
+            m.addLayer({
+              id: 'xwar-enemy-tint',
+              type: 'fill',
+              source: 'xwar-countries',
+              filter: ['in', ['get', 'ISO3166-1-Alpha-3'], ['literal', enemyISO3s]],
+              paint: {
+                'fill-color': '#ef4444',
+                'fill-opacity': 0.12,
+              },
+            })
+            // Pulsing red war border on enemy countries
+            m.addLayer({
+              id: 'xwar-enemy-border',
+              type: 'line',
+              source: 'xwar-countries',
+              filter: ['in', ['get', 'ISO3166-1-Alpha-3'], ['literal', enemyISO3s]],
+              paint: {
+                'line-color': '#ef4444',
+                'line-width': 3,
+                'line-opacity': 0.7,
+                'line-dasharray': [3, 2],
+              },
+            })
+          }
+
+          // ── Hover interactions ──
+          let hoveredISO: string | null = null
+          m.on('mousemove', 'xwar-country-fill', (e) => {
+            if (e.features && e.features.length > 0) {
+              const iso = e.features[0].properties?.['ISO3166-1-Alpha-3']
+              if (iso && iso !== hoveredISO) {
+                hoveredISO = iso
+                m.setFilter('xwar-country-hover', ['==', ['get', 'ISO3166-1-Alpha-3'], iso])
+                m.setPaintProperty('xwar-country-hover', 'fill-opacity', 0.08)
+                m.getCanvas().style.cursor = 'pointer'
+              }
+            }
+          })
+          m.on('mouseleave', 'xwar-country-fill', () => {
+            hoveredISO = null
+            m.setFilter('xwar-country-hover', ['==', ['get', 'ISO3166-1-Alpha-3'], ''])
+            m.setPaintProperty('xwar-country-hover', 'fill-opacity', 0)
+            m.getCanvas().style.cursor = 'crosshair'
+          })
+
+
+          // Refine region positions
+          useRegionStore.getState().updateBoundsFromGeoJSON(geojson)
+
+          setMapLoaded(true)
+        })
+        .catch(() => { setMapLoaded(true) })
+
+
       m.getCanvas().style.cursor = 'crosshair'
     })
 

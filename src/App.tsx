@@ -7,15 +7,21 @@ import { useBattleStore, getCountryFlag, getCountryName } from './stores/battleS
 import { useInventoryStore } from './stores/inventoryStore'
 import { useSkillsStore } from './stores/skillsStore'
 import { useCyberStore } from './stores/cyberStore'
+import { useArmyStore } from './stores/armyStore'
+import { useRegionStore } from './stores/regionStore'
+import type { Region } from './stores/regionStore'
 import GameMap from './components/map/GameMap'
+import { COUNTRY_CENTROIDS } from './components/map/GameMap'
 import type { GameMapHandle } from './components/map/GameMap'
 import RegionPopup from './components/map/RegionPopup'
+import BattleMapOverlay from './components/map/BattleMapOverlay'
 import ProfilePanel from './components/panels/ProfilePanel'
 import GovernmentPanel from './components/panels/GovernmentPanel'
 import MilitaryPanel from './components/panels/MilitaryPanel'
 import CyberwarfarePanel from './components/panels/CyberwarfarePanel'
 import MissionsPanel from './components/panels/MissionsPanel'
 import PrestigePanel from './components/panels/PrestigePanel'
+import WarPanel from './components/panels/WarPanel'
 
 const SIDEBAR_CIVILIAN = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
@@ -97,6 +103,7 @@ function App() {
   const mapRef = useRef<GameMapHandle>(null)
   const [expandedBattle, setExpandedBattle] = useState<string | null>(null)
   const [swapSlot, setSwapSlot] = useState<string | null>(null)
+  const [selectedWarRegion, setSelectedWarRegion] = useState<Region | null>(null)
 
   // 30 min (1800s) Game Tick Timer
   const [timeLeft, setTimeLeft] = useState(1800)
@@ -115,6 +122,14 @@ function App() {
       })
     }, 1000)
     return () => clearInterval(interval)
+  }, [])
+
+  // Region capture tick — every 10 seconds, advance captures
+  useEffect(() => {
+    const ticker = setInterval(() => {
+      useRegionStore.getState().tickCapture()
+    }, 10000)
+    return () => clearInterval(ticker)
   }, [])
 
   // ====== MOCK ACTIVE CAMPAIGNS FOR TESTING ======
@@ -224,12 +239,28 @@ function App() {
 
       {/* ====== MAP AREA ====== */}
       <div className="hud-map">
-        {/* Real map (Mapbox or fallback) */}
+        {/* Always show the map */}
         <GameMap
           ref={mapRef}
           countries={world.countries}
           onRegionClick={handleRegionClick}
           onMouseMove={handleMouseMove}
+        />
+        {/* Battle overlay — shows region markers, troops, capture progress */}
+        <BattleMapOverlay
+          mapRef={mapRef}
+          onRegionClick={(region) => {
+            const playerIso = player.countryCode || 'US'
+            if (useRegionStore.getState().canAttackRegion(region.id, playerIso)) {
+              setSelectedWarRegion(region)
+              // Fly camera to region
+              mapRef.current?.flyTo(region.position[0], region.position[1], 5)
+            } else if (region.controlledBy === playerIso) {
+              useUIStore.getState().addFloatingText('Your territory', 400, 300, '#22d38a')
+            } else {
+              useUIStore.getState().addFloatingText('Cannot reach — no adjacent territory', 400, 300, '#ef4444')
+            }
+          }}
         />
 
         {/* ====== SEARCH BAR ====== */}
@@ -335,217 +366,7 @@ function App() {
             <div className="hud-panel__body">
               {activePanel === 'profile' && <ProfilePanel />}
               {activePanel === 'military' && <MilitaryPanel />}
-              {activePanel === 'combat' && (
-                <>
-                  {Object.values(battleStore.battles).filter(b => b.status === 'active').map(battle => {
-                    const activeRound = battle.rounds[battle.rounds.length - 1]
-                    const topAttackerArr = Object.entries(battle.attackerDamageDealers || {}).sort((a, b) => b[1] - a[1])[0]
-                    const topDefenderArr = Object.entries(battle.defenderDamageDealers || {}).sort((a, b) => b[1] - a[1])[0]
-                    const feed = battle.damageFeed || []
-                    const timeRemaining = Math.max(0, Math.floor((battle.currentTick.endTime - Date.now()) / 1000))
-                    const atkFlag = getCountryFlag(battle.attackerId)
-                    const defFlag = getCountryFlag(battle.defenderId)
-                    const atkName = getCountryName(battle.attackerId)
-                    const defName = getCountryName(battle.defenderId)
-                    const atkPts = activeRound?.attackerPoints || 0
-                    const defPts = activeRound?.defenderPoints || 0
-                    const totalPts = Math.max(1, atkPts + defPts)
-                    const isExpanded = expandedBattle === battle.id
-                    
-                    return (
-                      <div key={battle.id} className="hud-card" style={{ borderColor: isExpanded ? '#f59e0b' : '#ef4444', padding: 0, overflow: 'hidden', transition: 'border-color 0.2s' }}>
-                        {/* Clickable Header */}
-                        <div
-                          onClick={() => setExpandedBattle(isExpanded ? null : battle.id)}
-                          style={{ background: 'linear-gradient(135deg, rgba(34,211,138,0.08), rgba(239,68,68,0.08))', padding: '8px 12px', borderBottom: isExpanded ? '1px solid rgba(255,255,255,0.06)' : 'none', cursor: 'pointer', userSelect: 'none' }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <span style={{ fontSize: '20px' }}>{atkFlag}</span>
-                              <div>
-                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#22d38a' }}>{battle.attackerId}</div>
-                                <div style={{ fontSize: '7px', color: '#64748b' }}>{atkName}</div>
-                              </div>
-                              <span style={{ fontSize: '14px', fontWeight: 900, color: '#22d38a', margin: '0 2px' }}>{battle.attackerRoundsWon}</span>
-                            </div>
-                            <div style={{ textAlign: 'center' }}>
-                              <div style={{ fontSize: '9px', fontWeight: 900, color: '#f59e0b', letterSpacing: '2px' }}>VS</div>
-                              <div style={{ fontSize: '7px', color: '#fca5a5' }}>
-                                {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', textAlign: 'right' }}>
-                              <span style={{ fontSize: '14px', fontWeight: 900, color: '#ef4444', margin: '0 2px' }}>{battle.defenderRoundsWon}</span>
-                              <div>
-                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#ef4444' }}>{battle.defenderId}</div>
-                                <div style={{ fontSize: '7px', color: '#64748b' }}>{defName}</div>
-                              </div>
-                              <span style={{ fontSize: '20px' }}>{defFlag}</span>
-                            </div>
-                          </div>
-                          {/* Points bar */}
-                          <div style={{ display: 'flex', height: '4px', borderRadius: '2px', overflow: 'hidden', marginTop: '6px', background: 'rgba(255,255,255,0.06)' }}>
-                            <div style={{ width: `${(atkPts / totalPts) * 100}%`, background: 'linear-gradient(90deg, #22d38a, #10b981)', transition: 'width 0.5s ease' }} />
-                            <div style={{ width: `${(defPts / totalPts) * 100}%`, background: 'linear-gradient(90deg, #dc2626, #ef4444)', transition: 'width 0.5s ease' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
-                            <span style={{ fontSize: '7px', color: '#64748b' }}>{isExpanded ? '▲ COLLAPSE' : '▼ EXPAND'}</span>
-                          </div>
-                        </div>
-
-                        {/* Expanded Content */}
-                        {isExpanded && (
-                          <div style={{ padding: '10px 12px' }}>
-                            {/* Score cards */}
-                            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                              <div style={{ flex: 1, background: 'rgba(34,211,138,0.06)', border: '1px solid rgba(34,211,138,0.15)', borderRadius: '4px', padding: '5px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '8px', color: '#22d38a', fontWeight: 700 }}>ATTACKER</div>
-                                <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>DMG: {battle.currentTick.attackerDamage} • PTS: {atkPts}/300</div>
-                                {topAttackerArr && <div style={{ fontSize: '8px', color: '#22d38a', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👑 {topAttackerArr[0]} ({topAttackerArr[1]})</div>}
-                              </div>
-                              <div style={{ flex: 1, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '4px', padding: '5px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700 }}>DEFENDER</div>
-                                <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>DMG: {battle.currentTick.defenderDamage} • PTS: {defPts}/300</div>
-                                {topDefenderArr && <div style={{ fontSize: '8px', color: '#ef4444', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👑 {topDefenderArr[0]} ({topDefenderArr[1]})</div>}
-                              </div>
-                            </div>
-
-                            {/* Fight Buttons */}
-                            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                              <button className="hud-btn-primary" style={{ flex: 1, padding: '8px', fontSize: '10px', fontWeight: 700 }} onClick={() => { const { damage, isCrit, isDodged } = player.attack(); if (damage > 0 || isDodged) battleStore.addDamage(battle.id, 'attacker', damage, isCrit, isDodged, player.name) }}>
-                                {atkFlag} ⚔️ ATTACK
-                              </button>
-                              <button className="hud-btn-primary" style={{ flex: 1, padding: '8px', fontSize: '10px', fontWeight: 700, background: 'linear-gradient(135deg, #ef4444, #dc2626)', boxShadow: '0 0 12px rgba(239, 68, 68, 0.3)' }} onClick={() => { const { damage, isCrit, isDodged } = player.attack(); if (damage > 0 || isDodged) battleStore.addDamage(battle.id, 'defender', damage, isCrit, isDodged, player.name) }}>
-                                {defFlag} 🛡️ DEFEND
-                              </button>
-                            </div>
-
-                            {/* Recover Stamina */}
-                            <div style={{ padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                              <div style={{ fontSize: '8px', color: '#94a3b8', marginBottom: '3px', fontWeight: 700 }}>RECOVER STAMINA</div>
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <button onClick={() => player.consumeFood('bread')} disabled={player.bread <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '3px', fontSize: '8px' }}>🍞 ({player.bread}) <span style={{color: '#22c55e'}}>+10</span></button>
-                                <button onClick={() => player.consumeFood('sushi')} disabled={player.sushi <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '3px', fontSize: '8px' }}>🍣 ({player.sushi}) <span style={{color: '#22c55e'}}>+20</span></button>
-                                <button onClick={() => player.consumeFood('wagyu')} disabled={player.wagyu <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '3px', fontSize: '8px' }}>🥩 ({player.wagyu}) <span style={{color: '#22c55e'}}>+30</span></button>
-                              </div>
-                            </div>
-
-                            {/* Live Combat Feed */}
-                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '5px' }}>
-                              <div style={{ fontSize: '8px', color: '#94a3b8', marginBottom: '3px', fontWeight: 700 }}>LIVE FEED</div>
-                              <div style={{ maxHeight: '60px', overflowY: 'hidden', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                {feed.length === 0 ? (
-                                  <div style={{ fontSize: '9px', color: '#475569' }}>No hits recorded yet...</div>
-                                ) : feed.slice(0, 4).map((event, i) => (
-                                  <div key={`${event.time}-${i}`} style={{ fontSize: '9px', color: event.side === 'attacker' ? '#22d38a' : '#ef4444', background: 'rgba(0,0,0,0.2)', padding: '2px 6px', borderRadius: '2px', display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>{event.side === 'attacker' ? atkFlag : defFlag} {event.playerName}</span>
-                                    <span style={{ fontWeight: 'bold' }}>
-                                      {event.amount} DMG
-                                      {event.isCrit && !event.isDodged && <span style={{ color: '#f59e0b', marginLeft: '3px' }}>💥</span>}
-                                      {event.isDodged && <span style={{ color: '#94a3b8', marginLeft: '3px' }}>💨</span>}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-
-                  {/* Combat Stats */}
-                  <div className="hud-card">
-                    <div className="hud-card__title">📊 YOUR COMBAT STATS</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', fontSize: '9px', color: '#cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>⚔️ ATK</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalDmg}</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>🎯 CR</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalCritRate}%</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💥 CD</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalCritDmg}%</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>🛡️ ARM</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalArmor}%</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💨 DOD</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalDodge}%</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '2px' }}><span>💢 HIT</span><span style={{ color: '#f59e0b', fontWeight: 'bold' }}>{finalHitRate}%</span></div>
-                    </div>
-                  </div>
-
-                  {/* Food Quick Use */}
-                  <div className="hud-card">
-                    <div className="hud-card__title">🍽️ FOOD</div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button onClick={() => player.consumeFood('bread')} disabled={player.bread <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '6px 4px', fontSize: '9px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                        <span style={{ fontSize: '16px' }}>🍞</span>
-                        <span>{player.bread}</span>
-                        <span style={{ color: '#22c55e', fontSize: '8px' }}>+10 HP</span>
-                      </button>
-                      <button onClick={() => player.consumeFood('sushi')} disabled={player.sushi <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '6px 4px', fontSize: '9px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                        <span style={{ fontSize: '16px' }}>🍣</span>
-                        <span>{player.sushi}</span>
-                        <span style={{ color: '#22c55e', fontSize: '8px' }}>+20 HP</span>
-                      </button>
-                      <button onClick={() => player.consumeFood('wagyu')} disabled={player.wagyu <= 0} className="hud-btn-secondary" style={{ flex: 1, padding: '6px 4px', fontSize: '9px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                        <span style={{ fontSize: '16px' }}>🥩</span>
-                        <span>{player.wagyu}</span>
-                        <span style={{ color: '#22c55e', fontSize: '8px' }}>+30 HP</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Loadout with fast-swap */}
-                  <div className="hud-card">
-                    <div className="hud-card__title">🎒 LOADOUT <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 400 }}>click to swap</span></div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
-                       {equipped.map((item: any) => {
-                         const isSwapping = swapSlot === item.slot
-                         const sameSlotItems = inventory.items.filter((i: any) => i.slot === item.slot && !i.equipped)
-                         const tierColor = item.tier === 't6' ? '#ef4444' : item.tier === 't5' ? '#f59e0b' : item.tier === 't4' ? '#a855f7' : item.tier === 't3' ? '#3b82f6' : item.tier === 't2' ? '#22c55e' : '#cbd5e1'
-                         const s = item.stats || {}
-                         const statLine = s.damage ? `⚔${s.damage}` : s.critDamage ? `💥${s.critDamage}%` : s.armor ? `🛡${s.armor}%` : s.dodge ? `💨${s.dodge}%` : s.precision ? `🎯${s.precision}%` : ''
-                         return (
-                           <div key={item.id} style={{ position: 'relative' }}>
-                             <button
-                               onClick={() => setSwapSlot(isSwapping ? null : item.slot)}
-                               style={{ width: '100%', background: isSwapping ? 'rgba(245,158,11,0.1)' : 'rgba(0,0,0,0.3)', padding: '5px', borderRadius: '2px', border: `1px solid ${isSwapping ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.05)'}`, cursor: 'pointer', textAlign: 'left' }}
-                             >
-                               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1px' }}>
-                                 <span style={{ fontSize: '7px', color: '#94a3b8', letterSpacing: '1px' }}>{item.slot.toUpperCase()}</span>
-                                 <span style={{ fontSize: '7px', color: (item.durability || 100) < 50 ? '#ef4444' : '#22d38a' }}>{(item.durability || 100).toFixed(0)}%</span>
-                               </div>
-                               <div style={{ fontSize: '8px', fontWeight: 'bold', color: tierColor }}>{item.name}</div>
-                               {statLine && <div style={{ fontSize: '7px', color: '#94a3b8', marginTop: '1px' }}>{statLine}{s.critRate ? ` 🎯${s.critRate}%` : ''}</div>}
-                             </button>
-                             {/* Swap dropdown */}
-                             {isSwapping && (
-                               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'rgba(15,23,42,0.98)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '3px', maxHeight: '120px', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
-                                 {sameSlotItems.length === 0 ? (
-                                   <div style={{ padding: '6px', fontSize: '8px', color: '#64748b', textAlign: 'center' }}>No alternatives</div>
-                                 ) : sameSlotItems.map((alt: any) => {
-                                   const ac = alt.tier === 't6' ? '#ef4444' : alt.tier === 't5' ? '#f59e0b' : alt.tier === 't4' ? '#a855f7' : alt.tier === 't3' ? '#3b82f6' : alt.tier === 't2' ? '#22c55e' : '#cbd5e1'
-                                   const as2 = alt.stats || {}
-                                   const altStat = as2.damage ? `⚔${as2.damage}` : as2.critDamage ? `💥${as2.critDamage}%` : as2.armor ? `🛡${as2.armor}%` : as2.dodge ? `💨${as2.dodge}%` : as2.precision ? `🎯${as2.precision}%` : ''
-                                   return (
-                                   <button
-                                     key={alt.id}
-                                     onClick={(e) => { e.stopPropagation(); inventory.equipItem(alt.id); setSwapSlot(null) }}
-                                     style={{ display: 'block', width: '100%', padding: '4px 6px', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
-                                     onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(245,158,11,0.1)')}
-                                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                                   >
-                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                       <span style={{ fontSize: '8px', fontWeight: 700, color: ac }}>{alt.name}</span>
-                                       <span style={{ fontSize: '7px', color: '#94a3b8' }}>{(alt.durability || 100).toFixed(0)}%</span>
-                                     </div>
-                                     {altStat && <div style={{ fontSize: '7px', color: '#64748b' }}>{altStat}{as2.critRate ? ` 🎯${as2.critRate}%` : ''}</div>}
-                                   </button>
-                                   )
-                                 })}
-                               </div>
-                             )}
-                           </div>
-                         )
-                       })}
-                    </div>
-                  </div>
-                </>
-              )}
+              {activePanel === 'combat' && <WarPanel />}
               {activePanel === 'market' && (
                 <div className="hud-card">
                   <div className="hud-card__title">📊 MARKET PRICES</div>
@@ -682,35 +503,153 @@ function App() {
             const defenderIso = COUNTRY_ISO[selectedRegion.name]
             if (defenderIso) {
               const attackerIso = player.countryCode || 'US'
-              const battleStore = useBattleStore.getState()
+              const bs = useBattleStore.getState()
+              const as2 = useArmyStore.getState()
               
               if (world.canAttack(attackerIso, defenderIso)) {
-                battleStore.launchAttack(attackerIso, defenderIso, selectedRegion.name)
-                
-                const activeBattle = Object.values(battleStore.battles).find(
-                  b => b.regionName === selectedRegion.name && b.status === 'active'
+                // Find player's first army with ready divisions
+                const myArmies = Object.values(as2.armies).filter(a => a.countryCode === attackerIso)
+                const armyWithDivs = myArmies.find(a => 
+                  a.divisionIds.some(id => as2.divisions[id]?.status === 'ready')
                 )
                 
-                if (activeBattle) {
+                if (armyWithDivs) {
+                  // Launch HOI4-style battle with divisions
+                  const result = bs.launchHOIBattle(armyWithDivs.id, defenderIso, 'invasion')
+                  
+                  if (result.success) {
+                    // Fly camera to the battle zone (halfway between attacker and defender)
+                    const atkCoord = COUNTRY_CENTROIDS[selectedRegion.name] || COUNTRY_CENTROIDS['United States']
+                    if (atkCoord && mapRef.current) {
+                      mapRef.current.flyTo(atkCoord[0], atkCoord[1], 4)
+                    }
+                  }
+                  
+                  if (e) {
+                    useUIStore.getState().addFloatingText('⚔️ BATTLE LAUNCHED!', e.clientX, e.clientY, '#ef4444')
+                  }
+                } else {
+                  // Fallback to legacy attack if no army
+                  bs.launchAttack(attackerIso, defenderIso, selectedRegion.name)
                   const { damage, isCrit, isDodged } = player.attack()
-                  if (damage > 0 || isDodged) battleStore.addDamage(activeBattle.id, 'attacker', damage, isCrit, isDodged, player.name)
-                } else {
-                  player.attack()
-                }
-                
-                // Add floating text at mouse location if event provided
-                if (e) {
-                  useUIStore.getState().addFloatingText('ATTACK LAUNCHED', e.clientX, e.clientY, '#ef4444')
-                } else {
-                   useUIStore.getState().addFloatingText('ATTACK LAUNCHED', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+                  const activeBattle = Object.values(bs.battles).find(
+                    b => b.regionName === selectedRegion.name && b.status === 'active'
+                  )
+                  if (activeBattle && (damage > 0 || isDodged)) {
+                    bs.addDamage(activeBattle.id, 'attacker', damage, isCrit, isDodged, player.name)
+                  }
+                  if (e) {
+                    useUIStore.getState().addFloatingText('ATTACK LAUNCHED', e.clientX, e.clientY, '#ef4444')
+                  }
                 }
               } else {
-                useUIStore.getState().addFloatingText('CANNOT ATTACK: NO ADJACENCY OR NOT AT WAR', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+                // Declare war first if not at war, then allow attack
+                world.declareWar(attackerIso, defenderIso)
+                useUIStore.getState().addFloatingText('⚠️ WAR DECLARED! Click again to attack.', window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
               }
             }
             setSelectedRegion(null)
           }}
         />
+      )}
+
+      {/* ====== REGION ATTACK POPUP ====== */}
+      {selectedWarRegion && (
+        <div className="region-attack-popup" style={{ zIndex: 9999 }}>
+          <div className="region-attack-popup__card">
+            <button className="region-attack-popup__close" onClick={() => setSelectedWarRegion(null)}>✕</button>
+            <div className="region-attack-popup__header">
+              <span className="region-attack-popup__flag">{getCountryFlag(selectedWarRegion.countryCode)}</span>
+              <div>
+                <div className="region-attack-popup__name">{selectedWarRegion.name}</div>
+                <div className="region-attack-popup__country">
+                  {getCountryName(selectedWarRegion.countryCode)} — Defense: {selectedWarRegion.defense}
+                </div>
+              </div>
+            </div>
+            {selectedWarRegion.attackedBy ? (() => {
+              // Show assigned divisions with health
+              const as2 = useArmyStore.getState()
+              const army = selectedWarRegion.assignedArmyId ? as2.armies[selectedWarRegion.assignedArmyId] : null
+              const divs = army ? army.divisionIds.map(id => as2.divisions[id]).filter(Boolean) : []
+
+              return (
+                <div className="region-attack-popup__status">
+                  <div className="region-attack-popup__progress-label">
+                    CAPTURING: {Math.round(selectedWarRegion.captureProgress)}%
+                  </div>
+                  <div className="region-attack-popup__bar">
+                    <div className="region-attack-popup__fill" style={{ width: `${selectedWarRegion.captureProgress}%` }} />
+                  </div>
+
+                  {/* Show divisions fighting */}
+                  {divs.length > 0 && (
+                    <div className="region-attack-popup__divs">
+                      <div className="region-attack-popup__divs-title">🪖 ENGAGED DIVISIONS</div>
+                      {divs.map(d => {
+                        const hpPct = Math.round((d.manpower / d.maxManpower) * 100)
+                        const isLow = hpPct < 30
+                        return (
+                          <div key={d.id} className="region-attack-popup__div-row">
+                            <span className="region-attack-popup__div-name">{d.name}</span>
+                            <div className="region-attack-popup__div-hp-bar">
+                              <div className={`region-attack-popup__div-hp-fill ${isLow ? 'region-attack-popup__div-hp-fill--low' : ''}`}
+                                style={{ width: `${hpPct}%` }} />
+                            </div>
+                            <span className="region-attack-popup__div-hp-text">
+                              {Math.round(d.manpower)}/{d.maxManpower}
+                            </span>
+                            <span className="region-attack-popup__div-morale" title="Morale">
+                              💪{Math.round(d.morale)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <button
+                    className="region-attack-popup__btn region-attack-popup__btn--cancel"
+                    onClick={() => {
+                      useRegionStore.getState().stopAttack(selectedWarRegion.id)
+                      setSelectedWarRegion(null)
+                    }}
+                  >🛑 WITHDRAW</button>
+                </div>
+              )
+            })() : (
+              <button
+                className="region-attack-popup__btn"
+                onClick={() => {
+                  const playerIso = player.countryCode || 'US'
+                  // Find player's best army with ready divisions
+                  const as2 = useArmyStore.getState()
+                  const bs = useBattleStore.getState()
+                  const myArmies = Object.values(as2.armies).filter(a => a.countryCode === playerIso)
+                  const armyWithDivs = myArmies.find(a =>
+                    a.divisionIds.some(id => as2.divisions[id]?.status === 'ready' || as2.divisions[id]?.status === 'in_combat')
+                  )
+
+                  if (armyWithDivs) {
+                    // Start region capture with linked army
+                    useRegionStore.getState().attackRegion(selectedWarRegion.id, playerIso, armyWithDivs.id)
+                    bs.launchHOIBattle(armyWithDivs.id, selectedWarRegion.countryCode, 'invasion')
+                    useUIStore.getState().addFloatingText(
+                      `⚔️ PUSHING INTO ${selectedWarRegion.name.toUpperCase()}!`,
+                      window.innerWidth / 2, window.innerHeight / 2, '#ef4444'
+                    )
+                  } else {
+                    useUIStore.getState().addFloatingText(
+                      '❌ No army available! Recruit divisions first.',
+                      window.innerWidth / 2, window.innerHeight / 2, '#ef4444'
+                    )
+                  }
+                  setSelectedWarRegion(null)
+                }}
+              >⚔️ PUSH INTO {selectedWarRegion.name.toUpperCase()}</button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ====== SCANLINE OVERLAY ====== */}
