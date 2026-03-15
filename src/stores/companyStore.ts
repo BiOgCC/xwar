@@ -284,8 +284,8 @@ let companyCounter = 2
 
 export const useCompanyStore = create<CompanyState>((set, get) => ({
   companies: [
-    { id: 'comp-1', type: 'bitcoin_miner', level: 1, autoProduction: false, productionProgress: 0, productionMax: 100, location: 'US' },
-    { id: 'comp-2', type: 'wheat_farm', level: 1, autoProduction: false, productionProgress: 0, productionMax: 80, location: 'US' },
+    { id: 'comp-1', type: 'bitcoin_miner', level: 1, autoProduction: true, productionProgress: 0, productionMax: 100, location: 'US' },
+    { id: 'comp-2', type: 'wheat_farm', level: 1, autoProduction: true, productionProgress: 0, productionMax: 80, location: 'US' },
   ],
 
   deposits: [],
@@ -311,7 +311,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       id: `comp-${++companyCounter}-${Date.now()}`,
       type,
       level: 1,
-      autoProduction: false,
+      autoProduction: true,
       productionProgress: 0,
       productionMax: template.baseProductionMax,
       location: player.country, // Defaults to player's country
@@ -342,7 +342,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     set((s) => ({
       companies: s.companies.map((c) =>
         c.id === companyId
-          ? { ...c, level: c.level + 1, autoProduction: c.level + 1 >= 3 }
+          ? { ...c, level: c.level + 1, autoProduction: true }
           : c
       ),
     }))
