@@ -3,15 +3,30 @@ import { create } from 'zustand'
 export type LawType = 'declare_war' | 'propose_peace' | 'impeach_president' | 'tax_change' | 'declare_sworn_enemy' | 'authorize_nuclear_action'
 export type LawStatus = 'active' | 'passed' | 'failed'
 
-export interface NuclearFund {
+// ── National Fund ──
+export interface NationalFund {
+  money: number
   oil: number
   scraps: number
   materialX: number
   bitcoin: number
-  jets: number
+  jets: number // T6 weapons
 }
 
-export const NUKE_COST: NuclearFund = {
+export type NationalFundKey = keyof NationalFund
+
+export const DEFAULT_NATIONAL_FUND: NationalFund = {
+  money: 5000,
+  oil: 0,
+  scraps: 0,
+  materialX: 0,
+  bitcoin: 0,
+  jets: 0,
+}
+
+// Keep NUKE_COST for backward compatibility
+export const NUKE_COST: NationalFund = {
+  money: 0,
   oil: 10000,
   scraps: 10000,
   materialX: 10000,
@@ -19,14 +34,26 @@ export const NUKE_COST: NuclearFund = {
   jets: 1,
 }
 
+// ── NuclearFund type alias for backward compat ──
+export type NuclearFund = NationalFund
+
+// ── Citizen ──
+export interface Citizen {
+  id: string
+  name: string
+  level: number
+  role: 'president' | 'congress' | 'citizen'
+  joinedAt: number
+}
+
 export interface Law {
   id: string
-  countryId: string // ISO code
+  countryId: string
   proposerId: string
   type: LawType
-  targetCountryId?: string // Used for war/peace
-  newValue?: number // Used for tax changes, etc.
-  votesFor: string[] // Array of citizen/congress IDs
+  targetCountryId?: string
+  newValue?: number
+  votesFor: string[]
   votesAgainst: string[]
   proposedAt: number
   expiresAt: number
@@ -40,83 +67,104 @@ export interface Candidate {
 }
 
 export interface Government {
-  countryId: string // ISO code
+  countryId: string
   president: string | null
-  congress: string[] // Array of citizen IDs (max 5)
+  congress: string[]
   candidates: Candidate[]
-  taxRate: number // Default 10%
+  taxRate: number
   swornEnemy: string | null
   nuclearAuthorized: boolean
-  nuclearFund: NuclearFund
+  nationalFund: NationalFund
+  citizens: Citizen[]
 }
-
-const DEFAULT_FUND: NuclearFund = { oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
 
 export interface GovernmentState {
   governments: Record<string, Government>
   laws: Record<string, Law>
   nextElectionAt: number
 
-  // Actions
   registerCandidate: (countryId: string, citizenId: string, name: string) => void
   voteForCandidate: (countryId: string, voterId: string, candidateId: string) => void
   proposeLaw: (law: Omit<Law, 'id' | 'votesFor' | 'votesAgainst' | 'status' | 'proposedAt' | 'expiresAt'>) => void
   voteOnLaw: (lawId: string, voterId: string, vote: 'for' | 'against') => void
   resolveElections: () => void
   resolveLaws: () => void
-  donateToFund: (countryId: string, resource: keyof NuclearFund, amount: number) => boolean
+  donateToFund: (countryId: string, resource: NationalFundKey, amount: number) => boolean
+  spendFromFund: (countryId: string, costs: Partial<NationalFund>) => boolean
   launchNuke: (fromCountry: string, targetCountry: string) => void
+}
+
+// Helper to create mock citizens
+function mockCitizens(code: string, president: string, congress: string[]): Citizen[] {
+  const now = Date.now()
+  const citizens: Citizen[] = [
+    { id: president, name: president, level: 50, role: 'president', joinedAt: now - 86400000 * 30 },
+  ]
+  congress.forEach((m, i) => {
+    citizens.push({ id: m, name: m, level: 30 + i * 5, role: 'congress', joinedAt: now - 86400000 * (20 - i) })
+  })
+  // Add some regular citizens
+  for (let i = 1; i <= 8; i++) {
+    citizens.push({ id: `${code}_cit_${i}`, name: `Citizen_${code}_${i}`, level: 5 + i * 3, role: 'citizen', joinedAt: now - 86400000 * i })
+  }
+  return citizens
+}
+
+function mkGov(code: string, president: string, congress: string[]): Government {
+  return {
+    countryId: code,
+    president,
+    congress: [president, ...congress.slice(0, 4)],
+    candidates: [],
+    taxRate: 10,
+    swornEnemy: null,
+    nuclearAuthorized: false,
+    nationalFund: { ...DEFAULT_NATIONAL_FUND },
+    citizens: mockCitizens(code, president, congress),
+  }
 }
 
 export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   governments: {
-    'US': { countryId: 'US', president: 'Commander_X', congress: ['Commander_X', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'RU': { countryId: 'RU', president: 'AI_Commander_Putin', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'CN': { countryId: 'CN', president: 'AI_Commander_Xi', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'DE': { countryId: 'DE', president: 'AI_Commander_Scholz', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'BR': { countryId: 'BR', president: 'AI_Commander_Lula', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'IN': { countryId: 'IN', president: 'AI_Commander_Modi', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'NG': { countryId: 'NG', president: 'AI_Commander_Tinubu', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'JP': { countryId: 'JP', president: 'AI_Commander_Kishida', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'GB': { countryId: 'GB', president: 'AI_Commander_Sunak', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'TR': { countryId: 'TR', president: 'AI_Commander_Erdogan', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'CA': { countryId: 'CA', president: 'AI_Commander_Trudeau', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'MX': { countryId: 'MX', president: 'AI_Commander_Sheinbaum', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'CU': { countryId: 'CU', president: 'AI_Commander_DiazCanel', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
-    'BS': { countryId: 'BS', president: 'AI_Commander_Davis', congress: ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5'], candidates: [], taxRate: 10, swornEnemy: null, nuclearAuthorized: false, nuclearFund: { ...DEFAULT_FUND } },
+    'US': mkGov('US', 'Commander_X', ['AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5']),
+    'RU': mkGov('RU', 'AI_Commander_Putin', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'CN': mkGov('CN', 'AI_Commander_Xi', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'DE': mkGov('DE', 'AI_Commander_Scholz', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'BR': mkGov('BR', 'AI_Commander_Lula', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'IN': mkGov('IN', 'AI_Commander_Modi', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'NG': mkGov('NG', 'AI_Commander_Tinubu', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'JP': mkGov('JP', 'AI_Commander_Kishida', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'GB': mkGov('GB', 'AI_Commander_Sunak', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'TR': mkGov('TR', 'AI_Commander_Erdogan', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'CA': mkGov('CA', 'AI_Commander_Trudeau', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'MX': mkGov('MX', 'AI_Commander_Sheinbaum', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'CU': mkGov('CU', 'AI_Commander_DiazCanel', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
+    'BS': mkGov('BS', 'AI_Commander_Davis', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
   },
   laws: {},
-  nextElectionAt: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days from now
+  nextElectionAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
 
   registerCandidate: (countryId, citizenId, name) => set((state) => {
     const gov = state.governments[countryId]
     if (!gov) return state
-    
-    // Prevent duplicate registration
     if (gov.candidates.find(c => c.id === citizenId)) return state
-
     return {
       governments: {
         ...state.governments,
-        [countryId]: {
-          ...gov,
-          candidates: [...gov.candidates, { id: citizenId, name, votes: 0 }]
-        }
+        [countryId]: { ...gov, candidates: [...gov.candidates, { id: citizenId, name, votes: 0 }] }
       }
     }
   }),
 
-  voteForCandidate: (countryId, voterId, candidateId) => set((state) => {
-    // In a real app we'd track who voters voted for to prevent double voting.
+  voteForCandidate: (countryId, _voterId, candidateId) => set((state) => {
     const gov = state.governments[countryId]
     if (!gov) return state
-
     return {
       governments: {
         ...state.governments,
         [countryId]: {
           ...gov,
-          candidates: gov.candidates.map(c => 
+          candidates: gov.candidates.map(c =>
             c.id === candidateId ? { ...c, votes: c.votes + 1 } : c
           )
         }
@@ -127,23 +175,19 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   proposeLaw: (lawData) => set((state) => {
     const gov = state.governments[lawData.countryId]
     if (!gov) return state
-
-    // Ensure proposer is either president or congress
     const isGovOfficial = gov.president === lawData.proposerId || gov.congress.includes(lawData.proposerId)
-    if (!isGovOfficial) return state // Only gov can propose laws
+    if (!isGovOfficial) return state
 
     const id = `law_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    
     return {
       laws: {
         ...state.laws,
         [id]: {
-          ...lawData,
-          id,
-          votesFor: [], // Proposer must vote manually in Congress
+          ...lawData, id,
+          votesFor: [],
           votesAgainst: [],
           proposedAt: Date.now(),
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 real hours to vote
+          expiresAt: Date.now() + 24 * 60 * 60 * 1000,
           status: 'active'
         }
       }
@@ -153,83 +197,53 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   voteOnLaw: (lawId, voterId, vote) => set((state) => {
     const law = state.laws[lawId]
     if (!law || law.status !== 'active') return state
-
     const gov = state.governments[law.countryId]
     if (!gov) return state
-
     const isCongress = gov.congress.includes(voterId)
-    // Only congress votes on laws in this system (President might have veto power, but skipping for simplicity now)
     if (!isCongress) return state
 
-    // Remove previous vote if any
     const votesFor = law.votesFor.filter(id => id !== voterId)
     const votesAgainst = law.votesAgainst.filter(id => id !== voterId)
-
     if (vote === 'for') votesFor.push(voterId)
     if (vote === 'against') votesAgainst.push(voterId)
 
     const updatedLaw = { ...law, votesFor, votesAgainst }
+    if (votesFor.length >= 1) updatedLaw.status = 'passed'
+    else if (votesAgainst.length >= 3) updatedLaw.status = 'failed'
 
-    // Check if we hit majority early (1 vote for testing purposes!)
-    if (votesFor.length >= 1) {
-      updatedLaw.status = 'passed'
-    } else if (votesAgainst.length >= 3) {
-      updatedLaw.status = 'failed'
-    }
-
-    return {
-      laws: {
-        ...state.laws,
-        [lawId]: updatedLaw
-      }
-    }
+    return { laws: { ...state.laws, [lawId]: updatedLaw } }
   }),
 
   resolveElections: () => set((state) => {
     if (Date.now() < state.nextElectionAt) return state
-
     const newGovs = { ...state.governments }
-
     Object.keys(newGovs).forEach(countryId => {
       const gov = newGovs[countryId]
-      if (gov.candidates.length === 0) return // No candidates, keep existing
-
-      // Sort candidates by votes descending
+      if (gov.candidates.length === 0) return
       const sorted = [...gov.candidates].sort((a, b) => b.votes - a.votes)
-      
       const newPresident = sorted[0].id
-      // Next 5 become congress
       const newCongress = sorted.slice(1, 6).map(c => c.id)
-
       newGovs[countryId] = {
         ...gov,
         president: newPresident,
-        congress: newCongress.length > 0 ? newCongress : gov.congress, // keep old congress if not enough runners
-        candidates: [] // Reset candidates for next term
+        congress: newCongress.length > 0 ? newCongress : gov.congress,
+        candidates: []
       }
     })
-
-    return {
-      governments: newGovs,
-      nextElectionAt: Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 more days
-    }
+    return { governments: newGovs, nextElectionAt: Date.now() + 30 * 24 * 60 * 60 * 1000 }
   }),
 
   resolveLaws: () => set((state) => {
     const now = Date.now()
     let changed = false
     const newLaws = { ...state.laws }
-
     Object.values(newLaws).forEach(law => {
       if (law.status === 'active' && now > law.expiresAt) {
         changed = true
-        // If it expires, it fails if it didn't already hit majority
         newLaws[law.id] = { ...law, status: 'failed' }
       }
     })
-
     if (!changed) return state
-
     return { laws: newLaws }
   }),
 
@@ -237,17 +251,37 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     const state = get()
     const gov = state.governments[countryId]
     if (!gov) return false
-
     set({
       governments: {
         ...state.governments,
         [countryId]: {
           ...gov,
-          nuclearFund: {
-            ...gov.nuclearFund,
-            [resource]: gov.nuclearFund[resource] + amount,
-          },
+          nationalFund: { ...gov.nationalFund, [resource]: gov.nationalFund[resource] + amount },
         },
+      },
+    })
+    return true
+  },
+
+  spendFromFund: (countryId, costs) => {
+    const state = get()
+    const gov = state.governments[countryId]
+    if (!gov) return false
+
+    const fund = gov.nationalFund
+    // Check all costs
+    for (const [key, amount] of Object.entries(costs)) {
+      if (amount && fund[key as NationalFundKey] < amount) return false
+    }
+    // Deduct
+    const newFund = { ...fund }
+    for (const [key, amount] of Object.entries(costs)) {
+      if (amount) newFund[key as NationalFundKey] -= amount
+    }
+    set({
+      governments: {
+        ...state.governments,
+        [countryId]: { ...gov, nationalFund: newFund },
       },
     })
     return true
@@ -257,22 +291,21 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     const gov = state.governments[fromCountry]
     if (!gov || !gov.nuclearAuthorized) return state
 
-    // Check if fund meets requirements
-    const fund = gov.nuclearFund
+    const fund = gov.nationalFund
     if (fund.oil < NUKE_COST.oil || fund.scraps < NUKE_COST.scraps ||
         fund.materialX < NUKE_COST.materialX || fund.bitcoin < NUKE_COST.bitcoin ||
         fund.jets < NUKE_COST.jets) {
-      return state // Not enough resources
+      return state
     }
 
-    // Deduct costs and revoke authorization
     return {
       governments: {
         ...state.governments,
         [fromCountry]: {
           ...gov,
           nuclearAuthorized: false,
-          nuclearFund: {
+          nationalFund: {
+            ...fund,
             oil: fund.oil - NUKE_COST.oil,
             scraps: fund.scraps - NUKE_COST.scraps,
             materialX: fund.materialX - NUKE_COST.materialX,
