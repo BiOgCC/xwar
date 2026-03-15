@@ -77,6 +77,7 @@ export interface InventoryState {
   equipItem: (itemId: string) => void
   unequipItem: (itemId: string) => void
   removeItem: (itemId: string) => void
+  addItem: (item: EquipItem) => void
   degradeEquippedItems: (amount: number) => void
   getEquipped: () => EquipItem[]
 }
@@ -87,7 +88,7 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-function generateStats(category: EquipCategory, slot: EquipSlot, tier: EquipTier): { name: string, stats: EquipStats } {
+export function generateStats(category: EquipCategory, slot: EquipSlot, tier: EquipTier): { name: string, stats: EquipStats } {
   const tLevel = parseInt(tier[1], 10) // 1 to 6
   
   if (category === 'weapon') {
@@ -113,14 +114,25 @@ function generateStats(category: EquipCategory, slot: EquipSlot, tier: EquipTier
     // Gloves: 5% precision per tier
     const namePrefix = TIER_LABELS[tier].split(' ')[0]
     switch (slot) {
-      case 'helmet': return { name: `${namePrefix} Helmet`, stats: { critDamage: 20 * tLevel } }
-      case 'chest': return { name: `${namePrefix} Chestplate`, stats: { armor: 5 * tLevel } }
-      case 'legs': return { name: `${namePrefix} Legging`, stats: { armor: 5 * tLevel } }
-      case 'boots': return { name: `${namePrefix} Boots`, stats: { dodge: 5 * tLevel } }
+      case 'helmet': {
+        const base = 20 * tLevel
+        return { name: `${namePrefix} Helmet`, stats: { critDamage: randomInt(Math.max(1, base - 8), base) } }
+      }
+      case 'chest': {
+        const base = 5 * tLevel
+        return { name: `${namePrefix} Chestplate`, stats: { armor: randomInt(Math.max(1, base - 3), base) } }
+      }
+      case 'legs': {
+        const base = 5 * tLevel
+        return { name: `${namePrefix} Legging`, stats: { armor: randomInt(Math.max(1, base - 3), base) } }
+      }
+      case 'boots': {
+        const base = 5 * tLevel
+        return { name: `${namePrefix} Boots`, stats: { dodge: randomInt(Math.max(1, base - 3), base) } }
+      }
       case 'gloves': {
         const base = 5 * tLevel
-        const variation = randomInt(base - 4, base)
-        return { name: `${namePrefix} Gloves`, stats: { precision: Math.max(1, variation) } }
+        return { name: `${namePrefix} Gloves`, stats: { precision: randomInt(Math.max(1, base - 4), base) } }
       }
     }
   }
@@ -238,6 +250,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   removeItem: (itemId) =>
     set((s) => ({
       items: s.items.filter((i) => i.id !== itemId),
+    })),
+
+  addItem: (item) =>
+    set((s) => ({
+      items: [...s.items, item],
     })),
 
   degradeEquippedItems: (amount: number) =>

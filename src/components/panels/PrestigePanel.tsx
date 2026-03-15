@@ -213,6 +213,42 @@ export default function PrestigePanel() {
             )}
           </div>
 
+          {/* Craft From Blueprint */}
+          {prestige.blueprints.filter(b => b.creatorPlayerId === player.name).length > 0 && (
+            <div className="hud-card" style={{ borderColor: 'rgba(251,191,36,0.3)' }}>
+              <div className="hud-card__title" style={{ color: '#fbbf24' }}>🔨 CRAFT FROM BLUEPRINT</div>
+              <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px' }}>Single-use prestige blueprints. Crafting destroys the blueprint and creates an eternal item.</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {prestige.blueprints.filter(b => b.creatorPlayerId === player.name).map(bp => (
+                  <div key={bp.blueprintId} style={{
+                    padding: '8px', background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(251,191,36,0.2)', borderRadius: '4px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#fbbf24' }}>{bp.itemName}</span>
+                      <span style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700 }}>SINGLE USE</span>
+                    </div>
+                    <div style={{ fontSize: '9px', color: '#94a3b8' }}>{bp.itemType} · {bp.category} · Week {bp.weekNumber}</div>
+                    <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap', margin: '4px 0' }}>
+                      {Object.entries(bp.bonusStats).map(([k, v]) => (
+                        <span key={k} style={{ fontSize: '8px', padding: '1px 4px', background: 'rgba(34,211,138,0.1)', border: '1px solid rgba(34,211,138,0.3)', borderRadius: '2px', color: '#22d38a' }}>
+                          +{v} {k.replace(/_/g, ' ')}
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      className="hud-btn-primary"
+                      onClick={() => handleCraft(bp.blueprintId)}
+                      style={{ width: '100%', padding: '6px', fontWeight: 900, fontSize: '11px', background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+                    >
+                      ⭐ CRAFT PRESTIGE ITEM
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* All Prestige Players */}
           <div className="hud-card">
             <div className="hud-card__title">👑 WEEK {prestige.currentWeek} PRESTIGE PLAYERS</div>

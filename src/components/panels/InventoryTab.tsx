@@ -4,6 +4,7 @@ import InventorySummary from '../shared/InventorySummary'
 import { useUIStore } from '../../stores/uiStore'
 import {
   useInventoryStore,
+  generateStats,
   TIER_COLORS,
   TIER_LABELS,
   TIER_ORDER,
@@ -20,7 +21,9 @@ export default function InventoryTab() {
 
   // Modal State
   const [selectedItem, setSelectedItem] = useState<EquipItem | null>(null)
-  
+  const [mode, setMode] = useState<'normal' | 'craft' | 'disarm'>('normal')
+  const [craftSlot, setCraftSlot] = useState<EquipSlot>('weapon')
+
   // Slot Pick Modal State
   const [selectedSlotToFill, setSelectedSlotToFill] = useState<EquipSlot | 'ammo' | null>(null)
 
@@ -141,7 +144,15 @@ export default function InventoryTab() {
                 background: item.equipped ? 'rgba(34, 211, 138, 0.05)' : 'rgba(8,12,18,0.4)',
                 minHeight: '34px',
               }}
-              onClick={() => setSelectedItem(item)}
+              onClick={() => {
+                if (mode === 'disarm' && !item.equipped) {
+                  const scrapGain = inventory.dismantleItem(item.id)
+                  player.addScrap(scrapGain)
+                  ui.addFloatingText(`+${scrapGain} SCRAP`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+                } else {
+                  setSelectedItem(item)
+                }
+              }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '2px' }}>
                 <span style={{ fontSize: '9px', fontFamily: 'var(--font-display)', color: TIER_COLORS[item.tier], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -195,6 +206,197 @@ export default function InventoryTab() {
           {renderLoadoutSlot('boots', 'Boots', equipped.find((i) => i.slot === 'boots'))}
         </div>
       </div>
+
+      {/* CRAFT & DISARM ACTION BAR */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+        <button
+          onClick={() => setMode(mode === 'craft' ? 'normal' : 'craft')}
+          style={{
+            flex: 1, padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
+            border: `2px solid ${mode === 'craft' ? '#fbbf24' : 'rgba(251,191,36,0.3)'}`,
+            borderRadius: '4px', cursor: 'pointer',
+            background: mode === 'craft' ? 'rgba(251,191,36,0.15)' : 'rgba(251,191,36,0.03)',
+            color: mode === 'craft' ? '#fbbf24' : '#b89a3a',
+          }}
+        >
+          🔨 CRAFT
+        </button>
+        <button
+          onClick={() => setMode(mode === 'disarm' ? 'normal' : 'disarm')}
+          style={{
+            flex: 1, padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
+            border: `2px solid ${mode === 'disarm' ? '#ef4444' : 'rgba(239,68,68,0.3)'}`,
+            borderRadius: '4px', cursor: 'pointer',
+            background: mode === 'disarm' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.03)',
+            color: mode === 'disarm' ? '#ef4444' : '#a33a3a',
+          }}
+        >
+          🔧 DISARM
+        </button>
+      </div>
+
+      {/* CRAFT MODE – All Items */}
+      {mode === 'craft' && (() => {
+        // Cost scaling: base × tier multiplier
+        const costTable: Record<string, { scrap: number; oil: number; money: number }> = {
+          t1: { scrap: 20, oil: 5, money: 50 },
+          t2: { scrap: 60, oil: 15, money: 150 },
+          t3: { scrap: 180, oil: 45, money: 500 },
+          t4: { scrap: 540, oil: 130, money: 1500 },
+          t5: { scrap: 1600, oil: 400, money: 5000 },
+          t6: { scrap: 4800, oil: 1200, money: 15000 },
+        }
+
+        // Stat ranges for preview (matches generateStats in inventoryStore)
+        const statPreview: Record<string, Record<string, string>> = {
+          weapon: {
+            t1: 'DMG 20-49 · CRIT 5%',
+            t2: 'DMG 50-80 · CRIT 6-10%',
+            t3: 'DMG 81-120 · CRIT 11-15%',
+            t4: 'DMG 121-150 · CRIT 16-20%',
+            t5: 'DMG 151-199 · CRIT 21-30%',
+            t6: 'DMG 200-300 · CRIT 31-49%',
+          },
+          helmet: {
+            t1: 'CDMG 12-20%', t2: 'CDMG 32-40%', t3: 'CDMG 52-60%',
+            t4: 'CDMG 72-80%', t5: 'CDMG 92-100%', t6: 'CDMG 112-120%',
+          },
+          chest: {
+            t1: 'ARMOR 2-5%', t2: 'ARMOR 7-10%', t3: 'ARMOR 12-15%',
+            t4: 'ARMOR 17-20%', t5: 'ARMOR 22-25%', t6: 'ARMOR 27-30%',
+          },
+          legs: {
+            t1: 'ARMOR 2-5%', t2: 'ARMOR 7-10%', t3: 'ARMOR 12-15%',
+            t4: 'ARMOR 17-20%', t5: 'ARMOR 22-25%', t6: 'ARMOR 27-30%',
+          },
+          gloves: {
+            t1: 'PREC 1-5%', t2: 'PREC 6-10%', t3: 'PREC 11-15%',
+            t4: 'PREC 16-20%', t5: 'PREC 21-25%', t6: 'PREC 26-30%',
+          },
+          boots: {
+            t1: 'DODGE 2-5%', t2: 'DODGE 7-10%', t3: 'DODGE 12-15%',
+            t4: 'DODGE 17-20%', t5: 'DODGE 22-25%', t6: 'DODGE 27-30%',
+          },
+        }
+
+        const slotTabs: { slot: EquipSlot; icon: string; label: string }[] = [
+          { slot: 'weapon', icon: '⚔️', label: 'WPN' },
+          { slot: 'helmet', icon: '⛑️', label: 'HELM' },
+          { slot: 'chest', icon: '🦺', label: 'CHEST' },
+          { slot: 'legs', icon: '🩳', label: 'LEGS' },
+          { slot: 'gloves', icon: '🧤', label: 'GLVS' },
+          { slot: 'boots', icon: '🥾', label: 'BOOT' },
+        ]
+
+        return (
+          <div className="inv-section" style={{ borderColor: 'rgba(251,191,36,0.3)', background: 'rgba(251,191,36,0.03)' }}>
+            <div className="inv-section__title" style={{ color: '#fbbf24' }}>🔨 CRAFT EQUIPMENT</div>
+            <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px' }}>
+              🔩 {player.scrap.toLocaleString()} Scrap · 🛢️ {player.oil.toLocaleString()} Oil · 💵 ${player.money.toLocaleString()}
+            </div>
+
+            {/* Slot Tabs */}
+            <div style={{ display: 'flex', gap: '2px', marginBottom: '8px' }}>
+              {slotTabs.map(st => (
+                <button key={st.slot} onClick={() => setCraftSlot(st.slot)} style={{
+                  flex: 1, padding: '5px 2px', fontSize: '9px', fontWeight: 700,
+                  border: `1px solid ${craftSlot === st.slot ? '#fbbf24' : 'rgba(255,255,255,0.08)'}`,
+                  borderRadius: '3px', background: craftSlot === st.slot ? 'rgba(251,191,36,0.12)' : 'transparent',
+                  color: craftSlot === st.slot ? '#fbbf24' : '#64748b', cursor: 'pointer',
+                }}>
+                  {st.icon} {st.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tier Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+              {TIER_ORDER.map(tier => {
+                const cost = costTable[tier]
+                const canAfford = player.scrap >= cost.scrap && player.oil >= cost.oil && player.money >= cost.money
+                // Use generateStats for preview name
+                const category = craftSlot === 'weapon' ? 'weapon' as const : 'armor' as const
+                const previewGen = generateStats(category, craftSlot, tier)
+                const itemName = previewGen.name
+                const preview = statPreview[craftSlot]?.[tier] || ''
+                const tierNum = parseInt(tier[1])
+
+                return (
+                  <div key={tier} style={{
+                    padding: '8px', borderRadius: '6px',
+                    background: canAfford ? `rgba(${tierNum > 3 ? '251,191,36' : '255,255,255'},0.03)` : 'rgba(0,0,0,0.2)',
+                    border: `2px solid ${canAfford ? TIER_COLORS[tier] + '55' : 'rgba(255,255,255,0.05)'}`,
+                    opacity: canAfford ? 1 : 0.5,
+                    transition: 'all 0.2s',
+                  }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 900, color: TIER_COLORS[tier] }}>{TIER_LABELS[tier].split(' ')[0]}</span>
+                      <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 700 }}>T{tierNum}</span>
+                    </div>
+
+                    {/* Item Name */}
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>
+                      {(SLOT_ICONS as any)[craftSlot]} {itemName}
+                    </div>
+
+                    {/* Stat Range Preview */}
+                    <div style={{ fontSize: '8px', padding: '2px 4px', marginBottom: '6px', background: `${TIER_COLORS[tier]}10`, border: `1px solid ${TIER_COLORS[tier]}25`, borderRadius: '2px', color: TIER_COLORS[tier] }}>
+                      {preview}
+                    </div>
+
+                    {/* Cost */}
+                    <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '6px' }}>
+                      🔩{cost.scrap} · 🛢️{cost.oil} · 💵{cost.money}
+                    </div>
+
+                    {/* Craft Button */}
+                    <button
+                      disabled={!canAfford}
+                      style={{
+                        width: '100%', padding: '5px', fontSize: '9px', fontWeight: 900,
+                        border: `1px solid ${canAfford ? TIER_COLORS[tier] : '#333'}`,
+                        borderRadius: '3px', cursor: canAfford ? 'pointer' : 'not-allowed',
+                        background: canAfford ? `${TIER_COLORS[tier]}22` : 'transparent',
+                        color: canAfford ? TIER_COLORS[tier] : '#444',
+                      }}
+                      onClick={() => {
+                        if (!canAfford) return
+                        player.spendMoney(cost.money)
+                        player.spendOil(cost.oil)
+                        player.spendScraps(cost.scrap)
+                        // Use generateStats for randomized stats matching loot system
+                        const { name, stats } = generateStats(category, craftSlot, tier)
+                        const newItem: EquipItem = {
+                          id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                          name,
+                          slot: craftSlot,
+                          category,
+                          tier,
+                          equipped: false,
+                          durability: 100,
+                          stats,
+                        }
+                        inventory.addItem(newItem)
+                        ui.addFloatingText(`CRAFTED ${name}!`, window.innerWidth / 2, window.innerHeight / 2, TIER_COLORS[tier])
+                      }}
+                    >
+                      🔨 CRAFT
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* DISARM MODE info */}
+      {mode === 'disarm' && (
+        <div style={{ fontSize: '10px', color: '#ef4444', textAlign: 'center', padding: '6px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '3px', marginBottom: '6px' }}>
+          🔧 DISARM MODE — Click any unequipped item below to dismantle for scrap
+        </div>
+      )}
 
       {/* EQUIPMENT LIST */}
       <div className="inv-section">
