@@ -141,7 +141,7 @@ export default function CompaniesTab() {
             onClick={(e) => handleWork(e)}
             disabled={player.work <= 0}
           >
-            🔨 Work (-10 Work, ~${netPay}/PP)
+            🔨 Work
           </button>
         ) : isActiveJob ? (
           <button className="comp-action comp-action--work" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
