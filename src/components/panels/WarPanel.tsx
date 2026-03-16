@@ -12,7 +12,7 @@ const BattleScene3D = React.lazy(() => import('./BattleScene3D'))
 type WarTab = 'overview' | 'enlist' | 'recruit' | 'armies' | 'battles' | 'occupy'
 
 // Reusable tick damage bar for battle views
-function TickDamageBar({ battle }: { battle: any }) {
+function TickDamageBar({ battle, atkColor, defColor }: { battle: any; atkColor: string; defColor: string }) {
   const atkDmg = battle.attacker?.damageDealt || 0
   const defDmg = battle.defender?.damageDealt || 0
   const totalDmg = atkDmg + defDmg
@@ -29,15 +29,15 @@ function TickDamageBar({ battle }: { battle: any }) {
         <span className="tick-damage__countdown">{totalDmg > 0 ? totalDmg.toLocaleString() : '--'}</span>
       </div>
       <div className="tick-damage__track">
-        <div className="tick-damage__fill--atk" style={{ width: `${atkPct}%` }} />
-        <div className="tick-damage__fill--def" style={{ width: `${defPct}%` }} />
+        <div className="tick-damage__fill--atk" style={{ width: `${atkPct}%`, background: atkColor }} />
+        <div className="tick-damage__fill--def" style={{ width: `${defPct}%`, background: defColor }} />
         <div className="tick-damage__midline" />
         {totalDmg > 0 && <span className="tick-damage__label tick-damage__label--atk">{atkDmg.toLocaleString()}</span>}
         {totalDmg > 0 && <span className="tick-damage__label tick-damage__label--def">{defDmg.toLocaleString()}</span>}
       </div>
       <div className="tick-damage__footer">
-        <span>⚔️ ATK {atkPct.toFixed(0)}%</span>
-        <span>🛡️ DEF {defPct.toFixed(0)}%</span>
+        <span style={{ color: atkColor }}>⚔️ ATK {atkPct.toFixed(0)}%</span>
+        <span style={{ color: defColor }}>🛡️ DEF {defPct.toFixed(0)}%</span>
       </div>
       {totalDmg > 0 && (
         <div className="tick-damage__winner">
@@ -172,7 +172,7 @@ function OverviewTab({ iso }: { iso: string }) {
             const template = DIVISION_TEMPLATES[type as DivisionType]
             return (
               <div className="war-comp-row" key={type}>
-                <span className="war-comp-row__icon">{template?.icon}</span>
+                <img src={template?.icon} alt="div" style={{ width: '16px', height: '16px', objectFit: 'contain' }} className="war-comp-row__icon" />
                 <span className="war-comp-row__name">{template?.name || type}</span>
                 <span className="war-comp-row__count">×{count}</span>
                 <div className="war-comp-row__bar">
@@ -224,6 +224,7 @@ function OverviewTab({ iso }: { iso: string }) {
             const tickSpeed = totalPts < 100 ? '3 min' : totalPts < 200 ? '2.5 min' : totalPts < 300 ? '2 min' : totalPts < 400 ? '1.5 min' : '1 min'
             const ptIncr = totalPts < 100 ? 1 : totalPts < 200 ? 2 : totalPts < 300 ? 3 : totalPts < 400 ? 4 : 5
             const dotClass = totalPts >= 400 ? 'tick-indicator__dot--fastest' : totalPts >= 200 ? 'tick-indicator__dot--fast' : ''
+            const mySide: 'attacker' | 'defender' = iso === battle.attackerId ? 'attacker' : 'defender'
 
             return (
               <div className="war-battle-mini" key={battle.id} onClick={() => setExpandedBattle(isExpanded ? null : battle.id)} style={{ cursor: 'pointer' }}>
@@ -241,10 +242,13 @@ function OverviewTab({ iso }: { iso: string }) {
                   const defDmg = battle.defender?.damageDealt || 0
                   const totalDmg = atkDmg + defDmg
                   const atkPct = totalDmg > 0 ? (atkDmg / totalDmg) * 100 : 50
+                  const countries = useWorldStore.getState().countries
+                  const atkColor = countries.find(c => c.code === battle.attackerId)?.color || '#22d38a'
+                  const defColor = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
                   return (
                     <div style={{ position: 'relative', height: '16px', borderRadius: '3px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)', marginTop: '4px' }}>
-                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: 'linear-gradient(90deg, #22d38a, #16a34a)', transition: 'width 0.5s ease' }} />
-                      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${100 - atkPct}%`, background: 'linear-gradient(90deg, #dc2626, #ef4444)', transition: 'width 0.5s ease' }} />
+                      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: atkColor, opacity: 0.85, transition: 'width 0.5s ease' }} />
+                      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${100 - atkPct}%`, background: defColor, opacity: 0.85, transition: 'width 0.5s ease' }} />
                       <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: '2px', background: '#fff', transform: 'translateX(-1px)', zIndex: 2, opacity: 0.6 }} />
                       <span style={{ position: 'absolute', left: '6px', top: '50%', transform: 'translateY(-50%)', fontSize: '9px', fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.8)', zIndex: 3 }}>{atkDmg.toLocaleString()}</span>
                       <span style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', fontSize: '9px', fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.8)', zIndex: 3 }}>{defDmg.toLocaleString()}</span>
@@ -253,12 +257,16 @@ function OverviewTab({ iso }: { iso: string }) {
                 })()}
 
                 {/* Expanded View */}
-                {isExpanded && activeRound && (
+                {isExpanded && activeRound && (() => {
+                  const countries = useWorldStore.getState().countries
+                  const atkClr = countries.find(c => c.code === battle.attackerId)?.color || '#22d38a'
+                  const defClr = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
+                  return (
                   <div style={{ marginTop: '8px' }} onClick={e => e.stopPropagation()}>
                     {/* Ground Points */}
                     <div className="battle-points">
                       <div className="battle-points__side battle-points__side--atk">
-                        <div className="battle-points__value battle-points__value--atk">{activeRound.attackerPoints}</div>
+                        <div className="battle-points__value" style={{ color: atkClr }}>{activeRound.attackerPoints}</div>
                         <div className="battle-points__label">ATTACKER</div>
                       </div>
                       <div className="battle-points__center">
@@ -266,35 +274,82 @@ function OverviewTab({ iso }: { iso: string }) {
                         <div className="battle-points__tick">600 PTS TO WIN</div>
                       </div>
                       <div className="battle-points__side battle-points__side--def">
-                        <div className="battle-points__value battle-points__value--def">{activeRound.defenderPoints}</div>
+                        <div className="battle-points__value" style={{ color: defClr }}>{activeRound.defenderPoints}</div>
                         <div className="battle-points__label">DEFENDER</div>
                       </div>
                     </div>
 
                     {/* Tick Damage Bar */}
-                    <TickDamageBar battle={battle} />
-
-                    {/* Tick Speed */}
-                    <div className="tick-indicator" style={{ marginTop: '6px' }}>
-                      <div className={`tick-indicator__dot ${dotClass}`} />
-                      <span className="tick-indicator__text">TICK SPEED</span>
-                      <span className="tick-indicator__speed">{tickSpeed} · +{ptIncr}pts</span>
+                    <TickDamageBar battle={battle} atkColor={atkClr} defColor={defClr} />
+                    {/* Deploy / Remove All */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '6px' }}>
+                      <button
+                        onClick={() => {
+                          const myDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === iso && d.status === 'ready')
+                          if (myDivs.length === 0) return ui.addFloatingText('No ready divisions!', window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+                          const r = battleStore.deployDivisionsToBattle(battle.id, myDivs.map(d => d.id), mySide)
+                          ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
+                        }}
+                        style={{
+                          padding: '6px 0', border: 'none', borderRadius: '5px', cursor: 'pointer',
+                          fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px',
+                          background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                          color: '#000', boxShadow: '0 0 10px rgba(245,158,11,0.3)',
+                          transition: 'all 0.2s',
+                        }}
+                      >⚔️ DEPLOY ALL</button>
+                      <button
+                        onClick={() => {
+                          const r = battleStore.removeDivisionsFromBattle(battle.id, mySide)
+                          ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                        }}
+                        style={{
+                          padding: '6px 0', border: 'none', borderRadius: '5px', cursor: 'pointer',
+                          fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px',
+                          background: 'linear-gradient(135deg, #dc2626, #991b1b)',
+                          color: '#fff', boxShadow: '0 0 10px rgba(220,38,38,0.3)',
+                          transition: 'all 0.2s',
+                        }}
+                      >🏳️ REMOVE ALL</button>
                     </div>
 
-                    {/* Stats */}
-                    <div className="war-stats-grid" style={{ marginTop: '6px' }}>
-                      <div className="war-stat">
-                        <span className="war-stat__value war-stat__value--green">{((battle.attacker as any).damageDealt || 0).toLocaleString()}</span>
-                        <span className="war-stat__label">ATK DMG</span>
-                      </div>
-                      <div className="war-stat">
-                        <span className="war-stat__value">{battle.attackerRoundsWon}-{battle.defenderRoundsWon}</span>
-                        <span className="war-stat__label">ROUNDS</span>
-                      </div>
-                      <div className="war-stat">
-                        <span className="war-stat__value war-stat__value--red">{((battle.defender as any).damageDealt || 0).toLocaleString()}</span>
-                        <span className="war-stat__label">DEF DMG</span>
-                      </div>
+                    {/* Deployed Divisions */}
+                    <div style={{ marginTop: '6px' }}>
+                      <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>🎖️ DEPLOYED DIVISIONS:</div>
+                      {(() => {
+                        const allEngaged = [
+                          ...battle.attacker.engagedDivisionIds.map((id: string) => ({ id, side: 'atk' as const })),
+                          ...battle.defender.engagedDivisionIds.map((id: string) => ({ id, side: 'def' as const })),
+                        ]
+                        if (allEngaged.length === 0) return <div style={{ fontSize: '9px', color: '#475569', padding: '4px 0' }}>No divisions deployed yet</div>
+                        return allEngaged.map(({ id, side }) => {
+                          const div = armyStore.divisions[id]
+                          if (!div) return null
+                          const template = DIVISION_TEMPLATES[div.type]
+                          const hpPct = div.maxManpower > 0 ? (div.manpower / div.maxManpower) * 100 : 0
+                          const moralePct = div.morale
+                          const sideClr = side === 'atk' ? atkClr : defClr
+                          return (
+                            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <img src={template?.icon} alt="🛡️" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: sideClr, marginBottom: '1px' }}>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{div.name}</span>
+                                  <span style={{ color: '#94a3b8', fontWeight: 400, flexShrink: 0, marginLeft: '4px' }}>{div.manpower}/{div.maxManpower}</span>
+                                </div>
+                                {/* HP bar */}
+                                <div style={{ height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginBottom: '1px' }}>
+                                  <div style={{ width: `${hpPct}%`, height: '100%', borderRadius: '2px', background: hpPct > 50 ? '#22c55e' : hpPct > 25 ? '#f59e0b' : '#ef4444', transition: 'width 0.3s' }} />
+                                </div>
+                                {/* Morale bar */}
+                                <div style={{ height: '2px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                                  <div style={{ width: `${moralePct}%`, height: '100%', borderRadius: '2px', background: '#eab308', transition: 'width 0.3s' }} />
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
                     </div>
 
                     {/* Battle Orders */}
@@ -328,11 +383,12 @@ function OverviewTab({ iso }: { iso: string }) {
                     <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginTop: '8px', marginBottom: '4px' }}>FIGHT FOR:</div>
                     <div className="battle-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
                       <button
-                        className="battle-action-btn battle-action-btn--attack"
+                        className="battle-action-btn"
                         disabled={player.stamina < 5}
+                        style={{ background: `${atkClr}22`, borderColor: `${atkClr}44`, color: atkClr }}
                         onClick={() => {
                           const r = battleStore.playerAttack(battle.id, 'attacker')
-                          ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : '#ef4444')
+                          ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr)
                         }}
                       >
                         <span className="battle-action-btn__icon">⚔️</span>
@@ -340,11 +396,12 @@ function OverviewTab({ iso }: { iso: string }) {
                         <span className="battle-action-btn__cost">5 STA</span>
                       </button>
                       <button
-                        className="battle-action-btn battle-action-btn--attack"
+                        className="battle-action-btn"
                         disabled={player.stamina < 5}
+                        style={{ background: `${defClr}22`, borderColor: `${defClr}44`, color: defClr }}
                         onClick={() => {
                           const r = battleStore.playerAttack(battle.id, 'defender')
-                          ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : '#22d38a')
+                          ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr)
                         }}
                       >
                         <span className="battle-action-btn__icon">🛡️</span>
@@ -353,7 +410,8 @@ function OverviewTab({ iso }: { iso: string }) {
                       </button>
                     </div>
                   </div>
-                )}
+                  )
+                })()}
               </div>
             )
           })}
@@ -500,7 +558,7 @@ function RecruitTab() {
     setTimeout(() => setFeedback(''), 3000)
   }
 
-  const divTypes: DivisionType[] = ['infantry', 'mechanic']
+  const divTypes = Object.keys(DIVISION_TEMPLATES) as DivisionType[]
 
   return (
     <div className="war-recruit">
@@ -531,7 +589,7 @@ function RecruitTab() {
               onClick={() => setSelectedType(isSelected ? null : type)}
             >
               <div className="war-recruit-card__header">
-                <span className="war-recruit-card__icon">{t.icon}</span>
+                <img src={t.icon} alt={t.name} style={{ width: '24px', height: '24px', objectFit: 'contain' }} className="war-recruit-card__icon" />
                 <span className="war-recruit-card__name">{t.name}</span>
                 <span className={`war-recruit-card__category war-recruit-card__category--${t.category}`}>
                   {t.category.toUpperCase()}
@@ -667,121 +725,115 @@ function ArmiesTab({ iso }: { iso: string }) {
             No active battles. Armies are on standby.
           </div>
         ) : (
-          <div>
-            {/* Battle Selector */}
-            <div style={{ marginBottom: '8px' }}>
-              <div style={{ fontSize: '8px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px', letterSpacing: '1px' }}>
-                SELECT BATTLE
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                {activeBattles.map(b => {
-                  const isSelected = selectedHQBattle === b.id
-                  const side = iso === b.attackerId ? '⚔️ ATK' : '🛡️ DEF'
-                  return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {activeBattles.map(b => {
+              const side: 'attacker' | 'defender' = iso === b.attackerId ? 'attacker' : 'defender'
+              const sideLabel = side === 'attacker' ? '⚔️ ATK' : '🛡️ DEF'
+
+              // All engaged divisions for both sides
+              const allEngaged = [
+                ...b.attacker.engagedDivisionIds.map(id => ({ id, ownedSide: 'attacker' as const })),
+                ...b.defender.engagedDivisionIds.map(id => ({ id, ownedSide: 'defender' as const })),
+              ]
+
+              // Group by ownerId
+              const grouped: Record<string, typeof allEngaged> = {}
+              allEngaged.forEach(e => {
+                const div = armyStore.divisions[e.id]
+                if (!div) return
+                const owner = div.ownerId || 'Unknown'
+                if (!grouped[owner]) grouped[owner] = []
+                grouped[owner].push(e)
+              })
+
+              return (
+                <div key={b.id} style={{
+                  padding: '8px', borderRadius: '6px',
+                  background: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>
+                      {sideLabel} {getCountryFlag(b.attackerId)} vs {getCountryFlag(b.defenderId)} — {b.regionName}
+                    </div>
+                    <div style={{ fontSize: '7px', color: '#64748b' }}>
+                      ATK: {b.attacker.engagedDivisionIds.length} · DEF: {b.defender.engagedDivisionIds.length}
+                    </div>
+                  </div>
+
+                  {/* Deploy All / Remove All */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '6px' }}>
                     <button
-                      key={b.id}
-                      className="war-btn"
-                      style={{
-                        fontSize: '9px', padding: '6px 8px', textAlign: 'left',
-                        background: isSelected ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${isSelected ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.06)'}`,
-                        color: isSelected ? '#f59e0b' : '#94a3b8',
-                      }}
                       onClick={() => {
-                        setSelectedHQBattle(isSelected ? null : b.id)
-                        setSelectedDeployDivs(new Set())
+                        const myDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === iso && d.status === 'ready')
+                        if (myDivs.length === 0) return ui.addFloatingText('No ready divisions!', window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+                        const r = battleStore.deployDivisionsToBattle(b.id, myDivs.map(d => d.id), side)
+                        ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
                       }}
-                    >
-                      {side} {getCountryFlag(b.attackerId)} vs {getCountryFlag(b.defenderId)} — {b.regionName} • Tick {b.ticksElapsed}
-                      {isSelected && (
-                        <span style={{ float: 'right', fontSize: '8px' }}>
-                          ATK: {b.attacker.divisionIds.length} divs · DEF: {b.defender.divisionIds.length} divs
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Division Picker */}
-            {selectedHQBattle && (
-              <div>
-                <div style={{ fontSize: '8px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px', letterSpacing: '1px' }}>
-                  SELECT DIVISIONS TO DEPLOY ({selectedDeployDivs.size} selected)
-                </div>
-                {availableDivs.length === 0 ? (
-                  <div style={{ fontSize: '9px', color: '#475569', padding: '4px 0' }}>
-                    No available divisions. All divisions are deployed or in training.
+                      style={{
+                        padding: '6px 0', border: 'none', borderRadius: '5px', cursor: 'pointer',
+                        fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px',
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                        color: '#000', boxShadow: '0 0 10px rgba(245,158,11,0.3)',
+                        transition: 'all 0.2s',
+                      }}
+                    >⚔️ DEPLOY ALL</button>
+                    <button
+                      onClick={() => {
+                        const r = battleStore.removeDivisionsFromBattle(b.id, side)
+                        ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                      }}
+                      style={{
+                        padding: '6px 0', border: 'none', borderRadius: '5px', cursor: 'pointer',
+                        fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px',
+                        background: 'linear-gradient(135deg, #dc2626, #991b1b)',
+                        color: '#fff', boxShadow: '0 0 10px rgba(220,38,38,0.3)',
+                        transition: 'all 0.2s',
+                      }}
+                    >🏳️ REMOVE ALL</button>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '150px', overflowY: 'auto' }}>
-                    {availableDivs.map(d => {
-                      const template = DIVISION_TEMPLATES[d.type]
-                      const isSelected = selectedDeployDivs.has(d.id)
-                      const hpPct = Math.round((d.manpower / d.maxManpower) * 100)
-                      return (
-                        <div
-                          key={d.id}
-                          onClick={() => toggleDeployDiv(d.id)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            padding: '4px 8px', borderRadius: '4px', cursor: 'pointer',
-                            background: isSelected ? 'rgba(34,211,138,0.1)' : 'rgba(255,255,255,0.02)',
-                            border: `1px solid ${isSelected ? 'rgba(34,211,138,0.3)' : 'rgba(255,255,255,0.04)'}`,
-                          }}
-                        >
-                          <span style={{
-                            width: '18px', height: '18px', borderRadius: '3px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '12px', fontWeight: 900,
-                            background: isSelected ? 'rgba(34,211,138,0.2)' : 'rgba(255,255,255,0.05)',
-                            color: isSelected ? '#22d38a' : '#475569',
-                          }}>
-                            {isSelected ? '✓' : '+'}
-                          </span>
-                          <span style={{ fontSize: '12px' }}>{template?.icon}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {d.name}
-                            </div>
-                            <div style={{ fontSize: '7px', color: '#64748b' }}>
-                              {d.type} • {d.manpower.toLocaleString()} troops
-                            </div>
-                          </div>
-                          <div style={{
-                            width: '40px', height: '4px', borderRadius: '2px',
-                            background: 'rgba(255,255,255,0.06)', overflow: 'hidden',
-                          }}>
-                            <div style={{
-                              width: `${hpPct}%`, height: '100%', borderRadius: '2px',
-                              background: hpPct > 60 ? '#22d38a' : hpPct > 30 ? '#f59e0b' : '#ef4444',
-                            }} />
-                          </div>
-                          <span style={{ fontSize: '7px', color: '#64748b', width: '25px', textAlign: 'right' }}>{hpPct}%</span>
+
+                  {/* Grouped Divisions */}
+                  {allEngaged.length === 0 ? (
+                    <div style={{ fontSize: '8px', color: '#475569', padding: '2px 0' }}>No divisions deployed.</div>
+                  ) : (
+                    Object.entries(grouped).map(([ownerName, entries]) => (
+                      <div key={ownerName} style={{ marginBottom: '4px' }}>
+                        <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 700, letterSpacing: '0.5px', marginBottom: '2px', textTransform: 'uppercase' }}>
+                          👤 {ownerName}
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Deploy Button */}
-                {selectedDeployDivs.size > 0 && (
-                  <button
-                    className="war-btn war-btn--primary"
-                    style={{
-                      width: '100%', marginTop: '8px', padding: '8px',
-                      fontSize: '11px', fontWeight: 900, letterSpacing: '2px',
-                      background: 'rgba(239,68,68,0.2)', borderColor: 'rgba(239,68,68,0.5)',
-                      color: '#ef4444',
-                    }}
-                    onClick={handleDeploy}
-                  >
-                    🚀 DEPLOY {selectedDeployDivs.size} DIVISION{selectedDeployDivs.size > 1 ? 'S' : ''} TO BATTLE
-                  </button>
-                )}
-              </div>
-            )}
+                        {entries.map(({ id, ownedSide }) => {
+                          const div = armyStore.divisions[id]
+                          if (!div) return null
+                          const template = DIVISION_TEMPLATES[div.type]
+                          const hpPct = div.maxManpower > 0 ? (div.manpower / div.maxManpower) * 100 : 0
+                          const moralePct = div.morale
+                          const sideClr = ownedSide === 'attacker' ? '#22d38a' : '#ef4444'
+                          return (
+                            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <img src={template?.icon} alt="div" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: sideClr, marginBottom: '1px' }}>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{div.name}</span>
+                                  <span style={{ color: '#94a3b8', fontWeight: 400, flexShrink: 0, marginLeft: '4px' }}>{div.manpower}/{div.maxManpower}</span>
+                                </div>
+                                <div style={{ height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginBottom: '1px' }}>
+                                  <div style={{ width: `${hpPct}%`, height: '100%', borderRadius: '2px', background: hpPct > 50 ? '#22c55e' : hpPct > 25 ? '#f59e0b' : '#ef4444', transition: 'width 0.3s' }} />
+                                </div>
+                                <div style={{ height: '2px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                                  <div style={{ width: `${moralePct}%`, height: '100%', borderRadius: '2px', background: '#eab308', transition: 'width 0.3s' }} />
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -832,81 +884,7 @@ function ArmiesTab({ iso }: { iso: string }) {
 
             {isExpanded && (
               <div className="war-army-body">
-                {/* Division List */}
-                <div className="war-army-divs">
-                  {divs.length === 0 ? (
-                    <div className="war-empty">No divisions assigned. Assign from unassigned pool below.</div>
-                  ) : divs.map(div => {
-                    const template = DIVISION_TEMPLATES[div.type]
-                    const strengthPct = Math.floor((div.manpower / div.maxManpower) * 100)
-                    const moralePct = Math.floor(div.morale)
-
-                    return (
-                      <div className={`war-div-row war-div-row--${div.status}`} key={div.id}>
-                        <div className="war-div-row__icon">{template?.icon}</div>
-                        <div className="war-div-row__info">
-                          <div className="war-div-row__name">{div.name}</div>
-                          <div className="war-div-row__stats">
-                            ⚔️ {div.type} • EXP:{div.experience} • 🔧{div.equipment.length}
-                          </div>
-                        </div>
-                        <div className="war-div-row__bars">
-                          <div className="war-div-bar" title={`Strength: ${strengthPct}%`}>
-                            <div className="war-div-bar__fill war-div-bar__fill--str" style={{ width: `${strengthPct}%` }} />
-                            <span className="war-div-bar__label">STR {strengthPct}%</span>
-                          </div>
-                          <div className="war-div-bar" title={`Morale: ${moralePct}%`}>
-                            <div className="war-div-bar__fill war-div-bar__fill--org" style={{ width: `${moralePct}%` }} />
-                            <span className="war-div-bar__label">MRL {moralePct}%</span>
-                          </div>
-                        </div>
-                        <div className={`war-div-status war-div-status--${div.status}`}>
-                          {div.status === 'training' ? `🔨 ${Math.floor((div.trainingProgress / DIVISION_TEMPLATES[div.type].trainingTime) * 100)}%` : div.status.toUpperCase()}
-                        </div>
-                        <button
-                          className="war-btn war-btn--small war-btn--danger"
-                          onClick={() => armyStore.removeDivisionFromArmy(div.id)}
-                          title="Remove from army"
-                        >✕</button>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* ── AV COMPOSITION & AURA ── */}
-                {divs.length > 0 && (() => {
-                  const av = armyStore.getArmyAV(army.id)
-                  const aura = armyStore.getCompositionAura(army.id)
-                  return (
-                    <div style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <div style={{ fontSize: '9px', fontWeight: 800, color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '6px' }}>
-                        📊 ARMY VALUE & COMPOSITION AURA
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                        {[
-                          { label: '✈️ AIR', val: av.air, buff: `+${aura.critDmgPct}% Crit DMG`, color: '#60a5fa' },
-                          { label: '🚶 GROUND', val: av.ground, buff: `+${aura.dodgePct}% Dodge`, color: '#22d38a' },
-                          { label: '🪖 TANKS', val: av.tanks, buff: `+${aura.attackPct}% Attack`, color: '#f59e0b' },
-                          { label: '🚢 NAVY', val: av.navy, buff: `+${aura.precisionPct}% Precision`, color: '#a78bfa' },
-                        ].map(cat => (
-                          <div key={cat.label} style={{
-                            padding: '4px 6px', borderRadius: '3px',
-                            background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
-                          }}>
-                            <div style={{ fontSize: '8px', color: '#94a3b8', fontWeight: 700 }}>{cat.label}</div>
-                            <div style={{ fontSize: '12px', fontWeight: 900, color: cat.color }}>{cat.val.toLocaleString()} AV</div>
-                            <div style={{ fontSize: '8px', color: cat.color, opacity: 0.8 }}>{cat.buff}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ fontSize: '8px', color: '#64748b', marginTop: '4px', textAlign: 'center' }}>
-                        Total AV: {av.total.toLocaleString()} • Aura applied to all countrymen in deployed battle
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* ── ARMY VAULT ── */}
+                {/* ── ARMY VAULT ── (moved to top) */}
                 <div style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ fontSize: '9px', fontWeight: 800, color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '6px' }}>
                     🏦 ARMY VAULT
@@ -978,135 +956,79 @@ function ArmiesTab({ iso }: { iso: string }) {
                   )}
                 </div>
 
-                {/* ── DEPLOYMENT STATUS ── */}
-                <div style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 800, color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '6px' }}>
-                    🚀 DEPLOYMENT
-                  </div>
-                  {army.deployedToBattleId ? (
-                    <div>
-                      <div style={{
-                        padding: '6px 8px', borderRadius: '4px',
-                        background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      }}>
-                        <div>
-                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444' }}>⚔️ DEPLOYED TO BATTLE</div>
-                          <div style={{ fontSize: '8px', color: '#94a3b8' }}>Battle ID: {army.deployedToBattleId}</div>
-                        </div>
-                        <button className="war-btn war-btn--small war-btn--danger"
-                          style={{ fontSize: '8px', padding: '3px 8px' }}
-                          onClick={() => armyStore.recallArmy(army.id)}
-                        >📥 RECALL</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div style={{ fontSize: '9px', color: '#64748b', marginBottom: '6px' }}>
-                        📍 Stationed in: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{army.deployedProvince}</span>
-                      </div>
+                {/* Division List */}
+                <div className="war-army-divs">
+                  {divs.length === 0 ? (
+                    <div className="war-empty">No divisions assigned. Assign from unassigned pool below.</div>
+                  ) : divs.map(div => {
+                    const template = DIVISION_TEMPLATES[div.type]
+                    const strengthPct = Math.floor((div.manpower / div.maxManpower) * 100)
+                    const moralePct = Math.floor(div.morale)
 
-                      {/* Deploy to Region */}
-                      <div style={{ marginBottom: '6px' }}>
-                        <div style={{ fontSize: '8px', color: '#94a3b8', fontWeight: 700, marginBottom: '3px' }}>🌍 DEPLOY TO REGION</div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <select
-                            className="war-input"
-                            style={{ flex: 1, fontSize: '9px', padding: '4px' }}
-                            defaultValue=""
-                            onChange={e => {
-                              if (e.target.value) {
-                                const r = armyStore.deployToRegion(army.id, e.target.value)
-                                ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
-                                e.target.value = ''
-                              }
-                            }}
-                          >
-                            <option value="" disabled>Select region...</option>
-                            {world.countries.map(c => (
-                              <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Deploy to Battle */}
-                      <div>
-                        <div style={{ fontSize: '8px', color: '#94a3b8', fontWeight: 700, marginBottom: '3px' }}>⚔️ DEPLOY TO BATTLE</div>
-                        {Object.values(battleStore.battles).filter(b => b.status === 'active').length > 0 ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                            {Object.values(battleStore.battles).filter(b => b.status === 'active').map(battle => (
-                              <button key={battle.id} className="war-btn war-btn--primary"
-                                style={{ fontSize: '8px', padding: '4px 8px', textAlign: 'left' }}
-                                onClick={() => {
-                                  const r = armyStore.deployArmyToBattle(army.id, battle.id)
-                                  ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
-                                }}
-                              >
-                                🚀 Deploy to: {getCountryFlag(battle.attackerId)} vs {getCountryFlag(battle.defenderId)} — {battle.regionName}
-                              </button>
-                            ))}
+                    return (
+                      <div className={`war-div-row war-div-row--${div.status}`} key={div.id}>
+                        <img src={template?.icon} alt="div" style={{ width: '16px', height: '16px', objectFit: 'contain' }} className="war-div-row__icon" />
+                        <div className="war-div-row__info">
+                          <div className="war-div-row__name">{div.name}</div>
+                          <div className="war-div-row__stats">
+                            ⚔️ {div.type} • EXP:{div.experience} • 🔧{div.equipment.length}
                           </div>
-                        ) : (
-                          <div style={{ fontSize: '8px', color: '#475569' }}>No active battles to deploy to.</div>
-                        )}
+                        </div>
+                        <div className="war-div-row__bars">
+                          <div className="war-div-bar" title={`Strength: ${strengthPct}%`}>
+                            <div className="war-div-bar__fill war-div-bar__fill--str" style={{ width: `${strengthPct}%` }} />
+                            <span className="war-div-bar__label">STR {strengthPct}%</span>
+                          </div>
+                          <div className="war-div-bar" title={`Morale: ${moralePct}%`}>
+                            <div className="war-div-bar__fill war-div-bar__fill--org" style={{ width: `${moralePct}%` }} />
+                            <span className="war-div-bar__label">MRL {moralePct}%</span>
+                          </div>
+                        </div>
+                        <div className={`war-div-status war-div-status--${div.status}`}>
+                          {div.status === 'training' ? `🔨 ${Math.floor((div.trainingProgress / DIVISION_TEMPLATES[div.type].trainingTime) * 100)}%` : div.status.toUpperCase()}
+                        </div>
+                        <button
+                          className="war-btn war-btn--small war-btn--danger"
+                          onClick={() => armyStore.removeDivisionFromArmy(div.id)}
+                          title="Remove from army"
+                        >✕</button>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })}
                 </div>
 
-                {/* ── BATTLE ORDERS ── */}
-                <div style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 800, color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '6px' }}>
-                    📋 BATTLE ORDERS
-                  </div>
-                  {army.activeOrders.filter(o => o.expiresAt > Date.now()).length > 0 ? (
-                    army.activeOrders.filter(o => o.expiresAt > Date.now()).map(order => {
-                      const totalDmg = order.claimedBy.reduce((s, c) => s + c.damageContribution, 0)
-                      const timeLeft = Math.ceil((order.expiresAt - Date.now()) / 60000)
-                      return (
-                        <div key={order.id} style={{
-                          padding: '6px 8px', borderRadius: '4px', marginBottom: '4px',
-                          background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                              <div style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b' }}>
-                                {order.orderType === 'attack_region' ? '⚔️ ATTACK' : order.orderType === 'defend_region' ? '🛡️ DEFEND' : '📦 ' + order.orderType.toUpperCase()} — {order.targetRegion}
-                              </div>
-                              <div style={{ fontSize: '8px', color: '#94a3b8' }}>
-                                +{Math.floor((order.damageMultiplier - 1) * 100)}% DMG • 💰${order.bountyPool.toLocaleString()} bounty • ⏰{timeLeft}min left
-                              </div>
-                            </div>
+                {/* ── AV COMPOSITION & AURA ── */}
+                {divs.length > 0 && (() => {
+                  const av = armyStore.getArmyAV(army.id)
+                  const aura = armyStore.getCompositionAura(army.id)
+                  return (
+                    <div style={{ padding: '8px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ fontSize: '9px', fontWeight: 800, color: '#94a3b8', letterSpacing: '1.5px', marginBottom: '6px' }}>
+                        📊 ARMY VALUE & COMPOSITION AURA
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                        {[
+                          { label: '✈️ AIR', val: av.air, buff: `+${aura.critDmgPct}% Crit DMG`, color: '#60a5fa' },
+                          { label: '🚶 GROUND', val: av.ground, buff: `+${aura.dodgePct}% Dodge`, color: '#22d38a' },
+                          { label: '🪖 TANKS', val: av.tanks, buff: `+${aura.attackPct}% Attack`, color: '#f59e0b' },
+                          { label: '🚢 NAVY', val: av.navy, buff: `+${aura.precisionPct}% Precision`, color: '#a78bfa' },
+                        ].map(cat => (
+                          <div key={cat.label} style={{
+                            padding: '4px 6px', borderRadius: '3px',
+                            background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                          }}>
+                            <div style={{ fontSize: '8px', color: '#94a3b8', fontWeight: 700 }}>{cat.label}</div>
+                            <div style={{ fontSize: '12px', fontWeight: 900, color: cat.color }}>{cat.val.toLocaleString()} AV</div>
+                            <div style={{ fontSize: '8px', color: cat.color, opacity: 0.8 }}>{cat.buff}</div>
                           </div>
-                          {order.claimedBy.length > 0 && (
-                            <div style={{ marginTop: '4px' }}>
-                              <div style={{ fontSize: '7px', color: '#64748b' }}>Contributors: {order.claimedBy.length} • Total DMG: {totalDmg.toLocaleString()}</div>
-                              {order.claimedBy.sort((a, b) => b.damageContribution - a.damageContribution).slice(0, 3).map((c, i) => (
-                                <div key={c.playerId} style={{ fontSize: '7px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
-                                  <span>{['🥇','🥈','🥉'][i]} {c.playerId}</span>
-                                  <span>{c.damageContribution.toLocaleString()} dmg ({totalDmg > 0 ? Math.floor(c.damageContribution / totalDmg * 100) : 0}%)</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })
-                  ) : (
-                    <div style={{ fontSize: '8px', color: '#475569' }}>No active orders. Captains+ can issue orders.</div>
-                  )}
-                  {/* Issue Order button for Captain+ */}
-                  {army.members.some(m => m.playerId === player.name && ['captain', 'colonel', 'general'].includes(m.role)) && (
-                    <button className="war-btn war-btn--primary"
-                      style={{ fontSize: '8px', padding: '4px 8px', marginTop: '4px', width: '100%' }}
-                      onClick={() => {
-                        const result = armyStore.issueOrder(army.id, 'attack_region', army.deployedProvince, 10000, 3600000, 1.2)
-                        // 1 hour, +20% damage, $10K bounty
-                      }}
-                    >📋 ISSUE ORDER — Attack {army.deployedProvince} (+20% DMG, $10K Bounty)</button>
-                  )}
-                </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: '8px', color: '#64748b', marginTop: '4px', textAlign: 'center' }}>
+                        Total AV: {av.total.toLocaleString()} • Aura applied to all countrymen in deployed battle
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Attack Controls */}
                 {canAttack && (
@@ -1152,7 +1074,7 @@ function ArmiesTab({ iso }: { iso: string }) {
             const template = DIVISION_TEMPLATES[div.type]
             return (
               <div className="war-unassigned-row" key={div.id}>
-                <span>{template?.icon} {div.name}</span>
+                <span><img src={template?.icon} alt="div" style={{ width: '12px', height: '12px', objectFit: 'contain', verticalAlign: 'middle', marginRight: '4px' }} />{div.name}</span>
                 <span className={`war-div-status--${div.status}`}>{div.status}</span>
                 <div className="war-unassigned-actions">
                   {myArmies.map(army => (
@@ -1297,7 +1219,12 @@ function BattlesTab() {
             </button>
 
             {/* Tick Damage Bar + Ground Points & Tick Speed */}
-            <TickDamageBar battle={battle} />
+            {(() => {
+              const countries = useWorldStore.getState().countries
+              const ac = countries.find(c => c.code === battle.attackerId)?.color || '#22d38a'
+              const dc = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
+              return <TickDamageBar battle={battle} atkColor={ac} defColor={dc} />
+            })()}
 
             {/* Ground Points & Tick Speed */}
             {(() => {
@@ -1400,7 +1327,7 @@ function BattlesTab() {
                     const moralePct = Math.floor(d.morale)
                     return (
                       <div className={`war-battle-div war-battle-div--${d.status}`} key={id}>
-                        <span className="war-battle-div__icon">{template?.icon}</span>
+                        <img src={template?.icon} alt="div" className="war-battle-div__icon" style={{ width: '14px', height: '14px', objectFit: 'contain' }} />
                         <span className="war-battle-div__name">{d.name}</span>
                         <div className="war-battle-div__bars">
                           <div className="war-mini-bar" title={`Strength ${strPct}%`}>
@@ -1427,7 +1354,7 @@ function BattlesTab() {
                     const moralePct = Math.floor(d.morale)
                     return (
                       <div className={`war-battle-div war-battle-div--${d.status}`} key={id}>
-                        <span className="war-battle-div__icon">{template?.icon}</span>
+                        <img src={template?.icon} alt="div" className="war-battle-div__icon" style={{ width: '14px', height: '14px', objectFit: 'contain' }} />
                         <span className="war-battle-div__name">{d.name}</span>
                         <div className="war-battle-div__bars">
                           <div className="war-mini-bar" title={`Strength ${strPct}%`}>

@@ -288,9 +288,12 @@ function App() {
         for (let i = 0; i < 3; i++) {
           const id = `mock_def_${code}_${i}`
           enemyDivIds[bi].push(id)
+          const divTypes: ('assault' | 'rpg' | 'tank')[] = ['assault', 'rpg', 'tank']
+          const divNames = ['1st Assault Div', '2nd RPG Div', '3rd Tank Div']
+          const divType = divTypes[i]
           mockDivs[id] = {
-            id, name: `${code} ${['1st Infantry', '2nd Mech', '3rd Tank'][i]}`,
-            type: (i < 2 ? 'infantry' : 'mechanic') as any, category: (i < 2 ? 'infantry' : 'mechanic') as any,
+            id, name: `${code} ${divNames[i]}`,
+            type: divType, category: divType === 'tank' ? 'land' : 'land',
             countryCode: code, ownerId: `AI_${code}`,
             status: 'in_combat', experience: 50,
             manpower: 5000 + i * 2000, maxManpower: 8000,

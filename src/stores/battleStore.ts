@@ -255,6 +255,7 @@ export interface BattleState {
   playerAttack: (battleId: string, side?: 'attacker' | 'defender') => { damage: number; isCrit: boolean; message: string }
   playerDefend: (battleId: string, side?: 'attacker' | 'defender') => { blocked: number; message: string }
   deployDivisionsToBattle: (battleId: string, divisionIds: string[], side: 'attacker' | 'defender') => { success: boolean; message: string }
+  removeDivisionsFromBattle: (battleId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
 
   combatTickLeft: number
   setCombatTickLeft: (val: number) => void
@@ -445,6 +446,31 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       const tick = battle.ticksElapsed + 1
       const newCombatLog = [...battle.combatLog]
 
+      // --- Auto-deploy: if a side has no engaged divisions, auto-deploy available ones ---
+      const autoDeploySide = (side: 'attacker' | 'defender') => {
+        const sideData = side === 'attacker' ? battle.attacker : battle.defender
+        if (sideData.engagedDivisionIds.length > 0) return  // already has engaged divisions
+        const countryDivs = Object.values(armyStore.divisions).filter(
+          d => d.countryCode === sideData.countryCode && (d.status === 'ready' || d.status === 'in_combat') && d.manpower > 0
+        )
+        if (countryDivs.length === 0) return
+        const ids = countryDivs.map(d => d.id)
+        // Mark as in_combat
+        ids.forEach(id => {
+          useArmyStore.setState(s => ({
+            divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat' } }
+          }))
+        })
+        sideData.divisionIds = [...new Set([...sideData.divisionIds, ...ids])]
+        sideData.engagedDivisionIds = [...new Set([...sideData.engagedDivisionIds, ...ids])]
+        newCombatLog.push({
+          tick, timestamp: now, type: 'reinforcement' as const, side,
+          message: `🚀 ${ids.length} ${side} division(s) auto-deployed!`,
+        })
+      }
+      autoDeploySide('attacker')
+      autoDeploySide('defender')
+
       // --- Get alive divisions on each side ---
       const atkDivIds = battle.attacker.engagedDivisionIds.filter(id => {
         const d = armyStore.divisions[id]
@@ -462,7 +488,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       atkDivIds.forEach(divId => {
         const div = armyStore.divisions[divId]
         if (!div) return
-        const template = DIVISION_TEMPLATES[div.type]
+        const template = DIVISION_TEMPLATES[div.type as keyof typeof DIVISION_TEMPLATES]
+        if (!template) { console.warn('[Combat] Unknown division type:', div.type, 'for div', divId); return }
 
         // Hit check: template hitRate
         if (Math.random() > template.hitRate) {
@@ -492,7 +519,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       defDivIds.forEach(divId => {
         const d = armyStore.divisions[divId]
         if (!d) return
-        const template = DIVISION_TEMPLATES[d.type]
+        const template = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
+        if (!template) { console.warn('[Combat] Unknown defender div type:', d.type, 'for div', divId); return }
         const strength = d.manpower / d.maxManpower
         const morale = d.morale / 100
         // Base AI damage: 80 × atkDmgMult (AI baseline = 80 attack)
@@ -769,5 +797,47 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }))
 
     return { success: true, message: `${validIds.length} division(s) deployed to battle!` }
+  },
+
+  removeDivisionsFromBattle: (battleId, side) => {
+    const state = get()
+    const battle = state.battles[battleId]
+    if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
+
+    const sideData = side === 'attacker' ? battle.attacker : battle.defender
+    if (sideData.engagedDivisionIds.length === 0) return { success: false, message: 'No divisions to remove.' }
+
+    const count = sideData.engagedDivisionIds.length
+
+    // Set divisions to 'recovering'
+    sideData.engagedDivisionIds.forEach(id => {
+      useArmyStore.setState(s => {
+        const d = s.divisions[id]
+        if (!d || d.status === 'destroyed') return s
+        return {
+          divisions: { ...s.divisions, [id]: { ...d, status: 'recovering', trainingProgress: 0 } }
+        }
+      })
+    })
+
+    // Clear from battle side
+    set(s => ({
+      battles: {
+        ...s.battles,
+        [battleId]: {
+          ...battle,
+          [side]: {
+            ...sideData,
+            engagedDivisionIds: [],
+          },
+          combatLog: [...battle.combatLog, {
+            tick: battle.ticksElapsed, timestamp: Date.now(), type: 'retreat' as const, side,
+            message: `🏳️ ${count} division(s) withdrawn from battle!`,
+          }],
+        },
+      },
+    }))
+
+    return { success: true, message: `${count} division(s) withdrawn and recovering.` }
   },
 }))

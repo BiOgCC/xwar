@@ -3,11 +3,9 @@ import { usePlayerStore, getMilitaryRank } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore, type EquipItem } from './inventoryStore'
 
-// ====== DIVISION TYPES ======
+export type DivisionType = 'recon' | 'assault' | 'sniper' | 'rpg' | 'jeep' | 'tank' | 'jet' | 'warship'
 
-export type DivisionType = 'infantry' | 'mechanic'
-
-export type DivisionCategory = 'land'
+export type DivisionCategory = 'land' | 'air' | 'naval'
 
 // ====== DIVISION TEMPLATE (multipliers applied to player stats) ======
 
@@ -16,6 +14,7 @@ export interface DivisionTemplate {
   name: string
   icon: string
   category: DivisionCategory
+  group: 'infantry' | 'mechanized'
   description: string
   // Offensive multipliers (applied to player stats)
   atkDmgMult: number       // × player attackDamage
@@ -37,22 +36,76 @@ export interface DivisionTemplate {
   trainingTime: number
 }
 
+// Infantry base: atkDmg=0.10, hitRate=0.50, critRate=0.80, critDmg=0.80, health=1.20, dodge=0.90, armor=1.00
+// Mechanized base: atkDmg=0.20, hitRate=0.60, critRate=0.90, critDmg=0.90, health=1.50, dodge=1.10, armor=1.50
+
 export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
-  infantry: {
-    id: 'infantry', name: 'Infantry Division', icon: '🚶', category: 'land',
-    description: 'Backbone of any army. Cheap, solid defense. Uses player stats at reduced multipliers.',
+  // ── INFANTRY ──────────────────────────────
+  recon: {
+    id: 'recon', name: 'Recon Squad', icon: '/assets/divisions/recon.png', category: 'land', group: 'infantry',
+    description: 'Scout unit. Base infantry stats with enhanced evasion.',
     atkDmgMult: 0.10, hitRate: 0.50, critRateMult: 0.80, critDmgMult: 0.80,
-    healthMult: 1.20, dodgeMult: 0.90, armorMult: 1.00,
-    manpowerCost: 300, trainingTime: 30,
-    recruitCost: { money: 50000, oil: 500, materialX: 200, scrap: 300 },
+    healthMult: 1.20, dodgeMult: 1.30, armorMult: 1.00,
+    manpowerCost: 200, trainingTime: 25,
+    recruitCost: { money: 40000, oil: 400, materialX: 150, scrap: 200 },
   },
-  mechanic: {
-    id: 'mechanic', name: 'Mechanized Division', icon: '🚛', category: 'land',
-    description: 'Motorized troops. Higher damage, better survivability. Costs more resources.',
+  assault: {
+    id: 'assault', name: 'Assault Infantry', icon: '/assets/divisions/assault.png', category: 'land', group: 'infantry',
+    description: 'Frontline fighters. Harder hits with better survivability.',
+    atkDmgMult: 0.11, hitRate: 0.55, critRateMult: 1.00, critDmgMult: 0.88,
+    healthMult: 1.44, dodgeMult: 0.90, armorMult: 1.10,
+    manpowerCost: 350, trainingTime: 30,
+    recruitCost: { money: 60000, oil: 600, materialX: 250, scrap: 350 },
+  },
+  sniper: {
+    id: 'sniper', name: 'Sniper Division', icon: '/assets/divisions/sniper.png', category: 'land', group: 'infantry',
+    description: 'Precision unit. Devastating critical hits from range.',
+    atkDmgMult: 0.13, hitRate: 0.70, critRateMult: 1.56, critDmgMult: 1.56,
+    healthMult: 1.20, dodgeMult: 0.90, armorMult: 0.80,
+    manpowerCost: 150, trainingTime: 40,
+    recruitCost: { money: 80000, oil: 500, materialX: 300, scrap: 400 },
+  },
+  rpg: {
+    id: 'rpg', name: 'RPG Squadron', icon: '/assets/divisions/rpg.png', category: 'land', group: 'infantry',
+    description: 'Heavy infantry. Maximum firepower at high cost.',
+    atkDmgMult: 0.15, hitRate: 0.50, critRateMult: 1.20, critDmgMult: 1.20,
+    healthMult: 1.50, dodgeMult: 0.70, armorMult: 1.30,
+    manpowerCost: 250, trainingTime: 35,
+    recruitCost: { money: 100000, oil: 800, materialX: 400, scrap: 500 },
+  },
+
+  // ── MECHANIZED ────────────────────────────
+  jeep: {
+    id: 'jeep', name: 'Recon Jeeps', icon: '/assets/divisions/jeep.png', category: 'land', group: 'mechanized',
+    description: 'Fast motorized scouts. High evasion, good firepower.',
     atkDmgMult: 0.20, hitRate: 0.60, critRateMult: 0.90, critDmgMult: 0.90,
-    healthMult: 1.50, dodgeMult: 1.10, armorMult: 1.50,
-    manpowerCost: 200, trainingTime: 45,
-    recruitCost: { money: 120000, oil: 2000, materialX: 800, scrap: 500 },
+    healthMult: 1.50, dodgeMult: 1.50, armorMult: 1.50,
+    manpowerCost: 150, trainingTime: 35,
+    recruitCost: { money: 100000, oil: 1500, materialX: 600, scrap: 400 },
+  },
+  tank: {
+    id: 'tank', name: 'Tank Battalion', icon: '/assets/divisions/tank.png', category: 'land', group: 'mechanized',
+    description: 'Armored assault. Devastating crits with heavy armor.',
+    atkDmgMult: 0.22, hitRate: 0.66, critRateMult: 1.10, critDmgMult: 0.99,
+    healthMult: 1.80, dodgeMult: 0.80, armorMult: 2.00,
+    manpowerCost: 200, trainingTime: 50,
+    recruitCost: { money: 150000, oil: 2500, materialX: 1000, scrap: 600 },
+  },
+  jet: {
+    id: 'jet', name: 'Jet Fighters', icon: '/assets/divisions/jet.png', category: 'air', group: 'mechanized',
+    description: 'Air superiority. Precise strikes with massive criticals.',
+    atkDmgMult: 0.26, hitRate: 0.80, critRateMult: 1.75, critDmgMult: 1.75,
+    healthMult: 1.30, dodgeMult: 1.40, armorMult: 1.00,
+    manpowerCost: 100, trainingTime: 60,
+    recruitCost: { money: 200000, oil: 3000, materialX: 1200, scrap: 700 },
+  },
+  warship: {
+    id: 'warship', name: 'Warship Fleet', icon: '/assets/divisions/warship.png', category: 'naval', group: 'mechanized',
+    description: 'Naval dominance. Maximum stats at maximum cost.',
+    atkDmgMult: 0.30, hitRate: 0.60, critRateMult: 1.35, critDmgMult: 1.35,
+    healthMult: 2.00, dodgeMult: 0.70, armorMult: 2.50,
+    manpowerCost: 250, trainingTime: 60,
+    recruitCost: { money: 250000, oil: 4000, materialX: 1500, scrap: 800 },
   },
 }
 
@@ -216,14 +269,14 @@ let armyCounter = 0
 function createInitialDivisions(): Record<string, Division> {
   const divs: Record<string, Division> = {}
 
-  // US Army — 4 infantry, 2 mechanic
+  // US Army — varied composition
   const usDivs: { type: DivisionType; name: string }[] = [
-    { type: 'infantry', name: '1st Infantry "Big Red One"' },
-    { type: 'infantry', name: '82nd Airborne' },
-    { type: 'infantry', name: '101st Airborne' },
-    { type: 'infantry', name: '10th Mountain' },
-    { type: 'mechanic', name: '1st Armored Brigade' },
-    { type: 'mechanic', name: '3rd Mechanized Brigade' },
+    { type: 'recon', name: '1st Recon "Big Red Eye"' },
+    { type: 'assault', name: '82nd Airborne' },
+    { type: 'sniper', name: '101st Marksmen' },
+    { type: 'rpg', name: '10th Mountain RPG' },
+    { type: 'jeep', name: '1st Fast Attack Brigade' },
+    { type: 'tank', name: '3rd Armored Brigade' },
   ]
 
   usDivs.forEach((d, i) => {
@@ -239,12 +292,12 @@ function createInitialDivisions(): Record<string, Division> {
     }
   })
 
-  // RU Army — 3 infantry, 1 mechanic
+  // RU Army
   const ruDivs: { type: DivisionType; name: string }[] = [
-    { type: 'infantry', name: '4th Guards Division' },
-    { type: 'infantry', name: '20th Guards Army' },
-    { type: 'infantry', name: '150th Motor Rifle Division' },
-    { type: 'mechanic', name: 'T-90 Heavy Armor' },
+    { type: 'assault', name: '4th Guards Assault' },
+    { type: 'rpg', name: '20th Guards RPG' },
+    { type: 'sniper', name: '150th Sniper Division' },
+    { type: 'tank', name: 'T-90 Heavy Armor' },
   ]
 
   ruDivs.forEach((d, i) => {
@@ -260,13 +313,13 @@ function createInitialDivisions(): Record<string, Division> {
     }
   })
 
-  // CN Army — 3 infantry, 2 mechanic
+  // CN Army
   const cnDivs: { type: DivisionType; name: string }[] = [
-    { type: 'infantry', name: 'PLA 1st Group Army' },
-    { type: 'infantry', name: 'PLA 2nd Group Army' },
-    { type: 'infantry', name: 'PLA 3rd Group Army' },
-    { type: 'mechanic', name: 'Type 99A Battalion' },
-    { type: 'mechanic', name: 'ZBD-04 IFV Brigade' },
+    { type: 'recon', name: 'PLA 1st Recon Group' },
+    { type: 'assault', name: 'PLA 2nd Assault Group' },
+    { type: 'sniper', name: 'PLA 3rd Sniper Group' },
+    { type: 'tank', name: 'Type 99A Battalion' },
+    { type: 'jet', name: 'J-20 Strike Wing' },
   ]
 
   cnDivs.forEach((d, i) => {
