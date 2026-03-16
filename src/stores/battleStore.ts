@@ -1,26 +1,56 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
 import { useGovernmentStore } from './governmentStore'
+import { usePlayerStore } from './playerStore'
+import { useSkillsStore } from './skillsStore'
+import { useInventoryStore } from './inventoryStore'
+
+// ====== PLAYER COMBAT STATS HELPER ======
+export function getPlayerCombatStats() {
+  const player = usePlayerStore.getState()
+  const skills = useSkillsStore.getState().military
+  const equipped = useInventoryStore.getState().getEquipped()
+
+  let eqDmg = 0, eqCritRate = 0, eqCritDmg = 0, eqArmor = 0, eqDodge = 0, eqPrecision = 0
+  equipped.forEach((item: any) => {
+    if (item.stats.damage) eqDmg += item.stats.damage
+    if (item.stats.critRate) eqCritRate += item.stats.critRate
+    if (item.stats.critDamage) eqCritDmg += item.stats.critDamage
+    if (item.stats.armor) eqArmor += item.stats.armor
+    if (item.stats.dodge) eqDodge += item.stats.dodge
+    if (item.stats.precision) eqPrecision += item.stats.precision
+  })
+
+  // Hunger penalty: full hunger (100) = 1.0x, empty (0) = 0.5x
+  const hungerMultiplier = 0.5 + (player.hunger / player.maxHunger) * 0.5
+
+  return {
+    attackDamage: Math.floor((100 + eqDmg + skills.attack * 20) * hungerMultiplier),
+    critRate: 10 + eqCritRate + skills.critRate * 5,
+    critMultiplier: (100 + eqCritDmg + skills.critDamage * 20) / 100,
+    armorBlock: eqArmor + skills.armor * 5,
+    dodgeChance: 5 + eqDodge + skills.dodge * 5,
+    hitRate: Math.min(100, 50 + eqPrecision + skills.precision * 5),
+    hungerMultiplier,
+  }
+}
+
 import {
   useArmyStore,
-  TERRAIN_MODIFIERS,
-  COUNTRY_TERRAIN,
   DIVISION_TEMPLATES,
   type Division,
-  type TerrainType,
 } from './armyStore'
 
 // ====== TYPES ======
 
 export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike'
-export type CombatPhase = 'planning' | 'engagement' | 'pursuit' | 'resolved'
 
 // ====== COMBAT LOG ======
 
 export interface CombatLogEntry {
   tick: number
   timestamp: number
-  type: 'damage' | 'critical' | 'retreat' | 'destroyed' | 'air_strike' | 'artillery_barrage' | 'breakthrough' | 'morale_break' | 'phase_change'
+  type: 'damage' | 'critical' | 'retreat' | 'destroyed' | 'air_strike' | 'artillery_barrage' | 'breakthrough' | 'morale_break' | 'phase_change' | 'reinforcement'
   side: 'attacker' | 'defender'
   divisionName?: string
   targetDivisionName?: string
@@ -33,21 +63,10 @@ export interface CombatLogEntry {
 
 export interface BattleSide {
   countryCode: string
-  armyId: string
   divisionIds: string[]
-  engagedDivisionIds: string[]   // Currently in combat (limited by combat width)
-  reserveDivisionIds: string[]   // Waiting to rotate in
+  engagedDivisionIds: string[]
 
-  // Aggregated stats (recalculated each tick)
-  totalAttack: number
-  totalDefense: number
-  totalBreakthrough: number
-  totalOrganization: number
-  totalManpower: number
-  airSuperiority: number         // 0-100, from fighter/bomber presence
-  supplyStatus: number           // 0-100, affects organization recovery
-
-  // Accumulated damage
+  // Report summaries (accumulated)
   damageDealt: number
   manpowerLost: number
   divisionsDestroyed: number
@@ -57,11 +76,8 @@ export interface BattleSide {
 // ====== BATTLE TICK ======
 
 export interface BattleTick {
-  startTime: number
-  endTime: number
   attackerDamage: number
   defenderDamage: number
-  resolved: boolean
 }
 
 export interface DamageEvent {
@@ -79,56 +95,80 @@ export interface BattleRound {
   status: 'active' | 'attacker_won' | 'defender_won'
 }
 
-// ====== BATTLE (HOI4-STYLE) ======
+// ====== BATTLE ======
 
 export interface Battle {
   id: string
   type: BattleType
-  attackerId: string       // Country ISO
-  defenderId: string       // Country ISO
-  regionName: string       // Target province name
+  attackerId: string
+  defenderId: string
+  regionName: string
   startedAt: number
 
-  // HOI4-style combat
-  terrain: TerrainType
-  combatWidth: number      // Total combat width available (typically 80)
-  phase: CombatPhase
   ticksElapsed: number
-  tickDurationMs: number   // How long each combat tick lasts (3 seconds for game speed)
+  status: 'active' | 'attacker_won' | 'defender_won'
 
-  // Sides
   attacker: BattleSide
   defender: BattleSide
 
-  // Legacy round system (kept for backward compat + display)
   attackerRoundsWon: number
   defenderRoundsWon: number
   rounds: BattleRound[]
   currentTick: BattleTick
-  
-  // Combat log
+
   combatLog: CombatLogEntry[]
-  
-  // Legacy compat
   attackerDamageDealers: Record<string, number>
   defenderDamageDealers: Record<string, number>
   damageFeed: DamageEvent[]
 
-  status: 'active' | 'attacker_won' | 'defender_won'
+  // Battle Orders: 0 = none, 5/10/15 = % damage buff
+  battleOrder: number
 }
 
 // ====== HELPERS ======
 
-const TICK_DURATION = 3 * 1000 // 3 seconds per combat tick (fast for gameplay)
-const COMBAT_WIDTH = 80
-const POINTS_TO_WIN_ROUND = 300
+const POINTS_TO_WIN_ROUND = 600
 const ROUNDS_TO_WIN_BATTLE = 2
+
+function getPointIncrement(totalGroundPoints: number): number {
+  if (totalGroundPoints < 100) return 1
+  if (totalGroundPoints < 200) return 2
+  if (totalGroundPoints < 300) return 3
+  if (totalGroundPoints < 400) return 4
+  return 5
+}
 
 // Country flag emojis from ISO codes
 const FLAG_EMOJIS: Record<string, string> = {
   US: '🇺🇸', RU: '🇷🇺', CN: '🇨🇳', DE: '🇩🇪', BR: '🇧🇷', IN: '🇮🇳',
   NG: '🇳🇬', JP: '🇯🇵', GB: '🇬🇧', TR: '🇹🇷', CA: '🇨🇦', MX: '🇲🇽',
   CU: '🇨🇺', BS: '🇧🇸',
+  FR: '🇫🇷', ES: '🇪🇸', IT: '🇮🇹', PL: '🇵🇱', UA: '🇺🇦', RO: '🇷🇴',
+  NL: '🇳🇱', BE: '🇧🇪', SE: '🇸🇪', NO: '🇳🇴', FI: '🇫🇮', DK: '🇩🇰',
+  AT: '🇦🇹', CH: '🇨🇭', CZ: '🇨🇿', PT: '🇵🇹', GR: '🇬🇷', HU: '🇭🇺',
+  IE: '🇮🇪', IS: '🇮🇸', RS: '🇷🇸', BY: '🇧🇾', BG: '🇧🇬', SK: '🇸🇰',
+  HR: '🇭🇷', LT: '🇱🇹', LV: '🇱🇻', EE: '🇪🇪', SI: '🇸🇮', BA: '🇧🇦',
+  AL: '🇦🇱', MK: '🇲🇰', ME: '🇲🇪', MD: '🇲🇩', XK: '🇽🇰',
+  AR: '🇦🇷', CO: '🇨🇴', VE: '🇻🇪', PE: '🇵🇪', CL: '🇨🇱', EC: '🇪🇨',
+  BO: '🇧🇴', PY: '🇵🇾', UY: '🇺🇾', GY: '🇬🇾', SR: '🇸🇷',
+  GT: '🇬🇹', HN: '🇭🇳', SV: '🇸🇻', NI: '🇳🇮', CR: '🇨🇷', PA: '🇵🇦',
+  DO: '🇩🇴', HT: '🇭🇹', JM: '🇯🇲', TT: '🇹🇹',
+  KR: '🇰🇷', KP: '🇰🇵', TW: '🇹🇼', TH: '🇹🇭', VN: '🇻🇳', PH: '🇵🇭',
+  MY: '🇲🇾', ID: '🇮🇩', MM: '🇲🇲', BD: '🇧🇩', PK: '🇵🇰', AF: '🇦🇫',
+  IQ: '🇮🇶', IR: '🇮🇷', SA: '🇸🇦', AE: '🇦🇪', IL: '🇮🇱', SY: '🇸🇾',
+  JO: '🇯🇴', LB: '🇱🇧', YE: '🇾🇪', OM: '🇴🇲', KW: '🇰🇼', QA: '🇶🇦',
+  GE: '🇬🇪', AM: '🇦🇲', AZ: '🇦🇿', KZ: '🇰🇿', UZ: '🇺🇿', TM: '🇹🇲',
+  KG: '🇰🇬', TJ: '🇹🇯', MN: '🇲🇳', NP: '🇳🇵', LK: '🇱🇰', LA: '🇱🇦',
+  KH: '🇰🇭', BN: '🇧🇳', SG: '🇸🇬',
+  ZA: '🇿🇦', EG: '🇪🇬', KE: '🇰🇪', ET: '🇪🇹', TZ: '🇹🇿', GH: '🇬🇭',
+  CI: '🇨🇮', CM: '🇨🇲', AO: '🇦🇴', MZ: '🇲🇿', MG: '🇲🇬', MA: '🇲🇦',
+  DZ: '🇩🇿', TN: '🇹🇳', LY: '🇱🇾', SD: '🇸🇩', SS: '🇸🇸', UG: '🇺🇬',
+  SN: '🇸🇳', ML: '🇲🇱', BF: '🇧🇫', NE: '🇳🇪', TD: '🇹🇩', CD: '🇨🇩',
+  CG: '🇨🇬', CF: '🇨🇫', GA: '🇬🇦', GQ: '🇬🇶', MW: '🇲🇼', ZM: '🇿🇲',
+  ZW: '🇿🇼', BW: '🇧🇼', NA: '🇳🇦', SO: '🇸🇴', ER: '🇪🇷', DJ: '🇩🇯',
+  RW: '🇷🇼', BI: '🇧🇮', SL: '🇸🇱', LR: '🇱🇷', GM: '🇬🇲', GW: '🇬🇼',
+  MR: '🇲🇷', LS: '🇱🇸', SZ: '🇸🇿', TG: '🇹🇬', BJ: '🇧🇯',
+  AU: '🇦🇺', NZ: '🇳🇿', PG: '🇵🇬', FJ: '🇫🇯',
 }
 
 export function getCountryFlag(iso: string): string {
@@ -139,222 +179,64 @@ const COUNTRY_NAMES: Record<string, string> = {
   US: 'United States', RU: 'Russia', CN: 'China', DE: 'Germany', BR: 'Brazil', IN: 'India',
   NG: 'Nigeria', JP: 'Japan', GB: 'United Kingdom', TR: 'Turkey', CA: 'Canada', MX: 'Mexico',
   CU: 'Cuba', BS: 'Bahamas',
+  FR: 'France', ES: 'Spain', IT: 'Italy', PL: 'Poland', UA: 'Ukraine', RO: 'Romania',
+  NL: 'Netherlands', BE: 'Belgium', SE: 'Sweden', NO: 'Norway', FI: 'Finland', DK: 'Denmark',
+  AT: 'Austria', CH: 'Switzerland', CZ: 'Czech Republic', PT: 'Portugal', GR: 'Greece', HU: 'Hungary',
+  IE: 'Ireland', IS: 'Iceland', RS: 'Serbia', BY: 'Belarus', BG: 'Bulgaria', SK: 'Slovakia',
+  HR: 'Croatia', LT: 'Lithuania', LV: 'Latvia', EE: 'Estonia', SI: 'Slovenia', BA: 'Bosnia and Herzegovina',
+  AL: 'Albania', MK: 'North Macedonia', ME: 'Montenegro', MD: 'Moldova', XK: 'Kosovo',
+  AR: 'Argentina', CO: 'Colombia', VE: 'Venezuela', PE: 'Peru', CL: 'Chile', EC: 'Ecuador',
+  BO: 'Bolivia', PY: 'Paraguay', UY: 'Uruguay', GY: 'Guyana', SR: 'Suriname',
+  GT: 'Guatemala', HN: 'Honduras', SV: 'El Salvador', NI: 'Nicaragua', CR: 'Costa Rica', PA: 'Panama',
+  DO: 'Dominican Republic', HT: 'Haiti', JM: 'Jamaica', TT: 'Trinidad and Tobago',
+  KR: 'South Korea', KP: 'North Korea', TW: 'Taiwan', TH: 'Thailand', VN: 'Vietnam', PH: 'Philippines',
+  MY: 'Malaysia', ID: 'Indonesia', MM: 'Myanmar', BD: 'Bangladesh', PK: 'Pakistan', AF: 'Afghanistan',
+  IQ: 'Iraq', IR: 'Iran', SA: 'Saudi Arabia', AE: 'United Arab Emirates', IL: 'Israel', SY: 'Syria',
+  JO: 'Jordan', LB: 'Lebanon', YE: 'Yemen', OM: 'Oman', KW: 'Kuwait', QA: 'Qatar',
+  GE: 'Georgia', AM: 'Armenia', AZ: 'Azerbaijan', KZ: 'Kazakhstan', UZ: 'Uzbekistan', TM: 'Turkmenistan',
+  KG: 'Kyrgyzstan', TJ: 'Tajikistan', MN: 'Mongolia', NP: 'Nepal', LK: 'Sri Lanka', LA: 'Laos',
+  KH: 'Cambodia', BN: 'Brunei', SG: 'Singapore',
+  ZA: 'South Africa', EG: 'Egypt', KE: 'Kenya', ET: 'Ethiopia', TZ: 'Tanzania', GH: 'Ghana',
+  CI: 'Ivory Coast', CM: 'Cameroon', AO: 'Angola', MZ: 'Mozambique', MG: 'Madagascar', MA: 'Morocco',
+  DZ: 'Algeria', TN: 'Tunisia', LY: 'Libya', SD: 'Sudan', SS: 'South Sudan', UG: 'Uganda',
+  SN: 'Senegal', ML: 'Mali', BF: 'Burkina Faso', NE: 'Niger', TD: 'Chad', CD: 'DR Congo',
+  CG: 'Congo', CF: 'Central African Republic', GA: 'Gabon', GQ: 'Equatorial Guinea', MW: 'Malawi', ZM: 'Zambia',
+  ZW: 'Zimbabwe', BW: 'Botswana', NA: 'Namibia', SO: 'Somalia', ER: 'Eritrea', DJ: 'Djibouti',
+  RW: 'Rwanda', BI: 'Burundi', SL: 'Sierra Leone', LR: 'Liberia', GM: 'Gambia', GW: 'Guinea-Bissau',
+  MR: 'Mauritania', LS: 'Lesotho', SZ: 'Eswatini', TG: 'Togo', BJ: 'Benin',
+  AU: 'Australia', NZ: 'New Zealand', PG: 'Papua New Guinea', FJ: 'Fiji',
 }
 
 export function getCountryName(iso: string): string {
   return COUNTRY_NAMES[iso] || iso
 }
 
-// ====== COMBAT CALCULATION ENGINE ======
+// ====== FACTORY FUNCTIONS ======
 
-function calculateAirSuperiority(divisions: Division[]): number {
-  let fighterPower = 0
-  let bomberPower = 0
-  let antiAirPower = 0
-
-  divisions.forEach(d => {
-    if (d.type === 'fighter') fighterPower += d.stats.airAttack * (d.manpower / d.maxManpower)
-    if (d.type === 'bomber') bomberPower += d.stats.attack * 0.3 * (d.manpower / d.maxManpower)
-    if (d.type === 'anti_air') antiAirPower += d.stats.airAttack * 0.5 * (d.manpower / d.maxManpower)
-  })
-
-  return Math.min(100, fighterPower + bomberPower + antiAirPower)
-}
-
-function selectEngagedDivisions(divisionIds: string[], divisions: Record<string, Division>, combatWidth: number): { engaged: string[]; reserve: string[] } {
-  const engaged: string[] = []
-  const reserve: string[] = []
-  let usedWidth = 0
-
-  // Sort by priority: tanks first, then mechanized, then infantry, then others
-  const priorityOrder: Record<string, number> = {
-    tank: 1, mechanized: 2, special_forces: 3, infantry: 4,
-    artillery: 5, anti_air: 6, fighter: 7, bomber: 8,
-  }
-
-  const sorted = [...divisionIds].sort((a, b) => {
-    const da = divisions[a]
-    const db = divisions[b]
-    if (!da || !db) return 0
-    return (priorityOrder[da.type] || 99) - (priorityOrder[db.type] || 99)
-  })
-
-  sorted.forEach(id => {
-    const div = divisions[id]
-    if (!div || div.status === 'destroyed' || div.status === 'retreating') return
-
-    if (usedWidth + div.stats.combatWidth <= combatWidth) {
-      engaged.push(id)
-      usedWidth += div.stats.combatWidth
-    } else {
-      reserve.push(id)
-    }
-  })
-
-  return { engaged, reserve }
-}
-
-function calculateSideStats(divisionIds: string[], divisions: Record<string, Division>): Partial<BattleSide> {
-  let totalAttack = 0, totalDefense = 0, totalBreakthrough = 0
-  let totalOrganization = 0, totalManpower = 0
-
-  divisionIds.forEach(id => {
-    const div = divisions[id]
-    if (!div || div.status === 'destroyed' || div.status === 'retreating') return
-
-    const strengthRatio = div.manpower / div.maxManpower
-    const moraleRatio = div.morale / 100
-
-    totalAttack += Math.floor(div.stats.attack * strengthRatio * moraleRatio)
-    totalDefense += Math.floor(div.stats.defense * strengthRatio * moraleRatio)
-    totalBreakthrough += Math.floor(div.stats.breakthrough * strengthRatio * moraleRatio)
-    totalOrganization += div.stats.organization
-    totalManpower += div.manpower
-  })
-
-  return { totalAttack, totalDefense, totalBreakthrough, totalOrganization, totalManpower }
-}
-
-/**
- * Core HOI4-style combat tick calculation
- * Each tick: attacker's attack vs defender's defense → damage to org + manpower
- */
-function resolveCombatTick(battle: Battle, armyStore: ReturnType<typeof useArmyStore.getState>): {
-  attackerDamage: number
-  defenderDamage: number
-  log: CombatLogEntry[]
-  manpowerLossAttacker: number
-  manpowerLossDefender: number
-  orgLossAttacker: number
-  orgLossDefender: number
-} {
-  const terrain = TERRAIN_MODIFIERS[battle.terrain]
-  const log: CombatLogEntry[] = []
-  const tick = battle.ticksElapsed
-
-  // Get engaged divisions
-  const atkDivs = battle.attacker.engagedDivisionIds
-    .map(id => armyStore.divisions[id]).filter(d => d && d.status !== 'destroyed' && d.status !== 'retreating')
-  const defDivs = battle.defender.engagedDivisionIds
-    .map(id => armyStore.divisions[id]).filter(d => d && d.status !== 'destroyed' && d.status !== 'retreating')
-
-  if (atkDivs.length === 0 || defDivs.length === 0) {
-    return { attackerDamage: 0, defenderDamage: 0, log, manpowerLossAttacker: 0, manpowerLossDefender: 0, orgLossAttacker: 0, orgLossDefender: 0 }
-  }
-
-  // === 1. Calculate raw attack/defense totals ===
-  let atkTotalAttack = 0, atkTotalBreakthrough = 0, atkAirSup = battle.attacker.airSuperiority
-  let defTotalAttack = 0, defTotalDefense = 0, defAirSup = battle.defender.airSuperiority
-
-  atkDivs.forEach(d => {
-    const str = d.manpower / d.maxManpower
-    const mor = d.morale / 100
-    atkTotalAttack += Math.floor(d.stats.attack * str * mor)
-    atkTotalBreakthrough += Math.floor(d.stats.breakthrough * str * mor)
-
-    // Soft vs Hard targeting
-    const hasArmor = defDivs.some(dd => dd.type === 'tank' || dd.type === 'mechanized')
-    if (hasArmor) {
-      atkTotalAttack += Math.floor(d.stats.hardAttack * str * 0.5)
-    } else {
-      atkTotalAttack += Math.floor(d.stats.softAttack * str * 0.3)
-    }
-
-    // Terrain specialty bonus
-    if (d.type === terrain.specialBonus) {
-      atkTotalAttack = Math.floor(atkTotalAttack * (1 + terrain.specialBonusValue / 100))
-    }
-  })
-
-  defDivs.forEach(d => {
-    const str = d.manpower / d.maxManpower
-    const mor = d.morale / 100
-    defTotalAttack += Math.floor(d.stats.attack * str * mor * 0.7) // Defenders attack at 70%
-    defTotalDefense += Math.floor(d.stats.defense * str * mor)
-
-    // Terrain specialty bonus
-    if (d.type === terrain.specialBonus) {
-      defTotalDefense = Math.floor(defTotalDefense * (1 + terrain.specialBonusValue / 100))
-    }
-  })
-
-  // === 2. Apply terrain modifiers ===
-  // Defender gets defense bonus from terrain
-  defTotalDefense = Math.floor(defTotalDefense * (1 + terrain.defenseBonus / 100))
-  // Attacker gets attack penalty from terrain
-  atkTotalAttack = Math.floor(atkTotalAttack * (1 - terrain.attackPenalty / 100))
-
-  // === 3. Air superiority bonus ===
-  // Side with air superiority gets +15% attack, other side gets -15% defense
-  if (atkAirSup > defAirSup + 20) {
-    atkTotalAttack = Math.floor(atkTotalAttack * 1.15)
-    defTotalDefense = Math.floor(defTotalDefense * 0.85)
-    if (tick % 5 === 0) {
-      log.push({ tick, timestamp: Date.now(), type: 'air_strike', side: 'attacker', message: '✈️ Attacker air superiority grants +15% attack!' })
-    }
-  } else if (defAirSup > atkAirSup + 20) {
-    defTotalAttack = Math.floor(defTotalAttack * 1.15)
-    atkTotalBreakthrough = Math.floor(atkTotalBreakthrough * 0.85)
-    if (tick % 5 === 0) {
-      log.push({ tick, timestamp: Date.now(), type: 'air_strike', side: 'defender', message: '✈️ Defender air superiority grants +15% defense!' })
-    }
-  }
-
-  // === 4. Artillery barrage (every 3 ticks) ===
-  const atkArtillery = atkDivs.filter(d => d.type === 'artillery')
-  const defArtillery = defDivs.filter(d => d.type === 'artillery')
-  if (tick % 3 === 0 && atkArtillery.length > 0) {
-    const barrageDmg = atkArtillery.reduce((s, d) => s + d.stats.attack * 0.5, 0)
-    atkTotalAttack += Math.floor(barrageDmg)
-    log.push({ tick, timestamp: Date.now(), type: 'artillery_barrage', side: 'attacker', damage: Math.floor(barrageDmg), message: `💣 Attacker artillery barrage! +${Math.floor(barrageDmg)} attack` })
-  }
-  if (tick % 3 === 0 && defArtillery.length > 0) {
-    const barrageDmg = defArtillery.reduce((s, d) => s + d.stats.attack * 0.3, 0)
-    defTotalAttack += Math.floor(barrageDmg)
-    log.push({ tick, timestamp: Date.now(), type: 'artillery_barrage', side: 'defender', damage: Math.floor(barrageDmg), message: `💣 Defender artillery barrage! +${Math.floor(barrageDmg)} counter-attack` })
-  }
-
-  // === 5. Calculate damage ===
-  // Attacker damage to defender: (attack - defense) scaled, minimum 1
-  const rawAtkDmg = Math.max(1, Math.floor((atkTotalAttack - defTotalDefense * 0.6) * (0.8 + Math.random() * 0.4)))
-  // Defender counter-damage: (defender attack - attacker breakthrough) scaled
-  const rawDefDmg = Math.max(1, Math.floor((defTotalAttack - atkTotalBreakthrough * 0.4) * (0.8 + Math.random() * 0.4)))
-
-  // === 6. Convert damage to org loss, manpower loss, and morale loss ===
-  // Organization damage: main combat currency
-  const orgLossDefender = Math.max(1, Math.floor(rawAtkDmg * 0.02))
-  const orgLossAttacker = Math.max(1, Math.floor(rawDefDmg * 0.015)) // Defender does less org damage
-
-  // Manpower loss: percentage of damage
-  const manpowerLossDefender = Math.max(0, Math.floor(rawAtkDmg * 0.3 * (0.5 + Math.random() * 0.5)))
-  const manpowerLossAttacker = Math.max(0, Math.floor(rawDefDmg * 0.2 * (0.5 + Math.random() * 0.5)))
-
-  // === 7. Breakthrough check ===
-  if (atkTotalBreakthrough > defTotalDefense * 0.8 && Math.random() < 0.15) {
-    log.push({
-      tick, timestamp: Date.now(), type: 'breakthrough', side: 'attacker',
-      message: `⚡ BREAKTHROUGH! Attackers pierce defensive line! Double org damage this tick!`,
-    })
-    // Double org damage on breakthrough
-    return {
-      attackerDamage: rawAtkDmg * 2,
-      defenderDamage: rawDefDmg,
-      log,
-      manpowerLossAttacker,
-      manpowerLossDefender: manpowerLossDefender * 2,
-      orgLossAttacker,
-      orgLossDefender: orgLossDefender * 2,
-    }
-  }
-
+function createEmptyBattleSide(countryCode: string): BattleSide {
   return {
-    attackerDamage: rawAtkDmg,
-    defenderDamage: rawDefDmg,
-    log,
-    manpowerLossAttacker,
-    manpowerLossDefender,
-    orgLossAttacker,
-    orgLossDefender,
+    countryCode,
+    divisionIds: [], engagedDivisionIds: [],
+    damageDealt: 0, manpowerLost: 0,
+    divisionsDestroyed: 0, divisionsRetreated: 0,
+  }
+}
+
+function mkBattle(id: string, attackerId: string, defenderId: string, regionName: string, type: BattleType = 'invasion'): Battle {
+  return {
+    id, type, attackerId, defenderId, regionName,
+    startedAt: Date.now(),
+    ticksElapsed: 0,
+    status: 'active',
+    attacker: createEmptyBattleSide(attackerId),
+    defender: createEmptyBattleSide(defenderId),
+    attackerRoundsWon: 0, defenderRoundsWon: 0,
+    rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active' }],
+    currentTick: { attackerDamage: 0, defenderDamage: 0 },
+    combatLog: [],
+    attackerDamageDealers: {}, defenderDamageDealers: {},
+    damageFeed: [],
+    battleOrder: 0,
   }
 }
 
@@ -366,56 +248,35 @@ export interface BattleState {
   launchAttack: (attackerId: string, defenderId: string, regionName: string, type?: BattleType) => void
   addDamage: (battleId: string, side: 'attacker' | 'defender', amount: number, isCrit: boolean, isDodged: boolean, playerName: string) => void
   resolveTicksAndRounds: () => void
-  
-  // HOI4-style
+
   launchHOIBattle: (attackerArmyId: string, defenderCountryCode: string, type?: BattleType) => { success: boolean; message: string; battleId?: string }
   processHOICombatTick: () => void
-}
 
-function createEmptyBattleSide(countryCode: string, armyId: string = ''): BattleSide {
-  return {
-    countryCode, armyId,
-    divisionIds: [], engagedDivisionIds: [], reserveDivisionIds: [],
-    totalAttack: 0, totalDefense: 0, totalBreakthrough: 0,
-    totalOrganization: 0, totalManpower: 0,
-    airSuperiority: 0, supplyStatus: 100,
-    damageDealt: 0, manpowerLost: 0,
-    divisionsDestroyed: 0, divisionsRetreated: 0,
-  }
-}
+  playerAttack: (battleId: string, side?: 'attacker' | 'defender') => { damage: number; isCrit: boolean; message: string }
+  playerDefend: (battleId: string, side?: 'attacker' | 'defender') => { blocked: number; message: string }
+  deployDivisionsToBattle: (battleId: string, divisionIds: string[], side: 'attacker' | 'defender') => { success: boolean; message: string }
 
-function mkBattle(id: string, attackerId: string, defenderId: string, regionName: string, type: BattleType = 'invasion'): Battle {
-  const now = Date.now()
-  const terrain = COUNTRY_TERRAIN[defenderId] || 'plains'
-
-  return {
-    id, type, attackerId, defenderId, regionName,
-    startedAt: now,
-    terrain: terrain as TerrainType,
-    combatWidth: COMBAT_WIDTH,
-    phase: 'planning',
-    ticksElapsed: 0,
-    tickDurationMs: TICK_DURATION,
-
-    attacker: createEmptyBattleSide(attackerId),
-    defender: createEmptyBattleSide(defenderId),
-
-    attackerRoundsWon: 0,
-    defenderRoundsWon: 0,
-    rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active' }],
-    currentTick: { startTime: now, endTime: now + TICK_DURATION, attackerDamage: 0, defenderDamage: 0, resolved: false },
-    combatLog: [],
-    attackerDamageDealers: {},
-    defenderDamageDealers: {},
-    damageFeed: [],
-    status: 'active',
-  }
+  combatTickLeft: number
+  setCombatTickLeft: (val: number) => void
+  setBattleOrder: (battleId: string, order: number) => void
 }
 
 export const useBattleStore = create<BattleState>((set, get) => ({
   battles: {},
+  combatTickLeft: 15,
+  setCombatTickLeft: (val: number) => set({ combatTickLeft: val }),
+  setBattleOrder: (battleId: string, order: number) => set((state) => {
+    const battle = state.battles[battleId]
+    if (!battle) return state
+    return {
+      battles: {
+        ...state.battles,
+        [battleId]: { ...battle, battleOrder: order },
+      },
+    }
+  }),
 
-  // ====== LEGACY LAUNCH (kept for backward compat) ======
+  // ====== LEGACY LAUNCH ======
   launchAttack: (attackerId, defenderId, regionName, type = 'invasion') => set((state) => {
     const existing = Object.values(state.battles).find(b => b.regionName === regionName && b.status === 'active')
     if (existing) return state
@@ -426,7 +287,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     return { battles: { ...state.battles, [id]: battle } }
   }),
 
-  // ====== HOI4-STYLE BATTLE LAUNCH ======
+  // ====== BATTLE LAUNCH ======
   launchHOIBattle: (attackerArmyId, defenderCountryCode, type = 'invasion') => {
     const armyStore = useArmyStore.getState()
     const attackerArmy = armyStore.armies[attackerArmyId]
@@ -438,16 +299,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     if (attackerDivs.length === 0) return { success: false, message: 'No ready divisions in this army.' }
 
-    // Check adjacency
     const world = useWorldStore.getState()
     if (!world.canAttack(attackerArmy.countryCode, defenderCountryCode)) {
       return { success: false, message: 'Cannot attack: no adjacency or not at war.' }
     }
 
-    // Find or create defender army
     const defenderArmies = armyStore.getArmiesForCountry(defenderCountryCode)
-    const defenderArmy = defenderArmies[0] // Auto-select first army as defender
-
+    const defenderArmy = defenderArmies[0]
     const defenderDivIds = defenderArmy
       ? defenderArmy.divisionIds.filter(id => {
           const d = armyStore.divisions[id]
@@ -456,80 +314,40 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       : []
 
     const id = `hoi_battle_${Date.now()}`
-    const terrain = (COUNTRY_TERRAIN[defenderCountryCode] || 'plains') as TerrainType
     const now = Date.now()
-
-    // Assign divisions to combat
-    const atkSelection = selectEngagedDivisions(
-      attackerDivs.map(d => d.id),
-      armyStore.divisions,
-      COMBAT_WIDTH
-    )
-    const defSelection = selectEngagedDivisions(
-      defenderDivIds,
-      armyStore.divisions,
-      COMBAT_WIDTH
-    )
-
-    // Calculate air superiority
-    const atkAirSup = calculateAirSuperiority(atkSelection.engaged.map(id => armyStore.divisions[id]).filter(Boolean))
-    const defAirSup = calculateAirSuperiority(defSelection.engaged.map(id => armyStore.divisions[id]).filter(Boolean))
-
-    // Calculate initial stats
-    const atkStats = calculateSideStats(atkSelection.engaged, armyStore.divisions)
-    const defStats = calculateSideStats(defSelection.engaged, armyStore.divisions)
-
     const targetName = getCountryName(defenderCountryCode)
+    const atkDivIds = attackerDivs.map(d => d.id)
 
     const battle: Battle = {
       id, type, attackerId: attackerArmy.countryCode, defenderId: defenderCountryCode,
       regionName: targetName, startedAt: now,
-      terrain, combatWidth: COMBAT_WIDTH, phase: 'engagement',
-      ticksElapsed: 0, tickDurationMs: TICK_DURATION,
+      ticksElapsed: 0, status: 'active',
 
       attacker: {
         countryCode: attackerArmy.countryCode,
-        armyId: attackerArmyId,
-        divisionIds: attackerDivs.map(d => d.id),
-        engagedDivisionIds: atkSelection.engaged,
-        reserveDivisionIds: atkSelection.reserve,
-        totalAttack: atkStats.totalAttack || 0,
-        totalDefense: atkStats.totalDefense || 0,
-        totalBreakthrough: atkStats.totalBreakthrough || 0,
-        totalOrganization: atkStats.totalOrganization || 0,
-        totalManpower: atkStats.totalManpower || 0,
-        airSuperiority: atkAirSup,
-        supplyStatus: 100,
+        divisionIds: atkDivIds,
+        engagedDivisionIds: atkDivIds,
         damageDealt: 0, manpowerLost: 0,
         divisionsDestroyed: 0, divisionsRetreated: 0,
       },
       defender: {
         countryCode: defenderCountryCode,
-        armyId: defenderArmy?.id || '',
         divisionIds: defenderDivIds,
-        engagedDivisionIds: defSelection.engaged,
-        reserveDivisionIds: defSelection.reserve,
-        totalAttack: defStats.totalAttack || 0,
-        totalDefense: defStats.totalDefense || 0,
-        totalBreakthrough: defStats.totalBreakthrough || 0,
-        totalOrganization: defStats.totalOrganization || 0,
-        totalManpower: defStats.totalManpower || 0,
-        airSuperiority: defAirSup,
-        supplyStatus: 100,
+        engagedDivisionIds: defenderDivIds,
         damageDealt: 0, manpowerLost: 0,
         divisionsDestroyed: 0, divisionsRetreated: 0,
       },
 
       attackerRoundsWon: 0, defenderRoundsWon: 0,
       rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active' }],
-      currentTick: { startTime: now, endTime: now + TICK_DURATION, attackerDamage: 0, defenderDamage: 0, resolved: false },
+      currentTick: { attackerDamage: 0, defenderDamage: 0 },
       combatLog: [{
         tick: 0, timestamp: now, type: 'phase_change', side: 'attacker',
-        message: `⚔️ Battle for ${targetName} begins! Terrain: ${terrain}. ${attackerDivs.length} vs ${defenderDivIds.length} divisions.`,
+        message: `⚔️ Battle for ${targetName} begins! ${attackerDivs.length} vs ${defenderDivIds.length} divisions.`,
       }],
       attackerDamageDealers: {}, defenderDamageDealers: {},
       damageFeed: [],
-      status: 'active',
+      battleOrder: 0,
     }
 
     // Mark divisions as in_combat
@@ -538,11 +356,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         divisions: { ...s.divisions, [d.id]: { ...s.divisions[d.id], status: 'in_combat' } }
       }))
     })
-    defenderDivIds.forEach(id => {
-      const div = armyStore.divisions[id]
+    defenderDivIds.forEach(divId => {
+      const div = armyStore.divisions[divId]
       if (div) {
         useArmyStore.setState(s => ({
-          divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat' } }
+          divisions: { ...s.divisions, [divId]: { ...s.divisions[divId], status: 'in_combat' } }
         }))
       }
     })
@@ -552,7 +370,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     return { success: true, message: `Battle for ${targetName} has begun!`, battleId: id }
   },
 
-  // ====== LEGACY ADD DAMAGE (backward compat) ======
+  // ====== ADD DAMAGE ======
   addDamage: (battleId, side, amount, isCrit, isDodged, playerName) => set((state) => {
     const battle = state.battles[battleId]
     if (!battle || battle.status !== 'active') return state
@@ -562,7 +380,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     let finalAmount = amount
 
-    // Infrastructure bonuses
+    // Apply battle order buff
+    if (battle.battleOrder > 0) {
+      finalAmount = Math.round(finalAmount * (1 + battle.battleOrder / 100))
+    }
+
     const world = useWorldStore.getState()
     const attackerCountry = world.countries.find(c => c.code === battle.attackerId)
     if (side === 'attacker' && attackerCountry && attackerCountry.militaryBaseLevel > 0) {
@@ -584,6 +406,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         ...state.battles,
         [battleId]: {
           ...battle,
+          attacker: side === 'attacker' ? {
+            ...battle.attacker,
+            damageDealt: (battle.attacker.damageDealt || 0) + finalAmount,
+          } : battle.attacker,
+          defender: side === 'defender' ? {
+            ...battle.defender,
+            damageDealt: (battle.defender.damageDealt || 0) + finalAmount,
+          } : battle.defender,
           attackerDamageDealers: newAttackerDealers,
           defenderDamageDealers: newDefenderDealers,
           damageFeed: newFeed,
@@ -597,239 +427,198 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
   }),
 
-  // ====== HOI4-STYLE COMBAT TICK PROCESSOR ======
+  // ====== COMBAT TICK PROCESSOR (uses player stats × division multipliers) ======
   processHOICombatTick: () => {
     const state = get()
     const armyStore = useArmyStore.getState()
     const now = Date.now()
+    const playerStats = getPlayerCombatStats()
+    const playerName = usePlayerStore.getState().name || 'Commander'
 
     const newBattles = { ...state.battles }
     let hasChanges = false
 
     Object.values(newBattles).forEach(battle => {
       if (battle.status !== 'active') return
-      if (battle.phase !== 'engagement') return
-
-      // Check if tick has elapsed
-      if (now < battle.currentTick.endTime) return
 
       hasChanges = true
-      const tickResult = resolveCombatTick(battle, armyStore)
+      const tick = battle.ticksElapsed + 1
+      const newCombatLog = [...battle.combatLog]
 
-      // Apply damage to individual divisions
-      // Distribute damage across engaged divisions
-      const engagedAtkDivs = battle.attacker.engagedDivisionIds.filter(id => {
+      // --- Get alive divisions on each side ---
+      const atkDivIds = battle.attacker.engagedDivisionIds.filter(id => {
         const d = armyStore.divisions[id]
         return d && d.status !== 'destroyed' && d.status !== 'retreating'
       })
-      const engagedDefDivs = battle.defender.engagedDivisionIds.filter(id => {
+      const defDivIds = battle.defender.engagedDivisionIds.filter(id => {
         const d = armyStore.divisions[id]
         return d && d.status !== 'destroyed' && d.status !== 'retreating'
       })
 
-      // Apply damage to defenders (from attacker's attack)
-      if (engagedDefDivs.length > 0) {
-        const perDivManpower = Math.floor(tickResult.manpowerLossDefender / engagedDefDivs.length)
-        const perDivOrg = Math.floor(tickResult.orgLossDefender / engagedDefDivs.length)
-        engagedDefDivs.forEach(id => {
-          armyStore.applyBattleDamage(id, perDivManpower, perDivOrg, 2, 0.5)
+      // --- ATTACKER DAMAGE (player stats × division template multipliers) ---
+      let atkTotalDmg = 0
+      let atkCrits = 0
+      let atkMisses = 0
+      atkDivIds.forEach(divId => {
+        const div = armyStore.divisions[divId]
+        if (!div) return
+        const template = DIVISION_TEMPLATES[div.type]
+
+        // Hit check: template hitRate
+        if (Math.random() > template.hitRate) {
+          atkMisses++
+          return
+        }
+        // Base damage: player attack × division atkDmg multiplier
+        let dmg = Math.floor(playerStats.attackDamage * template.atkDmgMult)
+        // Crit check: player critRate × division critRate multiplier
+        const effectiveCritRate = playerStats.critRate * template.critRateMult
+        if (Math.random() * 100 < effectiveCritRate) {
+          const effectiveCritMult = playerStats.critMultiplier * template.critDmgMult
+          dmg = Math.floor(dmg * effectiveCritMult)
+          atkCrits++
+        }
+        // Scale by division strength and morale
+        const strength = div.manpower / div.maxManpower
+        const morale = div.morale / 100
+        dmg = Math.floor(dmg * strength * morale)
+        // Apply battle order buff
+        if (battle.battleOrder > 0) dmg = Math.floor(dmg * (1 + battle.battleOrder / 100))
+        atkTotalDmg += Math.max(1, dmg)
+      })
+
+      // --- DEFENDER DAMAGE (AI — uses division template multipliers with base stats) ---
+      let defTotalDmg = 0
+      defDivIds.forEach(divId => {
+        const d = armyStore.divisions[divId]
+        if (!d) return
+        const template = DIVISION_TEMPLATES[d.type]
+        const strength = d.manpower / d.maxManpower
+        const morale = d.morale / 100
+        // Base AI damage: 80 × atkDmgMult (AI baseline = 80 attack)
+        const rawDmg = Math.floor(80 * template.atkDmgMult * strength * morale)
+        // Player armor reduces incoming damage
+        const blocked = Math.min(rawDmg, playerStats.armorBlock)
+        // Player dodge check
+        if (Math.random() * 100 < playerStats.dodgeChance) return
+        defTotalDmg += Math.max(1, rawDmg - blocked)
+      })
+
+      // --- Apply manpower damage to opposing divisions ---
+      const manpowerDmgToDefender = Math.floor(atkTotalDmg * 0.3)
+      const manpowerDmgToAttacker = Math.floor(defTotalDmg * 0.2)
+
+      if (defDivIds.length > 0 && atkTotalDmg > 0) {
+        const perDiv = Math.max(1, Math.floor(manpowerDmgToDefender / defDivIds.length))
+        defDivIds.forEach(id => armyStore.applyBattleDamage(id, perDiv, 0, 2, 0.5))
+      }
+      if (atkDivIds.length > 0 && defTotalDmg > 0) {
+        const perDiv = Math.max(1, Math.floor(manpowerDmgToAttacker / atkDivIds.length))
+        atkDivIds.forEach(id => armyStore.applyBattleDamage(id, perDiv, 0, 1.5, 0.3))
+      }
+
+      // --- Combat log ---
+      if (atkTotalDmg > 0 || defTotalDmg > 0) {
+        newCombatLog.push({
+          tick, timestamp: now, type: 'damage', side: 'attacker',
+          damage: atkTotalDmg,
+          message: `⚔️ T${tick}: Attacker deals ${atkTotalDmg} dmg (${atkDivIds.length} divs, ${atkCrits} crits, ${atkMisses} miss)`,
+        })
+        newCombatLog.push({
+          tick, timestamp: now, type: 'damage', side: 'defender',
+          damage: defTotalDmg,
+          message: `🛡️ T${tick}: Defender deals ${defTotalDmg} dmg (${defDivIds.length} divs)`,
+        })
+      } else if (atkDivIds.length === 0 && defDivIds.length === 0) {
+        newCombatLog.push({
+          tick, timestamp: now, type: 'phase_change', side: 'attacker',
+          message: `⏸️ T${tick}: No divisions engaged — deploy troops to fight!`,
         })
       }
 
-      // Apply damage to attackers (from defender's counter-attack)
-      if (engagedAtkDivs.length > 0) {
-        const perDivManpower = Math.floor(tickResult.manpowerLossAttacker / engagedAtkDivs.length)
-        const perDivOrg = Math.floor(tickResult.orgLossAttacker / engagedAtkDivs.length)
-        engagedAtkDivs.forEach(id => {
-          armyStore.applyBattleDamage(id, perDivManpower, perDivOrg, 1.5, 0.3)
-        })
-      }
-
-      // Refresh division states after damage
+      // --- Refresh division states after damage ---
       const updatedArmyStore = useArmyStore.getState()
 
       // Check for destroyed/retreating divisions
       let atkDestroyed = 0, atkRetreated = 0, defDestroyed = 0, defRetreated = 0
-      const newCombatLog = [...battle.combatLog, ...tickResult.log]
-
       battle.attacker.divisionIds.forEach(id => {
         const d = updatedArmyStore.divisions[id]
-        if (d?.status === 'destroyed') {
-          atkDestroyed++
-          newCombatLog.push({
-            tick: battle.ticksElapsed + 1, timestamp: now, type: 'destroyed', side: 'attacker',
-            divisionName: d.name, message: `💀 ${d.name} has been destroyed!`,
-          })
-        }
-        if (d?.status === 'retreating') {
-          atkRetreated++
-          newCombatLog.push({
-            tick: battle.ticksElapsed + 1, timestamp: now, type: 'retreat', side: 'attacker',
-            divisionName: d.name, message: `🏳️ ${d.name} is retreating!`,
-          })
-        }
+        if (d?.status === 'destroyed') { atkDestroyed++; newCombatLog.push({ tick, timestamp: now, type: 'destroyed', side: 'attacker', divisionName: d.name, message: `💀 ${d.name} destroyed!` }) }
+        if (d?.status === 'retreating') { atkRetreated++; newCombatLog.push({ tick, timestamp: now, type: 'retreat', side: 'attacker', divisionName: d.name, message: `🏳️ ${d.name} retreating!` }) }
       })
-
       battle.defender.divisionIds.forEach(id => {
         const d = updatedArmyStore.divisions[id]
-        if (d?.status === 'destroyed') {
-          defDestroyed++
-          newCombatLog.push({
-            tick: battle.ticksElapsed + 1, timestamp: now, type: 'destroyed', side: 'defender',
-            divisionName: d.name, message: `💀 ${d.name} has been destroyed!`,
-          })
-        }
-        if (d?.status === 'retreating') {
-          defRetreated++
-          newCombatLog.push({
-            tick: battle.ticksElapsed + 1, timestamp: now, type: 'retreat', side: 'defender',
-            divisionName: d.name, message: `🏳️ ${d.name} is retreating!`,
-          })
-        }
+        if (d?.status === 'destroyed') { defDestroyed++; newCombatLog.push({ tick, timestamp: now, type: 'destroyed', side: 'defender', divisionName: d.name, message: `💀 ${d.name} destroyed!` }) }
+        if (d?.status === 'retreating') { defRetreated++; newCombatLog.push({ tick, timestamp: now, type: 'retreat', side: 'defender', divisionName: d.name, message: `🏳️ ${d.name} retreating!` }) }
       })
 
-      // Rotate reserves into combat
-      const newAtkEngagement = selectEngagedDivisions(
-        battle.attacker.divisionIds.filter(id => {
-          const d = updatedArmyStore.divisions[id]
-          return d && d.status !== 'destroyed' && d.status !== 'retreating'
-        }),
-        updatedArmyStore.divisions,
-        COMBAT_WIDTH
-      )
-      const newDefEngagement = selectEngagedDivisions(
-        battle.defender.divisionIds.filter(id => {
-          const d = updatedArmyStore.divisions[id]
-          return d && d.status !== 'destroyed' && d.status !== 'retreating'
-        }),
-        updatedArmyStore.divisions,
-        COMBAT_WIDTH
-      )
-
-      // Recalculate stats
-      const newAtkStats = calculateSideStats(newAtkEngagement.engaged, updatedArmyStore.divisions)
-      const newDefStats = calculateSideStats(newDefEngagement.engaged, updatedArmyStore.divisions)
-
-      // Update round points
+      // --- Award ground points ---
       const activeRoundIndex = battle.rounds.length - 1
       const activeRound = { ...battle.rounds[activeRoundIndex] }
-      if (tickResult.attackerDamage > tickResult.defenderDamage) {
-        activeRound.attackerPoints += 3
-      } else if (tickResult.defenderDamage > tickResult.attackerDamage) {
-        activeRound.defenderPoints += 3
+      const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
+      const pointIncrement = getPointIncrement(totalGroundPoints)
+      if (atkTotalDmg > defTotalDmg) {
+        activeRound.attackerPoints += pointIncrement
+      } else if (defTotalDmg > atkTotalDmg) {
+        activeRound.defenderPoints += pointIncrement
       }
+      let newRounds = [...battle.rounds.slice(0, -1), activeRound]
 
-      // Check win conditions
-      const atkAlive = newAtkEngagement.engaged.length + newAtkEngagement.reserve.length
-      const defAlive = newDefEngagement.engaged.length + newDefEngagement.reserve.length
+      // --- Victory conditions ---
+      const atkAlive = battle.attacker.divisionIds.filter(id => { const d = updatedArmyStore.divisions[id]; return d && d.status !== 'destroyed' && d.status !== 'retreating' }).length
+      const defAlive = battle.defender.divisionIds.filter(id => { const d = updatedArmyStore.divisions[id]; return d && d.status !== 'destroyed' && d.status !== 'retreating' }).length
 
-      let newStatus: Battle['status'] = battle.status
-      let newPhase: CombatPhase = battle.phase
+      let newStatus: 'active' | 'attacker_won' | 'defender_won' = battle.status
       let atkRoundsWon = battle.attackerRoundsWon
       let defRoundsWon = battle.defenderRoundsWon
-      let newRounds = [...battle.rounds.slice(0, activeRoundIndex), activeRound]
 
-      // Victory: all enemy divisions destroyed or retreated
-      if (defAlive === 0) {
+      if (defAlive === 0 && atkAlive > 0 && battle.defender.divisionIds.length > 0) {
         newStatus = 'attacker_won'
-        newPhase = 'resolved'
-        newCombatLog.push({
-          tick: battle.ticksElapsed + 1, timestamp: now, type: 'phase_change', side: 'attacker',
-          message: `🏆 VICTORY! All defender divisions eliminated. ${getCountryName(battle.attackerId)} conquers ${battle.regionName}!`,
-        })
-
-        // Execute win conditions
-        const world = useWorldStore.getState()
-        if (battle.type === 'invasion' || battle.type === 'naval_strike' || battle.type === 'air_strike') {
-          world.occupyCountry(battle.defenderId, battle.attackerId, false)
-        } else if (battle.type === 'occupation') {
-          world.occupyCountry(battle.defenderId, battle.attackerId, true)
-        } else if (battle.type === 'assault') {
-          const govStore = useGovernmentStore.getState()
-          govStore.stealNationalFund(battle.defenderId, battle.attackerId, 10)
-        }
-      } else if (atkAlive === 0) {
+        newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}!` })
+      } else if (atkAlive === 0 && defAlive > 0 && battle.attacker.divisionIds.length > 0) {
         newStatus = 'defender_won'
-        newPhase = 'resolved'
-        newCombatLog.push({
-          tick: battle.ticksElapsed + 1, timestamp: now, type: 'phase_change', side: 'defender',
-          message: `🛡️ DEFENSE HOLDS! All attacker divisions eliminated. ${getCountryName(battle.defenderId)} defends ${battle.regionName}!`,
-        })
+        newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}!` })
       } else if (activeRound.attackerPoints >= POINTS_TO_WIN_ROUND || activeRound.defenderPoints >= POINTS_TO_WIN_ROUND) {
-        // Round won
-        if (activeRound.attackerPoints >= POINTS_TO_WIN_ROUND) {
-          atkRoundsWon++
-          activeRound.status = 'attacker_won'
-        } else {
-          defRoundsWon++
-          activeRound.status = 'defender_won'
-        }
-
+        if (activeRound.attackerPoints >= POINTS_TO_WIN_ROUND) { atkRoundsWon++; activeRound.status = 'attacker_won' }
+        else { defRoundsWon++; activeRound.status = 'defender_won' }
         if (atkRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
           newStatus = 'attacker_won'
-          newPhase = 'resolved'
           const world = useWorldStore.getState()
           if (battle.type === 'invasion') world.occupyCountry(battle.defenderId, battle.attackerId, false)
         } else if (defRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
           newStatus = 'defender_won'
-          newPhase = 'resolved'
         } else {
-          // Next round
           newRounds = [...newRounds, { attackerPoints: 0, defenderPoints: 0, status: 'active' }]
         }
       }
 
-      // Update battle
+      // --- Update battle state ---
       newBattles[battle.id] = {
         ...battle,
-        ticksElapsed: battle.ticksElapsed + 1,
-        phase: newPhase as CombatPhase,
-        status: newStatus as any,
+        ticksElapsed: tick,
+        status: newStatus,
         attackerRoundsWon: atkRoundsWon,
         defenderRoundsWon: defRoundsWon,
         rounds: newRounds,
         currentTick: {
-          startTime: now,
-          endTime: now + battle.tickDurationMs,
-          attackerDamage: tickResult.attackerDamage,
-          defenderDamage: tickResult.defenderDamage,
-          resolved: false,
+          attackerDamage: atkTotalDmg,
+          defenderDamage: defTotalDmg,
         },
         attacker: {
           ...battle.attacker,
-          engagedDivisionIds: newAtkEngagement.engaged,
-          reserveDivisionIds: newAtkEngagement.reserve,
-          totalAttack: newAtkStats.totalAttack || 0,
-          totalDefense: newAtkStats.totalDefense || 0,
-          totalBreakthrough: newAtkStats.totalBreakthrough || 0,
-          totalOrganization: newAtkStats.totalOrganization || 0,
-          totalManpower: newAtkStats.totalManpower || 0,
-          airSuperiority: calculateAirSuperiority(
-            newAtkEngagement.engaged.map(id => updatedArmyStore.divisions[id]).filter(Boolean)
-          ),
-          damageDealt: battle.attacker.damageDealt + tickResult.attackerDamage,
-          manpowerLost: battle.attacker.manpowerLost + tickResult.manpowerLossAttacker,
-          divisionsDestroyed: battle.attacker.divisionsDestroyed + atkDestroyed,
-          divisionsRetreated: battle.attacker.divisionsRetreated + atkRetreated,
+          damageDealt: (battle.attacker.damageDealt || 0) + atkTotalDmg,
+          manpowerLost: (battle.attacker.manpowerLost || 0) + manpowerDmgToAttacker,
+          divisionsDestroyed: (battle.attacker.divisionsDestroyed || 0) + atkDestroyed,
+          divisionsRetreated: (battle.attacker.divisionsRetreated || 0) + atkRetreated,
         },
         defender: {
           ...battle.defender,
-          engagedDivisionIds: newDefEngagement.engaged,
-          reserveDivisionIds: newDefEngagement.reserve,
-          totalAttack: newDefStats.totalAttack || 0,
-          totalDefense: newDefStats.totalDefense || 0,
-          totalBreakthrough: newDefStats.totalBreakthrough || 0,
-          totalOrganization: newDefStats.totalOrganization || 0,
-          totalManpower: newDefStats.totalManpower || 0,
-          airSuperiority: calculateAirSuperiority(
-            newDefEngagement.engaged.map(id => updatedArmyStore.divisions[id]).filter(Boolean)
-          ),
-          damageDealt: battle.defender.damageDealt + tickResult.defenderDamage,
-          manpowerLost: battle.defender.manpowerLost + tickResult.manpowerLossDefender,
-          divisionsDestroyed: battle.defender.divisionsDestroyed + defDestroyed,
-          divisionsRetreated: battle.defender.divisionsRetreated + defRetreated,
+          damageDealt: (battle.defender.damageDealt || 0) + defTotalDmg,
+          manpowerLost: (battle.defender.manpowerLost || 0) + manpowerDmgToDefender,
+          divisionsDestroyed: (battle.defender.divisionsDestroyed || 0) + defDestroyed,
+          divisionsRetreated: (battle.defender.divisionsRetreated || 0) + defRetreated,
         },
-        combatLog: newCombatLog.slice(-100), // Keep last 100 entries
+        combatLog: newCombatLog.slice(-100),
       }
 
       // If battle resolved, reset division states
@@ -861,15 +650,124 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
   // ====== LEGACY TICK RESOLVER ======
   resolveTicksAndRounds: () => {
-    // Process HOI4 combat ticks
-    get().processHOICombatTick()
+    // NOTE: processHOICombatTick, cyber, and military processing are called
+    // directly in App.tsx timer — do NOT call them here to avoid double-fire.
+    // Army training is handled by armyStore internally.
+  },
 
-    // Process cyber detection
-    import('./cyberStore').then(mod => {
-      mod.useCyberStore.getState().processDetectionTicks()
+  // ====== PLAYER COMBAT ACTIONS ======
+  playerAttack: (battleId, forceSide) => {
+    const state = get()
+    const battle = state.battles[battleId]
+    if (!battle || battle.status !== 'active') return { damage: 0, isCrit: false, message: 'No active battle.' }
+
+    const player = usePlayerStore.getState()
+    if (player.stamina < 5) return { damage: 0, isCrit: false, message: 'Not enough stamina (5 required).' }
+    player.consumeBar('stamina', 5)
+
+    const cs = getPlayerCombatStats()
+    const isCrit = Math.random() * 100 < cs.critRate
+    const damage = isCrit ? Math.floor(cs.attackDamage * cs.critMultiplier) : cs.attackDamage
+
+    const playerCountry = player.countryCode || 'US'
+    const side: 'attacker' | 'defender' = forceSide || (playerCountry === battle.attackerId ? 'attacker' : 'defender')
+
+    get().addDamage(battleId, side, damage, isCrit, false, player.name)
+
+    return {
+      damage,
+      isCrit,
+      message: isCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`,
+    }
+  },
+
+  playerDefend: (battleId, forceSide) => {
+    const state = get()
+    const battle = state.battles[battleId]
+    if (!battle || battle.status !== 'active') return { blocked: 0, message: 'No active battle.' }
+
+    const player = usePlayerStore.getState()
+    if (player.stamina < 3) return { blocked: 0, message: 'Not enough stamina (3 required).' }
+    player.consumeBar('stamina', 3)
+
+    const cs = getPlayerCombatStats()
+    const blocked = cs.armorBlock + Math.floor(cs.dodgeChance * 0.5)
+
+    const playerCountry = player.countryCode || 'US'
+    const isAttacker = forceSide ? forceSide === 'attacker' : playerCountry === battle.attackerId
+    const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
+
+    set(s => ({
+      battles: {
+        ...s.battles,
+        [battleId]: {
+          ...battle,
+          currentTick: {
+            ...battle.currentTick,
+            [enemySide]: Math.max(0, battle.currentTick[enemySide] - blocked),
+          },
+          damageFeed: [{
+            playerName: `${player.name} 🛡️`,
+            side: (isAttacker ? 'attacker' : 'defender') as 'attacker' | 'defender',
+            amount: blocked, isCrit: false, isDodged: false, time: Date.now(),
+          }, ...battle.damageFeed].slice(0, 20),
+        },
+      },
+    }))
+
+    return {
+      blocked,
+      message: `🛡️ Blocked ${blocked} incoming damage!`,
+    }
+  },
+
+  // ====== DEPLOY DIVISIONS TO BATTLE ======
+  deployDivisionsToBattle: (battleId, divisionIds, side) => {
+    const state = get()
+    const battle = state.battles[battleId]
+    if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
+
+    const armyStore = useArmyStore.getState()
+    const validIds = divisionIds.filter(id => {
+      const d = armyStore.divisions[id]
+      return d && (d.status === 'ready' || d.status === 'training') && d.manpower > 0
+    })
+    if (validIds.length === 0) return { success: false, message: 'No valid divisions to deploy.' }
+
+    // Mark divisions as in_combat
+    validIds.forEach(id => {
+      useArmyStore.setState(s => ({
+        divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat' } }
+      }))
     })
 
-    // Process army training
-    useArmyStore.getState().processTrainingTick()
+    // Add to battle side
+    const sideData = side === 'attacker' ? battle.attacker : battle.defender
+    const newDivisionIds = [...new Set([...sideData.divisionIds, ...validIds])]
+    const newEngaged = [...new Set([...sideData.engagedDivisionIds, ...validIds])]
+
+    set(s => ({
+      battles: {
+        ...s.battles,
+        [battleId]: {
+          ...battle,
+          [side]: {
+            ...sideData,
+            divisionIds: newDivisionIds,
+            engagedDivisionIds: newEngaged,
+          },
+          currentTick: {
+            attackerDamage: battle.currentTick.attackerDamage,
+            defenderDamage: battle.currentTick.defenderDamage,
+          },
+          combatLog: [...battle.combatLog, {
+            tick: battle.ticksElapsed, timestamp: Date.now(), type: 'reinforcement' as const, side,
+            message: `🚀 ${validIds.length} division(s) deployed as reinforcements!`,
+          }],
+        },
+      },
+    }))
+
+    return { success: true, message: `${validIds.length} division(s) deployed to battle!` }
   },
 }))

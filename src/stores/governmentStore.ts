@@ -84,6 +84,24 @@ export const DEFAULT_IDEOLOGY_POINTS: IdeologyPoints = {
   diplomacyBonus: 0,
 }
 
+// ── Contribution Missions ──
+export interface ContributionMission {
+  id: string
+  operationId: string           // e.g. 'resource_intel', 'assault', 'nuclear'
+  operationType: 'cyber' | 'military' | 'nuclear'
+  countryCode: string
+  status: 'active' | 'completed' | 'expired'
+  requiredResources: Partial<NationalFund>   // target amounts
+  contributedResources: Partial<NationalFund> // current progress
+  requiredItems: { jets?: number; tanks?: number }  // checked, not consumed (except nuclear)
+  contributors: Record<string, number>  // playerName → total $ value contributed
+  startedAt: number
+  expiresAt: number             // startedAt + 7 days
+  startedBy: string
+}
+
+const MISSION_DURATION = 7 * 24 * 60 * 60 * 1000 // 1 week
+
 export interface Government {
   countryId: string
   president: string | null
@@ -103,6 +121,7 @@ export interface Government {
 export interface GovernmentState {
   governments: Record<string, Government>
   laws: Record<string, Law>
+  contributionMissions: Record<string, ContributionMission>
   nextElectionAt: number
 
   registerCandidate: (countryId: string, citizenId: string, name: string) => void
@@ -115,6 +134,12 @@ export interface GovernmentState {
   spendFromFund: (countryId: string, costs: Partial<NationalFund>) => boolean
   launchNuke: (fromCountry: string, targetCountry: string) => void
   stealNationalFund: (targetId: string, attackerId: string, percentage: number) => void
+  // Contribution missions
+  startContributionMission: (opId: string, opType: 'cyber' | 'military' | 'nuclear', countryCode: string, startedBy: string, required: Partial<NationalFund>, requiredItems?: { jets?: number; tanks?: number }) => string | null
+  contributeToMission: (missionId: string, resource: NationalFundKey, amount: number, playerName: string) => boolean
+  checkExpiredMissions: () => void
+  isMissionCompleted: (opId: string, countryCode: string) => boolean
+  getActiveMission: (opId: string, countryCode: string) => ContributionMission | null
 }
 
 // Helper to create mock citizens
@@ -169,6 +194,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     'BS': mkGov('BS', 'AI_Commander_Davis', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
   },
   laws: {},
+  contributionMissions: {},
   nextElectionAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
 
   registerCandidate: (countryId, citizenId, name) => set((state) => {
@@ -363,4 +389,115 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
       }
     }
   }),
+
+  // ── Contribution Missions ──────────────────────────────────────────
+
+  startContributionMission: (opId, opType, countryCode, startedBy, required, requiredItems) => {
+    const state = get()
+    // Check no active mission for this op+country already
+    const existing = Object.values(state.contributionMissions).find(
+      m => m.operationId === opId && m.countryCode === countryCode && m.status === 'active'
+    )
+    if (existing) return null
+
+    const now = Date.now()
+    const id = `cm_${opId}_${countryCode}_${now}`
+    const contributed: Partial<NationalFund> = {}
+    for (const key of Object.keys(required)) {
+      contributed[key as NationalFundKey] = 0
+    }
+
+    const mission: ContributionMission = {
+      id,
+      operationId: opId,
+      operationType: opType,
+      countryCode,
+      status: 'active',
+      requiredResources: required,
+      contributedResources: contributed,
+      requiredItems: requiredItems || {},
+      contributors: {},
+      startedAt: now,
+      expiresAt: now + MISSION_DURATION,
+      startedBy,
+    }
+
+    set({ contributionMissions: { ...state.contributionMissions, [id]: mission } })
+    return id
+  },
+
+  contributeToMission: (missionId, resource, amount, playerName) => {
+    const state = get()
+    const mission = state.contributionMissions[missionId]
+    if (!mission || mission.status !== 'active') return false
+
+    const required = mission.requiredResources[resource] ?? 0
+    const contributed = mission.contributedResources[resource] ?? 0
+    const remaining = Math.max(0, required - contributed)
+    if (remaining <= 0) return false
+
+    const actual = Math.min(amount, remaining)
+    const newContributed = { ...mission.contributedResources, [resource]: contributed + actual }
+    const newContributors = { ...mission.contributors, [playerName]: (mission.contributors[playerName] || 0) + actual }
+
+    // Check if all resources are fully contributed
+    let completed = true
+    for (const [key, req] of Object.entries(mission.requiredResources)) {
+      const curr = key === resource ? contributed + actual : (mission.contributedResources[key as NationalFundKey] ?? 0)
+      if (curr < (req ?? 0)) { completed = false; break }
+    }
+
+    // Also donate to country national fund
+    const gov = state.governments[mission.countryCode]
+    if (gov) {
+      set({
+        governments: {
+          ...state.governments,
+          [mission.countryCode]: {
+            ...gov,
+            nationalFund: { ...gov.nationalFund, [resource]: gov.nationalFund[resource] + actual },
+          },
+        },
+        contributionMissions: {
+          ...state.contributionMissions,
+          [missionId]: {
+            ...mission,
+            contributedResources: newContributed,
+            contributors: newContributors,
+            status: completed ? 'completed' : 'active',
+          },
+        },
+      })
+    }
+
+    return true
+  },
+
+  checkExpiredMissions: () => set((state) => {
+    const now = Date.now()
+    let changed = false
+    const newMissions = { ...state.contributionMissions }
+    Object.values(newMissions).forEach(m => {
+      if (m.status === 'active' && now > m.expiresAt) {
+        changed = true
+        newMissions[m.id] = { ...m, status: 'expired' }
+      }
+    })
+    if (!changed) return state
+    return { contributionMissions: newMissions }
+  }),
+
+  isMissionCompleted: (opId, countryCode) => {
+    const state = get()
+    return Object.values(state.contributionMissions).some(
+      m => m.operationId === opId && m.countryCode === countryCode && m.status === 'completed'
+    )
+  },
+
+  getActiveMission: (opId, countryCode) => {
+    const state = get()
+    return Object.values(state.contributionMissions).find(
+      m => m.operationId === opId && m.countryCode === countryCode && m.status === 'active'
+    ) || null
+  },
 }))

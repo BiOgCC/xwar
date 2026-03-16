@@ -1,17 +1,210 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useWorldStore, ADJACENCY_MAP } from '../../stores/worldStore'
 import { useInventoryStore } from '../../stores/inventoryStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useGovernmentStore } from '../../stores/governmentStore'
+import FoodGrid from '../shared/FoodGrid'
 import {
   useMilitaryStore,
   MILITARY_OPERATIONS,
   getOperationsByPillar,
   type MilitaryPillar,
   type MilitaryOperationDef,
+  type MilitaryCampaign,
 } from '../../stores/militaryStore'
+import { DETECTION_WINDOW_MS, CONTEST_DURATION_MS } from '../../stores/operationTypes'
+import { getPlayerCombatStats } from '../../stores/battleStore'
 
-type ViewMode = 'operations' | 'reports'
+type ViewMode = 'operations' | 'active' | 'reports'
+
+// Format ms to MM:SS
+const fmt = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
+
+function CampaignLifecycleCard({ campaign }: { campaign: MilitaryCampaign }) {
+  const mil = useMilitaryStore()
+  const player = usePlayerStore()
+  const ui = useUIStore()
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const opDef = MILITARY_OPERATIONS.find(o => o.id === campaign.operationId)
+  if (!opDef) return null
+
+  const phaseColor: Record<string, string> = {
+    deploying: '#94a3b8',
+    detection_window: '#f59e0b',
+    contest: '#ef4444',
+    undetected_win: '#22d38a',
+    attacker_won: '#22d38a',
+    defender_won: '#ef4444',
+    returning: '#3b82f6',
+  }
+
+  const phaseLabel: Record<string, string> = {
+    deploying: '📦 RECRUITING',
+    detection_window: '📡 DETECTION WINDOW',
+    contest: '⚔️ DAMAGE RACE',
+    undetected_win: '✅ UNDETECTED — SUCCESS',
+    attacker_won: '🏆 OPERATION SUCCESSFUL',
+    defender_won: '🛡️ OPERATION BLOCKED',
+    returning: '🔄 RETURNING',
+  }
+
+  // Timer calculation
+  let timerMs = 0
+  if (campaign.phase === 'detection_window' && campaign.detectionWindowStart) {
+    timerMs = DETECTION_WINDOW_MS - (now - campaign.detectionWindowStart)
+  } else if (campaign.phase === 'contest' && campaign.contestState) {
+    timerMs = campaign.contestState.expiresAt - now
+  }
+
+  const threshold = campaign.contestState?.threshold || 1000
+  const atkPct = campaign.contestState ? Math.min(100, (campaign.contestState.attackerProgress / threshold) * 100) : 0
+  const defPct = campaign.contestState ? Math.min(100, (campaign.contestState.defenderProgress / threshold) * 100) : 0
+
+  return (
+    <div className="op-lifecycle combat-scanlines">
+      {/* Phase Badge + Timer */}
+      <div className="op-lifecycle__phase">
+        <span
+          className={`op-lifecycle__badge op-lifecycle__badge--${
+            campaign.phase === 'detection_window' ? 'detection' :
+            campaign.phase === 'undetected_win' || campaign.phase === 'attacker_won' ? 'won' :
+            campaign.phase === 'defender_won' ? 'lost' :
+            campaign.phase
+          }`}
+        >
+          {phaseLabel[campaign.phase] || campaign.phase}
+        </span>
+
+        {timerMs > 0 && (
+          <span className="op-lifecycle__timer">{fmt(timerMs)}</span>
+        )}
+      </div>
+
+      {/* Operation Info */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: '#e2e8f0' }}>
+          {opDef.icon} {opDef.name}
+        </span>
+        <span style={{ fontSize: '9px', color: '#f59e0b' }}>→ {campaign.targetCountry}</span>
+      </div>
+
+      {/* Crew */}
+      <div style={{ fontSize: '9px', color: '#64748b' }}>
+        Crew: {campaign.playersJoined.join(', ')} ({campaign.playersJoined.length}/6)
+      </div>
+
+      {/* Detection Window — Radar Animation */}
+      {campaign.phase === 'detection_window' && (
+        <div className="op-radar">
+          <span className="op-radar__icon">📡</span>
+          <div>
+            <div className="op-radar__text">Scanning for hostiles...</div>
+            <div style={{ fontSize: '8px', color: '#475569', marginTop: '2px' }}>
+              Detection chance: {opDef.successChance ? (100 - opDef.successChance) : 30}%
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contest — Damage Race Bar */}
+      {campaign.phase === 'contest' && campaign.contestState && (
+        <div className="contest-bar">
+          <div className="contest-bar__header">
+            <span className="contest-bar__title">⚔️ DAMAGE RACE</span>
+            <span className="contest-bar__timer">{fmt(timerMs)}</span>
+          </div>
+
+          {/* Racing bar */}
+          <div className="contest-bar__track">
+            <div className="contest-bar__fill--atk" style={{ width: `${atkPct}%` }} />
+            <div className="contest-bar__fill--def" style={{ width: `${defPct}%` }} />
+            <div className="contest-bar__threshold" style={{ left: '50%' }} />
+          </div>
+
+          <div className="contest-bar__labels">
+            <span>⚔️ ATK: {campaign.contestState.attackerProgress} / {threshold}</span>
+            <span>🛡️ DEF: {campaign.contestState.defenderProgress} / {threshold}</span>
+          </div>
+
+          {/* Attack/Defend Buttons */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '4px' }}>
+            <button
+              className="contest-action-btn contest-action-btn--attack"
+              onClick={() => {
+                const cs = getPlayerCombatStats()
+                const r = mil.contributeDamage(campaign.id, player.name, cs.attackDamage)
+                ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+              }}
+              disabled={player.stamina < 5}
+            >
+              ⚔️ DEAL DAMAGE
+              <div className="contest-action-btn__cost">-5 Stamina · +{getPlayerCombatStats().attackDamage} dmg</div>
+            </button>
+            <button
+              className="contest-action-btn contest-action-btn--defend"
+              onClick={() => {
+                const cs = getPlayerCombatStats()
+                const block = cs.armorBlock + Math.floor(cs.dodgeChance * 0.5)
+                const r = mil.defendOperation(campaign.id, player.name, block)
+                ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#60a5fa' : '#ef4444')
+              }}
+              disabled={player.stamina < 3}
+            >
+              🛡️ BLOCK ATTACK
+              <div className="contest-action-btn__cost">-3 Stamina · +{getPlayerCombatStats().armorBlock} block</div>
+            </button>
+          </div>
+
+          {/* Contributors */}
+          {campaign.contestState.attackerContributors.length > 0 && (
+            <div className="contest-contributors">
+              <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>TOP CONTRIBUTORS</div>
+              {campaign.contestState.attackerContributors.sort((a, b) => b.contributed - a.contributed).slice(0, 5).map(c => (
+                <div key={c.playerId} className="contest-contrib">
+                  <span className="contest-contrib__name">{c.playerId}</span>
+                  <span className="contest-contrib__val contest-contrib__val--atk">+{c.contributed}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Deploying — Join/Deploy Controls */}
+      {campaign.phase === 'deploying' && (
+        <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+          {!campaign.playersJoined.includes(player.name) && (
+            <button className="war-btn war-btn--primary" onClick={() => mil.joinCampaign(campaign.id, player.name)}>
+              JOIN CREW
+            </button>
+          )}
+          {campaign.initiator === player.name && (
+            <button
+              className="war-btn war-btn--primary"
+              style={{ background: 'rgba(239,68,68,0.2)' }}
+              onClick={() => {
+                mil.deployCampaign(campaign.id)
+                ui.addFloatingText('DEPLOYED! Detection window started.', window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+              }}
+            >
+              🚀 DEPLOY NOW
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function MilitaryPanel() {
   const player = usePlayerStore()
@@ -19,6 +212,7 @@ export default function MilitaryPanel() {
   const inventory = useInventoryStore()
   const ui = useUIStore()
   const mil = useMilitaryStore()
+  const govStore = useGovernmentStore()
 
   const [activePillar, setActivePillar] = useState<MilitaryPillar>('ground')
   const [selectedOp, setSelectedOp] = useState<MilitaryOperationDef | null>(null)
@@ -39,7 +233,6 @@ export default function MilitaryPanel() {
 
   const operations = getOperationsByPillar(activePillar)
 
-  // Calculate valid targets based on operation type
   const getTargets = () => {
     if (!selectedOp) return world.countries.filter(c => c.code !== iso)
     if (selectedOp.targetType === 'adjacent_country') {
@@ -55,36 +248,24 @@ export default function MilitaryPanel() {
     return world.countries.filter(c => c.code !== iso)
   }
 
-  // Check if player has required item
   const hasRequiredItem = () => {
     if (!selectedOp?.requiresItem) return true
-    if (selectedOp.requiresItem === 'warship') {
-      return inventory.items.some(i => i.slot === 'vehicle' && i.tier === 't6')
-    }
-    if (selectedOp.requiresItem === 'jet') {
-      return inventory.items.some(i => i.slot === 'weapon' && i.tier === 't6')
-    }
+    if (selectedOp.requiresItem === 'warship') return inventory.items.some(i => i.slot === 'vehicle' && i.tier === 't6')
+    if (selectedOp.requiresItem === 'jet') return inventory.items.some(i => i.slot === 'weapon' && i.tier === 't6')
     return true
   }
 
   const handleLaunch = () => {
-    if (!selectedOp) return
-    if (!targetCountry) {
+    if (!selectedOp || !targetCountry) {
       ui.addFloatingText('SELECT A TARGET', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
       return
     }
     if (!hasRequiredItem()) {
-      const needed = selectedOp.requiresItem === 'warship' ? 'T6 Warship' : 'T6 Jet'
-      ui.addFloatingText(`REQUIRES ${needed}`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+      ui.addFloatingText(`REQUIRES ${selectedOp.requiresItem === 'warship' ? 'T6 Warship' : 'T6 Jet'}`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
       return
     }
-
     const result = mil.launchCampaign(selectedOp.id, targetCountry, invitedPlayers)
-    if (result.success) {
-      ui.addFloatingText(result.message, window.innerWidth / 2, window.innerHeight / 2, '#22d38a')
-    } else {
-      ui.addFloatingText(result.message, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
-    }
+    ui.addFloatingText(result.message, window.innerWidth / 2, window.innerHeight / 2, result.success ? '#22d38a' : '#ef4444')
     setSelectedOp(null)
     setInvitedPlayers([])
     setTargetCountry('')
@@ -97,55 +278,49 @@ export default function MilitaryPanel() {
     }
   }
 
-  // Reports & Campaigns
   const allReports = Object.values(mil.reports).sort((a, b) => b.timestamp - a.timestamp)
   const allCampaigns = Object.values(mil.campaigns).sort((a, b) => b.createdAt - a.createdAt)
-  const activeCampaigns = allCampaigns.filter(c => c.status === 'recruiting')
+  const activeCampaigns = allCampaigns.filter(c =>
+    c.phase === 'deploying' || c.phase === 'detection_window' || c.phase === 'contest'
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
       {/* View Toggle */}
       <div style={{ display: 'flex', gap: '4px' }}>
-        <button
-          className={viewMode === 'operations' ? 'hud-btn-primary' : 'hud-btn-outline'}
-          style={{ flex: 1, fontSize: '10px', padding: '6px' }}
-          onClick={() => setViewMode('operations')}
-        >
-          🎖️ OPERATIONS
-        </button>
-        <button
-          className={viewMode === 'reports' ? 'hud-btn-primary' : 'hud-btn-outline'}
-          style={{ flex: 1, fontSize: '10px', padding: '6px' }}
-          onClick={() => setViewMode('reports')}
-        >
-          📋 REPORTS ({allReports.length})
-        </button>
+        {(['operations', 'active', 'reports'] as ViewMode[]).map(mode => (
+          <button
+            key={mode}
+            className={viewMode === mode ? 'war-btn war-btn--primary' : 'war-btn'}
+            style={{ flex: 1, fontSize: '9px', padding: '6px', textTransform: 'uppercase' }}
+            onClick={() => setViewMode(mode)}
+          >
+            {mode === 'operations' ? '🎖️ OPS' : mode === 'active' ? `⚡ ACTIVE (${activeCampaigns.length})` : `📋 REPORTS (${allReports.length})`}
+          </button>
+        ))}
       </div>
 
+      {/* ====== OPERATIONS VIEW ====== */}
       {viewMode === 'operations' && (
         <>
-          {/* Pillar Tabs */}
           <div style={{ display: 'flex', gap: '4px' }}>
             {pillars.map(p => (
               <button
                 key={p.id}
                 onClick={() => { setActivePillar(p.id); setSelectedOp(null) }}
-                style={{
-                  flex: 1, padding: '8px 4px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px',
-                  border: `1px solid ${activePillar === p.id ? '#ef4444' : 'rgba(255,255,255,0.1)'}`,
-                  borderRadius: '4px', background: activePillar === p.id ? 'rgba(239,68,68,0.1)' : 'transparent',
-                  color: activePillar === p.id ? '#ef4444' : '#94a3b8', cursor: 'pointer',
-                }}
+                className={`war-btn ${activePillar === p.id ? 'war-btn--primary' : ''}`}
+                style={{ flex: 1, fontSize: '9px', padding: '7px 4px' }}
               >
                 {p.icon} {p.label}
               </button>
             ))}
           </div>
 
-          {/* Operation List */}
-          <div className="hud-card">
-            <div className="hud-card__title">
+          <FoodGrid />
+
+          <div className="war-card">
+            <div className="war-card__title">
               {pillars.find(p => p.id === activePillar)?.icon} {activePillar.toUpperCase()} OPERATIONS
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
@@ -153,15 +328,11 @@ export default function MilitaryPanel() {
                 <button
                   key={op.id}
                   onClick={() => setSelectedOp(selectedOp?.id === op.id ? null : op)}
-                  style={{
-                    textAlign: 'left', padding: '10px',
-                    background: selectedOp?.id === op.id ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${selectedOp?.id === op.id ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.06)'}`,
-                    borderRadius: '4px', cursor: 'pointer', color: '#fff',
-                  }}
+                  className={`war-card ${selectedOp?.id === op.id ? 'war-card--red' : ''}`}
+                  style={{ textAlign: 'left', cursor: 'pointer', border: 'none' }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700, fontSize: '11px' }}>{op.icon} {op.name}</span>
+                    <span style={{ fontWeight: 700, fontSize: '11px', color: '#e2e8f0' }}>{op.icon} {op.name}</span>
                     <span style={{ fontSize: '9px', color: '#f59e0b' }}>
                       {op.cost.bitcoin > 0 ? `₿${op.cost.bitcoin}` : `${op.cost.oil} Oil`}
                     </span>
@@ -172,43 +343,40 @@ export default function MilitaryPanel() {
             </div>
           </div>
 
-          {/* Selected Operation Details */}
           {selectedOp && (
-            <div className="hud-card" style={{ borderColor: 'rgba(239,68,68,0.3)' }}>
-              <div className="hud-card__title">{selectedOp.icon} {selectedOp.name}</div>
+            <div className="war-card war-card--highlight">
+              <div className="war-card__title" style={{ color: '#ef4444' }}>{selectedOp.icon} {selectedOp.name}</div>
 
-              {/* Cost Breakdown */}
+              {govStore.isMissionCompleted(selectedOp.id, iso) && (
+                <div style={{ padding: '6px', margin: '6px 0', textAlign: 'center', fontSize: '9px', fontWeight: 900, background: 'rgba(34,211,138,0.1)', border: '1px solid rgba(34,211,138,0.3)', borderRadius: '4px', color: '#22d38a', letterSpacing: '0.5px' }}>
+                  ✅ REQUIREMENTS MET — READY TO EXECUTE
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', margin: '8px 0' }}>
-                <div style={{ fontSize: '10px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px' }}>
-                  ⚡ Energy: {selectedOp.cost.energy.toLocaleString()}
-                </div>
-                <div style={{ fontSize: '10px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px' }}>
-                  🛢️ Oil: {selectedOp.cost.oil.toLocaleString()}
-                </div>
-                <div style={{ fontSize: '10px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px' }}>
-                  ⚛️ MatX: {selectedOp.cost.materialX.toLocaleString()}
-                </div>
-                <div style={{ fontSize: '10px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px' }}>
-                  ₿ BTC: {selectedOp.cost.bitcoin}
-                </div>
+                {[
+                  ['⚡', 'Energy', selectedOp.cost.energy],
+                  ['🛢️', 'Oil', selectedOp.cost.oil],
+                  ['⚛️', 'MatX', selectedOp.cost.materialX],
+                  ['₿', 'BTC', selectedOp.cost.bitcoin],
+                ].map(([icon, label, val]) => (
+                  <div key={String(label)} className="war-stat" style={{ flexDirection: 'row', gap: '4px', padding: '4px 6px' }}>
+                    <span style={{ fontSize: '10px' }}>{icon}</span>
+                    <span style={{ fontSize: '8px', color: '#64748b' }}>{label}:</span>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0', marginLeft: 'auto' }}>{Number(val).toLocaleString()}</span>
+                  </div>
+                ))}
               </div>
 
-              <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '8px' }}>{selectedOp.effectDescription}</div>
-
+              <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px' }}>{selectedOp.effectDescription}</div>
               <div style={{ fontSize: '9px', color: '#f59e0b', marginBottom: '8px' }}>
                 Success: {selectedOp.successChance}%
                 {selectedOp.requiresItem && ` · Requires: ${selectedOp.requiresItem === 'warship' ? 'T6 Warship' : 'T6 Jet'}`}
-                {selectedOp.requiresInfra && ` · Infra: ${selectedOp.requiresInfra.toUpperCase()}`}
               </div>
 
-              {/* Target Selection */}
               <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>TARGET</div>
-                <select
-                  value={targetCountry}
-                  onChange={e => setTargetCountry(e.target.value)}
-                  style={{ width: '100%', background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: '#fff', padding: '6px', fontFamily: 'var(--font-mono)', fontSize: '11px' }}
-                >
+                <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>TARGET</div>
+                <select className="war-input" value={targetCountry} onChange={e => setTargetCountry(e.target.value)}>
                   <option value="" disabled>Select Target...</option>
                   {getTargets().map(c => (
                     <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
@@ -216,185 +384,76 @@ export default function MilitaryPanel() {
                 </select>
               </div>
 
-              {/* Invite Players (for warship/jet ops) */}
               {selectedOp.requiresItem && (
                 <div style={{ marginBottom: '8px' }}>
-                  <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>
-                    INVITE CREW ({invitedPlayers.length}/5)
-                  </div>
+                  <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>INVITE CREW ({invitedPlayers.length}/5)</div>
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <input
-                      type="text" value={inviteInput}
-                      onChange={e => setInviteInput(e.target.value)}
-                      placeholder="Player name..."
-                      style={{ flex: 1, background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: '#fff', padding: '4px 6px', fontFamily: 'var(--font-mono)', fontSize: '10px' }}
-                    />
-                    <button className="hud-btn-outline" onClick={addInvite} style={{ fontSize: '9px', padding: '4px 8px' }}>+</button>
+                    <input className="war-input" type="text" value={inviteInput} onChange={e => setInviteInput(e.target.value)} placeholder="Player name..." />
+                    <button className="war-btn" onClick={addInvite}>+</button>
                   </div>
                   {invitedPlayers.length > 0 && (
                     <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
                       {invitedPlayers.map(p => (
                         <span key={p} style={{ fontSize: '9px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '3px', padding: '2px 6px', cursor: 'pointer', color: '#ef4444' }}
                           onClick={() => setInvitedPlayers(invitedPlayers.filter(x => x !== p))}
-                        >
-                          {p} ✕
-                        </span>
+                        >{p} ✕</span>
                       ))}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Launch Button */}
               <button
-                className="hud-btn-primary"
-                onClick={handleLaunch}
-                style={{ width: '100%', padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px', background: '#dc2626' }}
+                className="war-recruit-btn"
+                onClick={govStore.isMissionCompleted(selectedOp.id, iso) ? handleLaunch : undefined}
+                disabled={!govStore.isMissionCompleted(selectedOp.id, iso)}
               >
-                🚀 LAUNCH OPERATION
+                {govStore.isMissionCompleted(selectedOp.id, iso) ? '🚀 LAUNCH OPERATION' : '🔒 COMPLETE MISSION FIRST'}
               </button>
             </div>
           )}
         </>
       )}
 
-      {/* REPORTS VIEW */}
+      {/* ====== ACTIVE CAMPAIGNS VIEW ====== */}
+      {viewMode === 'active' && (
+        <>
+          {activeCampaigns.length === 0 ? (
+            <div className="war-card" style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '24px', marginBottom: '8px' }}>📡</div>
+              <div style={{ fontSize: '10px', color: '#64748b' }}>No active operations. Launch one from the OPS tab.</div>
+            </div>
+          ) : (
+            activeCampaigns.map(c => (
+              <CampaignLifecycleCard key={c.id} campaign={c} />
+            ))
+          )}
+        </>
+      )}
+
+      {/* ====== REPORTS VIEW ====== */}
       {viewMode === 'reports' && (
         <>
-          {/* Active Lobbies */}
-          {activeCampaigns.length > 0 && (
-            <div className="hud-card" style={{ borderColor: '#f59e0b33' }}>
-              <div className="hud-card__title" style={{ color: '#f59e0b' }}>🎯 ACTIVE LOBBIES</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
-                {activeCampaigns.map(c => {
-                  const opDef = MILITARY_OPERATIONS.find(o => o.id === c.operationId)
-                  return (
-                    <div key={c.id} style={{ padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 700 }}>{opDef?.icon} {opDef?.name}</span>
-                        <span style={{ fontSize: '9px', color: '#f59e0b' }}>→ {c.targetCountry}</span>
-                      </div>
-                      <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px' }}>
-                        Crew: {c.playersJoined.join(', ')} ({c.playersJoined.length}/6)
-                      </div>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        {!c.playersJoined.includes(player.name) && (
-                          <button className="hud-btn-outline" style={{ fontSize: '9px', padding: '3px 8px' }}
-                            onClick={() => mil.joinCampaign(c.id, player.name)}
-                          >
-                            JOIN CREW
-                          </button>
-                        )}
-                        {c.initiator === player.name && (
-                          <button className="hud-btn-primary" style={{ fontSize: '9px', padding: '3px 8px', background: '#dc2626' }}
-                            onClick={() => {
-                              mil.deployCampaign(c.id)
-                              ui.addFloatingText('DEPLOYED!', window.innerWidth / 2, window.innerHeight / 2, '#22d38a')
-                            }}
-                          >
-                            DEPLOY NOW
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Reports */}
-          <div className="hud-card">
-            <div className="hud-card__title">📋 OPERATION REPORTS</div>
+          <div className="war-card">
+            <div className="war-card__title">📋 OPERATION REPORTS</div>
             {allReports.length === 0 ? (
-              <p style={{ fontSize: '11px', color: '#64748b', marginTop: '8px' }}>No reports yet. Launch military operations to generate intel.</p>
+              <p style={{ fontSize: '10px', color: '#64748b', marginTop: '8px' }}>No reports yet.</p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
-                {allReports.map(report => {
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                {allReports.slice(0, 10).map(report => {
                   const d = report.data
                   const isWin = report.result === 'victory'
                   const rc = isWin ? '#22d38a' : '#ef4444'
-                  const row = (label: string, val: string | number, color?: string) => (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                      <span style={{ color: '#94a3b8', fontSize: '9px' }}>{label}</span>
-                      <span style={{ color: color || '#e2e8f0', fontSize: '9px', fontWeight: 600 }}>{val}</span>
-                    </div>
-                  )
                   return (
-                    <div key={report.id} style={{ background: 'rgba(0,0,0,0.35)', border: `1px solid ${rc}33`, padding: '12px', borderRadius: '6px' }}>
-                      {/* Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 900, color: rc }}>
-                          {report.operationName} — {report.result.toUpperCase()}
-                        </span>
-                        <span style={{ fontSize: '9px', color: '#64748b' }}>
-                          {new Date(report.timestamp).toLocaleString()}
-                        </span>
+                    <div key={report.id} style={{ background: 'rgba(0,0,0,0.35)', border: `1px solid ${rc}33`, padding: '10px', borderRadius: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 900, color: rc }}>{report.operationName} — {report.result.toUpperCase()}</span>
+                        <span style={{ fontSize: '8px', color: '#64748b' }}>{new Date(report.timestamp).toLocaleString()}</span>
                       </div>
-                      <div style={{ fontSize: '9px', color: '#64748b', marginBottom: '6px' }}>
-                        {report.originCountry} → {report.targetCountry} · {report.participants.join(', ')}
+                      <div style={{ fontSize: '9px', color: '#64748b' }}>
+                        {report.originCountry} → {report.targetCountry} · Rounds: {d.attackerRoundsWon}-{d.defenderRoundsWon}
+                        · Dmg: {d.totalAttackerDamage.toLocaleString()} vs {d.totalDefenderDamage.toLocaleString()}
                       </div>
-
-                      {/* Battle Stats */}
-                      <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', marginBottom: '2px', marginTop: '6px' }}>⚔️ BATTLE STATS</div>
-                      {row('Rounds Played', `${d.attackerRoundsWon} - ${d.defenderRoundsWon} (of ${d.roundsPlayed})`)}
-                      {row('Duration', `${Math.round(d.battleDurationMs / 1000)}s`)}
-                      {row('Total Attacker Dmg', d.totalAttackerDamage.toLocaleString(), '#22d38a')}
-                      {row('Total Defender Dmg', d.totalDefenderDamage.toLocaleString(), '#ef4444')}
-                      {row('Avg Damage / Hit', d.avgDamagePerHit.toLocaleString())}
-                      {row('Attackers', d.attackerCount)}
-                      {row('Defenders', d.defenderCount)}
-
-                      {/* Top Damage Dealers */}
-                      {d.topAttackers.length > 0 && (
-                        <>
-                          <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', marginTop: '8px', marginBottom: '2px' }}>🏆 TOP ATTACKERS</div>
-                          {d.topAttackers.map((p, i) => row(`#${i + 1} ${p.name}`, p.damage.toLocaleString(), '#22d38a'))}
-                        </>
-                      )}
-                      {d.topDefenders.length > 0 && (
-                        <>
-                          <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 'bold', marginTop: '6px', marginBottom: '2px' }}>🛡️ TOP DEFENDERS</div>
-                          {d.topDefenders.map((p, i) => row(`#${i + 1} ${p.name}`, p.damage.toLocaleString(), '#ef4444'))}
-                        </>
-                      )}
-
-                      {/* Rewards */}
-                      {isWin && (d.moneyStolen > 0 || d.oilStolen > 0 || d.materialXStolen > 0 || d.bitcoinStolen > 0) && (
-                        <>
-                          <div style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 'bold', marginTop: '8px', marginBottom: '2px' }}>💰 RESOURCES STOLEN</div>
-                          {d.moneyStolen > 0 && row('Money', `$${d.moneyStolen.toLocaleString()}`, '#f59e0b')}
-                          {d.oilStolen > 0 && row('Oil', d.oilStolen.toLocaleString(), '#f59e0b')}
-                          {d.materialXStolen > 0 && row('Material X', d.materialXStolen.toLocaleString(), '#f59e0b')}
-                          {d.bitcoinStolen > 0 && row('Bitcoin', `₿${d.bitcoinStolen}`, '#f59e0b')}
-                        </>
-                      )}
-
-                      {/* Territory */}
-                      {d.regionConquered && (
-                        <>
-                          <div style={{ fontSize: '10px', color: '#22d38a', fontWeight: 'bold', marginTop: '8px', marginBottom: '2px' }}>🗺️ TERRITORY</div>
-                          {row('Region Conquered', d.regionName, '#22d38a')}
-                        </>
-                      )}
-
-                      {/* Infrastructure Damage */}
-                      {d.infrastructureDamaged.length > 0 && (
-                        <>
-                          <div style={{ fontSize: '10px', color: '#ef4444', fontWeight: 'bold', marginTop: '8px', marginBottom: '2px' }}>🏗️ INFRASTRUCTURE DAMAGED</div>
-                          {d.infrastructureDamaged.map((inf, i) => row(inf.type.toUpperCase(), `Lv.${inf.previousLevel} → Lv.${inf.newLevel}`, '#ef4444'))}
-                          {d.companiesDisabled > 0 && row('Companies Disabled', d.companiesDisabled, '#ef4444')}
-                        </>
-                      )}
-
-                      {/* Bonuses */}
-                      {(d.militaryBaseBonusApplied || d.bunkerBonusDamage > 0) && (
-                        <>
-                          <div style={{ fontSize: '10px', color: '#a855f7', fontWeight: 'bold', marginTop: '8px', marginBottom: '2px' }}>✨ BONUSES APPLIED</div>
-                          {d.militaryBaseBonusApplied && row('Military Base Bonus', '+5-20% dmg', '#a855f7')}
-                          {d.bunkerBonusDamage > 0 && row('Bunker Strike Bonus', `+${d.bunkerBonusDamage}%`, '#a855f7')}
-                        </>
-                      )}
                     </div>
                   )
                 })}
@@ -402,18 +461,17 @@ export default function MilitaryPanel() {
             )}
           </div>
 
-          {/* Campaign History */}
           {allCampaigns.length > 0 && (
-            <div className="hud-card">
-              <div className="hud-card__title">📂 CAMPAIGN HISTORY</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+            <div className="war-card">
+              <div className="war-card__title">📂 CAMPAIGN HISTORY</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '8px' }}>
                 {allCampaigns.slice(0, 10).map(c => {
                   const opDef = MILITARY_OPERATIONS.find(o => o.id === c.operationId)
-                  const statusColor: Record<string, string> = { recruiting: '#f59e0b', launched: '#3b82f6', completed: '#22d38a', failed: '#ef4444' }
+                  const pc: Record<string, string> = { deploying: '#94a3b8', detection_window: '#f59e0b', contest: '#ef4444', attacker_won: '#22d38a', defender_won: '#ef4444', undetected_win: '#22d38a' }
                   return (
-                    <div key={c.id} style={{ fontSize: '10px', display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: '3px' }}>
+                    <div key={c.id} style={{ fontSize: '9px', display: 'flex', justifyContent: 'space-between', padding: '4px 6px', background: 'rgba(255,255,255,0.02)', borderRadius: '3px' }}>
                       <span>{opDef?.icon} {opDef?.name} → {c.targetCountry}</span>
-                      <span style={{ color: statusColor[c.status] || '#666', textTransform: 'uppercase', fontWeight: 700 }}>{c.status}</span>
+                      <span style={{ color: pc[c.phase] || '#666', textTransform: 'uppercase', fontWeight: 700, fontSize: '8px' }}>{c.phase.replace(/_/g, ' ')}</span>
                     </div>
                   )
                 })}

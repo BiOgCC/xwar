@@ -49,21 +49,50 @@ export const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
 
 // ISO A3 for GeoJSON matching
 const COUNTRY_ISO: Record<string, string> = {
-  'United States': 'USA',
-  'Russia': 'RUS',
-  'China': 'CHN',
-  'Germany': 'DEU',
-  'Brazil': 'BRA',
-  'India': 'IND',
-  'Nigeria': 'NGA',
-  'Japan': 'JPN',
-  'United Kingdom': 'GBR',
-  'Turkey': 'TUR',
-  'Canada': 'CAN',
-  'Mexico': 'MEX',
-  'Cuba': 'CUB',
-  'Bahamas': 'BHS',
+  'United States': 'USA', 'Russia': 'RUS', 'China': 'CHN', 'Germany': 'DEU',
+  'Brazil': 'BRA', 'India': 'IND', 'Nigeria': 'NGA', 'Japan': 'JPN',
+  'United Kingdom': 'GBR', 'Turkey': 'TUR', 'Canada': 'CAN', 'Mexico': 'MEX',
+  'Cuba': 'CUB', 'Bahamas': 'BHS',
+  'France': 'FRA', 'Spain': 'ESP', 'Italy': 'ITA', 'Poland': 'POL',
+  'Ukraine': 'UKR', 'Romania': 'ROU', 'Netherlands': 'NLD', 'Belgium': 'BEL',
+  'Sweden': 'SWE', 'Norway': 'NOR', 'Finland': 'FIN', 'Denmark': 'DNK',
+  'Austria': 'AUT', 'Switzerland': 'CHE', 'Czech Republic': 'CZE', 'Portugal': 'PRT',
+  'Greece': 'GRC', 'Hungary': 'HUN', 'Ireland': 'IRL', 'Iceland': 'ISL',
+  'Serbia': 'SRB', 'Belarus': 'BLR', 'Bulgaria': 'BGR', 'Slovakia': 'SVK',
+  'Croatia': 'HRV', 'Lithuania': 'LTU', 'Latvia': 'LVA', 'Estonia': 'EST',
+  'Slovenia': 'SVN', 'Bosnia and Herzegovina': 'BIH', 'Albania': 'ALB',
+  'North Macedonia': 'MKD', 'Montenegro': 'MNE', 'Moldova': 'MDA',
+  'Argentina': 'ARG', 'Colombia': 'COL', 'Venezuela': 'VEN', 'Peru': 'PER',
+  'Chile': 'CHL', 'Ecuador': 'ECU', 'Bolivia': 'BOL', 'Paraguay': 'PRY',
+  'Uruguay': 'URY', 'Guyana': 'GUY', 'Suriname': 'SUR',
+  'Guatemala': 'GTM', 'Honduras': 'HND', 'El Salvador': 'SLV', 'Nicaragua': 'NIC',
+  'Costa Rica': 'CRI', 'Panama': 'PAN', 'Dominican Republic': 'DOM', 'Haiti': 'HTI',
+  'Jamaica': 'JAM',
+  'South Korea': 'KOR', 'North Korea': 'PRK', 'Taiwan': 'TWN', 'Thailand': 'THA',
+  'Vietnam': 'VNM', 'Philippines': 'PHL', 'Malaysia': 'MYS', 'Indonesia': 'IDN',
+  'Myanmar': 'MMR', 'Bangladesh': 'BGD', 'Pakistan': 'PAK', 'Afghanistan': 'AFG',
+  'Iraq': 'IRQ', 'Iran': 'IRN', 'Saudi Arabia': 'SAU', 'United Arab Emirates': 'ARE',
+  'Israel': 'ISR', 'Syria': 'SYR', 'Jordan': 'JOR', 'Lebanon': 'LBN',
+  'Yemen': 'YEM', 'Oman': 'OMN', 'Kuwait': 'KWT', 'Qatar': 'QAT',
+  'Georgia': 'GEO', 'Armenia': 'ARM', 'Azerbaijan': 'AZE', 'Kazakhstan': 'KAZ',
+  'Uzbekistan': 'UZB', 'Turkmenistan': 'TKM', 'Kyrgyzstan': 'KGZ', 'Tajikistan': 'TJK',
+  'Mongolia': 'MNG', 'Nepal': 'NPL', 'Sri Lanka': 'LKA', 'Cambodia': 'KHM', 'Laos': 'LAO',
+  'South Africa': 'ZAF', 'Egypt': 'EGY', 'Kenya': 'KEN', 'Ethiopia': 'ETH',
+  'Tanzania': 'TZA', 'Ghana': 'GHA', 'Ivory Coast': 'CIV', 'Cameroon': 'CMR',
+  'Angola': 'AGO', 'Mozambique': 'MOZ', 'Madagascar': 'MDG', 'Morocco': 'MAR',
+  'Algeria': 'DZA', 'Tunisia': 'TUN', 'Libya': 'LBY', 'Sudan': 'SDN',
+  'South Sudan': 'SSD', 'Uganda': 'UGA', 'Senegal': 'SEN', 'Mali': 'MLI',
+  'Burkina Faso': 'BFA', 'Niger': 'NER', 'Chad': 'TCD', 'DR Congo': 'COD',
+  'Congo': 'COG', 'Central African Republic': 'CAF', 'Gabon': 'GAB',
+  'Equatorial Guinea': 'GNQ', 'Malawi': 'MWI', 'Zambia': 'ZMB', 'Zimbabwe': 'ZWE',
+  'Botswana': 'BWA', 'Namibia': 'NAM', 'Somalia': 'SOM', 'Eritrea': 'ERI',
+  'Mauritania': 'MRT',
+  'Australia': 'AUS', 'New Zealand': 'NZL', 'Papua New Guinea': 'PNG',
 }
+
+// Reverse: ISO3 (from GeoJSON) → game country name
+const ISO3_TO_NAME: Record<string, string> = {}
+Object.entries(COUNTRY_ISO).forEach(([name, iso3]) => { ISO3_TO_NAME[iso3] = name })
 
 const DEFAULT_CENTER: [number, number] = [20, 25]
 const DEFAULT_ZOOM = 2.0
@@ -424,11 +453,11 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           })
 
           // Convert 2-letter codes to 3-letter ISOs for GeoJSON matching
-          const ISO2_TO_ISO3: Record<string, string> = {
-            'US': 'USA', 'RU': 'RUS', 'CN': 'CHN', 'DE': 'DEU', 'BR': 'BRA',
-            'IN': 'IND', 'NG': 'NGA', 'JP': 'JPN', 'GB': 'GBR', 'TR': 'TUR',
-            'CA': 'CAN', 'MX': 'MEX', 'CU': 'CUB', 'BS': 'BHS',
-          }
+          const ISO2_TO_ISO3: Record<string, string> = {}
+          countries.forEach(c => {
+            const iso3 = COUNTRY_ISO[c.name]
+            if (iso3) ISO2_TO_ISO3[c.code] = iso3
+          })
           const enemyISO3s = [...enemyISOs].map(iso2 => ISO2_TO_ISO3[iso2]).filter(Boolean)
 
           if (enemyISO3s.length > 0) {
@@ -478,6 +507,18 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             m.getCanvas().style.cursor = 'crosshair'
           })
 
+
+          // ── 10. GEOJSON CLICK → OPEN COUNTRY PANEL ──
+          m.on('click', 'xwar-country-fill', (e) => {
+            if (e.features && e.features.length > 0) {
+              const iso3 = e.features[0].properties?.['ISO3166-1-Alpha-3']
+              const countryName = iso3 ? ISO3_TO_NAME[iso3] : null
+              if (countryName) {
+                const lngLat = e.lngLat
+                handleRegionClick(countryName, [lngLat.lng, lngLat.lat])
+              }
+            }
+          })
 
           // Refine region positions
           useRegionStore.getState().updateBoundsFromGeoJSON(geojson)

@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useWorldStore } from '../../stores/worldStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useGovernmentStore } from '../../stores/governmentStore'
+import FoodGrid from '../shared/FoodGrid'
 import {
   useCyberStore,
   CYBER_OPERATIONS,
@@ -18,6 +20,7 @@ export default function CyberwarfarePanel() {
   const world = useWorldStore()
   const ui = useUIStore()
   const cyber = useCyberStore()
+  const govStore = useGovernmentStore()
 
   const [activePillar, setActivePillar] = useState<CyberPillar>('espionage')
   const [selectedOp, setSelectedOp] = useState<CyberOperationDef | null>(null)
@@ -80,7 +83,7 @@ export default function CyberwarfarePanel() {
   // Reports and Deployments
   const allReports = Object.values(cyber.reports).sort((a, b) => b.timestamp - a.timestamp)
   const allCampaigns = Object.values(cyber.campaigns).sort((a, b) => b.createdAt - a.createdAt)
-  const myDeployments = allCampaigns.filter(c => c.status === 'deploying' && (c.initiatorPlayer === player.name || c.invitedPlayers.includes(player.name) || c.countryId === iso))
+  const myDeployments = allCampaigns.filter(c => (c.status === 'deploying' || c.status === 'returning') && (c.initiatorPlayer === player.name || c.invitedPlayers.includes(player.name) || c.countryId === iso))
 
   // Live timer for deployments
   const [now, setNow] = useState(Date.now())
@@ -123,10 +126,13 @@ export default function CyberwarfarePanel() {
         </div>
       )}
 
+      {/* Food Grid — restore stamina before operations */}
+      {viewMode === 'operations' && <FoodGrid />}
+
       {/* Deploying Operations */}
       {viewMode === 'operations' && myDeployments.length > 0 && (
         <div className="hud-card" style={{ borderColor: '#3b82f6', background: 'rgba(59,130,246,0.05)' }}>
-          <div className="hud-card__title" style={{ color: '#60a5fa' }}>🔄 DEPLOYING OPERATIONS ({myDeployments.length})</div>
+          <div className="hud-card__title" style={{ color: '#60a5fa' }}>🔄 ACTIVE OPERATIONS ({myDeployments.length})</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
             {myDeployments.map(dep => {
               const opDef = CYBER_OPERATIONS.find(op => op.id === dep.operationType)
@@ -142,32 +148,46 @@ export default function CyberwarfarePanel() {
               }
 
               return (
-                <div key={dep.id} style={{ padding: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '4px' }}>
+                <div key={dep.id} style={{ padding: '8px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${dep.status === 'returning' ? 'rgba(34,211,138,0.3)' : 'rgba(59,130,246,0.2)'}`, borderRadius: '4px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
                       <div style={{ fontSize: '11px', fontWeight: 700, color: '#e0f2fe' }}>{opDef?.icon} {opDef?.name}</div>
                       <div style={{ fontSize: '9px', color: '#94a3b8' }}>Target: {targetStr}</div>
                     </div>
-                    {dep.wasDetected && (
+                    {dep.status === 'returning' ? (
+                      <div style={{ fontSize: '9px', fontWeight: 700, color: '#22d38a', border: '1px solid rgba(34,211,138,0.3)', padding: '2px 6px', borderRadius: '3px', background: 'rgba(34,211,138,0.1)' }}>
+                        📡 RETURNING
+                      </div>
+                    ) : dep.wasDetected ? (
                       <div style={{ fontSize: '9px', fontWeight: 700, color: '#ef4444', border: '1px solid #ef4444', padding: '2px 4px', borderRadius: '2px', background: 'rgba(239,68,68,0.1)' }}>
                         ⚠️ DETECTED
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '3px' }}>
-                    <span style={{ fontSize: '10px', color: '#bae6fd' }}>Time Remaining:</span>
-                    <span style={{ fontSize: '12px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#38bdf8' }}>{mins}:{secs}</span>
-                  </div>
+                  {dep.status === 'deploying' && (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '3px' }}>
+                        <span style={{ fontSize: '10px', color: '#bae6fd' }}>Time Remaining:</span>
+                        <span style={{ fontSize: '12px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#38bdf8' }}>{mins}:{secs}</span>
+                      </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '6px' }}>
-                     <button className="hud-btn-outline" style={{ fontSize: '8px', padding: '6px', borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleContribute('work')}>
-                       CONTRIBUTE 10 WORK (-1m)
-                     </button>
-                     <button className="hud-btn-outline" style={{ fontSize: '8px', padding: '6px', borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleContribute('stamina')}>
-                       CONTRIBUTE 10 STAMINA (-1m)
-                     </button>
-                  </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '6px' }}>
+                         <button className="hud-btn-outline" style={{ fontSize: '8px', padding: '6px', borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleContribute('work')}>
+                           CONTRIBUTE 10 WORK (-1m)
+                         </button>
+                         <button className="hud-btn-outline" style={{ fontSize: '8px', padding: '6px', borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleContribute('stamina')}>
+                           CONTRIBUTE 10 STAMINA (-1m)
+                         </button>
+                      </div>
+                    </>
+                  )}
+
+                  {dep.status === 'returning' && (
+                    <div style={{ marginTop: '8px', padding: '6px', textAlign: 'center', fontSize: '10px', fontWeight: 700, color: '#22d38a', background: 'rgba(34,211,138,0.06)', borderRadius: '4px', border: '1px solid rgba(34,211,138,0.15)' }}>
+                      ✅ Report generated — check Reports tab
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -237,6 +257,17 @@ export default function CyberwarfarePanel() {
           {selectedOp && (
             <div className="hud-card" style={{ borderColor: 'rgba(34,211,138,0.3)' }}>
               <div className="hud-card__title">{selectedOp.icon} {selectedOp.name}</div>
+
+              {/* Requirements met badge */}
+              {govStore.isMissionCompleted(selectedOp.id, iso) && (
+                <div style={{
+                  padding: '8px', margin: '6px 0', textAlign: 'center', fontSize: '10px', fontWeight: 900,
+                  background: 'rgba(34,211,138,0.1)', border: '1px solid rgba(34,211,138,0.3)',
+                  borderRadius: '4px', color: '#22d38a', letterSpacing: '0.5px',
+                }}>
+                  ✅ REQUIREMENTS MET — READY TO EXECUTE
+                </div>
+              )}
 
               {/* Cost Breakdown */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', margin: '8px 0' }}>
@@ -357,13 +388,24 @@ export default function CyberwarfarePanel() {
               </div>
 
               {/* Launch Button */}
-              <button
-                className="hud-btn-primary"
-                onClick={handleLaunch}
-                style={{ width: '100%', padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px' }}
-              >
-                🚀 LAUNCH CAMPAIGN
-              </button>
+              {(() => {
+                const missionDone = govStore.isMissionCompleted(selectedOp.id, iso)
+                return (
+                  <button
+                    className="hud-btn-primary"
+                    onClick={missionDone ? handleLaunch : undefined}
+                    disabled={!missionDone}
+                    style={{
+                      width: '100%', padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
+                      opacity: missionDone ? 1 : 0.4,
+                      cursor: missionDone ? 'pointer' : 'not-allowed',
+                    }}
+                    title={missionDone ? 'Launch operation' : 'Complete the contribution mission in the Missions tab first'}
+                  >
+                    {missionDone ? '🚀 LAUNCH CAMPAIGN' : '🔒 COMPLETE MISSION FIRST'}
+                  </button>
+                )
+              })()}
             </div>
           )}
         </>

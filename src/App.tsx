@@ -22,6 +22,7 @@ import CyberwarfarePanel from './components/panels/CyberwarfarePanel'
 import MissionsPanel from './components/panels/MissionsPanel'
 import PrestigePanel from './components/panels/PrestigePanel'
 import WarPanel from './components/panels/WarPanel'
+import ForeignCountryPanel from './components/panels/ForeignCountryPanel'
 
 const SIDEBAR_CIVILIAN = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
@@ -55,20 +56,48 @@ interface RegionInfo {
 }
 
 const COUNTRY_ISO: Record<string, string> = {
-  'United States': 'US',
-  'Russia': 'RU',
-  'China': 'CN',
-  'Germany': 'DE',
-  'Brazil': 'BR',
-  'India': 'IN',
-  'Nigeria': 'NG',
-  'Japan': 'JP',
-  'United Kingdom': 'GB',
-  'Turkey': 'TR',
-  'Canada': 'CA',
-  'Mexico': 'MX',
-  'Cuba': 'CU',
-  'Bahamas': 'BS',
+  // Core
+  'United States': 'US', 'Russia': 'RU', 'China': 'CN', 'Germany': 'DE',
+  'Brazil': 'BR', 'India': 'IN', 'Nigeria': 'NG', 'Japan': 'JP',
+  'United Kingdom': 'GB', 'Turkey': 'TR', 'Canada': 'CA', 'Mexico': 'MX',
+  'Cuba': 'CU', 'Bahamas': 'BS',
+  // Europe
+  'France': 'FR', 'Spain': 'ES', 'Italy': 'IT', 'Poland': 'PL', 'Ukraine': 'UA',
+  'Romania': 'RO', 'Netherlands': 'NL', 'Belgium': 'BE', 'Sweden': 'SE', 'Norway': 'NO',
+  'Finland': 'FI', 'Denmark': 'DK', 'Austria': 'AT', 'Switzerland': 'CH',
+  'Czech Republic': 'CZ', 'Portugal': 'PT', 'Greece': 'GR', 'Hungary': 'HU',
+  'Ireland': 'IE', 'Iceland': 'IS', 'Serbia': 'RS', 'Belarus': 'BY', 'Bulgaria': 'BG',
+  'Slovakia': 'SK', 'Croatia': 'HR', 'Lithuania': 'LT', 'Latvia': 'LV', 'Estonia': 'EE',
+  'Slovenia': 'SI', 'Bosnia and Herzegovina': 'BA', 'Albania': 'AL',
+  'North Macedonia': 'MK', 'Montenegro': 'ME', 'Moldova': 'MD',
+  // Americas
+  'Argentina': 'AR', 'Colombia': 'CO', 'Venezuela': 'VE', 'Peru': 'PE', 'Chile': 'CL',
+  'Ecuador': 'EC', 'Bolivia': 'BO', 'Paraguay': 'PY', 'Uruguay': 'UY', 'Guyana': 'GY',
+  'Suriname': 'SR', 'Guatemala': 'GT', 'Honduras': 'HN', 'El Salvador': 'SV',
+  'Nicaragua': 'NI', 'Costa Rica': 'CR', 'Panama': 'PA', 'Dominican Republic': 'DO',
+  'Haiti': 'HT', 'Jamaica': 'JM',
+  // Asia
+  'South Korea': 'KR', 'North Korea': 'KP', 'Taiwan': 'TW', 'Thailand': 'TH',
+  'Vietnam': 'VN', 'Philippines': 'PH', 'Malaysia': 'MY', 'Indonesia': 'ID',
+  'Myanmar': 'MM', 'Bangladesh': 'BD', 'Pakistan': 'PK', 'Afghanistan': 'AF',
+  'Iraq': 'IQ', 'Iran': 'IR', 'Saudi Arabia': 'SA', 'United Arab Emirates': 'AE',
+  'Israel': 'IL', 'Syria': 'SY', 'Jordan': 'JO', 'Lebanon': 'LB', 'Yemen': 'YE',
+  'Oman': 'OM', 'Kuwait': 'KW', 'Qatar': 'QA', 'Georgia': 'GE', 'Armenia': 'AM',
+  'Azerbaijan': 'AZ', 'Kazakhstan': 'KZ', 'Uzbekistan': 'UZ', 'Turkmenistan': 'TM',
+  'Kyrgyzstan': 'KG', 'Tajikistan': 'TJ', 'Mongolia': 'MN', 'Nepal': 'NP',
+  'Sri Lanka': 'LK', 'Cambodia': 'KH', 'Laos': 'LA',
+  // Africa
+  'South Africa': 'ZA', 'Egypt': 'EG', 'Kenya': 'KE', 'Ethiopia': 'ET',
+  'Tanzania': 'TZ', 'Ghana': 'GH', 'Ivory Coast': 'CI', 'Cameroon': 'CM',
+  'Angola': 'AO', 'Mozambique': 'MZ', 'Madagascar': 'MG', 'Morocco': 'MA',
+  'Algeria': 'DZ', 'Tunisia': 'TN', 'Libya': 'LY', 'Sudan': 'SD', 'South Sudan': 'SS',
+  'Uganda': 'UG', 'Senegal': 'SN', 'Mali': 'ML', 'Burkina Faso': 'BF', 'Niger': 'NE',
+  'Chad': 'TD', 'DR Congo': 'CD', 'Congo': 'CG', 'Central African Republic': 'CF',
+  'Gabon': 'GA', 'Equatorial Guinea': 'GQ', 'Malawi': 'MW', 'Zambia': 'ZM',
+  'Zimbabwe': 'ZW', 'Botswana': 'BW', 'Namibia': 'NA', 'Somalia': 'SO', 'Eritrea': 'ER',
+  'Mauritania': 'MR',
+  // Oceania
+  'Australia': 'AU', 'New Zealand': 'NZ', 'Papua New Guinea': 'PG',
 }
 
 function App() {
@@ -97,7 +126,7 @@ function App() {
   const finalDodge = 5 + eqDodge + (mil.dodge * 5)
   const finalHitRate = Math.min(100, 50 + eqPrecision + (mil.precision * 5))
 
-  const { activePanel, togglePanel, floatingTexts, cycleResourceView, resourceViewMode, setProfileDefaultTab, setActivePanel } = useUIStore()
+  const { activePanel, togglePanel, floatingTexts, cycleResourceView, resourceViewMode, setProfileDefaultTab, setActivePanel, setForeignCountry, selectedForeignCountry } = useUIStore()
   const [mousePos, setMousePos] = useState({ lat: '0.00° N', lng: '0.00° E' })
   const [selectedRegion, setSelectedRegion] = useState<RegionInfo | null>(null)
   const mapRef = useRef<GameMapHandle>(null)
@@ -105,14 +134,42 @@ function App() {
   const [swapSlot, setSwapSlot] = useState<string | null>(null)
   const [selectedWarRegion, setSelectedWarRegion] = useState<Region | null>(null)
 
-  // 30 min (1800s) Game Tick Timer
+  // 30 min (1800s) Game Tick Timer + 15s Combat Tick
   const [timeLeft, setTimeLeft] = useState(1800)
 
   useEffect(() => {
     const interval = setInterval(() => {
-      // Resolve any active battles whose ticks have expired
-      useBattleStore.getState().resolveTicksAndRounds()
-      
+      // ---- Combat Tick (every 15 seconds) ----
+      const bs = useBattleStore.getState()
+      const nextTick = bs.combatTickLeft - 1
+      if (nextTick <= 0) {
+        // FIRE: process all battle & operation ticks (wrapped in try-catch to never kill the timer)
+        try {
+          bs.resolveTicksAndRounds()
+        } catch (e) { console.warn('[CombatTick] resolveTicksAndRounds error:', e) }
+        try {
+          bs.processHOICombatTick()
+        } catch (e) { console.warn('[CombatTick] processHOICombatTick error:', e) }
+        try {
+          import('./stores/militaryStore').then(m => {
+            m.useMilitaryStore.getState().processDetectionWindows()
+            m.useMilitaryStore.getState().resolveContests()
+          })
+        } catch (e) { console.warn('[CombatTick] military error:', e) }
+        try {
+          useCyberStore.getState().processDetectionTicks()
+          useCyberStore.getState().resolveStaminaContests()
+        } catch (e) { console.warn('[CombatTick] cyber error:', e) }
+        try {
+          useArmyStore.getState().processTrainingTick()
+        } catch (e) { console.warn('[CombatTick] training error:', e) }
+
+        bs.setCombatTickLeft(15) // Always reset
+      } else {
+        bs.setCombatTickLeft(nextTick)
+      }
+
+      // ---- Economy Tick (every 30 min) ----
       setTimeLeft((prev) => {
         if (prev <= 1) {
           useCompanyStore.getState().processTick()
@@ -132,23 +189,157 @@ function App() {
     return () => clearInterval(ticker)
   }, [])
 
-  // ====== MOCK ACTIVE CAMPAIGNS FOR TESTING ======
+  // ====== MOCK TEST DATA FOR TESTING ======
   useEffect(() => {
     const cyberState = useCyberStore.getState()
-    const militaryState = import('./stores/militaryStore').then(mod => {
+    const bs = useBattleStore.getState()
+
+    import('./stores/militaryStore').then(mod => {
       const ms = mod.useMilitaryStore.getState()
-      
-      // Only init if empty
+
+      // 3 Cyber Operations — inject directly to bypass resource checks
       if (Object.keys(cyberState.campaigns).length === 0) {
-        cyberState.launchCampaign('company_sabotage', { country: 'RU' }, ['Player2', 'Player3'])
-        cyberState.launchCampaign('resource_intel', { country: 'CN' }, [])
+        const now = Date.now()
+        useCyberStore.setState(s => ({
+          campaigns: {
+            ...s.campaigns,
+            'mock_cyber_1': {
+              id: 'mock_cyber_1', initiatorPlayer: 'Commander_X', countryId: 'US',
+              invitedPlayers: ['Player2', 'Player3'], operationType: 'company_sabotage' as any,
+              targetCountry: 'RU', energyCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
+              successChance: 70, detectionChance: 30, duration: 1800000,
+              status: 'deploying' as any, deploymentStartTime: now,
+              deploymentAcceleratedMs: 0, wasDetected: false,
+              createdAt: now, expiresAt: 0, contestState: null, contestResult: 'pending' as any,
+            },
+            'mock_cyber_2': {
+              id: 'mock_cyber_2', initiatorPlayer: 'Commander_X', countryId: 'US',
+              invitedPlayers: [], operationType: 'resource_intel' as any,
+              targetCountry: 'CN', energyCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
+              successChance: 80, detectionChance: 30, duration: 1800000,
+              status: 'active' as any, deploymentStartTime: now - 600000,
+              deploymentAcceleratedMs: 0, wasDetected: false,
+              createdAt: now - 600000, expiresAt: now + 1200000, contestState: null, contestResult: 'pending' as any,
+            },
+            'mock_cyber_3': {
+              id: 'mock_cyber_3', initiatorPlayer: 'Commander_X', countryId: 'US',
+              invitedPlayers: ['HackerX'], operationType: 'power_grid_attack' as any,
+              targetCountry: 'DE', energyCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
+              successChance: 60, detectionChance: 40, duration: 1800000,
+              status: 'deploying' as any, deploymentStartTime: now,
+              deploymentAcceleratedMs: 0, wasDetected: false,
+              createdAt: now, expiresAt: 0, contestState: null, contestResult: 'pending' as any,
+            },
+          },
+        }))
       }
 
+      // 3 Military Operations — inject directly to bypass resource checks
       if (Object.keys(ms.campaigns).length === 0) {
-        ms.launchCampaign('assault', 'CA', ['General_Y'])
-        ms.launchCampaign('naval_strike', 'CU', [])
+        const now = Date.now()
+        mod.useMilitaryStore.setState({
+          campaigns: {
+            'mock_mil_1': {
+              id: 'mock_mil_1', operationId: 'assault', initiator: 'Commander_X',
+              originCountry: 'US', targetCountry: 'CA', playersJoined: ['Commander_X', 'General_Y'],
+              invitedPlayers: [], createdAt: now, launchedAt: now, battleId: null,
+              phase: 'detection_window' as any, detectionWindowStart: now,
+              wasDetected: false, contestState: null, result: 'pending',
+            },
+            'mock_mil_2': {
+              id: 'mock_mil_2', operationId: 'invasion', initiator: 'Commander_X',
+              originCountry: 'US', targetCountry: 'MX', playersJoined: ['Commander_X'],
+              invitedPlayers: [], createdAt: now, launchedAt: now, battleId: null,
+              phase: 'contest' as any, detectionWindowStart: now - 900000,
+              wasDetected: true,
+              contestState: {
+                contestType: 'damage' as any, threshold: 1000,
+                startedAt: now - 300000, expiresAt: now + 1800000,
+                attackerProgress: 320, defenderProgress: 180,
+                attackerContributors: [{ playerId: 'Commander_X', contributed: 320 }],
+                defenderContributors: [{ playerId: 'Defender_1', contributed: 180 }],
+              },
+              result: 'pending',
+            },
+            'mock_mil_3': {
+              id: 'mock_mil_3', operationId: 'sabotage', initiator: 'Commander_X',
+              originCountry: 'US', targetCountry: 'RU', playersJoined: ['Commander_X', 'Ace_Pilot'],
+              invitedPlayers: ['SoldierZ'], createdAt: now, launchedAt: null, battleId: null,
+              phase: 'deploying' as any, detectionWindowStart: null,
+              wasDetected: false, contestState: null, result: 'pending',
+            },
+          },
+        })
       }
     })
+
+    // 3 Active Battles (with divisions on BOTH sides so auto-damage works)
+    if (Object.keys(bs.battles).length === 0) {
+      const now = Date.now()
+      const armyState = useArmyStore.getState()
+
+      // Create mock enemy divisions first
+      const mockDivs: Record<string, any> = {}
+      const enemyDivIds: string[][] = [[], [], []]
+      const defenderCodes = ['RU', 'CN', 'MX']
+      
+      
+      defenderCodes.forEach((code, bi) => {
+        for (let i = 0; i < 3; i++) {
+          const id = `mock_def_${code}_${i}`
+          enemyDivIds[bi].push(id)
+          mockDivs[id] = {
+            id, name: `${code} ${['1st Infantry', '2nd Mech', '3rd Tank'][i]}`,
+            type: (i < 2 ? 'infantry' : 'mechanic') as any, category: (i < 2 ? 'infantry' : 'mechanic') as any,
+            countryCode: code, ownerId: `AI_${code}`,
+            status: 'in_combat', experience: 50,
+            manpower: 5000 + i * 2000, maxManpower: 8000,
+            morale: 70, equipment: [],
+            trainingProgress: 10,
+            killCount: 0, battlesSurvived: 0,
+          }
+        }
+      })
+
+      // Inject divisions into armyStore
+      useArmyStore.setState(s => ({
+        divisions: { ...s.divisions, ...mockDivs }
+      }))
+
+      // Create 3 battles with both sides populated
+      const battleConfigs = [
+        { id: 'b1', atkId: 'US', defId: 'RU', region: 'Eastern Europe Front', type: 'invasion' },
+        { id: 'b2', atkId: 'US', defId: 'CN', region: 'Pacific Theater', type: 'naval_strike' },
+        { id: 'b3', atkId: 'CA', defId: 'MX', region: 'Southern Border', type: 'assault' },
+      ]
+
+      const newBattles: Record<string, any> = {}
+      battleConfigs.forEach((cfg, idx) => {
+        const defDivs = enemyDivIds[idx]
+        newBattles[cfg.id] = {
+          id: cfg.id, type: cfg.type, attackerId: cfg.atkId, defenderId: cfg.defId,
+          regionName: cfg.region, startedAt: now,
+          ticksElapsed: 0, status: 'active',
+          attacker: {
+            countryCode: cfg.atkId, divisionIds: [], engagedDivisionIds: [],
+            damageDealt: 0, manpowerLost: 0,
+            divisionsDestroyed: 0, divisionsRetreated: 0,
+          },
+          defender: {
+            countryCode: cfg.defId, divisionIds: defDivs, engagedDivisionIds: defDivs,
+            damageDealt: 0, manpowerLost: 0,
+            divisionsDestroyed: 0, divisionsRetreated: 0,
+          },
+          attackerRoundsWon: 0, defenderRoundsWon: 0,
+          rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active' }],
+          currentTick: { attackerDamage: 0, defenderDamage: 0 },
+          combatLog: [],
+          attackerDamageDealers: {}, defenderDamageDealers: {}, damageFeed: [],
+        }
+      })
+
+      useBattleStore.setState(s => ({ battles: { ...s.battles, ...newBattles } }))
+    }
   }, [])
 
   const handleManualTick = () => {
@@ -167,8 +358,16 @@ function App() {
   }, [])
 
   const handleRegionClick = useCallback((info: RegionInfo) => {
-    setSelectedRegion(info)
-  }, [])
+    const playerIso = player.countryCode || 'US'
+    const clickedIso = COUNTRY_ISO[info.name] || null
+    if (!clickedIso) return
+    if (clickedIso === playerIso) {
+      setActivePanel('government')
+    } else {
+      setForeignCountry(clickedIso)
+      setActivePanel('foreign_country')
+    }
+  }, [player.countryCode])
 
   return (
     <div className="xwar-root">
@@ -355,11 +554,13 @@ function App() {
           <aside className="hud-panel">
             <div className="hud-panel__header">
               <h3 className="hud-panel__title">
-                {activePanel === 'government' 
-                  ? `COUNTRY — ${getCountryName(player.countryCode || 'US').toUpperCase()}` 
+                {activePanel === 'government'
+                  ? `COUNTRY — ${getCountryName(player.countryCode || 'US').toUpperCase()}`
                   : activePanel === 'missions'
                   ? 'MISSIONS: ENABLE OPERATIONS BY COMPLETING THEM'
-                  : activePanel.toUpperCase()}
+                  : activePanel === 'foreign_country' && selectedForeignCountry
+                  ? `${getCountryFlag(selectedForeignCountry)} ${getCountryName(selectedForeignCountry).toUpperCase()}`
+                  : activePanel?.toUpperCase()}
               </h3>
               <button className="hud-panel__close" onClick={() => togglePanel(activePanel)}>✕</button>
             </div>
@@ -367,6 +568,7 @@ function App() {
               {activePanel === 'profile' && <ProfilePanel />}
               {activePanel === 'military' && <MilitaryPanel />}
               {activePanel === 'combat' && <WarPanel />}
+              {activePanel === 'foreign_country' && <ForeignCountryPanel />}
               {activePanel === 'market' && (
                 <div className="hud-card">
                   <div className="hud-card__title">📊 MARKET PRICES</div>
@@ -553,7 +755,7 @@ function App() {
         />
       )}
 
-      {/* ====== REGION ATTACK POPUP ====== */}
+      {/* ====== REGION POPUP ====== */}
       {selectedWarRegion && (
         <div className="region-attack-popup" style={{ zIndex: 9999 }}>
           <div className="region-attack-popup__card">
@@ -567,87 +769,24 @@ function App() {
                 </div>
               </div>
             </div>
-            {selectedWarRegion.attackedBy ? (() => {
-              // Show assigned divisions with health
-              const as2 = useArmyStore.getState()
-              const army = selectedWarRegion.assignedArmyId ? as2.armies[selectedWarRegion.assignedArmyId] : null
-              const divs = army ? army.divisionIds.map(id => as2.divisions[id]).filter(Boolean) : []
-
-              return (
-                <div className="region-attack-popup__status">
-                  <div className="region-attack-popup__progress-label">
-                    CAPTURING: {Math.round(selectedWarRegion.captureProgress)}%
-                  </div>
-                  <div className="region-attack-popup__bar">
-                    <div className="region-attack-popup__fill" style={{ width: `${selectedWarRegion.captureProgress}%` }} />
-                  </div>
-
-                  {/* Show divisions fighting */}
-                  {divs.length > 0 && (
-                    <div className="region-attack-popup__divs">
-                      <div className="region-attack-popup__divs-title">🪖 ENGAGED DIVISIONS</div>
-                      {divs.map(d => {
-                        const hpPct = Math.round((d.manpower / d.maxManpower) * 100)
-                        const isLow = hpPct < 30
-                        return (
-                          <div key={d.id} className="region-attack-popup__div-row">
-                            <span className="region-attack-popup__div-name">{d.name}</span>
-                            <div className="region-attack-popup__div-hp-bar">
-                              <div className={`region-attack-popup__div-hp-fill ${isLow ? 'region-attack-popup__div-hp-fill--low' : ''}`}
-                                style={{ width: `${hpPct}%` }} />
-                            </div>
-                            <span className="region-attack-popup__div-hp-text">
-                              {Math.round(d.manpower)}/{d.maxManpower}
-                            </span>
-                            <span className="region-attack-popup__div-morale" title="Morale">
-                              💪{Math.round(d.morale)}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-
-                  <button
-                    className="region-attack-popup__btn region-attack-popup__btn--cancel"
-                    onClick={() => {
-                      useRegionStore.getState().stopAttack(selectedWarRegion.id)
-                      setSelectedWarRegion(null)
-                    }}
-                  >🛑 WITHDRAW</button>
-                </div>
-              )
-            })() : (
+            <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
               <button
                 className="region-attack-popup__btn"
+                style={{ flex: 1, background: 'rgba(245,158,11,0.15)', borderColor: 'rgba(245,158,11,0.4)', color: '#f59e0b' }}
                 onClick={() => {
-                  const playerIso = player.countryCode || 'US'
-                  // Find player's best army with ready divisions
-                  const as2 = useArmyStore.getState()
-                  const bs = useBattleStore.getState()
-                  const myArmies = Object.values(as2.armies).filter(a => a.countryCode === playerIso)
-                  const armyWithDivs = myArmies.find(a =>
-                    a.divisionIds.some(id => as2.divisions[id]?.status === 'ready' || as2.divisions[id]?.status === 'in_combat')
-                  )
-
-                  if (armyWithDivs) {
-                    // Start region capture with linked army
-                    useRegionStore.getState().attackRegion(selectedWarRegion.id, playerIso, armyWithDivs.id)
-                    bs.launchHOIBattle(armyWithDivs.id, selectedWarRegion.countryCode, 'invasion')
-                    useUIStore.getState().addFloatingText(
-                      `⚔️ PUSHING INTO ${selectedWarRegion.name.toUpperCase()}!`,
-                      window.innerWidth / 2, window.innerHeight / 2, '#ef4444'
-                    )
-                  } else {
-                    useUIStore.getState().addFloatingText(
-                      '❌ No army available! Recruit divisions first.',
-                      window.innerWidth / 2, window.innerHeight / 2, '#ef4444'
-                    )
-                  }
+                  setActivePanel('missions')
                   setSelectedWarRegion(null)
                 }}
-              >⚔️ PUSH INTO {selectedWarRegion.name.toUpperCase()}</button>
-            )}
+              >🎖️ TO OPERATIONS</button>
+              <button
+                className="region-attack-popup__btn"
+                style={{ flex: 1, background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444' }}
+                onClick={() => {
+                  setActivePanel('combat')
+                  setSelectedWarRegion(null)
+                }}
+              >⚔️ TO ATTACK</button>
+            </div>
           </div>
         </div>
       )}

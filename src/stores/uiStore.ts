@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type PanelType = 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'chat' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | null
+export type PanelType = 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'chat' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'foreign_country' | null
 export type ResourceViewMode = 'deposits' | 'strategic' | 'political'
 
 export interface Notification {
@@ -34,10 +34,12 @@ export interface UIState {
   floatingTexts: FloatingText[]
   profileDefaultTab: string | null
   resourceViewMode: ResourceViewMode
+  selectedForeignCountry: string | null
   setActivePanel: (panel: PanelType) => void
   togglePanel: (panel: PanelType) => void
   setProfileDefaultTab: (tab: string | null) => void
   cycleResourceView: () => void
+  setForeignCountry: (code: string | null) => void
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void
   removeNotification: (id: string) => void
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
@@ -52,6 +54,7 @@ let chatCounter = 0
 
 export const useUIStore = create<UIState>((set) => ({
   activePanel: null,
+  selectedForeignCountry: null,
   showModal: false,
   modalContent: null,
   notifications: [],
@@ -75,6 +78,8 @@ export const useUIStore = create<UIState>((set) => ({
     })),
 
   setProfileDefaultTab: (tab) => set({ profileDefaultTab: tab }),
+
+  setForeignCountry: (code) => set({ selectedForeignCountry: code }),
 
   cycleResourceView: () => set((state) => {
     const modes: ResourceViewMode[] = ['deposits', 'strategic', 'political']

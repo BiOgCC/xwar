@@ -4,6 +4,12 @@ import { useWorldStore } from './worldStore'
 import { useCompanyStore } from './companyStore'
 import { useBattleStore } from './battleStore'
 import { useGovernmentStore } from './governmentStore'
+import {
+  type ContestState,
+  CONTEST_DURATION_MS,
+  checkContestResult,
+  createContest,
+} from './operationTypes'
 
 // ====== TYPES ======
 
@@ -51,13 +57,17 @@ export interface CyberCampaign {
   duration: number
   
   // Deployment mechanics
-  status: 'deploying' | 'active' | 'completed' | 'failed' | 'detected'
+  status: 'deploying' | 'returning' | 'active' | 'completed' | 'failed' | 'detected'
   deploymentStartTime: number
   deploymentAcceleratedMs: number
   
   wasDetected: boolean
   createdAt: number
   expiresAt: number
+
+  // Stamina race contest (if detected at resolve time)
+  contestState: ContestState | null
+  contestResult: 'pending' | 'attacker_won' | 'defender_won'
 }
 
 export interface CyberReport {
@@ -189,10 +199,17 @@ export interface CyberState {
   getActiveEffectsForRegion: (regionName: string) => ActiveEffect[]
   cleanExpiredEffects: () => void
   dismissNotification: (id: string) => void
+
+  // Stamina race actions
+  contributeStamina: (campaignId: string, playerId: string, staminaAmount: number) => { success: boolean; message: string }
+  defendWithStamina: (campaignId: string, playerId: string, staminaAmount: number) => { success: boolean; message: string }
+  resolveStaminaContests: () => void
 }
 
 let campaignCounter = 0
 let reportCounter = 0
+// Guard against duplicate resolveDeployment calls from rapid ticks
+const _resolvedCampaigns = new Set<string>()
 
 export const useCyberStore = create<CyberState>((set, get) => ({
   campaigns: {},
@@ -243,6 +260,8 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       wasDetected: false,
       createdAt: now,
       expiresAt: 0, // Will be set when deployment finishes
+      contestState: null,
+      contestResult: 'pending',
     }
 
     const state = get()
@@ -302,29 +321,29 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     let changed = false
 
     Object.values(state.campaigns).forEach(c => {
-      if (c.status === 'deploying') {
-        // Resolve if timer is up
-        if (now >= c.deploymentStartTime + c.duration - c.deploymentAcceleratedMs) {
-          get().resolveDeployment(c.id)
-          changed = true
-          return
-        }
+      if (c.status !== 'deploying') return // skip returning/completed/failed
 
-        // Otherwise roll for detection
-        if (!c.wasDetected) {
-          const detectRoll = Math.random() * 100
-          if (detectRoll <= c.detectionChance) {
-            updatedCampaigns[c.id] = { ...c, wasDetected: true }
-            changed = true
-            
-            const opDef = CYBER_OPERATIONS.find(op => op.id === c.operationType)
-            const targetName = c.targetCountry || c.targetRegion || c.targetPlayer || 'Unknown'
-            newNotifications.push({
-              id: `notif_${c.id}_detect_${now}`,
-              message: `⚠️ CYBER ALERT: Unknown operation detected targeting ${targetName}!`,
-              timestamp: now,
-            })
-          }
+      // Resolve if timer is up
+      if (now >= c.deploymentStartTime + c.duration - c.deploymentAcceleratedMs) {
+        get().resolveDeployment(c.id)
+        changed = true
+        return
+      }
+
+      // Otherwise roll for detection
+      if (!c.wasDetected) {
+        const detectRoll = Math.random() * 100
+        if (detectRoll <= c.detectionChance) {
+          updatedCampaigns[c.id] = { ...c, wasDetected: true }
+          changed = true
+          
+          const opDef = CYBER_OPERATIONS.find(op => op.id === c.operationType)
+          const targetName = c.targetCountry || c.targetRegion || c.targetPlayer || 'Unknown'
+          newNotifications.push({
+            id: `notif_${c.id}_detect_${now}`,
+            message: `⚠️ CYBER ALERT: Unknown operation detected targeting ${targetName}!`,
+            timestamp: now,
+          })
         }
       }
     })
@@ -335,9 +354,21 @@ export const useCyberStore = create<CyberState>((set, get) => ({
   },
 
   resolveDeployment: (campaignId) => {
+    // Dedup guard — only resolve each campaign once
+    if (_resolvedCampaigns.has(campaignId)) return
+    _resolvedCampaigns.add(campaignId)
+
     const state = get()
     const campaign = state.campaigns[campaignId]
     if (!campaign || campaign.status !== 'deploying') return
+
+    // Immediately set to 'returning' so no further ticks trigger this
+    set({
+      campaigns: {
+        ...state.campaigns,
+        [campaignId]: { ...campaign, status: 'returning' }
+      }
+    })
 
     const opDef = CYBER_OPERATIONS.find(op => op.id === campaign.operationType)
     if (!opDef) return
@@ -349,10 +380,28 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     const roll = Math.random() * 100
     const succeeded = roll <= opDef.successChance
 
-    const newCampaigns = { ...state.campaigns }
-    const newReports = { ...state.reports }
-    const newEffects = [...state.activeEffects]
-    const newNotifications = [...state.notifications]
+    const newCampaigns = { ...get().campaigns }
+    const newReports = { ...get().reports }
+    const newEffects = [...get().activeEffects]
+    const newNotifications = [...get().notifications]
+
+    // If detected → start stamina race contest instead of resolving
+    if (campaign.wasDetected && succeeded) {
+      // Start 30-min stamina contest
+      newCampaigns[campaignId] = {
+        ...campaign,
+        status: 'deploying', // stay in deploying but with contest
+        contestState: createContest('stamina'),
+        contestResult: 'pending',
+      }
+      newNotifications.push({
+        id: `notif_${campaignId}_contest`,
+        message: `⚔️ CYBER CONTEST: Operation detected! 30-min stamina race started!`,
+        timestamp: now,
+      })
+      set({ campaigns: newCampaigns, notifications: newNotifications })
+      return
+    }
 
     newCampaigns[campaignId] = {
       ...campaign,
@@ -448,6 +497,101 @@ export const useCyberStore = create<CyberState>((set, get) => ({
   dismissNotification: (id) => set(state => ({
     notifications: state.notifications.filter(n => n.id !== id),
   })),
+
+  // ====== STAMINA RACE CONTEST ======
+
+  contributeStamina: (campaignId, playerId, staminaAmount) => {
+    const state = get()
+    const c = state.campaigns[campaignId]
+    if (!c || !c.contestState || c.contestResult !== 'pending') {
+      return { success: false, message: 'No active stamina contest.' }
+    }
+
+    const player = usePlayerStore.getState()
+    if (player.stamina < staminaAmount) return { success: false, message: 'Not enough stamina.' }
+    player.consumeBar('stamina', staminaAmount)
+
+    // Scale by Prospection + Industrialist skill levels
+    const skills = player as any // skillsStore values if available
+    const prospection = skills.skills?.economy?.prospection || 1
+    const industrialist = skills.skills?.economy?.production || 1
+    const scaledAmount = Math.floor(staminaAmount * (1 + (prospection + industrialist) * 0.1))
+
+    const contest = { ...c.contestState }
+    contest.attackerProgress += scaledAmount
+    const existing = contest.attackerContributors.find(x => x.playerId === playerId)
+    if (existing) {
+      contest.attackerContributors = contest.attackerContributors.map(x =>
+        x.playerId === playerId ? { ...x, contributed: x.contributed + scaledAmount } : x
+      )
+    } else {
+      contest.attackerContributors = [...contest.attackerContributors, { playerId, contributed: scaledAmount }]
+    }
+
+    const result = checkContestResult(contest)
+    const newResult = result === 'ongoing' ? 'pending' as const : result
+
+    set(s => ({
+      campaigns: {
+        ...s.campaigns,
+        [campaignId]: { ...c, contestState: contest, contestResult: newResult },
+      },
+    }))
+
+    return { success: true, message: result === 'attacker_won' ? '🎯 Stamina goal reached! Hack successful!' : `+${scaledAmount} hacking progress (${staminaAmount} stamina used).` }
+  },
+
+  defendWithStamina: (campaignId, playerId, staminaAmount) => {
+    const state = get()
+    const c = state.campaigns[campaignId]
+    if (!c || !c.contestState || c.contestResult !== 'pending') {
+      return { success: false, message: 'No active stamina contest.' }
+    }
+
+    const player = usePlayerStore.getState()
+    if (player.stamina < staminaAmount) return { success: false, message: 'Not enough stamina.' }
+    player.consumeBar('stamina', staminaAmount)
+
+    const contest = { ...c.contestState }
+    contest.defenderProgress += staminaAmount
+    const existing = contest.defenderContributors.find(x => x.playerId === playerId)
+    if (existing) {
+      contest.defenderContributors = contest.defenderContributors.map(x =>
+        x.playerId === playerId ? { ...x, contributed: x.contributed + staminaAmount } : x
+      )
+    } else {
+      contest.defenderContributors = [...contest.defenderContributors, { playerId, contributed: staminaAmount }]
+    }
+
+    const result = checkContestResult(contest)
+    const newResult = result === 'ongoing' ? 'pending' as const : result
+
+    set(s => ({
+      campaigns: {
+        ...s.campaigns,
+        [campaignId]: { ...c, contestState: contest, contestResult: newResult },
+      },
+    }))
+
+    return { success: true, message: result === 'defender_won' ? '🛡️ Hack blocked!' : `+${staminaAmount} defense progress.` }
+  },
+
+  resolveStaminaContests: () => {
+    const state = get()
+    const updates: Record<string, CyberCampaign> = {}
+
+    Object.values(state.campaigns).forEach(c => {
+      if (!c.contestState || c.contestResult !== 'pending') return
+      const result = checkContestResult(c.contestState)
+      if (result !== 'ongoing') {
+        updates[c.id] = { ...c, contestResult: result }
+      }
+    })
+
+    if (Object.keys(updates).length > 0) {
+      set(s => ({ campaigns: { ...s.campaigns, ...updates } }))
+    }
+  },
 }))
 
 // ====== REPORT GENERATORS ======

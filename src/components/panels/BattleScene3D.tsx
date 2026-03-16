@@ -2,8 +2,8 @@ import React, { useRef, useMemo, useEffect, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, Text, Stars } from '@react-three/drei'
 import * as THREE from 'three'
-import type { TerrainType, DivisionType } from '../../stores/armyStore'
-import { DIVISION_TEMPLATES, TERRAIN_MODIFIERS } from '../../stores/armyStore'
+import type { DivisionType } from '../../stores/armyStore'
+import { DIVISION_TEMPLATES } from '../../stores/armyStore'
 import { useBattleStore } from '../../stores/battleStore'
 
 // ====== TERRAIN CONFIGS ======
@@ -18,6 +18,8 @@ interface TerrainConfig {
   features: string
   heightVariation: number
 }
+
+type TerrainType = 'plains' | 'forest' | 'mountain' | 'urban' | 'desert' | 'jungle' | 'arctic' | 'coastal'
 
 const TERRAIN_CONFIGS: Record<TerrainType, TerrainConfig> = {
   plains: {
@@ -83,13 +85,7 @@ function getTerrainHeight(x: number, z: number, heightVariation: number): number
 
 const UNIT_COLORS: Record<DivisionType, { body: string; accent: string }> = {
   infantry: { body: '#5a8c5a', accent: '#3d6b3d' },
-  mechanized: { body: '#7b8b4a', accent: '#5a6a3a' },
-  tank: { body: '#6a6a6a', accent: '#4a4a4a' },
-  artillery: { body: '#9b7b4a', accent: '#7b5b3a' },
-  anti_air: { body: '#5a7a9a', accent: '#3a5a7a' },
-  special_forces: { body: '#3a3a3a', accent: '#2a2a2a' },
-  fighter: { body: '#7a9aba', accent: '#5a7a9a' },
-  bomber: { body: '#9a9a9a', accent: '#6a6a6a' },
+  mechanic: { body: '#6a6a6a', accent: '#4a4a4a' },
 }
 
 // ====== TERRAIN GROUND ======
@@ -238,9 +234,9 @@ function Soldier({
     }
   })
 
-  const isVehicle = divisionType === 'tank' || divisionType === 'mechanized'
-  const isAir = divisionType === 'fighter' || divisionType === 'bomber'
-  const isArtillery = divisionType === 'artillery' || divisionType === 'anti_air'
+  const isVehicle = divisionType === 'mechanic'
+  const isAir = false
+  const isArtillery = false
 
   if (isAir) {
     return (
@@ -462,7 +458,7 @@ function ArmyFormation({
 
     divisions.forEach((div, divIndex) => {
       const template = DIVISION_TEMPLATES[div.type]
-      const isAir = template.category === 'air'
+      const isAir = false
       const strengthRatio = div.manpower / div.maxManpower
       const soldierCount = Math.max(2, Math.ceil(strengthRatio * 5))
 
@@ -635,10 +631,9 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
     )
   }
 
-  const terrain = battle.terrain
+  const terrain: TerrainType = 'plains'
   const config = TERRAIN_CONFIGS[terrain]
-  const terrainMod = TERRAIN_MODIFIERS[terrain]
-  const isEngaged = battle.phase === 'engagement'
+  const isEngaged = battle.status === 'active'
 
   return (
     <div className="battle-scene-3d">
@@ -656,13 +651,13 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
 
         <div className="battle-scene-hud__center">
           <div className="battle-scene-hud__terrain">
-            🏔️ {terrain.toUpperCase()}
+            ⚔️ {battle.regionName}
           </div>
           <div className="battle-scene-hud__modifiers">
-            +{terrainMod.defenseBonus}% DEF • -{terrainMod.attackPenalty}% ATK
+            {battle.attacker.engagedDivisionIds.length} vs {battle.defender.engagedDivisionIds.length} divs
           </div>
           <div className="battle-scene-hud__tick">
-            Tick {battle.ticksElapsed} • {battle.phase.toUpperCase()}
+            Tick {battle.ticksElapsed} • {battle.status.toUpperCase()}
           </div>
         </div>
 
@@ -682,21 +677,21 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
       {/* Stats bar */}
       <div className="battle-scene-stats">
         <div className="battle-scene-stat">
-          <span>⚔️ ATK Power</span>
-          <span className="battle-scene-stat__val">{battle.attacker.totalAttack}</span>
+          <span>📊 DMG Dealt</span>
+          <span className="battle-scene-stat__val">{battle.attacker.damageDealt}</span>
         </div>
         <div className="battle-scene-stat">
-          <span>🛡️ DEF Power</span>
-          <span className="battle-scene-stat__val">{battle.attacker.totalDefense}</span>
+          <span>💀 Lost</span>
+          <span className="battle-scene-stat__val">{battle.attacker.manpowerLost}</span>
         </div>
         <div className="battle-scene-stat battle-scene-stat--vs">VS</div>
         <div className="battle-scene-stat">
-          <span>⚔️ ATK Power</span>
-          <span className="battle-scene-stat__val">{battle.defender.totalAttack}</span>
+          <span>📊 DMG Dealt</span>
+          <span className="battle-scene-stat__val">{battle.defender.damageDealt}</span>
         </div>
         <div className="battle-scene-stat">
-          <span>🛡️ DEF Power</span>
-          <span className="battle-scene-stat__val">{battle.defender.totalDefense}</span>
+          <span>💀 Lost</span>
+          <span className="battle-scene-stat__val">{battle.defender.manpowerLost}</span>
         </div>
       </div>
 

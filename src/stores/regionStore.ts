@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
-import { useArmyStore } from './armyStore'
+import { useArmyStore, DIVISION_TEMPLATES } from './armyStore'
 
 // ====== REGION MODEL ======
 
@@ -353,7 +353,8 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           divIds.forEach(id => {
             const d = armyState.divisions[id]
             if (d && d.manpower > 0 && d.status !== 'destroyed') {
-              totalAtk += d.stats.attack + d.stats.breakthrough; totalMp += d.manpower
+              const tmpl = DIVISION_TEMPLATES[d.type]
+              totalAtk += Math.floor(tmpl.atkDmgMult * 100); totalMp += d.manpower
             }
           })
         }

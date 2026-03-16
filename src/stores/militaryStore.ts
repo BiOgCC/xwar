@@ -4,6 +4,14 @@ import type { BattleType } from './battleStore'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
 import { useGovernmentStore } from './governmentStore'
+import {
+  type OperationPhase,
+  type ContestState,
+  DETECTION_WINDOW_MS,
+  rollDetection,
+  checkContestResult,
+  createContest,
+} from './operationTypes'
 
 // ====== TYPES ======
 
@@ -39,10 +47,16 @@ export interface MilitaryCampaign {
   targetCountry: string
   playersJoined: string[]
   invitedPlayers: string[]
-  status: 'recruiting' | 'launched' | 'completed' | 'failed'
   createdAt: number
   launchedAt: number | null
   battleId: string | null
+
+  // New: Operation lifecycle
+  phase: OperationPhase
+  detectionWindowStart: number | null  // When 15-min window began
+  wasDetected: boolean
+  contestState: ContestState | null    // Damage race data (if detected)
+  result: 'pending' | 'attacker_won' | 'defender_won'
 }
 
 export interface MilitaryReportData {
@@ -168,6 +182,12 @@ export interface MilitaryState {
   joinCampaign: (campaignId: string, playerName: string) => void
   deployCampaign: (campaignId: string) => void
   addReport: (report: Omit<MilitaryReport, 'id' | 'timestamp'>) => void
+
+  // New: Detection + Contest actions
+  processDetectionWindows: () => void
+  contributeDamage: (campaignId: string, playerId: string, damage: number) => { success: boolean; message: string }
+  defendOperation: (campaignId: string, playerId: string, damage: number) => { success: boolean; message: string }
+  resolveContests: () => void
 }
 
 export const useMilitaryStore = create<MilitaryState>((set, get) => ({
@@ -192,6 +212,7 @@ export const useMilitaryStore = create<MilitaryState>((set, get) => ({
     player.spendMaterialX(opDef.cost.materialX)
     if (opDef.cost.bitcoin > 0) player.spendBitcoin(opDef.cost.bitcoin)
 
+    const needsLobby = !!opDef.requiresItem
     const id = `mil_${Date.now()}_${player.name}`
     const campaign: MilitaryCampaign = {
       id,
@@ -201,65 +222,52 @@ export const useMilitaryStore = create<MilitaryState>((set, get) => ({
       targetCountry,
       playersJoined: [player.name],
       invitedPlayers,
-      status: opDef.requiresItem ? 'recruiting' : 'launched',
       createdAt: Date.now(),
-      launchedAt: opDef.requiresItem ? null : Date.now(),
+      launchedAt: needsLobby ? null : Date.now(),
       battleId: null,
-    }
-
-    // If no lobby needed, immediately trigger the battle
-    if (!opDef.requiresItem) {
-      const battleStore = useBattleStore.getState()
-      battleStore.launchAttack(iso, targetCountry, targetCountry, opDef.battleType)
-      const battles = useBattleStore.getState().battles
-      const battle = Object.values(battles).find(b => b.status === 'active' && b.regionName === targetCountry)
-      if (battle) campaign.battleId = battle.id
-      campaign.status = 'launched'
-      campaign.launchedAt = Date.now()
+      // New lifecycle
+      phase: needsLobby ? 'deploying' : 'detection_window',
+      detectionWindowStart: needsLobby ? null : Date.now(),
+      wasDetected: false,
+      contestState: null,
+      result: 'pending',
     }
 
     set(state => ({ campaigns: { ...state.campaigns, [id]: campaign } }))
     return {
       success: true,
-      message: opDef.requiresItem ? 'Mission created! Recruit your crew.' : `${opDef.name} launched!`,
+      message: needsLobby ? 'Mission created! Recruit your crew.' : `${opDef.name} deployed! 15-min detection window started.`,
       campaignId: id,
     }
   },
 
   invitePlayer: (campaignId, playerName) => set(state => {
     const c = state.campaigns[campaignId]
-    if (!c || c.status !== 'recruiting') return state
+    if (!c || c.phase !== 'deploying') return state
     if (c.invitedPlayers.includes(playerName)) return state
     return { campaigns: { ...state.campaigns, [campaignId]: { ...c, invitedPlayers: [...c.invitedPlayers, playerName] } } }
   }),
 
   joinCampaign: (campaignId, playerName) => set(state => {
     const c = state.campaigns[campaignId]
-    if (!c || c.status !== 'recruiting' || c.playersJoined.length >= 6) return state
+    if (!c || c.phase !== 'deploying' || c.playersJoined.length >= 6) return state
     if (c.playersJoined.includes(playerName)) return state
     return { campaigns: { ...state.campaigns, [campaignId]: { ...c, playersJoined: [...c.playersJoined, playerName] } } }
   }),
 
   deployCampaign: (campaignId) => set(state => {
     const c = state.campaigns[campaignId]
-    if (!c || c.status !== 'recruiting') return state
+    if (!c || c.phase !== 'deploying') return state
 
-    const opDef = MILITARY_OPERATIONS.find(o => o.id === c.operationId)
-    if (!opDef) return state
-
-    const battleStore = useBattleStore.getState()
-    battleStore.launchAttack(c.originCountry, c.targetCountry, c.targetCountry, opDef.battleType)
-    const battles = useBattleStore.getState().battles
-    const battle = Object.values(battles).find(b => b.status === 'active' && b.regionName === c.targetCountry)
-
+    // Start the 15-min detection window
     return {
       campaigns: {
         ...state.campaigns,
         [campaignId]: {
           ...c,
-          status: 'launched',
+          phase: 'detection_window' as OperationPhase,
+          detectionWindowStart: Date.now(),
           launchedAt: Date.now(),
-          battleId: battle?.id || null,
         },
       },
     }
@@ -269,6 +277,129 @@ export const useMilitaryStore = create<MilitaryState>((set, get) => ({
     const id = `milrep_${Date.now()}`
     return { reports: { ...state.reports, [id]: { ...report, id, timestamp: Date.now() } } }
   }),
+
+  // ====== DETECTION & CONTEST ======
+
+  processDetectionWindows: () => {
+    const state = get()
+    const now = Date.now()
+    const updates: Record<string, MilitaryCampaign> = {}
+
+    Object.values(state.campaigns).forEach(c => {
+      if (c.phase !== 'detection_window' || !c.detectionWindowStart) return
+      if (now - c.detectionWindowStart < DETECTION_WINDOW_MS) return // Not 15 min yet
+
+      const opDef = MILITARY_OPERATIONS.find(o => o.id === c.operationId)
+      const detectionChance = opDef?.successChance ? (100 - opDef.successChance) : 30
+      const detected = rollDetection(detectionChance)
+
+      if (detected) {
+        // Detected → start 30-min damage race
+        updates[c.id] = {
+          ...c,
+          phase: 'contest',
+          wasDetected: true,
+          contestState: createContest('damage'),
+        }
+      } else {
+        // Undetected → instant win
+        updates[c.id] = {
+          ...c,
+          phase: 'undetected_win',
+          wasDetected: false,
+          result: 'attacker_won',
+        }
+      }
+    })
+
+    if (Object.keys(updates).length > 0) {
+      set(s => ({
+        campaigns: { ...s.campaigns, ...updates },
+      }))
+    }
+  },
+
+  contributeDamage: (campaignId, playerId, damage) => {
+    const state = get()
+    const c = state.campaigns[campaignId]
+    if (!c || c.phase !== 'contest' || !c.contestState) {
+      return { success: false, message: 'No active contest.' }
+    }
+
+    const contest = { ...c.contestState }
+    contest.attackerProgress += damage
+    const existing = contest.attackerContributors.find(x => x.playerId === playerId)
+    if (existing) {
+      contest.attackerContributors = contest.attackerContributors.map(x =>
+        x.playerId === playerId ? { ...x, contributed: x.contributed + damage } : x
+      )
+    } else {
+      contest.attackerContributors = [...contest.attackerContributors, { playerId, contributed: damage }]
+    }
+
+    // Check if won
+    const result = checkContestResult(contest)
+    const newPhase: OperationPhase = result === 'ongoing' ? 'contest' : result
+    const newResult = result === 'ongoing' ? 'pending' as const : result
+
+    set(s => ({
+      campaigns: {
+        ...s.campaigns,
+        [campaignId]: { ...c, contestState: contest, phase: newPhase, result: newResult },
+      },
+    }))
+
+    return { success: true, message: result === 'attacker_won' ? '🎯 Threshold reached! Operation successful!' : `+${damage} damage dealt.` }
+  },
+
+  defendOperation: (campaignId, playerId, damage) => {
+    const state = get()
+    const c = state.campaigns[campaignId]
+    if (!c || c.phase !== 'contest' || !c.contestState) {
+      return { success: false, message: 'No active contest.' }
+    }
+
+    const contest = { ...c.contestState }
+    contest.defenderProgress += damage
+    const existing = contest.defenderContributors.find(x => x.playerId === playerId)
+    if (existing) {
+      contest.defenderContributors = contest.defenderContributors.map(x =>
+        x.playerId === playerId ? { ...x, contributed: x.contributed + damage } : x
+      )
+    } else {
+      contest.defenderContributors = [...contest.defenderContributors, { playerId, contributed: damage }]
+    }
+
+    const result = checkContestResult(contest)
+    const newPhase: OperationPhase = result === 'ongoing' ? 'contest' : result
+    const newResult = result === 'ongoing' ? 'pending' as const : result
+
+    set(s => ({
+      campaigns: {
+        ...s.campaigns,
+        [campaignId]: { ...c, contestState: contest, phase: newPhase, result: newResult },
+      },
+    }))
+
+    return { success: true, message: result === 'defender_won' ? '🛡️ Defense successful! Operation blocked!' : `+${damage} defense applied.` }
+  },
+
+  resolveContests: () => {
+    const state = get()
+    const updates: Record<string, MilitaryCampaign> = {}
+
+    Object.values(state.campaigns).forEach(c => {
+      if (c.phase !== 'contest' || !c.contestState) return
+      const result = checkContestResult(c.contestState)
+      if (result !== 'ongoing') {
+        updates[c.id] = { ...c, phase: result, result }
+      }
+    })
+
+    if (Object.keys(updates).length > 0) {
+      set(s => ({ campaigns: { ...s.campaigns, ...updates } }))
+    }
+  },
 }))
 
 // ====== REPORT GENERATOR ======

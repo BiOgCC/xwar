@@ -4,6 +4,28 @@ import { useSkillsStore } from './skillsStore'
 
 export type PlayerRole = 'military' | 'business' | 'politics'
 
+// ── Military Rank System ──
+export type MilitaryRank = 'private' | 'corporal' | 'sergeant' | 'lieutenant' | 'captain' | 'colonel' | 'general'
+
+const RANK_TABLE: { minLevel: number; rank: MilitaryRank; label: string }[] = [
+  { minLevel: 30, rank: 'general',    label: 'General' },
+  { minLevel: 25, rank: 'colonel',    label: 'Colonel' },
+  { minLevel: 20, rank: 'captain',    label: 'Captain' },
+  { minLevel: 15, rank: 'lieutenant', label: 'Lieutenant' },
+  { minLevel: 10, rank: 'sergeant',   label: 'Sergeant' },
+  { minLevel: 5,  rank: 'corporal',   label: 'Corporal' },
+  { minLevel: 1,  rank: 'private',    label: 'Private' },
+]
+
+export function getMilitaryRank(level: number): { rank: MilitaryRank; label: string } {
+  for (const entry of RANK_TABLE) {
+    if (level >= entry.minLevel) return { rank: entry.rank, label: entry.label }
+  }
+  return { rank: 'private', label: 'Private' }
+}
+
+export { RANK_TABLE }
+
 export interface PlayerState {
   name: string
   role: PlayerRole
@@ -59,6 +81,7 @@ export interface PlayerState {
   damageDone: number
   itemsProduced: number
   equippedAmmo: 'none' | 'green' | 'blue' | 'purple' | 'red'
+  enlistedArmyId: string | null
 
   // Actions
   attack: () => { damage: number, isCrit: boolean, isDodged: boolean }
@@ -91,6 +114,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   maxRank: 100,
   country: 'United States',
   countryCode: 'US',
+  enlistedArmyId: null,
 
   money: 5000000,
   food: 10000,
