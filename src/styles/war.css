@@ -23,22 +23,24 @@
 .war-tab {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 10px 6px;
+  gap: 1px;
+  padding: 6px 2px;
   background: none;
   border: none;
   color: #64748b;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   cursor: pointer;
   transition: all 0.2s;
   border-bottom: 2px solid transparent;
   position: relative;
+  min-width: 0;
 }
 
 .war-tab:hover {

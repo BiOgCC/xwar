@@ -64,11 +64,11 @@ export default function WarPanel() {
   const activeBattles = Object.values(battleStore.battles).filter(b => b.status === 'active')
 
   const tabs: { id: WarTab; label: string; icon: string; count?: number }[] = [
-    { id: 'overview', label: 'OVERVIEW', icon: '📊' },
+    { id: 'overview', label: 'HQ', icon: '📊' },
     { id: 'enlist', label: 'ENLIST', icon: '📋' },
     { id: 'recruit', label: 'RECRUIT', icon: '🏭' },
     { id: 'armies', label: 'ARMIES', icon: '⚔️', count: myDivisions.length },
-    { id: 'battles', label: 'BATTLES', icon: '💥', count: activeBattles.length },
+    { id: 'battles', label: 'COMBAT', icon: '💥', count: activeBattles.length },
     { id: 'occupy', label: 'OCCUPY', icon: '🏴' },
   ]
 
@@ -131,6 +131,10 @@ function OverviewTab({ iso }: { iso: string }) {
   const divTypeCounts: Record<string, number> = {}
   myDivisions.forEach(d => { divTypeCounts[d.type] = (divTypeCounts[d.type] || 0) + 1 })
 
+  const popCap = armyStore.getPlayerPopCap()
+  const popPct = popCap.max > 0 ? (popCap.used / popCap.max) * 100 : 0
+  const popColor = popPct >= 90 ? '#ef4444' : popPct >= 60 ? '#f59e0b' : '#22d38a'
+
   return (
     <div className="war-overview">
       {/* Military Summary */}
@@ -160,6 +164,16 @@ function OverviewTab({ iso }: { iso: string }) {
           <div className="war-stat">
             <span className="war-stat__value war-stat__value--red">{activeBattles.length}</span>
             <span className="war-stat__label">BATTLES</span>
+          </div>
+        </div>
+        {/* Pop Cap Bar */}
+        <div style={{ marginTop: '8px', padding: '6px 8px', background: 'rgba(0,0,0,0.3)', borderRadius: '6px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 800, marginBottom: '3px' }}>
+            <span style={{ color: '#94a3b8' }}>🏠 POP CAP</span>
+            <span style={{ color: popColor }}>{popCap.used} / {popCap.max}</span>
+          </div>
+          <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${Math.min(100, popPct)}%`, background: popColor, borderRadius: '3px', transition: 'width 0.3s' }} />
           </div>
         </div>
       </div>
@@ -283,6 +297,8 @@ function OverviewTab({ iso }: { iso: string }) {
                     <TickDamageBar battle={battle} atkColor={atkClr} defColor={defClr} />
                     {/* Deploy / Remove All */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '6px' }}>
+                      <div style={{ textAlign: 'center', fontSize: '9px', fontWeight: 900, letterSpacing: '1px', color: atkClr, padding: '2px 0' }}>⚔️ ATK</div>
+                      <div style={{ textAlign: 'center', fontSize: '9px', fontWeight: 900, letterSpacing: '1px', color: defClr, padding: '2px 0' }}>🛡️ DEF</div>
                       <button
                         onClick={() => {
                           const myDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === iso && d.status === 'ready')
@@ -563,14 +579,48 @@ function RecruitTab() {
   return (
     <div className="war-recruit">
       {feedback && (
-        <div className={`war-feedback ${feedback.includes('Not enough') ? 'war-feedback--error' : 'war-feedback--success'}`}>
+        <div className={`war-feedback ${feedback.includes('Not enough') || feedback.includes('Pop Cap') ? 'war-feedback--error' : 'war-feedback--success'}`}>
           {feedback}
         </div>
       )}
 
       <div className="war-card">
         <div className="war-card__title">🏭 RECRUIT DIVISIONS</div>
-        <div className="war-card__subtitle">Build your army. Each division requires resources and training time.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px', marginTop: '6px' }}>
+          <div style={{ textAlign: 'center', padding: '5px 2px', background: 'rgba(34,211,138,0.08)', border: '1px solid rgba(34,211,138,0.2)', borderRadius: '4px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 900, color: '#22d38a' }}>${player.money.toLocaleString()}</div>
+            <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700 }}>💵 MONEY</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '5px 2px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '4px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 900, color: '#f59e0b' }}>{player.oil.toLocaleString()}</div>
+            <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700 }}>🛢️ OIL</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '5px 2px', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: '4px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 900, color: '#8b5cf6' }}>{player.materialX.toLocaleString()}</div>
+            <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700 }}>🔮 MAT-X</div>
+          </div>
+          <div style={{ textAlign: 'center', padding: '5px 2px', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '4px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 900, color: '#94a3b8' }}>{player.scrap.toLocaleString()}</div>
+            <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700 }}>🔩 SCRAP</div>
+          </div>
+        </div>
+        {/* Pop Cap Bar */}
+        {(() => {
+          const popCap = armyStore.getPlayerPopCap()
+          const popPct = popCap.max > 0 ? (popCap.used / popCap.max) * 100 : 0
+          const popColor = popPct >= 90 ? '#ef4444' : popPct >= 60 ? '#f59e0b' : '#22d38a'
+          return (
+            <div style={{ marginTop: '6px', padding: '5px 8px', background: 'rgba(0,0,0,0.3)', borderRadius: '5px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 800, marginBottom: '2px' }}>
+                <span style={{ color: '#94a3b8' }}>🏠 POP CAP</span>
+                <span style={{ color: popColor }}>{popCap.used} / {popCap.max}</span>
+              </div>
+              <div style={{ height: '5px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.min(100, popPct)}%`, background: popColor, borderRadius: '3px' }} />
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       <div className="war-recruit-grid">
@@ -635,7 +685,7 @@ function RecruitTab() {
               </div>
 
               <div className="war-recruit-card__meta">
-                👥 {t.manpowerCost.toLocaleString()} troops • 🕐 {t.trainingTime}s training
+                👥 {t.manpowerCost.toLocaleString()} troops • 🕐 {t.trainingTime}s • 🏠 {t.popCost} pop
               </div>
 
               {isSelected && (
@@ -992,6 +1042,20 @@ function ArmiesTab({ iso }: { iso: string }) {
                           onClick={() => armyStore.removeDivisionFromArmy(div.id)}
                           title="Remove from army"
                         >✕</button>
+                        {div.manpower < div.maxManpower && !div.reinforcing && div.status !== 'training' && div.status !== 'destroyed' && (
+                          <button
+                            className="war-btn war-btn--small"
+                            style={{ background: 'rgba(34,211,138,0.15)', color: '#22d38a', border: '1px solid rgba(34,211,138,0.3)' }}
+                            onClick={() => {
+                              const r = armyStore.reinforceDivision(div.id)
+                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                            }}
+                            title="Reinforce: $500 + 100 Oil → +500 manpower"
+                          >🔧</button>
+                        )}
+                        {div.reinforcing && (
+                          <span style={{ fontSize: '7px', color: '#f59e0b', fontWeight: 700 }}>🔧 REINFORCING</span>
+                        )}
                       </div>
                     )
                   })}
@@ -1202,21 +1266,7 @@ function BattlesTab() {
               <div className="war-battle-expand">{isExpanded ? '▲ COLLAPSE' : '▼ EXPAND DETAILS'}</div>
             </div>
 
-            {/* 3D View Button */}
-            <button
-              className="war-launch-3d-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                setScene3DBattle({
-                  id: battle.id,
-                  atkDivs: get3DDivisions([...battle.attacker.engagedDivisionIds]),
-                  defDivs: get3DDivisions([...battle.defender.engagedDivisionIds]),
-                })
-              }}
-            >
-              <span className="war-launch-3d-btn__icon">🌐</span>
-              VIEW 3D BATTLE
-            </button>
+
 
             {/* Tick Damage Bar + Ground Points & Tick Speed */}
             {(() => {
@@ -1250,10 +1300,44 @@ function BattlesTab() {
                       <div className="battle-points__label">DEFENDER</div>
                     </div>
                   </div>
-                  <div className="tick-indicator">
-                    <div className={`tick-indicator__dot ${dotClass}`} />
-                    <span className="tick-indicator__text">TICK SPEED</span>
-                    <span className="tick-indicator__speed">{tickSpeed} · +{ptIncr}pts</span>
+
+
+                  {/* Deploy / Remove All */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '6px' }}>
+                    <div style={{ textAlign: 'center', fontSize: '9px', fontWeight: 900, letterSpacing: '1px', color: '#22d38a', padding: '2px 0' }}>⚔️ ATK</div>
+                    <div style={{ textAlign: 'center', fontSize: '9px', fontWeight: 900, letterSpacing: '1px', color: '#ef4444', padding: '2px 0' }}>🛡️ DEF</div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const pIso = player.countryCode || 'US'
+                        const mySide = battle.attackerId === pIso ? 'attacker' : 'defender'
+                        const myDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === pIso && d.status === 'ready')
+                        if (myDivs.length === 0) return ui.addFloatingText('No ready divisions!', window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+                        const r = battleStore.deployDivisionsToBattle(battle.id, myDivs.map(d => d.id), mySide)
+                        ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
+                      }}
+                      style={{
+                        padding: '6px 0', border: 'none', borderRadius: '5px', cursor: 'pointer',
+                        fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px',
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                        color: '#000', boxShadow: '0 0 10px rgba(245,158,11,0.3)',
+                      }}
+                    >⚔️ DEPLOY ALL</button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const pIso2 = player.countryCode || 'US'
+                        const mySide = battle.attackerId === pIso2 ? 'attacker' : 'defender'
+                        const r = battleStore.removeDivisionsFromBattle(battle.id, mySide)
+                        ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                      }}
+                      style={{
+                        padding: '6px 0', border: 'none', borderRadius: '5px', cursor: 'pointer',
+                        fontSize: '10px', fontWeight: 800, letterSpacing: '0.5px',
+                        background: 'linear-gradient(135deg, #dc2626, #991b1b)',
+                        color: '#fff', boxShadow: '0 0 10px rgba(220,38,38,0.3)',
+                      }}
+                    >🏳️ REMOVE ALL</button>
                   </div>
                   {/* Player Combat Actions — choose side */}
                   <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginTop: '4px' }}>FIGHT FOR:</div>

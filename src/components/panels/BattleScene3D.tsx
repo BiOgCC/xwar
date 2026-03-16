@@ -84,8 +84,14 @@ function getTerrainHeight(x: number, z: number, heightVariation: number): number
 // ====== UNIT COLORS ======
 
 const UNIT_COLORS: Record<DivisionType, { body: string; accent: string }> = {
-  infantry: { body: '#5a8c5a', accent: '#3d6b3d' },
-  mechanic: { body: '#6a6a6a', accent: '#4a4a4a' },
+  recon:   { body: '#5a8c5a', accent: '#3d6b3d' },
+  assault: { body: '#6a7a3a', accent: '#4a5a2a' },
+  sniper:  { body: '#4a6a4a', accent: '#2a4a2a' },
+  rpg:     { body: '#7a6a3a', accent: '#5a4a2a' },
+  jeep:    { body: '#6a6a6a', accent: '#4a4a4a' },
+  tank:    { body: '#5a5a5a', accent: '#3a3a3a' },
+  jet:     { body: '#4a5a7a', accent: '#2a3a5a' },
+  warship: { body: '#3a4a6a', accent: '#1a2a4a' },
 }
 
 // ====== TERRAIN GROUND ======
@@ -234,7 +240,7 @@ function Soldier({
     }
   })
 
-  const isVehicle = divisionType === 'mechanic'
+  const isVehicle = divisionType === 'jeep' || divisionType === 'tank' || divisionType === 'warship'
   const isAir = false
   const isArtillery = false
 
@@ -357,7 +363,7 @@ function MuzzleFlash({ position, active }: { position: [number, number, number];
   const timerRef = useRef(0)
   const [visible, setVisible] = useState(false)
 
-  useFrame((_, delta) => {
+  useFrame((_: any, delta: number) => {
     if (!active) { setVisible(false); return }
     timerRef.current += delta
     if (timerRef.current > 0.3 + Math.random() * 0.5) {
@@ -386,7 +392,7 @@ function Explosion({ position }: { position: [number, number, number] }) {
   const opacityRef = useRef(1)
   const [dead, setDead] = useState(false)
 
-  useFrame((_, delta) => {
+  useFrame((_: any, delta: number) => {
     scaleRef.current = Math.min(3, scaleRef.current + delta * 5)
     opacityRef.current = Math.max(0, opacityRef.current - delta * 2)
     if (ref.current) {
@@ -414,7 +420,7 @@ function SmokeTrail({ position }: { position: [number, number, number] }) {
   const opacityRef = useRef(0.4)
   const [dead, setDead] = useState(false)
 
-  useFrame((_, delta) => {
+  useFrame((_: any, delta: number) => {
     opacityRef.current = Math.max(0, opacityRef.current - delta * 0.8)
     if (ref.current) {
       ref.current.position.y += delta * 1.5
@@ -727,7 +733,7 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
         <fog attach="fog" args={[config.fogColor, 20, 60]} />
 
         {/* Stars for ambiance */}
-        {terrain !== 'arctic' && terrain !== 'jungle' && (
+        {(terrain as string) !== 'arctic' && (terrain as string) !== 'jungle' && (
           <Stars radius={100} depth={50} count={300} factor={2} />
         )}
 

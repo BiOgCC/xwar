@@ -305,14 +305,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       return { success: false, message: 'Cannot attack: no adjacency or not at war.' }
     }
 
-    const defenderArmies = armyStore.getArmiesForCountry(defenderCountryCode)
-    const defenderArmy = defenderArmies[0]
-    const defenderDivIds = defenderArmy
-      ? defenderArmy.divisionIds.filter(id => {
-          const d = armyStore.divisions[id]
-          return d && d.status === 'ready'
-        })
-      : []
+    // Auto-defense: fetch all ready divisions for the defending country (across all armies + unassigned)
+    const allDefenderDivs = Object.values(armyStore.divisions)
+      .filter(d => d.countryCode === defenderCountryCode && d.status === 'ready')
+    const defenderDivIds = allDefenderDivs.map(d => d.id)
 
     const id = `hoi_battle_${Date.now()}`
     const now = Date.now()

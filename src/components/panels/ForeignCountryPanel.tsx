@@ -4,6 +4,7 @@ import { useGovernmentStore } from '../../stores/governmentStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useBattleStore, getCountryFlag, getCountryName } from '../../stores/battleStore'
+import { useArmyStore } from '../../stores/armyStore'
 
 type Tab = 'overview' | 'intelligence' | 'diplomacy'
 
@@ -157,30 +158,64 @@ export default function ForeignCountryPanel() {
         </div>
       </div>
 
-      {/* Engage Target Button */}
-      <button
-        onClick={() => { ui.setActivePanel('missions') }}
-        style={{
-          width: '100%',
-          padding: '12px',
-          background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
-          border: '1px solid rgba(239,68,68,0.5)',
-          borderRadius: '6px',
-          color: '#fff',
-          fontWeight: 900,
-          fontSize: '13px',
-          letterSpacing: '1.5px',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-          textTransform: 'uppercase' as const,
-          boxShadow: '0 0 20px rgba(239,68,68,0.2)',
-        }}
-      >
-        ⚔️ ENGAGE TARGET
-      </button>
+      {/* Action Buttons */}
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <button
+          onClick={() => { ui.setActivePanel('missions') }}
+          style={{
+            flex: 1,
+            padding: '12px',
+            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+            border: '1px solid rgba(59,130,246,0.5)',
+            borderRadius: '6px',
+            color: '#fff',
+            fontWeight: 900,
+            fontSize: '11px',
+            letterSpacing: '1px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            textTransform: 'uppercase' as const,
+            boxShadow: '0 0 15px rgba(59,130,246,0.2)',
+          }}
+        >
+          📋 ENGAGE OPERATIONS
+        </button>
+        <button
+          onClick={() => {
+            if (atWarWithPlayer) {
+              ui.setActivePanel('combat')
+              ui.addFloatingText(`⚔️ Targeting ${country.name}!`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+            } else {
+              ui.addFloatingText('⚠️ Not at war with this nation!', window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+            }
+          }}
+          style={{
+            flex: 1,
+            padding: '12px',
+            background: atWarWithPlayer
+              ? 'linear-gradient(135deg, #dc2626, #b91c1c)'
+              : 'linear-gradient(135deg, #374151, #1f2937)',
+            border: `1px solid ${atWarWithPlayer ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: '6px',
+            color: atWarWithPlayer ? '#fff' : '#64748b',
+            fontWeight: 900,
+            fontSize: '11px',
+            letterSpacing: '1px',
+            cursor: atWarWithPlayer ? 'pointer' : 'not-allowed',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            textTransform: 'uppercase' as const,
+            boxShadow: atWarWithPlayer ? '0 0 20px rgba(239,68,68,0.2)' : 'none',
+          }}
+        >
+          ⚔️ ENGAGE TARGET
+        </button>
+      </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '4px' }}>
@@ -199,6 +234,23 @@ export default function ForeignCountryPanel() {
           {stat('Treasury', `$${country.treasury.toLocaleString()}`, '#22d38a')}
           {stat('Alliance', country.empire || 'None', allianceColor)}
           {stat('Controller', country.controller)}
+          {iso === playerIso && (() => {
+            const armyStore = useArmyStore.getState()
+            const popCap = armyStore.getPlayerPopCap()
+            const popPct = popCap.max > 0 ? (popCap.used / popCap.max) * 100 : 0
+            const popColor = popPct >= 90 ? '#ef4444' : popPct >= 60 ? '#f59e0b' : '#22d38a'
+            return (
+              <div style={{ marginTop: '6px', padding: '6px 8px', background: 'rgba(0,0,0,0.3)', borderRadius: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 800, marginBottom: '3px' }}>
+                  <span style={{ color: '#94a3b8' }}>🏠 POP CAP</span>
+                  <span style={{ color: popColor }}>{popCap.used} / {popCap.max}</span>
+                </div>
+                <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, popPct)}%`, background: popColor, borderRadius: '3px', transition: 'width 0.3s' }} />
+                </div>
+              </div>
+            )
+          })()}
           {occupiedCountries.length > 0 && stat(
             'Occupies',
             <span style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>

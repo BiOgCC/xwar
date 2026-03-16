@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { usePlayerStore, getMilitaryRank } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore, type EquipItem } from './inventoryStore'
+import { useCompanyStore } from './companyStore'
 
 export type DivisionType = 'recon' | 'assault' | 'sniper' | 'rpg' | 'jeep' | 'tank' | 'jet' | 'warship'
 
@@ -34,6 +35,7 @@ export interface DivisionTemplate {
     scrap: number
   }
   trainingTime: number
+  popCost: number          // Pop Cap cost: infantry=1, mechanized=2
 }
 
 // Infantry base: atkDmg=0.10, hitRate=0.50, critRate=0.80, critDmg=0.80, health=1.20, dodge=0.90, armor=1.00
@@ -48,6 +50,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.20, dodgeMult: 1.30, armorMult: 1.00,
     manpowerCost: 200, trainingTime: 25,
     recruitCost: { money: 40000, oil: 400, materialX: 150, scrap: 200 },
+    popCost: 1,
   },
   assault: {
     id: 'assault', name: 'Assault Infantry', icon: '/assets/divisions/assault.png', category: 'land', group: 'infantry',
@@ -56,6 +59,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.44, dodgeMult: 0.90, armorMult: 1.10,
     manpowerCost: 350, trainingTime: 30,
     recruitCost: { money: 60000, oil: 600, materialX: 250, scrap: 350 },
+    popCost: 1,
   },
   sniper: {
     id: 'sniper', name: 'Sniper Division', icon: '/assets/divisions/sniper.png', category: 'land', group: 'infantry',
@@ -64,6 +68,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.20, dodgeMult: 0.90, armorMult: 0.80,
     manpowerCost: 150, trainingTime: 40,
     recruitCost: { money: 80000, oil: 500, materialX: 300, scrap: 400 },
+    popCost: 1,
   },
   rpg: {
     id: 'rpg', name: 'RPG Squadron', icon: '/assets/divisions/rpg.png', category: 'land', group: 'infantry',
@@ -72,6 +77,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.50, dodgeMult: 0.70, armorMult: 1.30,
     manpowerCost: 250, trainingTime: 35,
     recruitCost: { money: 100000, oil: 800, materialX: 400, scrap: 500 },
+    popCost: 1,
   },
 
   // ── MECHANIZED ────────────────────────────
@@ -82,6 +88,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.50, dodgeMult: 1.50, armorMult: 1.50,
     manpowerCost: 150, trainingTime: 35,
     recruitCost: { money: 100000, oil: 1500, materialX: 600, scrap: 400 },
+    popCost: 2,
   },
   tank: {
     id: 'tank', name: 'Tank Battalion', icon: '/assets/divisions/tank.png', category: 'land', group: 'mechanized',
@@ -90,6 +97,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.80, dodgeMult: 0.80, armorMult: 2.00,
     manpowerCost: 200, trainingTime: 50,
     recruitCost: { money: 150000, oil: 2500, materialX: 1000, scrap: 600 },
+    popCost: 2,
   },
   jet: {
     id: 'jet', name: 'Jet Fighters', icon: '/assets/divisions/jet.png', category: 'air', group: 'mechanized',
@@ -98,6 +106,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.30, dodgeMult: 1.40, armorMult: 1.00,
     manpowerCost: 100, trainingTime: 60,
     recruitCost: { money: 200000, oil: 3000, materialX: 1200, scrap: 700 },
+    popCost: 2,
   },
   warship: {
     id: 'warship', name: 'Warship Fleet', icon: '/assets/divisions/warship.png', category: 'naval', group: 'mechanized',
@@ -106,6 +115,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 2.00, dodgeMult: 0.70, armorMult: 2.50,
     manpowerCost: 250, trainingTime: 60,
     recruitCost: { money: 250000, oil: 4000, materialX: 1500, scrap: 800 },
+    popCost: 2,
   },
 }
 
@@ -129,6 +139,8 @@ export interface Division {
 
   status: 'training' | 'ready' | 'in_combat' | 'retreating' | 'recovering' | 'destroyed'
   trainingProgress: number
+  reinforcing: boolean        // Currently being reinforced
+  reinforceProgress: number   // Ticks remaining for reinforcement
 
   // Combat tracking
   killCount: number
@@ -238,6 +250,13 @@ export interface ArmyState {
   getArmiesForCountry: (countryCode: string) => Army[]
   getReadyDivisions: (countryCode: string) => Division[]
 
+  // Pop Cap
+  getPlayerPopCap: () => { used: number; max: number }
+  getPlayerPopUsed: () => number
+
+  // Reinforcement
+  reinforceDivision: (divisionId: string) => { success: boolean; message: string }
+
   // Enlistment
   enlistInArmy: (armyId: string) => { success: boolean; message: string }
   leaveArmy: () => { success: boolean; message: string }
@@ -288,6 +307,7 @@ function createInitialDivisions(): Record<string, Division> {
       manpower: t.manpowerCost, maxManpower: t.manpowerCost,
       morale: 80 + i * 3, equipment: [], experience: 20 + i * 5,
       status: 'ready', trainingProgress: t.trainingTime,
+      reinforcing: false, reinforceProgress: 0,
       killCount: 0, battlesSurvived: 0,
     }
   })
@@ -309,6 +329,7 @@ function createInitialDivisions(): Record<string, Division> {
       manpower: t.manpowerCost, maxManpower: t.manpowerCost,
       morale: 75, equipment: [], experience: 30,
       status: 'ready', trainingProgress: t.trainingTime,
+      reinforcing: false, reinforceProgress: 0,
       killCount: 0, battlesSurvived: 0,
     }
   })
@@ -331,6 +352,7 @@ function createInitialDivisions(): Record<string, Division> {
       manpower: t.manpowerCost, maxManpower: t.manpowerCost,
       morale: 78, equipment: [], experience: 25,
       status: 'ready', trainingProgress: t.trainingTime,
+      reinforcing: false, reinforceProgress: 0,
       killCount: 0, battlesSurvived: 0,
     }
   })
@@ -416,6 +438,12 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     if (player.materialX < cost.materialX) return { success: false, message: 'Not enough Material X.' }
     if (player.scrap < cost.scrap) return { success: false, message: 'Not enough scrap.' }
 
+    // Check Pop Cap
+    const popCap = get().getPlayerPopCap()
+    if (popCap.used + template.popCost > popCap.max) {
+      return { success: false, message: `Pop Cap full! (${popCap.used}/${popCap.max}). Build or upgrade farms.` }
+    }
+
     // Deduct costs
     player.spendMoney(cost.money)
     player.spendOil(cost.oil)
@@ -437,6 +465,8 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
       experience: 0,
       status: 'training',
       trainingProgress: 0,
+      reinforcing: false,
+      reinforceProgress: 0,
       killCount: 0,
       battlesSurvived: 0,
     }
@@ -941,6 +971,7 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
       manpower: template.manpowerCost, maxManpower: template.manpowerCost,
       morale: 50, equipment: [], experience: 0,
       status: 'training', trainingProgress: 0,
+      reinforcing: false, reinforceProgress: 0,
       killCount: 0, battlesSurvived: 0,
     }
 
@@ -1185,5 +1216,68 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
         [armyId]: { ...army, activeOrders: orders },
       },
     }))
+  },
+
+  // ====== POP CAP ======
+
+  getPlayerPopCap: () => {
+    const player = usePlayerStore.getState()
+    const companies = useCompanyStore.getState().companies
+    const farmTypes = ['wheat_farm', 'fish_farm', 'steak_farm']
+    const farmLevelSum = companies
+      .filter(c => farmTypes.includes(c.type))
+      .reduce((sum, c) => sum + c.level, 0)
+    const maxPop = 6 + farmLevelSum
+    const used = get().getPlayerPopUsed()
+    return { used, max: maxPop }
+  },
+
+  getPlayerPopUsed: () => {
+    const player = usePlayerStore.getState()
+    const iso = player.countryCode || 'US'
+    const divs = Object.values(get().divisions)
+    return divs
+      .filter(d => d.countryCode === iso && d.status !== 'destroyed')
+      .reduce((sum, d) => {
+        const template = DIVISION_TEMPLATES[d.type]
+        return sum + (template?.popCost || 1)
+      }, 0)
+  },
+
+  // ====== REINFORCEMENT ======
+
+  reinforceDivision: (divisionId) => {
+    const div = get().divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (div.status === 'destroyed') return { success: false, message: 'Division is destroyed.' }
+    if (div.status === 'training') return { success: false, message: 'Division is still training.' }
+    if (div.reinforcing) return { success: false, message: 'Already being reinforced.' }
+    if (div.manpower >= div.maxManpower) return { success: false, message: 'Division is at full strength.' }
+
+    const player = usePlayerStore.getState()
+    const reinforceCostMoney = 500
+    const reinforceCostOil = 100
+
+    if (player.money < reinforceCostMoney) return { success: false, message: 'Not enough money ($500).' }
+    if (player.oil < reinforceCostOil) return { success: false, message: 'Not enough oil (100).' }
+
+    player.spendMoney(reinforceCostMoney)
+    player.spendOil(reinforceCostOil)
+
+    const newManpower = Math.min(div.maxManpower, div.manpower + 500)
+
+    set(state => ({
+      divisions: {
+        ...state.divisions,
+        [divisionId]: {
+          ...div,
+          manpower: newManpower,
+          reinforcing: true,
+          reinforceProgress: 5, // 5 ticks (~75 seconds)
+        },
+      },
+    }))
+
+    return { success: true, message: `Reinforcing! +${newManpower - div.manpower} manpower.` }
   },
 }))
