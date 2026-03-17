@@ -355,7 +355,7 @@ export default function MilitaryPanel() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', margin: '8px 0' }}>
                 {[
-                  ['⚡', 'Energy', selectedOp.cost.energy],
+                  ['🔩', 'Scrap', selectedOp.cost.scrap],
                   ['🛢️', 'Oil', selectedOp.cost.oil],
                   ['⚛️', 'MatX', selectedOp.cost.materialX],
                   ['₿', 'BTC', selectedOp.cost.bitcoin],

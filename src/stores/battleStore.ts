@@ -4,6 +4,7 @@ import { useGovernmentStore } from './governmentStore'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
+import { getDivisionEquipBonus } from './armyStore'
 
 // ====== PLAYER COMBAT STATS HELPER ======
 export function getPlayerCombatStats() {
@@ -105,6 +106,26 @@ export interface BattleRound {
 
 // ====== BATTLE ======
 
+// ====== TACTICAL ORDERS ======
+export type TacticalOrder = 'none' | 'charge' | 'fortify' | 'precision' | 'blitz'
+
+export interface OrderEffects {
+  atkMult: number
+  armorMult: number
+  dodgeMult: number
+  hitBonus: number
+  critBonus: number
+  speedMult: number
+}
+
+export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; desc: string; effects: OrderEffects; color: string }> = {
+  none: { label: 'NONE', desc: 'No active order', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#64748b' },
+  charge: { label: 'CHARGE', desc: '+20% ATK, -15% dodge, -10% armor', effects: { atkMult: 1.20, armorMult: 0.90, dodgeMult: 0.85, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#ef4444' },
+  fortify: { label: 'FORTIFY', desc: '+25% armor, +10% dodge, -15% ATK', effects: { atkMult: 0.85, armorMult: 1.25, dodgeMult: 1.10, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#3b82f6' },
+  precision: { label: 'PRECISION', desc: '+15% hit, +15% crit, -10% speed', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0.15, critBonus: 15, speedMult: 1.10 }, color: '#f59e0b' },
+  blitz: { label: 'BLITZ', desc: '+25% speed, -10% hit, -10% armor', effects: { atkMult: 1, armorMult: 0.90, dodgeMult: 1, hitBonus: -0.10, critBonus: 0, speedMult: 0.75 }, color: '#22d38a' },
+}
+
 export interface Battle {
   id: string
   type: BattleType
@@ -132,8 +153,9 @@ export interface Battle {
   // Attack speed accumulators: divisionId → accumulated time (fires when >= attackSpeed)
   divisionCooldowns: Record<string, number>
 
-  // Battle Orders: 0 = none, 5/10/15 = % damage buff
-  battleOrder: number
+  // Tactical Orders per side
+  attackerOrder: TacticalOrder
+  defenderOrder: TacticalOrder
   orderMessage: string
   motd: string
 }
@@ -250,7 +272,8 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     attackerDamageDealers: {}, defenderDamageDealers: {},
     damageFeed: [],
     divisionCooldowns: {},
-    battleOrder: 0,
+    attackerOrder: 'none' as TacticalOrder,
+    defenderOrder: 'none' as TacticalOrder,
     orderMessage: '',
     motd: '',
   }
@@ -276,7 +299,7 @@ export interface BattleState {
 
   combatTickLeft: number
   setCombatTickLeft: (val: number) => void
-  setBattleOrder: (battleId: string, order: number) => void
+  setBattleOrder: (battleId: string, side: 'attacker' | 'defender', order: TacticalOrder) => void
   setBattleOrderMessage: (battleId: string, message: string) => void
   setBattleMOTD: (battleId: string, motd: string) => void
   warMotd: string
@@ -289,13 +312,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   setWarMotd: (motd: string) => set({ warMotd: motd.substring(0, 200) }),
   combatTickLeft: 15,
   setCombatTickLeft: (val: number) => set({ combatTickLeft: val }),
-  setBattleOrder: (battleId: string, order: number) => set((state) => {
+  setBattleOrder: (battleId: string, side: 'attacker' | 'defender', order: TacticalOrder) => set((state) => {
     const battle = state.battles[battleId]
     if (!battle) return state
+    const key = side === 'attacker' ? 'attackerOrder' : 'defenderOrder'
     return {
       battles: {
         ...state.battles,
-        [battleId]: { ...battle, battleOrder: order },
+        [battleId]: { ...battle, [key]: order },
       },
     }
   }),
@@ -378,7 +402,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       attackerDamageDealers: {}, defenderDamageDealers: {},
       damageFeed: [],
       divisionCooldowns: {},
-      battleOrder: 0,
+      attackerOrder: 'none' as TacticalOrder,
+      defenderOrder: 'none' as TacticalOrder,
       orderMessage: '',
       motd: '',
     }
@@ -414,9 +439,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     let finalAmount = amount
 
     // Apply battle order buff
-    if (battle.battleOrder > 0) {
-      finalAmount = Math.round(finalAmount * (1 + battle.battleOrder / 100))
-    }
+    // Apply tactical order buff for the side
+    const sideOrder = side === 'attacker' ? battle.attackerOrder : battle.defenderOrder
+    const orderFx = TACTICAL_ORDERS[sideOrder || 'none'].effects
+    finalAmount = Math.round(finalAmount * orderFx.atkMult)
 
     const world = useWorldStore.getState()
     const attackerCountry = world.countries.find(c => c.code === battle.attackerId)
@@ -488,6 +514,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const newBattles = { ...state.battles }
     let hasChanges = false
 
+    // Decrement HERO buff timer each combat tick
+    const heroTicks = usePlayerStore.getState().heroBuffTicksLeft
+    if (heroTicks > 0) usePlayerStore.setState({ heroBuffTicksLeft: heroTicks - 1 })
+
     Object.values(newBattles).forEach(battle => {
       if (battle.status !== 'active') return
 
@@ -506,7 +536,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         if (sideData.engagedDivisionIds.length > 0) return  // already has engaged divisions
         const govStore = useGovernmentStore.getState()
         const countryDivs = Object.values(armyStore.divisions).filter(
-          d => d.countryCode === sideData.countryCode && (d.status === 'ready' || d.status === 'in_combat') && d.manpower > 0
+          d => d.countryCode === sideData.countryCode && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
             && (side === 'attacker' || (govStore.autoDefenseEnabled && (d.stance === 'first_line_defense' || d.stance === 'unassigned')))
         )
         if (countryDivs.length === 0) return
@@ -537,39 +567,75 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         return d && d.status !== 'destroyed' && d.status !== 'recovering'
       })
 
+      // --- Compute Army Composition Aura for both sides ---
+      const findArmyForDiv = (divId: string) => {
+        return Object.values(armyStore.armies).find(a => a.divisionIds.includes(divId))
+      }
+      const atkArmy = atkDivIds.length > 0 ? findArmyForDiv(atkDivIds[0]) : null
+      const defArmy = defDivIds.length > 0 ? findArmyForDiv(defDivIds[0]) : null
+      const atkAura = atkArmy ? armyStore.getCompositionAura(atkArmy.id) : { critDmgPct: 0, dodgePct: 0, attackPct: 0, precisionPct: 0 }
+      const defAura = defArmy ? armyStore.getCompositionAura(defArmy.id) : { critDmgPct: 0, dodgePct: 0, attackPct: 0, precisionPct: 0 }
+
+      // --- Random ±10% deviation for combat variability ---
+      const deviate = (v: number) => v * (0.9 + Math.random() * 0.2)
+
       // --- ATTACKER DAMAGE (player stats × division template multipliers) ---
       // Attack speed accumulator: add 1.0 per tick, fire when accum >= attackSpeed
       const cooldowns = { ...(battle.divisionCooldowns || {}) }
       let atkTotalDmg = 0
       let atkCrits = 0
       let atkMisses = 0
+      // Per-division event tracking for real-time log
+      const divEvents: { divName: string; side: 'atk' | 'def'; event: 'miss' | 'crit' | 'dodge'; dmg?: number }[] = []
       atkDivIds.forEach(divId => {
         const div = armyStore.divisions[divId]
         if (!div) return
         const template = DIVISION_TEMPLATES[div.type as keyof typeof DIVISION_TEMPLATES]
         if (!template) { console.warn('[Combat] Unknown division type:', div.type, 'for div', divId); return }
 
-        // Accumulate time — fire as many times as attackSpeed allows
-        const as = template.attackSpeed || 1.0
+        // Tactical order effects for attacker
+        const atkOrd = TACTICAL_ORDERS[battle.attackerOrder || 'none'].effects
+        // Apply star quality modifiers to template stats
+        const sm = div.statModifiers || { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0, attackSpeed: 0 }
+        const tAtkDmg = template.atkDmgMult * (1 + sm.atkDmgMult)
+        const tHitRate = template.hitRate * (1 + sm.hitRate)
+        const tCritRate = template.critRateMult * (1 + sm.critRateMult)
+        const tCritDmg = template.critDmgMult * (1 + sm.critDmgMult)
+        const tAtkSpeed = (template.attackSpeed || 1.0) * (1 + sm.attackSpeed)
+        // Equipment bonuses for this division
+        const eq = getDivisionEquipBonus(div)
+        // Accumulate time — fire as many times as attackSpeed allows (order speedMult)
+        const as = (tAtkSpeed - eq.bonusSpeed) * atkOrd.speedMult
         cooldowns[divId] = (cooldowns[divId] || 0) + 1.0
         while (cooldowns[divId] >= as) {
           cooldowns[divId] -= as
           const atkDivLevel = Math.floor((div.experience || 0) / 10)
-          // Hit check
-          if (Math.random() > Math.min(0.95, template.hitRate + atkDivLevel * 0.01)) {
+          // Hit check (order hitBonus + aura precisionPct + equip hitRate applied)
+          if (Math.random() > Math.min(0.95, tHitRate + atkDivLevel * 0.01 + atkOrd.hitBonus + atkAura.precisionPct / 100 + eq.bonusHitRate)) {
             atkMisses++
+            divEvents.push({ divName: div.name, side: 'atk', event: 'miss' })
             continue
           }
-          let dmg = Math.floor(playerStats.attackDamage * (template.atkDmgMult + atkDivLevel * 0.01))
-          const effectiveCritRate = playerStats.critRate * (template.critRateMult + atkDivLevel * 0.01)
+          // Base damage: player attack + manpower×3 + equipAtk, scaled by division's attack mult
+          let dmg = Math.floor((playerStats.attackDamage + div.manpower * 3 + eq.bonusAtk) * (tAtkDmg + atkDivLevel * 0.01))
+          // Apply aura attack bonus
+          dmg = Math.floor(dmg * (1 + atkAura.attackPct / 100))
+          // Apply HERO buff (+10%) if division owner has active buff
+          const atkOwnerBuff = div.ownerId === usePlayerStore.getState().name && usePlayerStore.getState().heroBuffTicksLeft > 0
+          if (atkOwnerBuff) dmg = Math.floor(dmg * 1.10)
+          const effectiveCritRate = deviate((playerStats.critRate + atkOrd.critBonus + eq.bonusCritRate) * (tCritRate + atkDivLevel * 0.01))
           if (Math.random() * 100 < effectiveCritRate) {
-            const effectiveCritMult = playerStats.critMultiplier * (template.critDmgMult + atkDivLevel * 0.01)
+            // Apply aura crit damage bonus + equip crit dmg
+            const effectiveCritMult = playerStats.critMultiplier * (tCritDmg + atkDivLevel * 0.01) * (1 + atkAura.critDmgPct / 100) + eq.bonusCritDmg / 100
             dmg = Math.floor(dmg * effectiveCritMult)
             atkCrits++
+            divEvents.push({ divName: div.name, side: 'atk', event: 'crit', dmg })
           }
-          const strength = div.manpower / div.maxManpower
+          const strength = div.health / div.maxHealth
           dmg = Math.floor(dmg * strength)
-          if (battle.battleOrder > 0) dmg = Math.floor(dmg * (1 + battle.battleOrder / 100))
+          dmg = Math.floor(dmg * atkOrd.atkMult)
+          // Apply ±10% deviation to final damage
+          dmg = Math.floor(deviate(dmg))
           atkTotalDmg += Math.max(1, dmg)
         }
       })
@@ -594,31 +660,55 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         const template = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
         if (!template) { console.warn('[Combat] Unknown defender div type:', d.type, 'for div', divId); return }
 
-        const as = template.attackSpeed || 1.0
+        // Tactical order effects for defender
+        const defOrd = TACTICAL_ORDERS[battle.defenderOrder || 'none'].effects
+        // Apply star quality modifiers to template stats
+        const dsm = d.statModifiers || { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0, attackSpeed: 0 }
+        const dAtkDmg = template.atkDmgMult * (1 + dsm.atkDmgMult)
+        const dHitRate = template.hitRate * (1 + dsm.hitRate)
+        const dCritRate = template.critRateMult * (1 + dsm.critRateMult)
+        const dCritDmg = template.critDmgMult * (1 + dsm.critDmgMult)
+        const dAtkSpeed = (template.attackSpeed || 1.0) * (1 + dsm.attackSpeed)
+        // Equipment bonuses for defender division
+        const deq = getDivisionEquipBonus(d)
+        const defAS = (dAtkSpeed - deq.bonusSpeed) * defOrd.speedMult
         cooldowns[divId] = (cooldowns[divId] || 0) + 1.0
-        while (cooldowns[divId] >= as) {
-          cooldowns[divId] -= as
+        while (cooldowns[divId] >= defAS) {
+          cooldowns[divId] -= defAS
           const defDivLevel = Math.floor((d.experience || 0) / 10)
-          if (Math.random() > Math.min(0.95, template.hitRate + defDivLevel * 0.01)) {
+          // Hit check (order hitBonus + aura precisionPct + equip hitRate applied)
+          if (Math.random() > Math.min(0.95, dHitRate + defDivLevel * 0.01 + defOrd.hitBonus + defAura.precisionPct / 100 + deq.bonusHitRate)) {
             defMisses++
+            divEvents.push({ divName: d.name, side: 'def', event: 'miss' })
             continue
           }
-          let dmg = Math.floor(playerStats.attackDamage * (template.atkDmgMult + defDivLevel * 0.01))
-          const effectiveCritRate = playerStats.critRate * (template.critRateMult + defDivLevel * 0.01)
+          // Base damage: player attack + manpower×3 + equipAtk, scaled by division's attack mult
+          let dmg = Math.floor((playerStats.attackDamage + d.manpower * 3 + deq.bonusAtk) * (dAtkDmg + defDivLevel * 0.01))
+          // Apply aura attack bonus
+          dmg = Math.floor(dmg * (1 + defAura.attackPct / 100))
+          // Apply HERO buff (+10%) if division owner has active buff
+          const defOwnerBuff = d.ownerId === usePlayerStore.getState().name && usePlayerStore.getState().heroBuffTicksLeft > 0
+          if (defOwnerBuff) dmg = Math.floor(dmg * 1.10)
+          const effectiveCritRate = deviate((playerStats.critRate + defOrd.critBonus + deq.bonusCritRate) * (dCritRate + defDivLevel * 0.01))
           if (Math.random() * 100 < effectiveCritRate) {
-            const effectiveCritMult = playerStats.critMultiplier * (template.critDmgMult + defDivLevel * 0.01)
+            // Apply aura crit damage bonus + equip crit dmg
+            const effectiveCritMult = playerStats.critMultiplier * (dCritDmg + defDivLevel * 0.01) * (1 + defAura.critDmgPct / 100) + deq.bonusCritDmg / 100
             dmg = Math.floor(dmg * effectiveCritMult)
             defCrits++
+            divEvents.push({ divName: d.name, side: 'def', event: 'crit', dmg })
           }
-          const strength = d.manpower / d.maxManpower
+          const strength = d.health / d.maxHealth
           dmg = Math.floor(dmg * strength)
+          dmg = Math.floor(dmg * defOrd.atkMult)
+          // Apply ±10% deviation to final damage
+          dmg = Math.floor(deviate(dmg))
           defTotalDmg += Math.max(1, dmg)
         }
       })
 
       // --- Pre-compute per-division defensive hits (for staggered real-time application) ---
       // Collect hits with side info so damage bar can animate per-hit
-      const hitSchedule: { divId: string; damage: number; equipDmg: number; side: 'atk' | 'def'; displayDmg: number }[] = []
+      const hitSchedule: { divId: string; divName: string; damage: number; equipDmg: number; side: 'atk' | 'def'; displayDmg: number; isCrit: boolean }[] = []
       const manpowerDmgToDefender = Math.floor(atkTotalDmg * 0.25)
       const manpowerDmgToAttacker = Math.floor(defTotalDmg * 0.25)
 
@@ -631,12 +721,18 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           if (!d) return
           const tmpl = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
           if (!tmpl) return
-          const dodgeChance = (playerStats.dodgeChance || 5) * tmpl.dodgeMult / 100
-          if (Math.random() < dodgeChance) return
-          const armorReduction = Math.floor((playerStats.armorBlock || 0) * tmpl.armorMult)
+          const defOrderFx = TACTICAL_ORDERS[battle.defenderOrder || 'none'].effects
+          // Aura dodge bonus + equip dodge for defending divisions + ±10% deviation
+          const defEq = getDivisionEquipBonus(d)
+          const dodgeChance = deviate((playerStats.dodgeChance || 5) * tmpl.dodgeMult * defOrderFx.dodgeMult * (1 + defAura.dodgePct / 100) + defEq.bonusDodge) / 100
+          if (Math.random() < dodgeChance) {
+            divEvents.push({ divName: d.name, side: 'atk', event: 'dodge' })
+            return
+          }
+          const armorReduction = Math.floor(((playerStats.armorBlock || 0) + defEq.bonusArmor) * tmpl.armorMult * defOrderFx.armorMult)
           let finalDmg = Math.max(1, basePerDiv - armorReduction)
           finalDmg = Math.max(1, Math.floor(finalDmg / tmpl.healthMult))
-          hitSchedule.push({ divId: id, damage: finalDmg, equipDmg: 0.3, side: 'atk', displayDmg: 0 })
+          hitSchedule.push({ divId: id, divName: d.name, damage: finalDmg, equipDmg: 0.3, side: 'atk', displayDmg: 0, isCrit: false })
           defHitCount++
         })
       }
@@ -649,12 +745,18 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           if (!d) return
           const tmpl = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
           if (!tmpl) return
-          const dodgeChance = (playerStats.dodgeChance || 5) * tmpl.dodgeMult / 100
-          if (Math.random() < dodgeChance) return
-          const armorReduction = Math.floor((playerStats.armorBlock || 0) * tmpl.armorMult)
+          const atkOrderFx = TACTICAL_ORDERS[battle.attackerOrder || 'none'].effects
+          // Aura dodge bonus + equip dodge for attacking divisions + ±10% deviation
+          const atkEq = getDivisionEquipBonus(d)
+          const dodgeChance = deviate((playerStats.dodgeChance || 5) * tmpl.dodgeMult * atkOrderFx.dodgeMult * (1 + atkAura.dodgePct / 100) + atkEq.bonusDodge) / 100
+          if (Math.random() < dodgeChance) {
+            divEvents.push({ divName: d.name, side: 'def', event: 'dodge' })
+            return
+          }
+          const armorReduction = Math.floor(((playerStats.armorBlock || 0) + atkEq.bonusArmor) * tmpl.armorMult * atkOrderFx.armorMult)
           let finalDmg = Math.max(1, basePerDiv - armorReduction)
           finalDmg = Math.max(1, Math.floor(finalDmg / tmpl.healthMult))
-          hitSchedule.push({ divId: id, damage: finalDmg, equipDmg: 0.3, side: 'def', displayDmg: 0 })
+          hitSchedule.push({ divId: id, divName: d.name, damage: finalDmg, equipDmg: 0.3, side: 'def', displayDmg: 0, isCrit: false })
           atkHitCount++
         })
       }
@@ -689,13 +791,21 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         }
         const applyHit = (hit: typeof hitSchedule[0]) => {
           useArmyStore.getState().applyBattleDamage(hit.divId, hit.damage, hit.equipDmg)
-          // Increment the damage bar display (damageDealt is what WarPanel reads)
+          // Push real-time per-division combat log entry
           useBattleStore.setState(s => {
             const b = s.battles[battleId]
             if (!b) return s
+            const sideLabel = hit.side === 'atk' ? '⚔️' : '🛡️'
+            const critTag = hit.isCrit ? ' 💥CRIT' : ''
+            const logEntry = {
+              tick, timestamp: Date.now(), type: 'damage' as const, side: hit.side === 'atk' ? 'attacker' as const : 'defender' as const,
+              damage: hit.displayDmg,
+              message: `${sideLabel} ${hit.divName} deals ${hit.displayDmg} dmg${critTag}`,
+            }
             return {
               battles: { ...s.battles, [battleId]: {
                 ...b,
+                combatLog: [...b.combatLog.slice(-50), logEntry],
                 currentTick: {
                   attackerDamage: b.currentTick.attackerDamage + (hit.side === 'atk' ? hit.displayDmg : 0),
                   defenderDamage: b.currentTick.defenderDamage + (hit.side === 'def' ? hit.displayDmg : 0),
@@ -717,21 +827,35 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const delay = Math.min(100 + idx * interval, TICK_SPREAD_MS)
           setTimeout(() => applyHit(hit), delay)
         })
+        // Stagger miss/dodge events interleaved with hits
+        const totalSlots = hitSchedule.length + divEvents.length
+        const eventInterval = totalSlots > 0 ? Math.floor(TICK_SPREAD_MS / totalSlots) : 500
+        divEvents.forEach((evt, idx) => {
+          const delay = Math.min(100 + (hitSchedule.length + idx) * eventInterval, TICK_SPREAD_MS)
+          setTimeout(() => {
+            useBattleStore.setState(s => {
+              const b = s.battles[battleId]
+              if (!b) return s
+              const icon = evt.event === 'miss' ? '❌' : evt.event === 'dodge' ? '💨' : '💥'
+              const label = evt.event === 'miss' ? 'MISS' : evt.event === 'dodge' ? 'DODGE' : 'CRIT'
+              const logEntry = {
+                tick, timestamp: Date.now(), type: 'damage' as const,
+                side: evt.side === 'atk' ? 'attacker' as const : 'defender' as const,
+                message: `${icon} ${evt.divName} — ${label}${evt.dmg ? ` (${evt.dmg} dmg)` : ''}`,
+              }
+              return {
+                battles: { ...s.battles, [battleId]: {
+                  ...b,
+                  combatLog: [...b.combatLog.slice(-50), logEntry],
+                }}
+              }
+            })
+          }, delay)
+        })
       }
 
-      // --- Combat log ---
-      if (atkTotalDmg > 0 || defTotalDmg > 0) {
-        newCombatLog.push({
-          tick, timestamp: now, type: 'damage', side: 'attacker',
-          damage: atkTotalDmg,
-          message: `⚔️ T${tick}: Attacker deals ${atkTotalDmg} dmg (${atkDivIds.length} divs, ${atkCrits} crits, ${atkMisses} miss)`,
-        })
-        newCombatLog.push({
-          tick, timestamp: now, type: 'damage', side: 'defender',
-          damage: defTotalDmg,
-          message: `🛡️ T${tick}: Defender deals ${defTotalDmg} dmg (${defDivIds.length} divs, ${defCrits} crits, ${defMisses} miss)`,
-        })
-      } else if (atkDivIds.length === 0 && defDivIds.length === 0) {
+      // --- Combat log (tick summary — individual hits logged in real-time via applyHit) ---
+      if (atkTotalDmg === 0 && defTotalDmg === 0 && atkDivIds.length === 0 && defDivIds.length === 0) {
         newCombatLog.push({
           tick, timestamp: now, type: 'phase_change', side: 'attacker',
           message: `⏸️ T${tick}: No divisions engaged — deploy troops to fight!`,
@@ -891,6 +1015,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     get().addDamage(battleId, side, damage, isCrit, false, player.name)
 
+    // Activate HERO buff: +10% division damage for 120 ticks
+    usePlayerStore.setState({ heroBuffTicksLeft: 120 })
+
     return {
       damage,
       isCrit,
@@ -913,6 +1040,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const playerCountry = player.countryCode || 'US'
     const isAttacker = forceSide ? forceSide === 'attacker' : playerCountry === battle.attackerId
     const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
+
+    // Activate HERO buff: +10% division damage for 120 ticks
+    usePlayerStore.setState({ heroBuffTicksLeft: 120 })
 
     set(s => ({
       battles: {
@@ -947,7 +1077,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const armyStore = useArmyStore.getState()
     const validIds = divisionIds.filter(id => {
       const d = armyStore.divisions[id]
-      return d && (d.status === 'ready' || d.status === 'training') && d.manpower > 0
+      return d && (d.status === 'ready' || d.status === 'training') && d.health > 0
     })
     if (validIds.length === 0) return { success: false, message: 'No valid divisions to deploy.' }
 

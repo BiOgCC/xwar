@@ -7,7 +7,8 @@ import { useBattleStore, getCountryFlag, getCountryName } from './stores/battleS
 import { useInventoryStore } from './stores/inventoryStore'
 import { useSkillsStore } from './stores/skillsStore'
 import { useCyberStore } from './stores/cyberStore'
-import { useArmyStore } from './stores/armyStore'
+import { useArmyStore, rollStarQuality } from './stores/armyStore'
+import { useGovernmentStore } from './stores/governmentStore'
 import { useRegionStore } from './stores/regionStore'
 import type { Region } from './stores/regionStore'
 import GameMap from './components/map/GameMap'
@@ -163,6 +164,14 @@ function App() {
         try {
           useArmyStore.getState().processTrainingTick()
         } catch (e) { console.warn('[CombatTick] training error:', e) }
+        // Division shop: spawn + cleanup for player's country
+        try {
+          const playerCountry = usePlayerStore.getState().countryCode || 'US'
+          const govStore = useGovernmentStore.getState()
+          govStore.cleanExpiredListings(playerCountry)
+          govStore.spawnShopDivisions(playerCountry)
+          govStore.processContractMaturity()
+        } catch (e) { console.warn('[CombatTick] shop spawn error:', e) }
 
         bs.setCombatTickLeft(15) // Always reset
       } else {
@@ -206,7 +215,7 @@ function App() {
             'mock_cyber_1': {
               id: 'mock_cyber_1', initiatorPlayer: 'Commander_X', countryId: 'US',
               invitedPlayers: ['Player2', 'Player3'], operationType: 'company_sabotage' as any,
-              targetCountry: 'RU', energyCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
+              targetCountry: 'RU', scrapCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
               successChance: 70, detectionChance: 30, duration: 1800000,
               status: 'deploying' as any, deploymentStartTime: now,
               deploymentAcceleratedMs: 0, wasDetected: false,
@@ -215,7 +224,7 @@ function App() {
             'mock_cyber_2': {
               id: 'mock_cyber_2', initiatorPlayer: 'Commander_X', countryId: 'US',
               invitedPlayers: [], operationType: 'resource_intel' as any,
-              targetCountry: 'CN', energyCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
+              targetCountry: 'CN', scrapCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
               successChance: 80, detectionChance: 30, duration: 1800000,
               status: 'active' as any, deploymentStartTime: now - 600000,
               deploymentAcceleratedMs: 0, wasDetected: false,
@@ -224,7 +233,7 @@ function App() {
             'mock_cyber_3': {
               id: 'mock_cyber_3', initiatorPlayer: 'Commander_X', countryId: 'US',
               invitedPlayers: ['HackerX'], operationType: 'power_grid_attack' as any,
-              targetCountry: 'DE', energyCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
+              targetCountry: 'DE', scrapCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
               successChance: 60, detectionChance: 40, duration: 1800000,
               status: 'deploying' as any, deploymentStartTime: now,
               deploymentAcceleratedMs: 0, wasDetected: false,
@@ -291,6 +300,7 @@ function App() {
           const divTypes: ('assault' | 'rpg' | 'tank')[] = ['assault', 'rpg', 'tank']
           const divNames = ['1st Assault Div', '2nd RPG Div', '3rd Tank Div']
           const divType = divTypes[i]
+          const { star: mStar, modifiers: mMods } = rollStarQuality()
           mockDivs[id] = {
             id, name: `${code} ${divNames[i]}`,
             type: divType, category: divType === 'tank' ? 'land' : 'land',
@@ -300,6 +310,7 @@ function App() {
             equipment: [],
             trainingProgress: 10,
             killCount: 0, battlesSurvived: 0,
+            starQuality: mStar, statModifiers: mMods,
           }
         }
       })

@@ -448,7 +448,7 @@ function ArmyFormation({
   isEngaged,
   heightVariation,
 }: {
-  divisions: { type: DivisionType; name: string; manpower: number; maxManpower: number }[]
+  divisions: { type: DivisionType; name: string; health: number; maxHealth: number }[]
   side: 'attacker' | 'defender'
   isEngaged: boolean
   heightVariation: number
@@ -465,7 +465,7 @@ function ArmyFormation({
     divisions.forEach((div, divIndex) => {
       const template = DIVISION_TEMPLATES[div.type]
       const isAir = false
-      const strengthRatio = div.manpower / div.maxManpower
+      const strengthRatio = div.health / div.maxHealth
       const soldierCount = Math.max(2, Math.ceil(strengthRatio * 5))
 
       for (let s = 0; s < soldierCount; s++) {
@@ -616,8 +616,8 @@ function CameraController() {
 
 interface BattleScene3DProps {
   battle: { id: string } // Just pass the battle ID; we read live state inside
-  attackerDivisions: { type: DivisionType; name: string; manpower: number; maxManpower: number }[]
-  defenderDivisions: { type: DivisionType; name: string; manpower: number; maxManpower: number }[]
+  attackerDivisions: { type: DivisionType; name: string; health: number; maxHealth: number }[]
+  defenderDivisions: { type: DivisionType; name: string; health: number; maxHealth: number }[]
   onClose: () => void
 }
 

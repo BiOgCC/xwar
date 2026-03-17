@@ -112,6 +112,7 @@ export interface InventoryState {
   removeItem: (itemId: string) => void
   addItem: (item: EquipItem) => void
   degradeEquippedItems: (amount: number) => void
+  degradeItem: (itemId: string, amount: number) => void
   getEquipped: () => EquipItem[]
 }
 
@@ -314,6 +315,13 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   addItem: (item) =>
     set((s) => ({
       items: [...s.items, item],
+    })),
+
+  degradeItem: (itemId: string, amount: number) =>
+    set((s) => ({
+      items: s.items.map((i) =>
+        i.id === itemId ? { ...i, durability: Math.max(0, (i.durability || 100) - amount) } : i
+      )
     })),
 
   degradeEquippedItems: (amount: number) =>

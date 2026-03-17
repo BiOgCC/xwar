@@ -49,41 +49,41 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
   recon: {
     id: 'recon', name: 'Recon Squad', icon: '/assets/divisions/recon.png', category: 'land', group: 'infantry',
     description: 'Scout unit. Base infantry stats with enhanced evasion.',
-    atkDmgMult: 0.10, hitRate: 0.50, critRateMult: 0.80, critDmgMult: 0.80,
-    healthMult: 1.20, dodgeMult: 1.30, armorMult: 1.00,
+    atkDmgMult: 0.10, hitRate: 0.50, critRateMult: 0.80, critDmgMult: 1.50,
+    healthMult: 24.0, dodgeMult: 1.30, armorMult: 1.00,
     manpowerCost: 200, trainingTime: 25,
     recruitCost: { money: 40000, oil: 400, materialX: 150, scrap: 200 },
-    popCost: 1, seats: 0,
+    popCost: 1, seats: 0,
     attackSpeed: 1.5,
   },
   assault: {
     id: 'assault', name: 'Assault Infantry', icon: '/assets/divisions/assault.png', category: 'land', group: 'infantry',
     description: 'Frontline fighters. Harder hits with better survivability.',
-    atkDmgMult: 0.11, hitRate: 0.55, critRateMult: 1.00, critDmgMult: 0.88,
-    healthMult: 1.44, dodgeMult: 0.90, armorMult: 1.10,
+    atkDmgMult: 0.11, hitRate: 0.55, critRateMult: 1.00, critDmgMult: 1.60,
+    healthMult: 28.8, dodgeMult: 0.90, armorMult: 1.10,
     manpowerCost: 350, trainingTime: 30,
     recruitCost: { money: 60000, oil: 600, materialX: 250, scrap: 350 },
-    popCost: 1, seats: 0,
+    popCost: 1, seats: 0,
     attackSpeed: 1,
   },
   sniper: {
     id: 'sniper', name: 'Sniper Division', icon: '/assets/divisions/sniper.png', category: 'land', group: 'infantry',
     description: 'Precision unit. Devastating critical hits from range.',
-    atkDmgMult: 0.13, hitRate: 0.70, critRateMult: 1.56, critDmgMult: 1.56,
-    healthMult: 1.20, dodgeMult: 0.90, armorMult: 0.80,
+    atkDmgMult: 0.13, hitRate: 0.70, critRateMult: 1.56, critDmgMult: 2.50,
+    healthMult: 24.0, dodgeMult: 0.90, armorMult: 0.80,
     manpowerCost: 150, trainingTime: 40,
     recruitCost: { money: 80000, oil: 500, materialX: 300, scrap: 400 },
-    popCost: 1, seats: 0,
+    popCost: 1, seats: 0,
     attackSpeed: 0.6,
   },
   rpg: {
     id: 'rpg', name: 'RPG Squadron', icon: '/assets/divisions/rpg.png', category: 'land', group: 'infantry',
     description: 'Heavy infantry. Maximum firepower at high cost.',
-    atkDmgMult: 0.15, hitRate: 0.50, critRateMult: 1.20, critDmgMult: 1.20,
-    healthMult: 1.50, dodgeMult: 0.70, armorMult: 1.30,
+    atkDmgMult: 0.15, hitRate: 0.50, critRateMult: 1.20, critDmgMult: 2.00,
+    healthMult: 30.0, dodgeMult: 0.70, armorMult: 1.30,
     manpowerCost: 250, trainingTime: 35,
     recruitCost: { money: 100000, oil: 800, materialX: 400, scrap: 500 },
-    popCost: 1, seats: 0,
+    popCost: 1, seats: 0,
     attackSpeed: 0.8,
   },
 
@@ -91,45 +91,167 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
   jeep: {
     id: 'jeep', name: 'Recon Jeeps', icon: '/assets/divisions/jeep.png', category: 'land', group: 'mechanized',
     description: 'Fast motorized scouts. High evasion, good firepower.',
-    atkDmgMult: 0.20, hitRate: 0.60, critRateMult: 0.90, critDmgMult: 0.90,
-    healthMult: 1.50, dodgeMult: 1.50, armorMult: 1.50,
+    atkDmgMult: 0.20, hitRate: 0.60, critRateMult: 0.90, critDmgMult: 1.70,
+    healthMult: 30.0, dodgeMult: 1.50, armorMult: 1.50,
     manpowerCost: 150, trainingTime: 35,
     recruitCost: { money: 100000, oil: 1500, materialX: 600, scrap: 400 },
-    popCost: 2, seats: 0,
+    popCost: 2, seats: 0,
     attackSpeed: 1.3,
   },
   tank: {
     id: 'tank', name: 'Tank Battalion', icon: '/assets/divisions/tank.png', category: 'land', group: 'mechanized',
     description: 'Armored assault. Devastating crits with heavy armor.',
-    atkDmgMult: 0.22, hitRate: 0.66, critRateMult: 1.10, critDmgMult: 0.99,
-    healthMult: 1.80, dodgeMult: 0.80, armorMult: 2.00,
+    atkDmgMult: 0.22, hitRate: 0.66, critRateMult: 1.10, critDmgMult: 1.80,
+    healthMult: 36.0, dodgeMult: 0.80, armorMult: 2.00,
     manpowerCost: 200, trainingTime: 50,
     recruitCost: { money: 150000, oil: 2500, materialX: 1000, scrap: 600 },
-    popCost: 2, seats: 1,
+    popCost: 2, seats: 1,
     attackSpeed: 0.5,
   },
   jet: {
     id: 'jet', name: 'Jet Fighters', icon: '/assets/divisions/jet.png', category: 'air', group: 'mechanized',
     description: 'Air superiority. Precise strikes with massive criticals.',
-    atkDmgMult: 0.26, hitRate: 0.80, critRateMult: 1.75, critDmgMult: 1.75,
-    healthMult: 1.30, dodgeMult: 1.40, armorMult: 1.00,
+    atkDmgMult: 0.26, hitRate: 0.80, critRateMult: 1.75, critDmgMult: 2.80,
+    healthMult: 26.0, dodgeMult: 1.40, armorMult: 1.00,
     manpowerCost: 100, trainingTime: 60,
     recruitCost: { money: 200000, oil: 3000, materialX: 1200, scrap: 700 },
-    popCost: 2, seats: 2,
+    popCost: 2, seats: 2,
     attackSpeed: 0.7,
   },
   warship: {
     id: 'warship', name: 'Warship Fleet', icon: '/assets/divisions/warship.png', category: 'naval', group: 'mechanized',
     description: 'Naval dominance. Maximum stats at maximum cost.',
-    atkDmgMult: 0.30, hitRate: 0.60, critRateMult: 1.35, critDmgMult: 1.35,
-    healthMult: 2.00, dodgeMult: 0.70, armorMult: 2.50,
+    atkDmgMult: 0.30, hitRate: 0.60, critRateMult: 1.35, critDmgMult: 2.20,
+    healthMult: 40.0, dodgeMult: 0.70, armorMult: 2.50,
     manpowerCost: 250, trainingTime: 60,
     recruitCost: { money: 250000, oil: 4000, materialX: 1500, scrap: 800 },
-    popCost: 2, seats: 5,
+    popCost: 2, seats: 5,
     attackSpeed: 0.4,
   },
 }
 
+// ====== STAR QUALITY SYSTEM ======
+
+export type StarQuality = 1 | 2 | 3 | 4 | 5
+
+export interface StatModifiers {
+  atkDmgMult: number    // decimal, e.g. 0.05 = +5%
+  hitRate: number
+  critRateMult: number
+  critDmgMult: number
+  healthMult: number
+  dodgeMult: number
+  armorMult: number
+  attackSpeed: number
+}
+
+const STAR_RANGES: Record<StarQuality, [number, number]> = {
+  1: [-0.07, -0.04],  // -7% to -4%
+  2: [-0.03, 0.01],   // -3% to +1%
+  3: [0.01, 0.05],    // +1% to +5%
+  4: [0.04, 0.08],    // +4% to +8%
+  5: [0.06, 0.08],    // +6% to +8%
+}
+
+export function rollStarQuality(investmentAmount?: number): { star: StarQuality; modifiers: StatModifiers } {
+  // Base weights: 1★=30%, 2★=35%, 3★=20%, 4★=10%, 5★=5%
+  // Boosted weights (at max contract $1M): 1★=5%, 2★=20%, 3★=35%, 4★=25%, 5★=15%
+  const baseW = [30, 35, 20, 10, 5]
+  const boostW = [5, 20, 35, 25, 15]
+
+  let weights = baseW
+  if (investmentAmount && investmentAmount > 0) {
+    const t = Math.min(1, Math.max(0, (investmentAmount - 100_000) / (1_000_000 - 100_000)))
+    weights = baseW.map((b, i) => b + (boostW[i] - b) * t)
+  }
+
+  const roll = Math.random() * 100
+  let star: StarQuality
+  if (roll < weights[0]) star = 1
+  else if (roll < weights[0] + weights[1]) star = 2
+  else if (roll < weights[0] + weights[1] + weights[2]) star = 3
+  else if (roll < weights[0] + weights[1] + weights[2] + weights[3]) star = 4
+  else star = 5
+
+  const [min, max] = STAR_RANGES[star]
+  const rollStat = () => min + Math.random() * (max - min)
+
+  return {
+    star,
+    modifiers: {
+      atkDmgMult: rollStat(),
+      hitRate: rollStat(),
+      critRateMult: rollStat(),
+      critDmgMult: rollStat(),
+      healthMult: rollStat(),
+      dodgeMult: rollStat(),
+      armorMult: rollStat(),
+      attackSpeed: rollStat(),
+    },
+  }
+}
+
+// ====== EFFECTIVE MANPOWER (troops display) & HEALTH (combat HP) ======
+export function getEffectiveManpower(template: DivisionTemplate): number {
+  return template.manpowerCost
+}
+
+export function getEffectiveHealth(template: DivisionTemplate): number {
+  const maxStamina = usePlayerStore.getState().maxStamina || 100
+  return Math.floor(template.healthMult * maxStamina)
+}
+
+// ====== WEAPON -> DIVISION MAPPING & EQUIPMENT BONUSES ======
+import type { WeaponSubtype } from './inventoryStore'
+
+export const WEAPON_DIVISION_MAP: Record<WeaponSubtype, DivisionType> = {
+  knife: 'recon',
+  gun: 'jeep',
+  rifle: 'assault',
+  sniper: 'sniper',
+  rpg: 'rpg',
+  tank: 'tank',
+  jet: 'jet',
+  warship: 'warship',
+}
+
+export interface DivEquipBonus {
+  bonusAtk: number
+  bonusCritRate: number
+  bonusCritDmg: number
+  bonusArmor: number
+  bonusDodge: number
+  bonusHitRate: number
+  bonusSpeed: number
+  bonusHP: number
+}
+
+export function getDivisionEquipBonus(div: Division): DivEquipBonus {
+  const empty: DivEquipBonus = { bonusAtk: 0, bonusCritRate: 0, bonusCritDmg: 0, bonusArmor: 0, bonusDodge: 0, bonusHitRate: 0, bonusSpeed: 0, bonusHP: 0 }
+  if (!div.equipment || div.equipment.length === 0) return empty
+  const inv = useInventoryStore.getState()
+  const bonus = { ...empty }
+  div.equipment.forEach((itemId: string) => {
+    const item = inv.items.find((i: any) => i.id === itemId)
+    if (!item || item.category !== 'weapon' || !item.weaponSubtype) return
+    if (item.durability <= 0) return
+    const matchesDivType = WEAPON_DIVISION_MAP[item.weaponSubtype as WeaponSubtype] === div.type
+    if (!matchesDivType) return
+    const dmg = item.stats.damage || 0
+    const crit = item.stats.critRate || 0
+    switch (item.weaponSubtype) {
+      case 'knife': bonus.bonusArmor += Math.floor(dmg * 0.3); bonus.bonusDodge += Math.floor(dmg * 0.2); bonus.bonusSpeed += 0.1; break
+      case 'gun': bonus.bonusHitRate += Math.min(0.15, dmg * 0.002); bonus.bonusSpeed += 0.15; break
+      case 'rifle': bonus.bonusAtk += dmg; break
+      case 'sniper': bonus.bonusCritRate += crit; bonus.bonusCritDmg += Math.floor(dmg * 0.5); bonus.bonusAtk += Math.floor(dmg * 0.5); break
+      case 'rpg': bonus.bonusAtk += Math.floor(dmg * 1.2); break
+      case 'tank': bonus.bonusArmor += Math.floor(dmg * 0.4); bonus.bonusHP += Math.floor(dmg * 2); break
+      case 'jet': bonus.bonusDodge += Math.floor(dmg * 0.25); bonus.bonusSpeed += 0.2; break
+      case 'warship': bonus.bonusArmor += Math.floor(dmg * 0.35); bonus.bonusAtk += Math.floor(dmg * 0.8); break
+    }
+  })
+  return bonus
+}
 // ====== DIVISION INSTANCE ======
 
 export interface Division {
@@ -140,9 +262,13 @@ export interface Division {
   ownerId: string        // Player name
   countryCode: string    // Which country's army
 
-  // Health pool: manpower (acts as HP)
-  manpower: number       // Current manpower (acts as HP units)
-  maxManpower: number    // Max manpower
+  // Troops (display & damage scaling)
+  manpower: number       // Current troops
+  maxManpower: number    // Max troops
+
+  // Health (combat HP — separate from manpower)
+  health: number         // Current HP
+  maxHealth: number      // Max HP
   
   equipment: string[]    // Item IDs from player inventory
   experience: number     // 0-100, gained through combat
@@ -151,6 +277,7 @@ export interface Division {
 
   status: 'training' | 'ready' | 'in_combat' | 'recovering' | 'destroyed'
   trainingProgress: number  // Legacy: used for retreat/recover tick counter
+  recoveryTicksNeeded: number  // How many ticks needed to finish recovering
   readyAt: number           // Timestamp: when training finishes (0 = not training)
   reinforcing: boolean
   reinforceProgress: number
@@ -158,6 +285,10 @@ export interface Division {
   // Combat tracking
   killCount: number
   battlesSurvived: number
+
+  // Star quality
+  starQuality: StarQuality
+  statModifiers: StatModifiers
 }
 
 // ====== MILITARY FORCE ======
@@ -256,6 +387,8 @@ export interface ArmyState {
   // Combat effects
   applyBattleDamage: (divisionId: string, manpowerLoss: number, equipDamage: number) => void
   recoverDivision: (divisionId: string) => void
+  healDivisionsWithFood: (foodType: 'bread' | 'sushi' | 'wagyu') => { success: boolean; message: string }
+  reviveDivision: (divisionId: string) => { success: boolean; message: string }
 
   // Queries
   getDivisionsForCountry: (countryCode: string) => Division[]
@@ -327,14 +460,16 @@ function createInitialDivisions(): Record<string, Division> {
     divs[id] = {
       id, type: d.type, name: d.name,
       category: t.category, ownerId: usePlayerStore.getState().name || 'Commander', countryCode: 'US',
-      manpower: t.manpowerCost, maxManpower: t.manpowerCost,
+      manpower: getEffectiveManpower(t), maxManpower: getEffectiveManpower(t),
+      health: getEffectiveHealth(t), maxHealth: getEffectiveHealth(t),
       equipment: [], experience: 20 + i * 5,
       status: 'ready', trainingProgress: t.trainingTime,
-      reinforcing: false, reinforceProgress: 0,
+      reinforcing: false, reinforceProgress: 0, recoveryTicksNeeded: 0,
       readyAt: 0,
       stance: 'unassigned' as const,
       autoTrainingEnabled: false,
       killCount: 0, battlesSurvived: 0,
+      ...(() => { const r = rollStarQuality(); return { starQuality: r.star, statModifiers: r.modifiers } })()
     }
   })
 
@@ -352,14 +487,16 @@ function createInitialDivisions(): Record<string, Division> {
     divs[id] = {
       id, type: d.type, name: d.name,
       category: t.category, ownerId: 'AI_Commander_Putin', countryCode: 'RU',
-      manpower: t.manpowerCost, maxManpower: t.manpowerCost,
+      manpower: getEffectiveManpower(t), maxManpower: getEffectiveManpower(t),
+      health: getEffectiveHealth(t), maxHealth: getEffectiveHealth(t),
       equipment: [], experience: 30,
       status: 'ready', trainingProgress: t.trainingTime,
-      reinforcing: false, reinforceProgress: 0,
+      reinforcing: false, reinforceProgress: 0, recoveryTicksNeeded: 0,
       readyAt: 0,
       stance: 'unassigned' as const,
       autoTrainingEnabled: false,
       killCount: 0, battlesSurvived: 0,
+      ...(() => { const r = rollStarQuality(); return { starQuality: r.star, statModifiers: r.modifiers } })()
     }
   })
 
@@ -378,14 +515,16 @@ function createInitialDivisions(): Record<string, Division> {
     divs[id] = {
       id, type: d.type, name: d.name,
       category: t.category, ownerId: 'AI_Commander_Xi', countryCode: 'CN',
-      manpower: t.manpowerCost, maxManpower: t.manpowerCost,
+      manpower: getEffectiveManpower(t), maxManpower: getEffectiveManpower(t),
+      health: getEffectiveHealth(t), maxHealth: getEffectiveHealth(t),
       equipment: [], experience: 25,
       status: 'ready', trainingProgress: t.trainingTime,
-      reinforcing: false, reinforceProgress: 0,
+      reinforcing: false, reinforceProgress: 0, recoveryTicksNeeded: 0,
       readyAt: 0,
       stance: 'unassigned' as const,
       autoTrainingEnabled: false,
       killCount: 0, battlesSurvived: 0,
+      ...(() => { const r = rollStarQuality(); return { starQuality: r.star, statModifiers: r.modifiers } })()
     }
   })
 
@@ -483,6 +622,7 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     player.spendScraps(cost.scrap)
 
     const id = `div_${++divCounter}_${Date.now()}`
+    const { star, modifiers } = rollStarQuality()
     const division: Division = {
       id,
       type,
@@ -490,19 +630,24 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
       category: template.category,
       ownerId: player.name,
       countryCode: player.countryCode || 'US',
-      manpower: template.manpowerCost,
-      maxManpower: template.manpowerCost,
+      manpower: getEffectiveManpower(template),
+      maxManpower: getEffectiveManpower(template),
+      health: getEffectiveHealth(template),
+      maxHealth: getEffectiveHealth(template),
       equipment: [],
       experience: 0,
       stance: 'unassigned',
       autoTrainingEnabled: false,
       status: 'training',
       trainingProgress: 0,
+      recoveryTicksNeeded: 0,
       readyAt: Date.now() + (template.trainingTime * 15_000),
       reinforcing: false,
       reinforceProgress: 0,
       killCount: 0,
       battlesSurvived: 0,
+      starQuality: star,
+      statModifiers: modifiers,
     }
 
     set(state => ({
@@ -702,21 +847,21 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
       const div = state.divisions[divisionId]
       if (!div) return state
 
-      const newManpower = Math.max(0, div.manpower - manpowerLoss)
+      const newHealth = Math.max(0, div.health - manpowerLoss)
             // Degrade equipment
       if (equipDamage > 0 && div.equipment.length > 0) {
         const invStore = useInventoryStore.getState()
         invStore.degradeEquippedItems(equipDamage)
       }
 
-      const isDestroyed = newManpower <= 0
+      const isDestroyed = newHealth <= 0
             return {
         divisions: {
           ...state.divisions,
           [divisionId]: {
             ...div,
-            manpower: newManpower,
-                        status: isDestroyed ? 'destroyed' : div.status,
+            health: newHealth,
+            status: isDestroyed ? 'destroyed' : div.status,
           },
         },
       }
@@ -740,6 +885,80 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     })
   },
 
+  healDivisionsWithFood: (foodType) => {
+    const player = usePlayerStore.getState()
+    const healPct = foodType === 'wagyu' ? 0.03 : foodType === 'sushi' ? 0.02 : 0.01
+    const state = get()
+
+    // Find all player's deployed (in_combat) divisions that need healing
+    const myDivs = Object.values(state.divisions).filter(
+      d => d.ownerId === player.name && d.status === 'in_combat' && d.health < d.maxHealth
+    )
+
+    if (myDivs.length === 0) return { success: false, message: 'No damaged deployed divisions to heal.' }
+
+    // Heal all deployed divisions (health-based)
+    let totalHealed = 0
+    const newDivisions = { ...state.divisions }
+    for (const div of myDivs) {
+      const healAmount = Math.floor(div.maxHealth * healPct)
+      const newHp = Math.min(div.maxHealth, div.health + healAmount)
+      const actualHeal = newHp - div.health
+      totalHealed += actualHeal
+      newDivisions[div.id] = { ...div, health: newHp }
+    }
+
+    set({ divisions: newDivisions })
+
+    const label = foodType === 'wagyu' ? '🥩 Wagyu' : foodType === 'sushi' ? '🍣 Sushi' : '🍞 Bread'
+    return { success: true, message: `${label} healed ${myDivs.length} division${myDivs.length > 1 ? 's' : ''} (+${totalHealed} HP)` }
+  },
+
+  reviveDivision: (divisionId) => {
+    const state = get()
+    const div = state.divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (div.status !== 'destroyed') return { success: false, message: 'Division is not destroyed.' }
+
+    const template = DIVISION_TEMPLATES[div.type]
+    const reviveCost = Math.floor(template.recruitCost.money * 0.6)  // 50% of shop price (120% markup)
+
+    const player = usePlayerStore.getState()
+    if (player.money < reviveCost) return { success: false, message: `Need $${reviveCost.toLocaleString()} to revive. You have $${player.money.toLocaleString()}.` }
+
+    // Pay revive cost
+    player.spendMoney(reviveCost)
+
+    // Halve experience
+    const newExp = Math.floor(div.experience / 2)
+
+    // Reroll star quality
+    const oldStar = div.starQuality
+    const { star: newStar, modifiers: newMods } = rollStarQuality()
+
+    // Revive at random 2-16% health
+    const revivePct = 0.02 + Math.random() * 0.14 // 2% to 16%
+    const newHealth = Math.max(1, Math.floor(div.maxHealth * revivePct))
+
+    set({
+      divisions: {
+        ...state.divisions,
+        [divisionId]: {
+          ...div,
+          status: 'ready',
+          health: newHealth,
+          experience: newExp,
+          starQuality: newStar,
+          statModifiers: newMods,
+        },
+      },
+    })
+
+    const starChange = newStar > oldStar ? `⬆ ${oldStar}→${newStar}★` : newStar < oldStar ? `⬇ ${oldStar}→${newStar}★` : `${newStar}★`
+    const mpPct = Math.floor(revivePct * 100)
+    return { success: true, message: `Revived! ${starChange} | XP ${Math.floor(div.experience)}→${newExp} | ${mpPct}% HP | -$${reviveCost.toLocaleString()}` }
+  },
+
   // ====== ARMY TICK (called every combat tick — 15s) ======
   processTrainingTick: () => {
     set(state => {
@@ -750,6 +969,22 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
         let updated = { ...div }
         let changed = false
 
+        // --- Recalculate maxManpower and maxHealth from current player maxStamina ---
+        const template = DIVISION_TEMPLATES[div.type]
+        if (template) {
+          const newMaxMp = getEffectiveManpower(template)
+          const newMaxHp = getEffectiveHealth(template)
+          if (newMaxMp !== div.maxManpower) {
+            updated = { ...updated, maxManpower: newMaxMp, manpower: newMaxMp }
+            changed = true
+          }
+          if (newMaxHp !== div.maxHealth) {
+            const hpRatio = div.maxHealth > 0 ? div.health / div.maxHealth : 1
+            updated = { ...updated, maxHealth: newMaxHp, health: Math.max(1, Math.floor(newMaxHp * hpRatio)) }
+            changed = true
+          }
+        }
+
         // --- Training: timestamp-based, check if readyAt has passed ---
         if (div.status === 'training') {
           if (div.readyAt > 0 && Date.now() >= div.readyAt) {
@@ -758,11 +993,12 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
           }
         }
 
-        // --- Recovering: after 3 ticks become ready ---
+        // --- Recovering: dynamic ticks based on recoveryTicksNeeded ---
         if (div.status === 'recovering') {
           const recoverTicks = (div.trainingProgress || 0) + 1
-          if (recoverTicks >= 3) {
-            updated = { ...updated, status: 'ready', trainingProgress: 0 }
+          const needed = div.recoveryTicksNeeded || 3  // fallback to 3
+          if (recoverTicks >= needed) {
+            updated = { ...updated, status: 'ready', trainingProgress: 0, recoveryTicksNeeded: 0 }
           } else {
             updated = { ...updated, trainingProgress: recoverTicks }
           }
@@ -985,19 +1221,22 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
 
     // Create division owned by target player
     const id = `div_${++divCounter}_${Date.now()}`
+    const { star: sStar, modifiers: sMods } = rollStarQuality()
     const division: Division = {
       id, type: divisionType, name: `${template.name} (Sponsored)`,
       category: template.category,
       ownerId: targetPlayer,
       countryCode: army.countryCode,
-      manpower: template.manpowerCost, maxManpower: template.manpowerCost,
+      manpower: getEffectiveManpower(template), maxManpower: getEffectiveManpower(template),
+      health: getEffectiveHealth(template), maxHealth: getEffectiveHealth(template),
       equipment: [], experience: 0,
-      status: 'training', trainingProgress: 0,
+      status: 'training', trainingProgress: 0, recoveryTicksNeeded: 0,
       reinforcing: false, reinforceProgress: 0,
       readyAt: 0,
       stance: 'unassigned' as const,
       autoTrainingEnabled: false,
       killCount: 0, battlesSurvived: 0,
+      starQuality: sStar, statModifiers: sMods,
     }
 
     // Track sponsor
@@ -1356,37 +1595,37 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
   rebuildDivision: (divisionId) => {
     const div = get().divisions[divisionId]
     if (!div) return { success: false, message: 'Division not found.' }
-    if (div.manpower >= div.maxManpower) return { success: false, message: 'Division is at full strength.' }
-    if (div.manpower < 1) return { success: false, message: 'Division is destroyed. Disband it instead.' }
+    if (div.health >= div.maxHealth) return { success: false, message: 'Division is at full health.' }
+    if (div.status === 'destroyed') return { success: false, message: 'Division is destroyed. Use REVIVE instead.' }
     if (div.status === 'training') return { success: false, message: 'Division is still training.' }
-
-    const template = DIVISION_TEMPLATES[div.type]
-    const missingPct = (div.maxManpower - div.manpower) / div.maxManpower
-    const cost = {
-      money: Math.ceil(template.recruitCost.money * missingPct),
-      oil: Math.ceil(template.recruitCost.oil * missingPct),
-    }
+    if (div.status === 'recovering') return { success: false, message: 'Division is already recovering.' }
 
     const player = usePlayerStore.getState()
-    if (player.money < cost.money) return { success: false, message: `Not enough money (${cost.money.toLocaleString()}).` }
-    if (player.oil < cost.oil) return { success: false, message: `Not enough oil (${cost.oil}).` }
+    if (player.bread <= 0) return { success: false, message: 'No bread available.' }
 
-    player.spendMoney(cost.money)
-    player.spendOil(cost.oil)
+    // Consume 1 bread
+    player.consumeFood('bread')
+
+    // Calculate recovery ticks: 2 ticks per 1% missing HP
+    const missingPct = Math.ceil(((div.maxHealth - div.health) / div.maxHealth) * 100)
+    const recoveryTicks = Math.max(1, missingPct * 2)
 
     set(state => ({
       divisions: {
         ...state.divisions,
         [divisionId]: {
           ...div,
-          manpower: div.maxManpower,
+          health: div.maxHealth,
           status: 'recovering',
-          
+          trainingProgress: 0,
+          recoveryTicksNeeded: recoveryTicks,
         },
       },
     }))
 
-    return { success: true, message: `Rebuilt! Cost: ${cost.money.toLocaleString()} + ${cost.oil} oil.` }
+    const recoverTimeSecs = recoveryTicks * 15
+    const recoverMins = Math.floor(recoverTimeSecs / 60)
+    return { success: true, message: `Rebuilding! 🍞 -1 bread | ${missingPct}% damage → ${recoveryTicks} ticks (~${recoverMins}m) recovery` }
   },
 
   setDivisionStance: (divisionId, stance) => {

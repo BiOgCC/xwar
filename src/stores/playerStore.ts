@@ -82,6 +82,7 @@ export interface PlayerState {
   itemsProduced: number
   equippedAmmo: 'none' | 'green' | 'blue' | 'purple' | 'red'
   enlistedArmyId: string | null
+  heroBuffTicksLeft: number  // HERO buff: +10% division damage, 120 ticks
 
   // Actions
   attack: () => { damage: number, isCrit: boolean, isDodged: boolean }
@@ -160,6 +161,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   damageDone: 0,
   itemsProduced: 0,
   equippedAmmo: 'none',
+  heroBuffTicksLeft: 0,
 
   equipAmmo: (type) => set({ equippedAmmo: type }),
 

@@ -1,16 +1,18 @@
 import React, { useState, Suspense } from 'react'
-import { useArmyStore, DIVISION_TEMPLATES, type DivisionType, type MilitaryRankType } from '../../stores/armyStore'
-import { useBattleStore, getCountryFlag, getCountryName } from '../../stores/battleStore'
+import { useArmyStore, DIVISION_TEMPLATES, getDivisionEquipBonus, WEAPON_DIVISION_MAP, type DivisionType, type MilitaryRankType } from '../../stores/armyStore'
+import { useGovernmentStore, type DivisionListing, type MilitaryContract } from '../../stores/governmentStore'
+import { useBattleStore, getCountryFlag, getCountryName, getBaseSkillStats, TACTICAL_ORDERS } from '../../stores/battleStore'
+import type { TacticalOrder } from '../../stores/battleStore'
 import { usePlayerStore, getMilitaryRank } from '../../stores/playerStore'
 import { useWorldStore, ADJACENCY_MAP } from '../../stores/worldStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useInventoryStore, type WeaponSubtype } from '../../stores/inventoryStore'
 import OccupationPanel from './OccupationPanel'
 import '../../styles/war.css'
 
 const BattleScene3D = React.lazy(() => import('./BattleScene3D'))
 
 type WarTab = 'overview' | 'recruit' | 'armies' | 'battles'
-
 export default function WarPanel() {
   const [tab, setTab] = useState<WarTab>('overview')
   const [editingMotd, setEditingMotd] = useState(false)
@@ -22,9 +24,15 @@ export default function WarPanel() {
   const myDivisions = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
   const activeBattles = Object.values(battleStore.battles).filter(b => b.status === 'active')
 
+  const govStore = useGovernmentStore()
+  const gov = govStore.governments[iso]
+  const shopCount = gov?.divisionShop?.length || 0
+  const claimableContracts = govStore.militaryContracts.filter(c => c.playerId === player.name && c.status === 'claimable').length
+  const recruitBadge = shopCount + claimableContracts || undefined
+
   const tabs: { id: WarTab; label: string; icon: string; count?: number }[] = [
     { id: 'overview', label: 'HQ', icon: '📊' },
-    { id: 'recruit', label: 'RECRUIT', icon: '🏭' },
+    { id: 'recruit', label: 'RECRUIT', icon: '🏭', count: recruitBadge },
     { id: 'armies', label: 'FORCES', icon: '⚔️', count: myDivisions.length },
     { id: 'battles', label: 'COMBAT', icon: '💥', count: activeBattles.length },
   ]
@@ -211,89 +219,296 @@ function OverviewTab({ iso }: { iso: string }) {
 // ====== RECRUIT TAB ======
 
 function RecruitTab() {
-  const armyStore = useArmyStore()
   const player = usePlayerStore()
-  const [selectedType, setSelectedType] = useState<DivisionType | null>(null)
+  const govStore = useGovernmentStore()
   const [feedback, setFeedback] = useState('')
+  const [showContractModal, setShowContractModal] = useState(false)
+  const [contractAmount, setContractAmount] = useState(100000)
 
-  const handleRecruit = (type: DivisionType) => {
-    const result = armyStore.recruitDivision(type)
+  const countryCode = player.countryCode || 'US'
+  const gov = govStore.governments[countryCode]
+  const shopListings = gov?.divisionShop || []
+  const shopQuotas = govStore.getShopQuota(countryCode)
+  const dismissalsLeft = govStore.getDismissalsLeft(player.name)
+  const myContracts = govStore.militaryContracts.filter(c => c.playerId === player.name && c.status !== 'claimed')
+
+  const handleBuy = (listingId: string) => {
+    const result = govStore.buyFromShop(countryCode, listingId)
     setFeedback(result.message)
     setTimeout(() => setFeedback(''), 3000)
   }
 
-  const divTypes = Object.keys(DIVISION_TEMPLATES) as DivisionType[]
+  const handleDismiss = (listingId: string) => {
+    const result = govStore.dismissListing(countryCode, listingId, player.name)
+    setFeedback(result.message)
+    setTimeout(() => setFeedback(''), 3000)
+  }
+
+  const handleReroll = (listingId: string) => {
+    const result = govStore.rerollListing(countryCode, listingId)
+    setFeedback(result.message)
+    setTimeout(() => setFeedback(''), 3000)
+  }
+
+  const handleCreateContract = () => {
+    const result = govStore.createContract(countryCode, contractAmount)
+    setFeedback(result.message)
+    if (result.success) setShowContractModal(false)
+    setTimeout(() => setFeedback(''), 4000)
+  }
+
+  const handleClaimContract = (contractId: string) => {
+    const result = govStore.claimContract(contractId)
+    setFeedback(result.message)
+    setTimeout(() => setFeedback(''), 3000)
+  }
+
+  const starColor = (star: number) => {
+    if (star >= 5) return '#f59e0b'
+    if (star >= 4) return '#a855f7'
+    if (star >= 3) return '#3b82f6'
+    if (star >= 2) return '#94a3b8'
+    return '#64748b'
+  }
+
+  const projectedPayout = Math.floor(contractAmount * 1.11)
+  const projectedProfit = projectedPayout - contractAmount
 
   return (
     <div className="war-recruit">
       {feedback && (
-        <div className={`war-feedback ${feedback.includes('Not enough') || feedback.includes('Pop Cap') ? 'war-feedback--error' : 'war-feedback--success'}`}>
+        <div className={`war-feedback ${feedback.includes('Not enough') || feedback.includes('Minimum') || feedback.includes('Maximum') || feedback.includes('expired') || feedback.includes('not found') ? 'war-feedback--error' : 'war-feedback--success'}`}>
           {feedback}
         </div>
       )}
 
-      <div className="war-card">
-        <div className="war-card__title">🏭 RECRUIT DIVISIONS</div>
-      </div>
+      {/* ====== MAKE A CONTRACT BUTTON ====== */}
+      <button
+        onClick={() => setShowContractModal(true)}
+        style={{
+          width: '100%', padding: '10px 16px', marginBottom: '8px',
+          background: 'linear-gradient(135deg, rgba(34,211,138,0.2), rgba(16,185,129,0.15))',
+          border: '1px solid rgba(34,211,138,0.4)', borderRadius: '6px',
+          color: '#22d38a', fontWeight: 700, fontSize: '13px',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+          transition: 'all 0.2s', letterSpacing: '0.5px', fontFamily: 'var(--font-display)',
+        }}
+      >
+        💸 MAKE A CONTRACT
+      </button>
 
-      <div className="war-recruit-grid">
-        {divTypes.map(type => {
-          const t = DIVISION_TEMPLATES[type]
-          const canAfford = player.money >= t.recruitCost.money &&
-            player.oil >= t.recruitCost.oil &&
-            player.materialX >= t.recruitCost.materialX &&
-            player.scrap >= t.recruitCost.scrap
-          const isSelected = selectedType === type
+      {/* ====== CONTRACT MODAL ====== */}
+      {showContractModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '380px', background: '#1a1f2e', border: '1px solid rgba(34,211,138,0.3)', borderRadius: '10px', padding: '20px', position: 'relative' }}>
+            <button onClick={() => setShowContractModal(false)} style={{ position: 'absolute', top: '10px', right: '12px', background: 'none', border: 'none', color: '#64748b', fontSize: '16px', cursor: 'pointer' }}>✕</button>
 
-          return (
-            <div
-              key={type}
-              className={`war-recruit-card ${isSelected ? 'war-recruit-card--selected' : ''} ${!canAfford ? 'war-recruit-card--disabled' : ''}`}
-              onClick={() => setSelectedType(isSelected ? null : type)}
-            >
-              <div className="war-recruit-card__header">
-                <img src={t.icon} alt={t.name} style={{ width: '24px', height: '24px', objectFit: 'contain' }} className="war-recruit-card__icon" />
-                <span className="war-recruit-card__name">{t.name}</span>
-                <span className={`war-recruit-card__category war-recruit-card__category--${t.category}`}>
-                  {t.category.toUpperCase()}
-                </span>
-              </div>
-
-              <div className="war-recruit-card__desc">{t.description}</div>
-
-              <div className="war-recruit-card__stats">
-                <div className="war-recruit-stat"><span>⚔️ ATK</span><span className="war-recruit-stat__val">{t.atkDmgMult}x</span></div>
-                <div className="war-recruit-stat"><span>🎯 Hit</span><span className="war-recruit-stat__val">{(t.hitRate * 100).toFixed(0)}%</span></div>
-                <div className="war-recruit-stat"><span>💥 Crit</span><span className="war-recruit-stat__val">{t.critRateMult}x</span></div>
-                <div className="war-recruit-stat"><span>🛡️ HP</span><span className="war-recruit-stat__val">{t.healthMult}x</span></div>
-                <div className="war-recruit-stat"><span>🏃 Dodge</span><span className="war-recruit-stat__val">{t.dodgeMult}x</span></div>
-                <div className="war-recruit-stat"><span>🪨 Armor</span><span className="war-recruit-stat__val">{t.armorMult}x</span></div>
-              </div>
-
-              <div className="war-recruit-card__cost">
-                <span className={player.money >= t.recruitCost.money ? '' : 'war-cost--insufficient'}>${t.recruitCost.money.toLocaleString()}</span>
-                <span className={player.oil >= t.recruitCost.oil ? '' : 'war-cost--insufficient'}>🛢️{t.recruitCost.oil}</span>
-                <span className={player.materialX >= t.recruitCost.materialX ? '' : 'war-cost--insufficient'}>⚛️{t.recruitCost.materialX}</span>
-                <span className={player.scrap >= t.recruitCost.scrap ? '' : 'war-cost--insufficient'}>🔩{t.recruitCost.scrap}</span>
-              </div>
-
-              <div className="war-recruit-card__meta">
-                👥 {t.manpowerCost.toLocaleString()} troops • 🕐 {t.trainingTime}s • 🏠 {t.popCost} pop
-              </div>
-
-              {isSelected && (
-                <button
-                  className="war-recruit-btn"
-                  disabled={!canAfford}
-                  onClick={(e) => { e.stopPropagation(); handleRecruit(type) }}
-                >
-                  {canAfford ? '🚀 RECRUIT NOW' : '❌ INSUFFICIENT RESOURCES'}
-                </button>
-              )}
+            <div style={{ fontSize: '14px', fontWeight: 700, color: '#22d38a', marginBottom: '12px', fontFamily: 'var(--font-display)' }}>
+              💸 MILITARY CONTRACT
             </div>
-          )
-        })}
+
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '16px', lineHeight: '1.6' }}>
+              Invest money into the national defense fund. Your investment will be <b style={{ color: '#f59e0b' }}>locked for 24 hours</b>, after which you receive a <b style={{ color: '#22d38a' }}>fixed 11% profit</b>. Each contract <b style={{ color: '#a855f7' }}>instantly spawns 1 new division</b> in the shop.
+            </div>
+
+            {/* Amount Slider */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#64748b', marginBottom: '4px' }}>
+                <span>$100,000</span>
+                <span>$1,000,000</span>
+              </div>
+              <input
+                type="range"
+                min={100000}
+                max={1000000}
+                step={10000}
+                value={contractAmount}
+                onChange={(e) => setContractAmount(Number(e.target.value))}
+                style={{ width: '100%', accentColor: '#22d38a' }}
+              />
+              <div style={{ textAlign: 'center', fontSize: '20px', fontWeight: 700, color: '#e2e8f0', fontFamily: 'var(--font-display)', marginTop: '4px' }}>
+                ${contractAmount.toLocaleString()}
+              </div>
+            </div>
+
+            {/* Projected Returns */}
+            <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '10px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
+                <span style={{ color: '#94a3b8' }}>Investment</span>
+                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>${contractAmount.toLocaleString()}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
+                <span style={{ color: '#94a3b8' }}>Profit (11%)</span>
+                <span style={{ color: '#22d38a', fontWeight: 600 }}>+${projectedProfit.toLocaleString()}</span>
+              </div>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                <span style={{ color: '#f59e0b', fontWeight: 700 }}>Payout (24h)</span>
+                <span style={{ color: '#f59e0b', fontWeight: 700 }}>${projectedPayout.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setShowContractModal(false)}
+                style={{ flex: 1, padding: '8px', background: 'rgba(100,116,139,0.1)', border: '1px solid rgba(100,116,139,0.2)', borderRadius: '5px', color: '#64748b', fontWeight: 600, fontSize: '11px', cursor: 'pointer' }}
+              >CANCEL</button>
+              <button
+                onClick={handleCreateContract}
+                disabled={player.money < contractAmount}
+                style={{
+                  flex: 2, padding: '8px',
+                  background: player.money >= contractAmount ? 'rgba(34,211,138,0.2)' : 'rgba(100,116,139,0.1)',
+                  border: `1px solid ${player.money >= contractAmount ? 'rgba(34,211,138,0.4)' : 'rgba(100,116,139,0.2)'}`,
+                  borderRadius: '5px', color: player.money >= contractAmount ? '#22d38a' : '#64748b',
+                  fontWeight: 700, fontSize: '12px', cursor: player.money >= contractAmount ? 'pointer' : 'not-allowed',
+                }}
+              >CONFIRM CONTRACT</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====== ACTIVE CONTRACTS ====== */}
+      {myContracts.length > 0 && (
+        <div style={{ marginBottom: '8px' }}>
+          {myContracts.map(c => {
+            const payout = Math.floor(c.investedAmount * (1 + c.profitRate))
+            const profit = payout - c.investedAmount
+            const timeLeftMs = Math.max(0, c.unlocksAt - Date.now())
+            const hoursLeft = Math.floor(timeLeftMs / 3600000)
+            const minsLeft = Math.floor((timeLeftMs % 3600000) / 60000)
+            return (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: c.status === 'claimable' ? 'rgba(34,211,138,0.08)' : 'rgba(245,158,11,0.06)', border: `1px solid ${c.status === 'claimable' ? 'rgba(34,211,138,0.2)' : 'rgba(245,158,11,0.15)'}`, borderRadius: '5px', marginBottom: '4px' }}>
+                <div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>
+                    {c.status === 'locked' ? '🔒' : '✅'} ${c.investedAmount.toLocaleString()} → ${payout.toLocaleString()}
+                    <span style={{ color: '#22d38a', marginLeft: '4px', fontSize: '9px' }}>+${profit.toLocaleString()}</span>
+                  </div>
+                  {c.status === 'locked' && (
+                    <div style={{ fontSize: '8px', color: '#f59e0b' }}>Unlocks in {hoursLeft}h {minsLeft}m</div>
+                  )}
+                </div>
+                {c.status === 'claimable' && (
+                  <button
+                    onClick={() => handleClaimContract(c.id)}
+                    style={{ padding: '4px 12px', background: 'rgba(34,211,138,0.2)', border: '1px solid rgba(34,211,138,0.4)', borderRadius: '4px', color: '#22d38a', fontWeight: 700, fontSize: '10px', cursor: 'pointer', animation: 'pulse 1.5s infinite' }}
+                  >CLAIM ${payout.toLocaleString()}</button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ====== DIVISION SHOP ====== */}
+      <div className="war-card" style={{ marginBottom: '8px' }}>
+        <div className="war-card__title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>DIVISION SHOP</span>
+          <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 400 }}>
+            {shopQuotas.map(q => `${q.category}: ${q.currentSlots}/${q.maxSlots}`).join(' | ')}
+          </span>
+        </div>
       </div>
+
+      {shopListings.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '16px', fontSize: '11px', color: '#64748b', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', marginBottom: '8px', border: '1px dashed rgba(255,255,255,0.08)' }}>
+          No divisions available — new ones spawn every 15s (2% chance per slot)
+        </div>
+      ) : (
+        <div className="war-recruit-grid">
+          {(() => {
+            const avgPrice = shopListings.length > 0 ? shopListings.reduce((s, l) => s + l.price, 0) / shopListings.length : 0
+            return shopListings.map(listing => {
+            const t = DIVISION_TEMPLATES[listing.divisionType]
+            const canBuy = player.money >= listing.price
+            const timeLeft = Math.max(0, Math.floor((listing.expiresAt - Date.now()) / 60000))
+            const sm = listing.statModifiers
+            const rerollCost = govStore.getRerollCost(listing)
+            // Calculate final stats: template × (1 + modifier)
+            const fAtk = (t.atkDmgMult * (1 + sm.atkDmgMult)).toFixed(2)
+            const fHit = ((t.hitRate * (1 + sm.hitRate)) * 100).toFixed(0)
+            const fCrit = (t.critRateMult * (1 + sm.critRateMult)).toFixed(2)
+            const fSpeed = (t.attackSpeed * (1 + sm.attackSpeed)).toFixed(1)
+            const fHp = (t.healthMult * (1 + sm.healthMult)).toFixed(2)
+            const fDodge = (t.dodgeMult * (1 + sm.dodgeMult)).toFixed(2)
+            const fArmor = (t.armorMult * (1 + sm.armorMult)).toFixed(2)
+            // DPT: matches combat formula (baseAtk + manpower*0.5) * atkDmgMult * shots/tick
+            const effAtk = t.atkDmgMult * (1 + sm.atkDmgMult)
+            const effSpeed = (t.attackSpeed || 1.0) * (1 + sm.attackSpeed)
+            const baseAtk = 100 // player base attack estimate
+            const dpt = Math.floor((baseAtk + t.manpowerCost * 3) * effAtk * (1 / Math.max(0.2, effSpeed)))
+            const priceColor = listing.price <= avgPrice ? '#22d38a' : '#f59e0b'
+            // Squadron callsign from listing ID hash
+            const SQUADRONS = ['Iron Wolves','Phantom Hawks','Steel Vipers','Thunder Eagles','Shadow Foxes','War Hounds','Night Stalkers','Crimson Lancers','Ghost Riders','Storm Breakers','Death Dealers','Black Scorpions','Blood Ravens','Hellfire Squad','Dire Wolves','Ice Fangs','Void Reapers','Apex Hunters','Bone Crushers','Wrath Brigade']
+            const sqIdx = listing.id.split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0) % SQUADRONS.length
+            const squadron = SQUADRONS[sqIdx]
+
+            return (
+              <div key={listing.id} className={`war-recruit-card ${!canBuy ? 'war-recruit-card--disabled' : ''}`}>
+                <div className="war-recruit-card__header">
+                  <img src={t.icon} alt={t.name} style={{ width: '28px', height: '28px', objectFit: 'contain' }} className="war-recruit-card__icon" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#e2e8f0', letterSpacing: '0.5px', lineHeight: 1.1 }}>{t.name}</div>
+                    <div style={{ fontSize: '8px', fontStyle: 'italic', color: '#f59e0b', fontWeight: 600, opacity: 0.85 }}>"{squadron}"</div>
+                  </div>
+                  <span style={{ color: starColor(listing.starQuality), fontWeight: 700, fontSize: '11px', letterSpacing: '-1px', marginRight: '4px' }}>
+                    {'★'.repeat(listing.starQuality)}{'☆'.repeat(5 - listing.starQuality)}
+                  </span>
+                  <span className={`war-recruit-card__category war-recruit-card__category--${t.category}`}>
+                    {t.category.toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="war-recruit-card__desc">{t.description}</div>
+
+                <div className="war-recruit-card__stats">
+                  <div className="war-recruit-stat"><span>ATK</span><span className="war-recruit-stat__val" style={{ color: sm.atkDmgMult > 0 ? '#22d38a' : sm.atkDmgMult < 0 ? '#ef4444' : undefined }}>{fAtk}x</span></div>
+                  <div className="war-recruit-stat"><span>Hit</span><span className="war-recruit-stat__val" style={{ color: sm.hitRate > 0 ? '#22d38a' : sm.hitRate < 0 ? '#ef4444' : undefined }}>{fHit}%</span></div>
+                  <div className="war-recruit-stat"><span>CRTH</span><span className="war-recruit-stat__val" style={{ color: sm.critRateMult > 0 ? '#22d38a' : sm.critRateMult < 0 ? '#ef4444' : undefined }}>{fCrit}x</span></div>
+                  <div className="war-recruit-stat"><span>Speed</span><span className="war-recruit-stat__val" style={{ color: sm.attackSpeed > 0 ? '#22d38a' : sm.attackSpeed < 0 ? '#ef4444' : undefined }}>{fSpeed}s</span></div>
+                  <div className="war-recruit-stat"><span>HP</span><span className="war-recruit-stat__val" style={{ color: sm.healthMult > 0 ? '#22d38a' : sm.healthMult < 0 ? '#ef4444' : undefined }}>{fHp}x</span></div>
+                  <div className="war-recruit-stat"><span>Dodge</span><span className="war-recruit-stat__val" style={{ color: sm.dodgeMult > 0 ? '#22d38a' : sm.dodgeMult < 0 ? '#ef4444' : undefined }}>{fDodge}x</span></div>
+                  <div className="war-recruit-stat"><span>Armor</span><span className="war-recruit-stat__val" style={{ color: sm.armorMult > 0 ? '#22d38a' : sm.armorMult < 0 ? '#ef4444' : undefined }}>{fArmor}x</span></div>
+                </div>
+
+                <div className="war-recruit-card__cost" style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
+                  <span style={{ color: priceColor }}>${listing.price.toLocaleString()}</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '9px', fontWeight: 700, color: '#cbd5e1', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: '3px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      {t.manpowerCost} troops
+                    </span>
+                    <span style={{ fontSize: '9px', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: '3px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                      DPT {dpt}
+                    </span>
+                    <span style={{ fontSize: '9px', fontWeight: 700, color: '#94a3b8', background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '3px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      {t.popCost} pop
+                    </span>
+                  </div>
+                  <span style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '3px', padding: '1px 6px', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '10px', color: timeLeft < 60 ? '#ef4444' : '#f59e0b', letterSpacing: '0.5px' }}>
+                    {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+
+                {/* Action buttons: Recruit + Reroll */}
+                <div style={{ display: 'flex', gap: '4px', marginTop: '6px', alignItems: 'stretch' }}>
+                  <button
+                    className="war-recruit-btn"
+                    style={{ flex: 1, height: '36px', fontSize: '11px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '1.5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    disabled={!canBuy}
+                    onClick={() => handleBuy(listing.id)}
+                  >
+                    {canBuy ? 'RECRUIT' : 'INSUFFICIENT FUNDS'}
+                  </button>
+                </div>
+              </div>
+            )
+          })})()}
+        </div>
+      )}
     </div>
   )
 }
@@ -314,6 +529,8 @@ function ForcesTab({ iso }: { iso: string }) {
   const [newArmyName, setNewArmyName] = useState('')
   const [expandedArmy, setExpandedArmy] = useState<string | null>(null)
   const [feedback, setFeedback] = useState('')
+  const [weaponPickerDivId, setWeaponPickerDivId] = useState<string | null>(null)
+  const inventory = useInventoryStore()
 
   const myRank = getMilitaryRank(player.level)
   const myArmies = Object.values(armyStore.armies).filter(a => a.countryCode === iso)
@@ -476,77 +693,107 @@ function ForcesTab({ iso }: { iso: string }) {
                     <div className="war-empty">No divisions assigned.</div>
                   ) : divs.map(div => {
                     const template = DIVISION_TEMPLATES[div.type]
-                    const strengthPct = Math.floor((div.manpower / div.maxManpower) * 100)
+                    const strengthPct = Math.floor((div.health / div.maxHealth) * 100)
                     const divLevel = Math.floor((div.experience || 0) / 10)
-                    const stanceColors: Record<string, string> = {
-                      unassigned: '#64748b', force_pool: '#3b82f6', reserve: '#f59e0b', first_line_defense: '#ef4444'
+                    const ps = getBaseSkillStats()
+                    const eq = getDivisionEquipBonus(div)
+                    // Compute final stats (including equipment bonuses)
+                    const finalAtk = Math.floor((ps.attackDamage + div.manpower * 3 + eq.bonusAtk) * (template.atkDmgMult + divLevel * 0.01) * (1 + divLevel * 0.10))
+                    const finalHit = Math.min(95, Math.floor((template.hitRate + divLevel * 0.01 + eq.bonusHitRate) * 100))
+                    const finalCrit = Math.floor((ps.critRate + eq.bonusCritRate) * (template.critRateMult + divLevel * 0.01))
+                    const finalDodge = Math.floor((ps.dodgeChance || 5) * template.dodgeMult + eq.bonusDodge)
+                    const finalArmor = Math.floor((ps.armorBlock || 0) * template.armorMult + eq.bonusArmor)
+                    const finalSpeed = Math.max(0.2, (template.attackSpeed || 1.0) - eq.bonusSpeed)
+                    const finalCritDmg = (ps.critMultiplier * (template.critDmgMult + divLevel * 0.01) * 100).toFixed(0)
+                    const statusColors: Record<string, string> = {
+                      training: '#f59e0b', ready: '#22d38a', in_combat: '#ef4444', recovering: '#3b82f6', destroyed: '#64748b'
                     }
-                    const stanceLabels: Record<string, string> = {
-                      unassigned: 'UNASSIGNED', force_pool: 'FORCE', reserve: 'RESERVE', first_line_defense: '1ST LINE'
+                    const statusLabels: Record<string, string> = {
+                      training: '🔨 TRAINING', ready: '✅ READY', in_combat: '⚔️ COMBAT', recovering: '💤 RECOVERING', destroyed: '💀 DESTROYED'
                     }
 
                     return (
-                      <div className={`war-div-row war-div-row--${div.status}`} key={div.id}>
-                        <img src={template?.icon} alt="div" style={{ width: '16px', height: '16px', objectFit: 'contain' }} className="war-div-row__icon" />
-                        <div className="war-div-row__info">
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span className="war-div-row__name">{div.name}</span>
-                            <span style={{ fontSize: '7px', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0 3px', borderRadius: '2px' }}>
-                              LV{divLevel}
-                            </span>
-                            <span style={{ fontSize: '7px', fontWeight: 700, color: stanceColors[div.stance || 'unassigned'], background: `${stanceColors[div.stance || 'unassigned']}15`, padding: '0 3px', borderRadius: '2px' }}>
-                              {stanceLabels[div.stance || 'unassigned']}
-                            </span>
-                          </div>
-                          <div className="war-div-row__stats">
-                            {div.manpower}/{div.maxManpower} • 🔧{div.equipment.length}/3 • XP:{Math.floor(div.experience)}
-                          </div>
+                      <div className={`war-div-row war-div-row--${div.status}`} key={div.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px', padding: '6px 8px' }}>
+                        {/* Header: icon, name, level, status */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <img src={template?.icon} alt="div" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+                          <span className="war-div-row__name" style={{ flex: 1 }}>{div.name}</span>
+                          <span style={{ fontSize: '8px', fontWeight: 800, color: '#f59e0b', background: 'rgba(245,158,11,0.15)', padding: '1px 5px', borderRadius: '3px' }}>
+                            LV{divLevel}
+                          </span>
+                          <span style={{ fontSize: '7px', fontWeight: 700, color: statusColors[div.status] || '#64748b', background: `${statusColors[div.status] || '#64748b'}15`, padding: '1px 5px', borderRadius: '3px' }}>
+                            {div.status === 'training' ? (() => { const left = Math.max(0, Math.ceil((div.readyAt - Date.now()) / 1000)); return `🔨 ${left}s` })() : (statusLabels[div.status] || div.status.toUpperCase())}
+                          </span>
+                          <button
+                            style={{ marginLeft: '2px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '3px', fontSize: '10px', fontWeight: 900, padding: '1px 5px', cursor: 'pointer', lineHeight: 1 }}
+                            title="Recall from battle"
+                            onClick={() => {
+                              const r = armyStore.recallArmy(army.id)
+                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                            }}
+                          >✕</button>
                         </div>
-                        <div className="war-div-row__bars">
-                          <div className="war-div-bar" title={`Strength: ${strengthPct}%`}>
+                        {/* HP bar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div className="war-div-bar" title={`HP: ${strengthPct}%`} style={{ flex: 1, height: '16px' }}>
                             <div className="war-div-bar__fill war-div-bar__fill--str" style={{ width: `${strengthPct}%` }} />
-                            <span className="war-div-bar__label">HP {strengthPct}%</span>
+                            <span className="war-div-bar__label" style={{ fontSize: '10px', fontWeight: 800, textShadow: '0 1px 2px rgba(0,0,0,0.8)', letterSpacing: '0.5px' }}>{div.health}/{div.maxHealth} ({strengthPct}%)</span>
                           </div>
                         </div>
-                        <div className={`war-div-status war-div-status--${div.status}`}>
-                          {div.status === 'training' ? (() => { const left = Math.max(0, Math.ceil((div.readyAt - Date.now()) / 1000)); return `🔨 ${left}s` })() : div.status.toUpperCase()}
+                        {/* Stat grid */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px 8px', fontSize: '8px', fontFamily: 'var(--font-mono, monospace)' }}>
+                          <span style={{ color: '#94a3b8' }}>⚔️ ATK <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{finalAtk}</span></span>
+                          <span style={{ color: '#94a3b8' }}>🎯 HIT <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{finalHit}%</span></span>
+                          <span style={{ color: '#94a3b8' }}>💥 CRTH <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{finalCrit}%</span></span>
+                          <span style={{ color: '#94a3b8' }}>💀 CRTD <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{finalCritDmg}%</span></span>
+                          <span style={{ color: '#94a3b8' }}>💨 DGE <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{finalDodge}%</span></span>
+                          <span style={{ color: '#94a3b8' }}>🛡️ ARM <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{finalArmor}</span></span>
+                          <span style={{ color: '#94a3b8' }}>⚡ SPD <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{finalSpeed}x</span></span>
+                          <span style={{ color: '#94a3b8' }}>👥 Troops <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{div.manpower}</span></span>
                         </div>
-                        {/* Action buttons */}
-                        <div style={{ display: 'flex', gap: '2px' }}>
-                          {div.manpower < div.maxManpower && !div.reinforcing && div.status !== 'training' && div.status !== 'destroyed' && (
-                            <button className="war-btn war-btn--small"
-                              style={{ background: 'rgba(34,211,138,0.15)', color: '#22d38a', border: '1px solid rgba(34,211,138,0.3)', fontSize: '8px', padding: '2px 4px' }}
+                        {/* === Big Action Buttons === */}
+                        <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                          {/* REINFORCE = equip weapon */}
+                          <button
+                            style={{ flex: 1, padding: '6px 0', fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '1px', borderRadius: '4px', border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(239,68,68,0.15)', color: '#ef4444', cursor: 'pointer', transition: 'all 0.15s' }}
+                            onClick={() => setWeaponPickerDivId(div.id)}
+                          >
+                            ⚔️ REINFORCE
+                          </button>
+                          {/* REBUILD or REVIVE based on status */}
+                          {div.status === 'destroyed' ? (
+                            <button
+                              style={{ flex: 1, padding: '6px 0', fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '1px', borderRadius: '4px', border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(239,68,68,0.15)', color: '#ef4444', cursor: 'pointer', transition: 'all 0.15s' }}
+                              title={`Revive: 50% cost, halve XP, reroll stars, 2-16% HP`}
                               onClick={() => {
-                                const r = armyStore.reinforceDivision(div.id)
-                                ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                                const r = armyStore.reviveDivision(div.id)
+                                ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
                               }}
-                              title="Reinforce"
-                            >🔧</button>
-                          )}
-                          {div.manpower > 1 && div.status !== 'training' && (
-                            <button className="war-btn war-btn--small"
-                              style={{ fontSize: '8px', padding: '2px 4px' }}
+                            >
+                              💀 REVIVE (${Math.floor(DIVISION_TEMPLATES[div.type].recruitCost.money * 0.6).toLocaleString()})
+                            </button>
+                          ) : (
+                            <button
+                              style={{ flex: 1, padding: '6px 0', fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '1px', borderRadius: '4px', border: '1px solid rgba(34,211,138,0.5)', background: 'rgba(34,211,138,0.15)', color: '#22d38a', cursor: 'pointer', transition: 'all 0.15s' }}
                               onClick={() => {
                                 const r = armyStore.rebuildDivision(div.id)
                                 ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
                               }}
-                              title="Rebuild"
-                            >🏗️</button>
+                            >
+                              🍞 FEED
+                            </button>
                           )}
-                          {div.manpower <= 0 && (
-                            <button className="war-btn war-btn--small war-btn--danger"
-                              style={{ fontSize: '8px', padding: '2px 4px' }}
-                              onClick={() => armyStore.disbandDivision(div.id)}
-                              title="Disband"
-                            >💀</button>
-                          )}
-                          <button className="war-btn war-btn--small war-btn--danger"
-                            style={{ fontSize: '8px', padding: '2px 4px' }}
-                            onClick={() => armyStore.removeDivisionFromArmy(div.id)}
-                            title="Remove from force"
-                          >✕</button>
                         </div>
-                        {div.reinforcing && <span style={{ fontSize: '7px', color: '#f59e0b', fontWeight: 700 }}>🔧 REINFORCING</span>}
+                        {/* Equipped weapon indicator */}
+                        {(() => {
+                          const inv = useInventoryStore.getState()
+                          const matchingSub = Object.entries(WEAPON_DIVISION_MAP).find(([, dt]) => dt === div.type)?.[0] as WeaponSubtype | undefined
+                          const equipped = div.equipment.map(eid => inv.items.find(i => i.id === eid)).find(i => i && i.category === 'weapon' && i.weaponSubtype === matchingSub)
+                          if (equipped) {
+                            return <div style={{ fontSize: '8px', color: '#22d38a', fontWeight: 700, marginTop: '2px' }}>⚔️ {equipped.name} — {Math.floor(equipped.durability)}% durability</div>
+                          }
+                          return <div style={{ fontSize: '8px', color: '#64748b', marginTop: '2px' }}>No weapon equipped</div>
+                        })()}
                       </div>
                     )
                   })}
@@ -633,6 +880,78 @@ function ForcesTab({ iso }: { iso: string }) {
           })}
         </div>
       )}
+
+      {/* === Weapon Picker Modal === */}
+      {weaponPickerDivId && (() => {
+        const div = armyStore.divisions[weaponPickerDivId]
+        if (!div) { setWeaponPickerDivId(null); return null }
+        const matchingSub = Object.entries(WEAPON_DIVISION_MAP).find(([, dt]) => dt === div.type)?.[0] as WeaponSubtype | undefined
+        const matchingWeapons = matchingSub ? inventory.items.filter(i => i.category === 'weapon' && i.weaponSubtype === matchingSub && i.durability > 0) : []
+        const equippedIds = new Set(div.equipment)
+        const currentlyEquipped = matchingWeapons.filter(w => equippedIds.has(w.id))
+        const available = matchingWeapons.filter(w => !w.equipped).sort((a, b) => (b.stats.damage || 0) - (a.stats.damage || 0))
+        const template = DIVISION_TEMPLATES[div.type]
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={() => setWeaponPickerDivId(null)}>
+            <div style={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '16px', minWidth: '320px', maxWidth: '400px', maxHeight: '70vh', overflowY: 'auto' }}
+              onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>⚔️ REINFORCE</div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8' }}>{div.name} — needs: {matchingSub?.toUpperCase()}</div>
+                </div>
+                <button onClick={() => setWeaponPickerDivId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '18px' }}>✕</button>
+              </div>
+
+              {/* Currently equipped */}
+              {currentlyEquipped.length > 0 && (
+                <div style={{ marginBottom: '8px' }}>
+                  <div style={{ fontSize: '9px', color: '#22d38a', fontWeight: 700, marginBottom: '4px' }}>EQUIPPED</div>
+                  {currentlyEquipped.map(w => (
+                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: 'rgba(34,211,138,0.08)', border: '1px solid rgba(34,211,138,0.2)', borderRadius: '4px', marginBottom: '4px' }}>
+                      <div>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#22d38a' }}>{w.name}</div>
+                        <div style={{ fontSize: '8px', color: '#94a3b8' }}>⚔️ {w.stats.damage || 0} dmg • 💥 {w.stats.critRate || 0}% crit • {Math.floor(w.durability)}% dur</div>
+                      </div>
+                      <button style={{ fontSize: '8px', padding: '2px 6px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '3px', cursor: 'pointer' }}
+                        onClick={() => { armyStore.unequipItemFromDivision(div.id, w.id); ui.addFloatingText('Unequipped!', window.innerWidth / 2, window.innerHeight / 2, '#f59e0b') }}>
+                        UNEQUIP
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Available weapons */}
+              <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>AVAILABLE ({available.length})</div>
+              {available.length === 0 ? (
+                <div style={{ fontSize: '10px', color: '#64748b', textAlign: 'center', padding: '16px' }}>No matching {matchingSub} weapons in inventory</div>
+              ) : (
+                available.map(w => (
+                  <div key={w.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', marginBottom: '3px', cursor: 'pointer', transition: 'all 0.1s' }}
+                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(59,130,246,0.1)')}
+                    onMouseOut={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}>
+                    <div>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>{w.name} <span style={{ fontSize: '8px', color: '#64748b' }}>({w.tier.toUpperCase()})</span></div>
+                      <div style={{ fontSize: '8px', color: '#94a3b8' }}>⚔️ {w.stats.damage || 0} dmg • 💥 {w.stats.critRate || 0}% crit • {Math.floor(w.durability)}% dur</div>
+                    </div>
+                    <button style={{ fontSize: '9px', padding: '3px 8px', background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '3px', cursor: 'pointer', fontWeight: 700 }}
+                      onClick={() => {
+                        const r = armyStore.equipItemToDivision(div.id, w.id)
+                        ui.addFloatingText(r ? `Equipped ${w.name}!` : 'Failed to equip', window.innerWidth / 2, window.innerHeight / 2, r ? '#22d38a' : '#ef4444')
+                        setWeaponPickerDivId(null)
+                      }}>
+                      EQUIP
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -649,8 +968,8 @@ function CombatTab() {
   const [editingOrderMsg, setEditingOrderMsg] = useState<Record<string, boolean>>({})
   const [scene3DBattle, setScene3DBattle] = useState<{
     id: string
-    atkDivs: { type: DivisionType; name: string; manpower: number; maxManpower: number }[]
-    defDivs: { type: DivisionType; name: string; manpower: number; maxManpower: number }[]
+    atkDivs: { type: DivisionType; name: string; health: number; maxHealth: number }[]
+    defDivs: { type: DivisionType; name: string; health: number; maxHealth: number }[]
   } | null>(null)
 
   // Combat tick timer
@@ -668,12 +987,14 @@ function CombatTab() {
     return divIds.map(id => {
       const d = armyStore.divisions[id]
       if (!d) return null
-      return { type: d.type, name: d.name, manpower: d.manpower, maxManpower: d.maxManpower }
-    }).filter(Boolean) as { type: DivisionType; name: string; manpower: number; maxManpower: number }[]
+      return { type: d.type, name: d.name, health: d.health, maxHealth: d.maxHealth }
+    }).filter(Boolean) as { type: DivisionType; name: string; health: number; maxHealth: number }[]
   }
 
   return (
-    <div className="war-battles">
+    <div className="war-battles" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* === Fixed Header: Tick Timer + Food === */}
+      <div style={{ flexShrink: 0 }}>
       {/* 3D Battle Scene Overlay */}
       {scene3DBattle && (
         <Suspense fallback={
@@ -718,15 +1039,19 @@ function CombatTab() {
         </div>
       )}
 
-      {/* Quick Food — recover stamina mid-battle */}
+      {/* Quick Food — recover stamina + heal deployed divisions */}
       <div style={{ display: 'flex', gap: '3px', marginBottom: '6px' }}>
         {[
-          { key: 'bread', icon: '🍞', label: 'Bread', count: player.bread, sta: 10 },
-          { key: 'sushi', icon: '🍣', label: 'Sushi', count: player.sushi, sta: 20 },
-          { key: 'wagyu', icon: '🥩', label: 'Wagyu', count: player.wagyu, sta: 30 },
+          { key: 'bread', icon: '🍞', label: 'Bread', count: player.bread, sta: 10, heal: 1 },
+          { key: 'sushi', icon: '🍣', label: 'Sushi', count: player.sushi, sta: 20, heal: 2 },
+          { key: 'wagyu', icon: '🥩', label: 'Wagyu', count: player.wagyu, sta: 30, heal: 3 },
         ].map(f => (
           <button key={f.key} disabled={f.count <= 0}
-            onClick={() => player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu')}
+            onClick={() => {
+              player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu')
+              const result = armyStore.healDivisionsWithFood(f.key as 'bread' | 'sushi' | 'wagyu')
+              if (result.success) console.log(result.message)
+            }}
             style={{
               flex: 1, padding: '5px 2px', borderRadius: '4px', cursor: f.count > 0 ? 'pointer' : 'not-allowed',
               background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
@@ -736,11 +1061,15 @@ function CombatTab() {
           >
             <div style={{ fontSize: '14px' }}>{f.icon}</div>
             <div style={{ fontSize: '8px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
-            <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.sta} STA</div>
+            <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
+            <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
           </button>
         ))}
       </div>
+      </div>
 
+      {/* === Scrollable Battles List === */}
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
       {activeBattles.length === 0 && pastBattles.length === 0 && (
         <div className="war-card"><div className="war-empty">No active battles. Launch an attack from the Forces tab.</div></div>
       )}
@@ -766,6 +1095,9 @@ function CombatTab() {
                 <div className="war-battle-side war-battle-side--atk">
                   <span className="war-battle-flag">{getCountryFlag(battle.attackerId)}</span>
                   <div>
+                    {player.heroBuffTicksLeft > 0 && iso === battle.attackerId && (
+                      <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', fontFamily: 'var(--font-display)', animation: 'pulse 2s infinite' }}>HERO</div>
+                    )}
                     <div className="war-battle-country">{getCountryName(battle.attackerId)}</div>
                     <div className="war-battle-meta">{battle.attacker.engagedDivisionIds.length} divs</div>
                   </div>
@@ -779,13 +1111,28 @@ function CombatTab() {
                 <div className="war-battle-side war-battle-side--def">
                   <span className="war-battle-rounds">{battle.defenderRoundsWon}</span>
                   <div style={{ textAlign: 'right' }}>
+                    {player.heroBuffTicksLeft > 0 && iso === battle.defenderId && (
+                      <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', fontFamily: 'var(--font-display)', animation: 'pulse 2s infinite' }}>HERO</div>
+                    )}
                     <div className="war-battle-country">{getCountryName(battle.defenderId)}</div>
                     <div className="war-battle-meta">{battle.defender.engagedDivisionIds.length} divs</div>
                   </div>
                   <span className="war-battle-flag">{getCountryFlag(battle.defenderId)}</span>
                 </div>
               </div>
-              <div className="war-battle-expand">{isExpanded ? '▲ COLLAPSE' : '▼ EXPAND'}</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setExpandedBattle(isExpanded ? null : battle.id) }}
+                  style={{
+                    width: '100%', padding: '5px 0', border: `1px solid rgba(255,255,255,0.1)`,
+                    borderRadius: '2px', cursor: 'pointer', fontSize: '9px', fontWeight: 900,
+                    fontFamily: 'var(--font-display)', letterSpacing: '1.5px',
+                    background: isExpanded ? 'rgba(239,68,68,0.1)' : 'rgba(34,211,138,0.1)',
+                    color: isExpanded ? '#f87171' : '#22d38a',
+                    transition: 'all 0.15s',
+                  }}
+                >{isExpanded ? '▲ COLLAPSE' : '▼ EXPAND'}</button>
+              </div>
             </div>
 
             {/* Ground Points Bar — THE MOST IMPORTANT BAR */}
@@ -837,82 +1184,102 @@ function CombatTab() {
               <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '7px', fontWeight: 700, color: '#fff', zIndex: 3 }}>{defDmg.toLocaleString()}</span>
             </div>
 
-            {/* Battle Orders (always visible) — yellow/orange/red */}
-            <div style={{ marginTop: '4px', marginBottom: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 700 }}>📋 ORDERS:</span>
-                <div style={{ display: 'flex', gap: '2px', flex: 1 }}>
-                  {([{ pct: 5, color: '#eab308', bg: 'linear-gradient(135deg, #eab308, #ca8a04)' },
-                     { pct: 10, color: '#f97316', bg: 'linear-gradient(135deg, #f97316, #ea580c)' },
-                     { pct: 15, color: '#ef4444', bg: 'linear-gradient(135deg, #ef4444, #dc2626)' }] as const).map(o => (
-                    <button key={o.pct}
-                      onClick={(e) => { e.stopPropagation(); battleStore.setBattleOrder(battle.id, battle.battleOrder === o.pct ? 0 : o.pct) }}
-                      style={{
-                        flex: 1, padding: '3px', border: 'none', borderRadius: '3px', cursor: 'pointer',
-                        fontSize: '9px', fontWeight: 700,
-                        background: battle.battleOrder === o.pct ? o.bg : 'rgba(255,255,255,0.06)',
-                        color: battle.battleOrder === o.pct ? '#000' : o.color,
-                        boxShadow: battle.battleOrder === o.pct ? `0 0 8px ${o.color}44` : 'none',
-                      }}
-                    >+{o.pct}%</button>
-                  ))}
-                </div>
-              </div>
+            {/* Fight Buttons — always visible */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '4px' }}>
+              <button disabled={player.stamina < 5}
+                style={{ padding: '8px 0', background: `${atkClr}15`, border: `2px solid ${atkClr}66`, borderRadius: '2px', color: atkClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
+              >
+                ATTACK
+                <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
+              </button>
+              <button disabled={player.stamina < 5}
+                style={{ padding: '8px 0', background: `${defClr}15`, border: `2px solid ${defClr}66`, borderRadius: '2px', color: defClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
+              >
+                DEFEND
+                <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
+              </button>
+            </div>
+
+            {/* === Collapsible Section === */}
+            {isExpanded && (<>
+
+            {/* Tactical Battle Orders */}
+            <div style={{ marginTop: '4px', marginBottom: '4px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', padding: '6px 8px' }}>
+              <div style={{ fontSize: '8px', fontWeight: 900, color: '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '6px' }}>TACTICAL ORDERS</div>
+              {/* Per-side order rows */}
+              {(['attacker', 'defender'] as const).map(side => {
+                const currentOrder = side === 'attacker' ? (battle.attackerOrder || 'none') : (battle.defenderOrder || 'none')
+                const sideColor = side === 'attacker' ? atkClr : defClr
+                return (
+                  <div key={side} style={{ marginBottom: '4px' }}>
+                    <div style={{ fontSize: '7px', fontWeight: 900, color: sideColor, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '3px', borderLeft: `2px solid ${sideColor}`, paddingLeft: '4px' }}>
+                      {side.toUpperCase()}: {TACTICAL_ORDERS[currentOrder].label}
+                      {currentOrder !== 'none' && <span style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 600, marginLeft: '4px' }}>{TACTICAL_ORDERS[currentOrder].desc}</span>}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '2px' }}>
+                      {(['charge', 'fortify', 'precision', 'blitz'] as TacticalOrder[]).map(ord => {
+                        const o = TACTICAL_ORDERS[ord]
+                        const isActive = currentOrder === ord
+                        return (
+                          <button key={ord}
+                            onClick={(e) => { e.stopPropagation(); battleStore.setBattleOrder(battle.id, side, isActive ? 'none' : ord) }}
+                            style={{
+                              padding: '3px 2px', border: `1px solid ${isActive ? o.color : 'rgba(255,255,255,0.08)'}`,
+                              borderRadius: '2px', cursor: 'pointer', fontSize: '7px', fontWeight: 800,
+                              fontFamily: 'var(--font-display)', letterSpacing: '0.5px',
+                              background: isActive ? `${o.color}20` : 'rgba(255,255,255,0.03)',
+                              color: isActive ? o.color : '#64748b',
+                              boxShadow: isActive ? `0 0 6px ${o.color}33` : 'none',
+                              transition: 'all 0.15s',
+                            }}
+                          >{o.label}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
               {/* Order Message */}
-              {battle.battleOrder > 0 && (
-                <div style={{ marginTop: '3px' }}>
-                  {editingOrderMsg[battle.id] ? (
-                    <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
-                      <input
-                        type="text" placeholder="COMMANDER ORDER..." maxLength={100}
-                        value={battle.orderMessage || ''}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => battleStore.setBattleOrderMessage(battle.id, e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') setEditingOrderMsg(prev => ({ ...prev, [battle.id]: false })) }}
-                        style={{
-                          flex: 1, padding: '3px 6px', fontSize: '8px',
-                          fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)',
-                          borderRadius: '3px', color: '#e2e8f0', outline: 'none',
-                        }}
-                      />
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: false })) }}
-                        style={{
-                          padding: '2px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer',
-                          background: 'rgba(34,197,94,0.2)', color: '#22c55e', fontSize: '10px', fontWeight: 700,
-                        }}
-                      >✅</button>
-                    </div>
-                  ) : battle.orderMessage ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-                      onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: true })) }}
-                    >
-                      <div style={{
-                        flex: 1, fontSize: '8px', letterSpacing: '0.8px', textTransform: 'uppercase',
-                        fontFamily: 'var(--font-mono)', fontWeight: 700,
-                        color: battle.battleOrder === 5 ? '#eab308' : battle.battleOrder === 10 ? '#f97316' : '#ef4444',
-                        padding: '2px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: '2px',
-                        borderLeft: `2px solid ${battle.battleOrder === 5 ? '#eab308' : battle.battleOrder === 10 ? '#f97316' : '#ef4444'}`,
-                      }}>
-                        📣 {battle.orderMessage}
-                      </div>
-                      <span style={{ fontSize: '8px', color: '#475569' }}>✏️</span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: true })) }}
+              <div style={{ marginTop: '4px' }}>
+                {editingOrderMsg[battle.id] ? (
+                  <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                    <input
+                      type="text" placeholder="COMMANDER ORDER..." maxLength={100}
+                      value={battle.orderMessage || ''}
+                      autoFocus
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => battleStore.setBattleOrderMessage(battle.id, e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') setEditingOrderMsg(prev => ({ ...prev, [battle.id]: false })) }}
                       style={{
-                        width: '100%', padding: '2px 6px', border: '1px dashed rgba(255,255,255,0.1)',
-                        borderRadius: '3px', cursor: 'pointer', background: 'transparent',
-                        fontSize: '7px', color: '#475569', fontFamily: 'var(--font-mono)', textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
+                        flex: 1, padding: '3px 6px', fontSize: '8px',
+                        fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.5px',
+                        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)',
+                        borderRadius: '3px', color: '#e2e8f0', outline: 'none',
                       }}
-                    >+ ADD ORDER MESSAGE</button>
-                  )}
-                </div>
-              )}
+                    />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: false })) }}
+                      style={{ padding: '2px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer', background: 'rgba(34,197,94,0.2)', color: '#22c55e', fontSize: '10px', fontWeight: 700 }}
+                    >OK</button>
+                  </div>
+                ) : battle.orderMessage ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                    onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: true })) }}
+                  >
+                    <div style={{ flex: 1, fontSize: '8px', letterSpacing: '0.8px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#a78bfa', padding: '2px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: '2px', borderLeft: '2px solid #a78bfa' }}>
+                      {battle.orderMessage}
+                    </div>
+                    <span style={{ fontSize: '8px', color: '#475569' }}>EDIT</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: true })) }}
+                    style={{ width: '100%', padding: '2px 6px', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '3px', cursor: 'pointer', background: 'transparent', fontSize: '7px', color: '#475569', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.5px' }}
+                  >+ ADD ORDER MESSAGE</button>
+                )}
+              </div>
             </div>
 
             {/* Division Deploy List — grouped by type */}
@@ -1018,109 +1385,117 @@ function CombatTab() {
               )
             })()}
 
-            {/* Fight Buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px' }}>
-              <button className="battle-action-btn" disabled={player.stamina < 5}
-                style={{ background: `${atkClr}22`, borderColor: `${atkClr}44`, color: atkClr }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
-              >
-                <span className="battle-action-btn__icon">⚔️</span>
-                <span className="battle-action-btn__label">ATK</span>
-                <span className="battle-action-btn__cost">5 STA</span>
-              </button>
-              <button className="battle-action-btn" disabled={player.stamina < 5}
-                style={{ background: `${defClr}22`, borderColor: `${defClr}44`, color: defClr }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
-              >
-                <span className="battle-action-btn__icon">🛡️</span>
-                <span className="battle-action-btn__label">DEF</span>
-                <span className="battle-action-btn__cost">5 STA</span>
-              </button>
-            </div>
-
             {/* Expanded Details */}
-            {isExpanded && (
+            
               <div className="war-battle-details" style={{ marginTop: '6px' }}>
 
-                {/* Deployed Divisions */}
-                <div style={{ marginBottom: '6px' }}>
-                  <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginBottom: '3px' }}>🔹 ATTACKER DIVISIONS</div>
-                  {battle.attacker.engagedDivisionIds.map(id => {
+                {/* Deployed Divisions — Military Style */}
+                <div style={{ marginBottom: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ fontSize: '8px', fontWeight: 900, color: atkClr, padding: '4px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', borderLeft: `2px solid ${atkClr}`, fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>ATTACKER DIVISIONS</div>
+                  <div style={{ padding: '2px 8px' }}>
+                  {battle.attacker.engagedDivisionIds.map((id, idx) => {
                     const d = armyStore.divisions[id]
                     if (!d) return null
                     const template = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
-                    const strPct = Math.floor((d.manpower / d.maxManpower) * 100)
+                    const strPct = Math.floor((d.health / d.maxHealth) * 100)
                     return (
-                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '1px 0', fontSize: '8px' }}>
-                        <img src={template?.icon} alt="" style={{ width: '10px', height: '10px', objectFit: 'contain' }} />
-                        <span style={{ color: atkClr, fontWeight: 700, flex: 1 }}>{d.name}</span>
-                        <span style={{ color: '#94a3b8' }}>{d.manpower}/{d.maxManpower}</span>
-                        <div style={{ width: '40px', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : '#ef4444', borderRadius: '2px' }} />
+                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', fontSize: '8px', fontFamily: 'var(--font-mono, monospace)', borderBottom: idx < battle.attacker.engagedDivisionIds.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}>
+                        <img src={template?.icon} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
+                        <span style={{ color: '#e2e8f0', fontWeight: 700, flex: 1 }}>{d.name}</span>
+                        <span style={{ color: '#94a3b8', fontWeight: 600 }}>{d.health}/{d.maxHealth}</span>
+                        <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '1px', overflow: 'hidden' }}>
+                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : strPct > 20 ? '#f59e0b' : '#ef4444' }} />
                         </div>
                       </div>
                     )
                   })}
-                  {battle.attacker.engagedDivisionIds.length === 0 && <div style={{ fontSize: '8px', color: '#475569' }}>None deployed</div>}
+                  {battle.attacker.engagedDivisionIds.length === 0 && <div style={{ fontSize: '8px', color: '#475569', padding: '4px 0' }}>No divisions deployed</div>}
+                  </div>
                 </div>
 
-                <div style={{ marginBottom: '6px' }}>
-                  <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginBottom: '3px' }}>🔸 DEFENDER DIVISIONS</div>
-                  {battle.defender.engagedDivisionIds.map(id => {
+                <div style={{ marginBottom: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ fontSize: '8px', fontWeight: 900, color: defClr, padding: '4px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', borderLeft: `2px solid ${defClr}`, fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>DEFENDER DIVISIONS</div>
+                  <div style={{ padding: '2px 8px' }}>
+                  {battle.defender.engagedDivisionIds.map((id, idx) => {
                     const d = armyStore.divisions[id]
                     if (!d) return null
                     const template = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
-                    const strPct = Math.floor((d.manpower / d.maxManpower) * 100)
+                    const strPct = Math.floor((d.health / d.maxHealth) * 100)
                     return (
-                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '1px 0', fontSize: '8px' }}>
-                        <img src={template?.icon} alt="" style={{ width: '10px', height: '10px', objectFit: 'contain' }} />
-                        <span style={{ color: defClr, fontWeight: 700, flex: 1 }}>{d.name}</span>
-                        <span style={{ color: '#94a3b8' }}>{d.manpower}/{d.maxManpower}</span>
-                        <div style={{ width: '40px', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : '#ef4444', borderRadius: '2px' }} />
+                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', fontSize: '8px', fontFamily: 'var(--font-mono, monospace)', borderBottom: idx < battle.defender.engagedDivisionIds.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}>
+                        <img src={template?.icon} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
+                        <span style={{ color: '#e2e8f0', fontWeight: 700, flex: 1 }}>{d.name}</span>
+                        <span style={{ color: '#94a3b8', fontWeight: 600 }}>{d.health}/{d.maxHealth}</span>
+                        <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '1px', overflow: 'hidden' }}>
+                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : strPct > 20 ? '#f59e0b' : '#ef4444' }} />
                         </div>
                       </div>
                     )
                   })}
-                  {battle.defender.engagedDivisionIds.length === 0 && <div style={{ fontSize: '8px', color: '#475569' }}>None deployed</div>}
-                </div>
-
-                {/* Stats Comparison */}
-                <div className="war-battle-compare">
-                  <div className="war-compare-col war-compare-col--atk">
-                    <div className="war-compare-title">ATTACKER</div>
-                    <div className="war-compare-stat">📊 Dmg: {(battle.attacker.damageDealt || 0).toLocaleString()}</div>
-                    <div className="war-compare-stat">💀 Lost: {(battle.attacker.manpowerLost || 0).toLocaleString()}</div>
-                    <div className="war-compare-stat">💥 Destroyed: {battle.attacker.divisionsDestroyed}</div>
-                  </div>
-                  <div className="war-compare-divider">
-                    <div className="war-terrain-info">
-                      <div className="war-terrain-name">T{battle.ticksElapsed}</div>
-                    </div>
-                  </div>
-                  <div className="war-compare-col war-compare-col--def">
-                    <div className="war-compare-title">DEFENDER</div>
-                    <div className="war-compare-stat">📊 Dmg: {(battle.defender.damageDealt || 0).toLocaleString()}</div>
-                    <div className="war-compare-stat">💀 Lost: {(battle.defender.manpowerLost || 0).toLocaleString()}</div>
-                    <div className="war-compare-stat">💥 Destroyed: {battle.defender.divisionsDestroyed}</div>
+                  {battle.defender.engagedDivisionIds.length === 0 && <div style={{ fontSize: '8px', color: '#475569', padding: '4px 0' }}>No divisions deployed</div>}
                   </div>
                 </div>
 
-                {/* Combat Log */}
-                <div className="war-combat-log">
-                  <div className="war-combat-log__title">📜 COMBAT LOG</div>
-                  <div className="war-combat-log__entries">
-                    {battle.combatLog.slice(-10).reverse().map((entry, i) => (
-                      <div className={`war-log-entry war-log-entry--${entry.type}`} key={`${entry.timestamp}-${i}`}>
-                        <span className="war-log-entry__tick">T{entry.tick}</span>
-                        <span className="war-log-entry__msg">{entry.message}</span>
-                      </div>
-                    ))}
-                    {battle.combatLog.length === 0 && <div className="war-log-entry">Waiting for first combat tick...</div>}
+                {/* Stats Comparison — Military */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ padding: '6px 8px', borderLeft: `2px solid ${atkClr}` }}>
+                    <div style={{ fontSize: '8px', fontWeight: 900, color: atkClr, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '4px' }}>ATTACKER</div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}>DMG <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(battle.attacker.damageDealt || 0).toLocaleString()}</span></div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}>KIA <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(battle.attacker.manpowerLost || 0).toLocaleString()}</span></div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}>DST <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{battle.attacker.divisionsDestroyed}</span></div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid rgba(255,255,255,0.05)', borderRight: '1px solid rgba(255,255,255,0.05)', padding: '0 10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 900, color: '#64748b', fontFamily: 'var(--font-display)' }}>T{battle.ticksElapsed}</span>
+                  </div>
+                  <div style={{ padding: '6px 8px', borderRight: `2px solid ${defClr}`, textAlign: 'right' }}>
+                    <div style={{ fontSize: '8px', fontWeight: 900, color: defClr, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '4px' }}>DEFENDER</div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}><span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(battle.defender.damageDealt || 0).toLocaleString()}</span> DMG</div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}><span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(battle.defender.manpowerLost || 0).toLocaleString()}</span> KIA</div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}><span style={{ color: '#e2e8f0', fontWeight: 700 }}>{battle.defender.divisionsDestroyed}</span> DST</div>
+                  </div>
+                </div>
+
+                {/* Combat Log — Military Terminal */}
+                <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', overflow: 'hidden' }}>
+                  <div style={{ padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>▌ COMBAT LOG</span>
+                    <span style={{ fontSize: '8px', color: '#64748b' }}>{battle.combatLog.length} entries</span>
+                  </div>
+                  <div style={{ maxHeight: '260px', overflowY: 'auto', padding: '2px 0', fontFamily: 'var(--font-mono, "JetBrains Mono", "Fira Code", monospace)', fontSize: '9px', lineHeight: '1.5' }}>
+                    {battle.combatLog.length === 0 && (
+                      <div style={{ padding: '16px', textAlign: 'center', color: '#475569', fontSize: '10px' }}>⏳ Waiting for first combat tick...</div>
+                    )}
+                    {battle.combatLog.slice(-20).reverse().map((entry, i) => {
+                      // Color & prefix by type+side
+                      const isAtk = entry.side === 'attacker'
+                      let color = '#94a3b8'
+                      let prefix = '[---]'
+                      let bgTint = 'transparent'
+                      if (entry.type === 'damage' && isAtk) { color = '#f87171'; prefix = '[ATK]'; bgTint = 'rgba(239,68,68,0.04)' }
+                      else if (entry.type === 'damage' && !isAtk) { color = '#60a5fa'; prefix = '[DEF]'; bgTint = 'rgba(59,130,246,0.04)' }
+                      else if ((entry.type as string) === 'dodge') { color = '#fbbf24'; prefix = '[DGE]'; bgTint = 'rgba(251,191,36,0.04)' }
+                      else if ((entry.type as string) === 'crit') { color = '#fb923c'; prefix = '[CRT]'; bgTint = 'rgba(251,146,60,0.06)' }
+                      else if (entry.type === 'destroyed') { color = '#64748b'; prefix = '[KIA]'; bgTint = 'rgba(100,116,139,0.06)' }
+                      else if ((entry.type as string) === 'reinforcement') { color = '#22d38a'; prefix = '[RNF]'; bgTint = 'rgba(34,211,138,0.04)' }
+                      else if (entry.type === 'phase_change') { color = '#a78bfa'; prefix = '[SYS]'; bgTint = 'rgba(167,139,250,0.04)' }
+                      // Alternating row
+                      const rowBg = i % 2 === 0 ? bgTint : `rgba(255,255,255,0.015)`
+                      // Highlight numbers in message
+                      const msgParts = entry.message.replace(/^[⚔️🛡️💨💀🚀⏸️\s]+/, '').replace(/T\d+:\s*/, '').split(/(\d+)/g)
+                      return (
+                        <div key={`${entry.timestamp}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 8px', background: rowBg, borderLeft: `2px solid ${color}` }}>
+                          <span style={{ fontSize: '7px', fontWeight: 700, color: '#94a3b8', background: 'rgba(0,0,0,0.4)', padding: '1px 4px', borderRadius: '3px', flexShrink: 0, fontFamily: 'var(--font-mono, monospace)' }}>T{entry.tick}</span>
+                          <span style={{ fontWeight: 800, color, flexShrink: 0, letterSpacing: '0.5px' }}>{prefix}</span>
+                          <span style={{ color: '#94a3b8' }}>
+                            {msgParts.map((p, j) => /^\d+$/.test(p) ? <span key={j} style={{ color: '#e2e8f0', fontWeight: 700 }}>{p}</span> : <span key={j}>{p}</span>)}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
-            )}
+            </>)}
           </div>
         )
       })}
@@ -1145,6 +1520,7 @@ function CombatTab() {
           ))}
         </div>
       )}
+    </div>
     </div>
   )
 }

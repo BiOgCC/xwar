@@ -31,7 +31,7 @@ export interface MilitaryOperationDef {
   name: string
   description: string
   icon: string
-  cost: { energy: number; oil: number; materialX: number; bitcoin: number }
+  cost: { scrap: number; oil: number; materialX: number; bitcoin: number }
   targetType: MilTargetType
   requiresItem?: 'warship' | 'jet'
   requiresInfra?: 'port' | 'airport'
@@ -113,7 +113,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     id: 'assault', pillar: 'ground', battleType: 'assault',
     name: 'Assault', icon: '⚔️',
     description: 'Hit-and-run. Steal 10% of enemy national fund.',
-    cost: { energy: 500, oil: 1000, materialX: 500, bitcoin: 0 },
+    cost: { scrap: 500, oil: 1000, materialX: 500, bitcoin: 0 },
     targetType: 'adjacent_country', successChance: 70,
     effectDescription: 'Win → steal 10% of national fund. No occupation.',
   },
@@ -121,7 +121,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     id: 'invasion', pillar: 'ground', battleType: 'invasion',
     name: 'Invasion', icon: '🚩',
     description: 'Full conquest. Annex the region and claim 100% taxes.',
-    cost: { energy: 1000, oil: 2000, materialX: 1000, bitcoin: 1 },
+    cost: { scrap: 1000, oil: 2000, materialX: 1000, bitcoin: 1 },
     targetType: 'adjacent_country', successChance: 60,
     effectDescription: 'Win → conquer region, gain 100% tax benefit.',
   },
@@ -129,7 +129,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     id: 'occupation', pillar: 'ground', battleType: 'occupation',
     name: 'Occupation', icon: '🛡️',
     description: 'Silent takeover. Occupy without tax benefit.',
-    cost: { energy: 800, oil: 1500, materialX: 800, bitcoin: 0 },
+    cost: { scrap: 800, oil: 1500, materialX: 800, bitcoin: 0 },
     targetType: 'adjacent_country', successChance: 65,
     effectDescription: 'Win → occupy region (no taxes), infrastructure targeting enabled.',
   },
@@ -139,7 +139,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     id: 'air_strike', pillar: 'air', battleType: 'naval_strike', // reuses ns battle logic
     name: 'Air Strike', icon: '✈️',
     description: 'Strike any region with an airport. Requires a Jet.',
-    cost: { energy: 1500, oil: 3000, materialX: 2000, bitcoin: 2 },
+    cost: { scrap: 1500, oil: 3000, materialX: 2000, bitcoin: 2 },
     targetType: 'any_airport', requiresItem: 'jet', requiresInfra: 'airport',
     successChance: 75,
     effectDescription: 'Win → deals +5-20% bonus vs. bunkers. Non-adjacent reach.',
@@ -150,7 +150,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     id: 'naval_strike', pillar: 'naval', battleType: 'naval_strike',
     name: 'Naval Strike', icon: '⛴️',
     description: 'Hit non-adjacent coastal regions. Requires a Warship.',
-    cost: { energy: 1500, oil: 3000, materialX: 2000, bitcoin: 2 },
+    cost: { scrap: 1500, oil: 3000, materialX: 2000, bitcoin: 2 },
     targetType: 'any_coastal', requiresItem: 'warship', requiresInfra: 'port',
     successChance: 75,
     effectDescription: 'Win → deals +5-20% bonus vs. bunkers. Non-adjacent reach.',
@@ -161,7 +161,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     id: 'sabotage', pillar: 'special', battleType: 'sabotage',
     name: 'Sabotage', icon: '🔥',
     description: 'Destroy infrastructure. No occupation.',
-    cost: { energy: 600, oil: 800, materialX: 400, bitcoin: 0 },
+    cost: { scrap: 600, oil: 800, materialX: 400, bitcoin: 0 },
     targetType: 'adjacent_country', successChance: 80,
     effectDescription: 'Win → open sub-battles against bunkers/companies.',
   },
@@ -202,12 +202,13 @@ export const useMilitaryStore = create<MilitaryState>((set, get) => ({
     const iso = player.countryCode || 'US'
 
     // Cost check
-    if (player.stamina < opDef.cost.energy) return { success: false, message: 'Not enough energy.' }
+    if (player.scrap < opDef.cost.scrap) return { success: false, message: 'Not enough scrap.' }
     if (player.oil < opDef.cost.oil) return { success: false, message: 'Not enough oil.' }
     if (player.materialX < opDef.cost.materialX) return { success: false, message: 'Not enough Material X.' }
     if (player.bitcoin < opDef.cost.bitcoin) return { success: false, message: 'Not enough Bitcoin.' }
 
     // Deduct costs
+    player.spendScraps(opDef.cost.scrap)
     player.spendOil(opDef.cost.oil)
     player.spendMaterialX(opDef.cost.materialX)
     if (opDef.cost.bitcoin > 0) player.spendBitcoin(opDef.cost.bitcoin)

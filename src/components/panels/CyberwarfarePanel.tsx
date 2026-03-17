@@ -272,7 +272,7 @@ export default function CyberwarfarePanel() {
               {/* Cost Breakdown */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', margin: '8px 0' }}>
                 <div style={{ fontSize: '10px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px' }}>
-                  ⚡ Energy: {selectedOp.cost.energy.toLocaleString()}
+                  🔩 Scrap: {selectedOp.cost.scrap.toLocaleString()}
                 </div>
                 <div style={{ fontSize: '10px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px' }}>
                   ⚛️ MatX: {selectedOp.cost.materialX.toLocaleString()}

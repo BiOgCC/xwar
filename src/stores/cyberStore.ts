@@ -29,7 +29,7 @@ export interface CyberOperationDef {
   name: string
   description: string
   icon: string
-  cost: { energy: number; materialX: number; oil: number; bitcoin: number }
+  cost: { scrap: number; materialX: number; oil: number; bitcoin: number }
   targetType: TargetType
   targetOptions?: string[] // For company_type
   successChance: number // 0-100
@@ -48,7 +48,7 @@ export interface CyberCampaign {
   targetRegion?: string
   targetPlayer?: string
   targetCompanyType?: string
-  energyCost: number
+  scrapCost: number
   materialXCost: number
   oilCost: number
   bitcoinCost: number
@@ -94,28 +94,28 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   {
     id: 'resource_intel', pillar: 'espionage', name: 'Resource Intelligence Report',
     icon: '📊', description: 'Gather economic intelligence: national funds, citizen-owned food & ammo supplies.',
-    cost: { energy: 1000, materialX: 5000, oil: 2000, bitcoin: 1 },
+    cost: { scrap: 1000, materialX: 5000, oil: 2000, bitcoin: 1 },
     targetType: 'country', successChance: 80, detectionChance: 30,
     duration: 0, effectDescription: 'Report: National fund breakdown, citizen food & bullet reserves.',
   },
   {
     id: 'military_intel', pillar: 'espionage', name: 'Military Intelligence Report',
     icon: '🎖️', description: 'Scan ports, airports, bunkers, military bases and report citizen-owned jets, warships & tanks.',
-    cost: { energy: 1500, materialX: 7000, oil: 2500, bitcoin: 1 },
+    cost: { scrap: 1500, materialX: 7000, oil: 2500, bitcoin: 1 },
     targetType: 'country', successChance: 80, detectionChance: 30,
     duration: 0, effectDescription: 'Report: Infrastructure levels, jets, warships, tanks owned by citizens.',
   },
   {
     id: 'infrastructure_scan', pillar: 'espionage', name: 'Regional Infrastructure Scan',
     icon: '🏗️', description: 'Scan active companies, worker counts, owned materials, and tax revenue in a region.',
-    cost: { energy: 2000, materialX: 9000, oil: 3000, bitcoin: 1 },
+    cost: { scrap: 2000, materialX: 9000, oil: 3000, bitcoin: 1 },
     targetType: 'country', successChance: 80, detectionChance: 30,
     duration: 0, effectDescription: 'Report: Active companies, workers, materials, tax generated.',
   },
   {
     id: 'blueprint_loot', pillar: 'espionage', name: 'Blueprint Loot Operation',
     icon: '🔓', description: 'Copy a prestigious blueprint from a top player and distribute untradable copies to your citizens.',
-    cost: { energy: 3000, materialX: 12000, oil: 3500, bitcoin: 1 },
+    cost: { scrap: 3000, materialX: 12000, oil: 3500, bitcoin: 1 },
     targetType: 'player', successChance: 80, detectionChance: 30,
     duration: 0, effectDescription: 'Copy prestigious blueprint. Citizens receive untradable copy. Enables crafting.',
   },
@@ -124,7 +124,7 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   {
     id: 'company_sabotage', pillar: 'sabotage', name: 'Company Sabotage',
     icon: '🔌', description: 'Infiltrate any company and steal 20% of production for 24 hours. Distributed to attacker citizens.',
-    cost: { energy: 2000, materialX: 10000, oil: 4000, bitcoin: 1 },
+    cost: { scrap: 2000, materialX: 10000, oil: 4000, bitcoin: 1 },
     targetType: 'country', successChance: 80, detectionChance: 30,
     duration: 24 * 60 * 60 * 1000, // 24 hours
     effectDescription: 'Steal 20% production from ALL companies for 24h. Distributed to citizens.',
@@ -132,7 +132,7 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   {
     id: 'logistics_disruption', pillar: 'sabotage', name: 'Logistics Disruption',
     icon: '🚚', description: 'Disable ports or airports in the target region for 48 hours.',
-    cost: { energy: 2500, materialX: 12000, oil: 4500, bitcoin: 1 },
+    cost: { scrap: 2500, materialX: 12000, oil: 4500, bitcoin: 1 },
     targetType: 'country', successChance: 85, detectionChance: 20,
     duration: 48 * 60 * 60 * 1000, // 48 hours
     effectDescription: 'Disables Port or Airport in target country for 48h. Blocks Naval/Air Strikes.',
@@ -140,7 +140,7 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   {
     id: 'bunker_override', pillar: 'sabotage', name: 'Bunker Override',
     icon: '🏰', description: 'Override bunker defenses, reducing defense by 50% for 24 hours.',
-    cost: { energy: 3000, materialX: 15000, oil: 5000, bitcoin: 1 },
+    cost: { scrap: 3000, materialX: 15000, oil: 5000, bitcoin: 1 },
     targetType: 'country', successChance: 80, detectionChance: 30,
     duration: 24 * 60 * 60 * 1000, // 24 hours
     effectDescription: 'Bunker defense -50% for 24 hours.',
@@ -148,7 +148,7 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   {
     id: 'power_grid_attack', pillar: 'sabotage', name: 'Power Grid Attack',
     icon: '⚡', description: 'Attack the power grid, stopping company production.',
-    cost: { energy: 3500, materialX: 18000, oil: 5500, bitcoin: 1 },
+    cost: { scrap: 3500, materialX: 18000, oil: 5500, bitcoin: 1 },
     targetType: 'region', successChance: 80, detectionChance: 30,
     duration: 90 * 60 * 1000, // 90 min
     effectDescription: '33% companies in region stop production for 90 minutes.',
@@ -158,7 +158,7 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   {
     id: 'disinformation', pillar: 'propaganda', name: 'Disinformation Campaign',
     icon: '📰', description: 'Spread fake alerts to create confusion.',
-    cost: { energy: 1500, materialX: 8000, oil: 2500, bitcoin: 1 },
+    cost: { scrap: 1500, materialX: 8000, oil: 2500, bitcoin: 1 },
     targetType: 'country', successChance: 80, detectionChance: 30,
     duration: 30 * 60 * 1000, // 30 min
     effectDescription: 'Fake invasion/mission/cyber alerts for 30 minutes.',
@@ -166,7 +166,7 @@ export const CYBER_OPERATIONS: CyberOperationDef[] = [
   {
     id: 'botnet_attack', pillar: 'propaganda', name: 'Botnet Attack',
     icon: '🤖', description: 'Flood enemy combat logs with 300K fake damage.',
-    cost: { energy: 4000, materialX: 20000, oil: 6000, bitcoin: 1 },
+    cost: { scrap: 4000, materialX: 20000, oil: 6000, bitcoin: 1 },
     targetType: 'battle', successChance: 80, detectionChance: 30,
     duration: 60 * 60 * 1000, // 60 min
     effectDescription: '300,000 fake damage in battle log. Does NOT affect capture.',
@@ -225,11 +225,13 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     const { cost } = opDef
 
     // Check resources
+    if (player.scrap < cost.scrap) return { success: false, message: 'Not enough Scrap.' }
     if (player.oil < cost.oil) return { success: false, message: 'Not enough Oil.' }
     if (player.materialX < cost.materialX) return { success: false, message: 'Not enough Material X.' }
     if (player.bitcoin < cost.bitcoin) return { success: false, message: 'Not enough Bitcoin.' }
 
     // Deduct resources
+    player.spendScraps(cost.scrap)
     player.spendOil(cost.oil)
     player.spendMaterialX(cost.materialX)
     player.spendBitcoin(cost.bitcoin)
@@ -247,7 +249,7 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       targetRegion: target.region,
       targetPlayer: target.player,
       targetCompanyType: target.companyType,
-      energyCost: cost.energy,
+      scrapCost: cost.scrap,
       materialXCost: cost.materialX,
       oilCost: cost.oil,
       bitcoinCost: cost.bitcoin,
