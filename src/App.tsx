@@ -10,6 +10,7 @@ import { useCyberStore } from './stores/cyberStore'
 import { useArmyStore, rollStarQuality } from './stores/armyStore'
 import { useGovernmentStore } from './stores/governmentStore'
 import { useRegionStore } from './stores/regionStore'
+import { useMarketStore } from './stores/marketStore'
 import type { Region } from './stores/regionStore'
 import GameMap from './components/map/GameMap'
 import { COUNTRY_CENTROIDS } from './components/map/GameMap'
@@ -24,6 +25,8 @@ import MissionsPanel from './components/panels/MissionsPanel'
 import PrestigePanel from './components/panels/PrestigePanel'
 import WarPanel from './components/panels/WarPanel'
 import ForeignCountryPanel from './components/panels/ForeignCountryPanel'
+import MarketPanel from './components/panels/MarketPanel'
+import CompaniesPanel from './components/panels/CompaniesPanel'
 
 const SIDEBAR_CIVILIAN = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
@@ -182,6 +185,7 @@ function App() {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           useCompanyStore.getState().processTick()
+          useMarketStore.getState().tickPrices()
           return 1800
         }
         return prev - 1
@@ -584,22 +588,9 @@ function App() {
               {activePanel === 'combat' && <WarPanel />}
               {activePanel === 'foreign_country' && <ForeignCountryPanel />}
               {activePanel === 'market' && (
-                <div className="hud-card">
-                  <div className="hud-card__title">📊 MARKET PRICES</div>
-                  <div className="hud-market-list">
-                    <div className="hud-market-row"><span>🌾 Food</span><span className="hud-market-price">$12.50</span><span className="hud-market-change hud-market-change--up">+3.2%</span></div>
-                    <div className="hud-market-row"><span>🛢️ Oil</span><span className="hud-market-price">$28.70</span><span className="hud-market-change hud-market-change--down">-1.8%</span></div>
-                    <div className="hud-market-row"><span>⚛️ Material X</span><span className="hud-market-price">$450</span><span className="hud-market-change hud-market-change--up">+12.5%</span></div>
-                    <div className="hud-market-row"><span>⚔️ Equipment</span><span className="hud-market-price">$85</span><span className="hud-market-change hud-market-change--up">+0.5%</span></div>
-                  </div>
-                </div>
+                <MarketPanel />
               )}
-              {activePanel === 'companies' && (
-                <div className="hud-card">
-                  <div className="hud-card__title">🏭 YOUR COMPANIES</div>
-                  <p className="hud-card__text">You own {player.companiesOwned} companies producing resources each turn.</p>
-                </div>
-              )}
+              {activePanel === 'companies' && <CompaniesPanel />}
               {activePanel === 'resources' && (
                 <>
                   <div className="hud-card">

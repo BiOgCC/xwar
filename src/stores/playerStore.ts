@@ -54,6 +54,9 @@ export interface PlayerState {
   bitcoin: number
   companiesOwned: number
   lootBoxes: number
+  militaryBoxes: number
+  staminaPills: number
+  energyLeaves: number
   lootChancePool: number
 
   // XP & Leveling
@@ -89,6 +92,8 @@ export interface PlayerState {
   equipAmmo: (type: 'none' | 'green' | 'blue' | 'purple' | 'red') => void
   consumeFood: (type: 'bread' | 'sushi' | 'wagyu') => boolean
   buyResource: (resource: 'food' | 'oil' | 'materialX', amount: number, cost: number) => void
+  buyItem: (itemKey: keyof PlayerState, amount: number, cost: number) => boolean
+  sellItem: (itemKey: keyof PlayerState, amount: number, price: number) => boolean
   earnMoney: (amount: number) => void
   gainXP: (amount: number) => void
   consumeBar: (bar: 'stamina' | 'hunger' | 'entrepreneurship' | 'work', amount: number) => void
@@ -138,6 +143,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   bitcoin: 10000,
   companiesOwned: 3,
   lootBoxes: 5,
+  militaryBoxes: 0,
+  staminaPills: 0,
+  energyLeaves: 0,
   lootChancePool: 0,
 
   level: 12,
@@ -307,6 +315,33 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       money: Math.max(0, s.money - cost),
       [resource]: (s as any)[resource] + amount,
     })),
+
+  buyItem: (itemKey, amount, cost) => {
+    let success = false
+    set((s) => {
+      if (s.money < cost) return {}
+      success = true
+      return {
+        money: s.money - cost,
+        [itemKey]: ((s[itemKey] as number) || 0) + amount,
+      } as Partial<PlayerState>
+    })
+    return success
+  },
+
+  sellItem: (itemKey, amount, price) => {
+    let success = false
+    set((s) => {
+      const currentAmount = (s[itemKey] as number) || 0
+      if (currentAmount < amount) return {}
+      success = true
+      return {
+        money: s.money + price,
+        [itemKey]: currentAmount - amount,
+      } as Partial<PlayerState>
+    })
+    return success
+  },
 
   earnMoney: (amount) =>
     set((s) => ({ money: s.money + amount })),

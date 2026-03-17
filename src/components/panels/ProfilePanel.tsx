@@ -32,10 +32,10 @@ export default function ProfilePanel() {
   const player = usePlayerStore()
 
   const barData = [
-    { label: 'STAMINA', value: player.stamina, max: player.maxStamina, color: '#ef4444', icon: '⚡' },
-    { label: 'HUNGER', value: player.hunger, max: player.maxHunger, color: '#f59e0b', icon: '🍖' },
-    { label: 'ENTERPRISE', value: player.entrepreneurship, max: player.maxEntrepreneurship, color: '#a855f7', icon: '💼' },
-    { label: 'WORK', value: player.work, max: player.maxWork, color: '#3b82f6', icon: '🔨' },
+    { label: 'STAMINA',    value: player.stamina,          max: player.maxStamina,          color: '#ef4444', grad: 'linear-gradient(90deg, #dc2626, #ef4444, #f87171)', icon: '⚡' },
+    { label: 'HUNGER',     value: player.hunger,           max: player.maxHunger,           color: '#f59e0b', grad: 'linear-gradient(90deg, #d97706, #f59e0b, #fbbf24)', icon: '🍖' },
+    { label: 'ENTERPRISE', value: player.entrepreneurship, max: player.maxEntrepreneurship, color: '#a855f7', grad: 'linear-gradient(90deg, #9333ea, #a855f7, #c084fc)', icon: '💼' },
+    { label: 'WORK',       value: player.work,             max: player.maxWork,             color: '#3b82f6', grad: 'linear-gradient(90deg, #2563eb, #3b82f6, #60a5fa)', icon: '🔨' },
   ]
   return (
     <div className="profile-panel">
@@ -44,7 +44,7 @@ export default function ProfilePanel() {
         {barData.map((bar) => (
           <div key={bar.label} className="profile-bar">
             <div className="profile-bar__header">
-              <span className="profile-bar__icon">{bar.icon}</span>
+              <span className="profile-bar__icon" style={{ color: bar.color }}>{bar.icon}</span>
               <span className="profile-bar__label">{bar.label}</span>
               <span className="profile-bar__value">{Math.round(bar.value)}/{bar.max}</span>
             </div>
@@ -52,9 +52,9 @@ export default function ProfilePanel() {
               <div
                 className="profile-bar__fill"
                 style={{
-                  width: `${(bar.value / bar.max) * 100}%`,
-                  background: bar.color,
-                  boxShadow: `0 0 8px ${bar.color}66`,
+                  width: `${Math.min(100, (bar.value / bar.max) * 100)}%`,
+                  background: bar.grad,
+                  boxShadow: `0 0 10px ${bar.color}55, 0 0 4px ${bar.color}33`,
                 }}
               />
             </div>

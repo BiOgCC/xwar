@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useSkillsStore } from '../../stores/skillsStore'
@@ -32,7 +32,6 @@ export default function CompaniesTab() {
 
   const spawnFloating = (e: React.MouseEvent, text: string, color?: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    // Spawn just above the button
     uiStore.addFloatingText(text, rect.left + rect.width / 2, rect.top, color)
   }
 
@@ -83,160 +82,138 @@ export default function CompaniesTab() {
   const handleJoinJob = (jobId: string) => {
     companyStore.setActiveJob(jobId)
     flash(`🤝 Joined ${companyStore.jobs.find(j => j.id === jobId)?.employerName}'s company`)
-    setShowJobs(false) // Send them back to My Business
+    setShowJobs(false)
   }
 
   const handleWork = (e: React.MouseEvent) => {
     const result = companyStore.doWork()
     if (result) {
-      if (result.type === 'error') {
-        flash(result.message)
-      } else {
-        spawnFloating(e, result.message, '#3b82f6')
-      }
+      if (result.type === 'error') flash(result.message)
+      else spawnFloating(e, result.message, '#3b82f6')
     }
   }
 
-  const renderJobCard = (job: typeof companyStore.jobs[0], isMyBusinessView: boolean) => {
-    const template = COMPANY_TEMPLATES[job.companyType]
-    const prodSkill = skills.economic.production
-    const baseProd = 10 + (prodSkill * 5)
-    const contribution = Math.floor(baseProd * (1 + job.productionBonus / 100))
-    const estimatedPay = Math.floor(contribution * job.payPerPP)
-    const estimatedTax = Math.floor(estimatedPay * 0.10)
-    const netPay = estimatedPay - Math.floor(estimatedTax / 2)
-    const isActiveJob = companyStore.activeJobId === job.id
-    const country = worldStore.getCountry(job.location)
-
-    return (
-      <div key={job.id} className="comp-card comp-card--job" style={{ borderColor: `${template.color}33` }}>
-        <div className="comp-card__top">
-          <span className="comp-card__icon" style={{ color: template.color }}>
-            {template.icon}
-          </span>
-          <div className="comp-card__info">
-            <span className="comp-card__name">{job.employerName}</span>
-            <div className="comp-card__meta">
-              <span className="comp-card__level" style={{ color: template.color }}>
-                {template.label} LVL {job.companyLevel}
-              </span>
-              {job.productionBonus > 0 && <span className="comp-card__bonus">+{job.productionBonus}%</span>}
-              {job.companyType === 'prospection_center' ? (
-                <span className="comp-card__bonus" style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>+{(job.companyLevel * 5) + ((skills.economic.prospection || 0) * 5)}% CHANCE</span>
-              ) : (
-                <span className="comp-card__bonus" style={{ background: 'rgba(34,211,138,0.2)', color: '#22d38a' }}>+{job.companyLevel} PP</span>
-              )}
-              <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>📍{country?.code || job.location}</span>
-            </div>
-          </div>
-          <div className="comp-job-pay">
-            <span className="comp-job-pay__amount">${job.payPerPP.toFixed(1)}</span>
-            <span className="comp-job-pay__label">per PP</span>
-          </div>
-        </div>
-
-        <div className="comp-job-stats">
-          <span>~{contribution} PP → <strong>~${netPay}</strong> net</span>
-          <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>Tax: ${estimatedTax} (50/50)</span>
-        </div>
-
-        {isMyBusinessView && isActiveJob ? (
-          <button
-            className="comp-action comp-action--work"
-            onClick={(e) => handleWork(e)}
-            disabled={player.work <= 0}
-          >
-            🔨 Work
-          </button>
-        ) : isActiveJob ? (
-          <button className="comp-action comp-action--work" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-            🟢 Current Job
-          </button>
-        ) : (
-          <button
-            className="comp-action comp-action--build"
-            style={{ background: 'transparent', color: template.color, borderColor: `${template.color}66` }}
-            onClick={() => handleJoinJob(job.id)}
-          >
-            🤝 Join Job
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  const activeJob = companyStore.activeJobId 
-    ? companyStore.jobs.find(j => j.id === companyStore.activeJobId) 
+  const activeJob = companyStore.activeJobId
+    ? companyStore.jobs.find(j => j.id === companyStore.activeJobId)
     : null
 
   const itemsInBusinessStr = companyStore.companies.length + (activeJob ? 1 : 0)
 
   return (
-    <div className="comp-tab">
+    <div className="ctab">
+      {/* Toast */}
       {toast && (
-        <div className={`comp-toast ${toast.startsWith('🎉') ? 'comp-toast--deposit' : ''}`}>
+        <div className={`ctab-toast ${toast.startsWith('🎉') ? 'ctab-toast--gold' : ''}`}>
           {toast}
         </div>
       )}
 
-      {/* Tab Switcher: My Business / Jobs */}
-      <div className="comp-mode-switch">
+      {/* ── Mode Switch ─────────────────────────────── */}
+      <div className="ctab-switch">
         <button
-          className={`comp-mode-btn ${!showJobs ? 'comp-mode-btn--active' : ''}`}
+          className={`ctab-switch__btn ${!showJobs ? 'ctab-switch__btn--active' : ''}`}
           onClick={() => setShowJobs(false)}
         >
-          🏢 My Business ({itemsInBusinessStr})
+          <span>🏢</span>
+          <span>My Business</span>
+          <span className="ctab-switch__count">{itemsInBusinessStr}</span>
         </button>
         <button
-          className={`comp-mode-btn ${showJobs ? 'comp-mode-btn--active' : ''}`}
+          className={`ctab-switch__btn ${showJobs ? 'ctab-switch__btn--active' : ''}`}
           onClick={() => setShowJobs(true)}
         >
-          🔨 Jobs Board ({companyStore.jobs.length})
+          <span>🔨</span>
+          <span>Jobs Board</span>
+          <span className="ctab-switch__count">{companyStore.jobs.length}</span>
         </button>
       </div>
 
-      {/* === MY BUSINESS === */}
+      {/* ── MY BUSINESS ──────────────────────────────── */}
       {!showJobs && (
         <>
-          {/* INVENTORY SUMMARY */}
+          {/* Inventory Summary */}
           <InventorySummary />
 
-          {/* MY JOB SECTION */}
-          <div className="comp-header">
-            <span className="comp-header__title">MY JOB</span>
-            <span className="comp-header__subtitle">
+          {/* MY JOB */}
+          <div className="ctab-section-hdr">
+            <div className="ctab-section-hdr__left">
+              <span className="ctab-section-hdr__dot" style={{ background: '#3b82f6' }} />
+              <span className="ctab-section-hdr__title">MY JOB</span>
+            </div>
+            <span className="ctab-section-hdr__badge" style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}>
               🔨 Work: {Math.round(player.work)}/{player.maxWork}
             </span>
           </div>
-          
-          <div className="comp-list" style={{ marginBottom: '24px' }}>
-            {activeJob ? (
-              renderJobCard(activeJob, true)
-            ) : (
-              <div className="comp-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', border: '1px dashed rgba(255,255,255,0.2)', background: 'transparent' }}>
-                <span style={{ color: 'rgba(255,255,255,0.6)', marginBottom: '12px', fontSize: '12px' }}>You don't have an active job</span>
-                <button 
-                  className="comp-action comp-action--build" 
-                  onClick={() => setShowJobs(true)}
-                  style={{ width: 'auto', padding: '8px 24px', background: 'transparent', borderColor: '#22d38a', color: '#22d38a' }}
-                >
-                  🤝 Take a Job
+
+          <div style={{ marginBottom: '16px' }}>
+            {activeJob ? (() => {
+              const template = COMPANY_TEMPLATES[activeJob.companyType]
+              const prodSkill = skills.economic.production
+              const baseProd = 10 + (prodSkill * 5)
+              const contribution = Math.floor(baseProd * (1 + activeJob.productionBonus / 100))
+              const estimatedPay = Math.floor(contribution * activeJob.payPerPP)
+              const netPay = estimatedPay - Math.floor(estimatedPay * 0.05)
+              const country = worldStore.getCountry(activeJob.location)
+              return (
+                <div className="ctab-job-card" style={{ borderColor: `${template.color}40` }}>
+                  <div className="ctab-job-card__header" style={{ background: `linear-gradient(135deg, ${template.color}15, transparent)` }}>
+                    <div className="ctab-job-card__icon" style={{ color: template.color, background: `${template.color}20`, border: `1px solid ${template.color}40` }}>
+                      {template.icon}
+                    </div>
+                    <div className="ctab-job-card__info">
+                      <span className="ctab-job-card__employer">{activeJob.employerName}</span>
+                      <div className="ctab-job-card__meta">
+                        <span style={{ color: template.color, fontSize: '9px', fontWeight: 700 }}>{template.label} LVL {activeJob.companyLevel}</span>
+                        {activeJob.productionBonus > 0 && <span className="ctab-badge ctab-badge--green">+{activeJob.productionBonus}%</span>}
+                        <span className="ctab-badge" style={{ color: '#94a3b8' }}>📍{country?.code || activeJob.location}</span>
+                      </div>
+                    </div>
+                    <div className="ctab-job-card__pay">
+                      <span className="ctab-job-card__pay-num">${activeJob.payPerPP.toFixed(1)}</span>
+                      <span className="ctab-job-card__pay-lbl">per PP</span>
+                    </div>
+                  </div>
+                  <div className="ctab-job-card__stats">
+                    <span>~{contribution} PP</span>
+                    <span>→</span>
+                    <span style={{ color: '#22d38a', fontWeight: 700 }}>~${netPay} net</span>
+                    <span style={{ color: '#64748b', marginLeft: 'auto', fontSize: '8px' }}>Tax: ${Math.floor(estimatedPay * 0.1)}</span>
+                  </div>
+                  <button
+                    className="ctab-job-card__work-btn"
+                    onClick={handleWork}
+                    disabled={player.work <= 0}
+                  >
+                    🔨 Work Now
+                  </button>
+                </div>
+              )
+            })() : (
+              <div className="ctab-empty-job">
+                <span className="ctab-empty-job__icon">💼</span>
+                <span className="ctab-empty-job__text">No active job</span>
+                <button className="ctab-empty-job__btn" onClick={() => setShowJobs(true)}>
+                  🤝 Browse Jobs
                 </button>
               </div>
             )}
           </div>
 
-          <div className="comp-header">
-            <span className="comp-header__title">MY COMPANIES</span>
-            <span className="comp-header__subtitle">
-              💼 Ent: {Math.round(player.entrepreneurship)}/{player.maxEntrepreneurship}
-            </span>
-            <button className="comp-build-btn" onClick={() => setShowBuild(true)}>
+          {/* MY COMPANIES */}
+          <div className="ctab-section-hdr">
+            <div className="ctab-section-hdr__left">
+              <span className="ctab-section-hdr__dot" style={{ background: '#22d38a' }} />
+              <span className="ctab-section-hdr__title">MY COMPANIES</span>
+              <span className="ctab-section-hdr__badge" style={{ background: 'rgba(168,85,247,0.12)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.25)' }}>
+                💼 Ent: {Math.round(player.entrepreneurship)}/{player.maxEntrepreneurship}
+              </span>
+            </div>
+            <button className="ctab-build-btn" onClick={() => setShowBuild(true)}>
               + Build
             </button>
           </div>
 
-          <div className="comp-list">
+          <div className="ctab-company-list">
             {companyStore.companies.map((company) => {
               const template = COMPANY_TEMPLATES[company.type]
               const bonus = getLocationBonus(company)
@@ -244,116 +221,123 @@ export default function CompaniesTab() {
               const isFull = company.productionProgress >= company.productionMax
               const hasActiveJob = companyStore.jobs.some(j => j.companyId === company.id)
               const countryObj = worldStore.getCountry(company.location)
+              const pct = Math.min(100, Math.floor(company.productionProgress / company.productionMax * 100))
+              const isDisabled = company.disabledUntil && Date.now() < company.disabledUntil
 
               return (
-                <div key={company.id} className="comp-card" style={{ borderColor: `${template.color}33` }}>
-                  <div className="comp-card__top">
-                    <span className="comp-card__icon" style={{ color: template.color }}>
+                <div
+                  key={company.id}
+                  className={`ctab-company-card ${isDisabled ? 'ctab-company-card--disabled' : ''}`}
+                  style={{ borderColor: `${template.color}35` }}
+                >
+                  {/* Card Header */}
+                  <div className="ctab-company-card__header" style={{ background: `linear-gradient(135deg, ${template.color}12, transparent 80%)` }}>
+                    <div className="ctab-company-card__icon" style={{ color: template.color, background: `${template.color}18`, border: `1px solid ${template.color}35` }}>
                       {template.icon}
-                    </span>
-                    <div className="comp-card__info">
-                      <span className="comp-card__name">{template.label}</span>
-                      <div className="comp-card__meta">
-                        <span className="comp-card__level" style={{ color: template.color }}>
-                          LVL {company.level}
-                        </span>
-                        {bonus > 0 && <span className="comp-card__bonus">+{bonus}%</span>}
-                        {isProspector ? (
-                          <span className="comp-card__bonus" style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>+{(company.level * 5) + ((skills.economic.prospection || 0) * 5)}% CHANCE</span>
-                        ) : (
-                          <span className="comp-card__bonus" style={{ background: 'rgba(34,211,138,0.2)', color: '#22d38a' }}>+{company.level} PP</span>
-                        )}
-                        {company.autoProduction && (
-                          <span className="comp-card__auto">⚡ AUTO</span>
-                        )}
-                        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>📍{countryObj?.code || company.location}</span>
-                        {hasActiveJob && (
-                          <span style={{ fontSize: '9px', color: '#22d38a', marginLeft: '4px' }}>📋 Job Active</span>
-                        )}
+                    </div>
+
+                    <div className="ctab-company-card__title-block">
+                      <div className="ctab-company-card__name">{template.label}</div>
+                      <div className="ctab-company-card__tags">
+                        <span className="ctab-lvl-badge" style={{ color: template.color, borderColor: `${template.color}40` }}>LVL {company.level}</span>
+                        {bonus > 0 && <span className="ctab-badge ctab-badge--green">+{bonus}%</span>}
+                        {isProspector
+                          ? <span className="ctab-badge" style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa' }}>+{(company.level * 5) + ((skills.economic.prospection || 0) * 5)}% CHANCE</span>
+                          : <span className="ctab-badge ctab-badge--green">+{company.level} PP</span>
+                        }
+                        {company.autoProduction && <span className="ctab-badge ctab-badge--amber">⚡AUTO</span>}
+                        {hasActiveJob && <span className="ctab-badge" style={{ background: 'rgba(34,211,138,0.1)', color: '#22d38a' }}>📋 HIRING</span>}
                       </div>
                     </div>
-                    <span className="comp-card__produces">{template.produces}</span>
+
+                    <div className="ctab-company-card__meta-right">
+                      <span className="ctab-company-card__produces">{template.produces}</span>
+                      <span className="ctab-company-card__location">📍 {countryObj?.code || company.location}</span>
+                    </div>
                   </div>
 
-                  {/* Per-company production bar (not for prospector) */}
+                  {/* Production Bar (not prospector) */}
                   {!isProspector && (
-                    <div className="comp-prod-bar">
-                      <div className="comp-prod-bar__track">
+                    <div className="ctab-prod-section">
+                      <div className="ctab-prod-bar">
                         <div
-                          className="comp-prod-bar__fill"
+                          className={`ctab-prod-bar__fill ${isFull ? 'ctab-prod-bar__fill--full' : ''}`}
                           style={{
-                            width: `${Math.min(100, Math.floor(company.productionProgress / company.productionMax * 100))}%`,
-                            background: template.color,
-                            boxShadow: `0 0 6px ${template.color}66`,
+                            width: `${pct}%`,
+                            background: isFull
+                              ? `linear-gradient(90deg, ${template.color}, #22d38a)`
+                              : `linear-gradient(90deg, ${template.color}88, ${template.color})`,
+                            boxShadow: isFull ? `0 0 10px ${template.color}88` : `0 0 5px ${template.color}44`,
                           }}
                         />
                       </div>
-                      <span className="comp-prod-bar__text">
-                        {Math.floor(company.productionProgress)} pts
-                        <span style={{ marginLeft: '8px', color: 'rgba(255,255,255,0.5)', fontSize: '10px' }}>
-                          +{Number((Math.min(6, company.level) * (1 + bonus / 100)).toFixed(2))} pts/tick
+                      <div className="ctab-prod-labels">
+                        <span className="ctab-prod-labels__pts">
+                          {Math.floor(company.productionProgress)}<span style={{ color: '#475569' }}>/{company.productionMax}</span>
                         </span>
-                      </span>
+                        <span className="ctab-prod-labels__tick">
+                          +{Number((Math.min(6, company.level) * (1 + bonus / 100)).toFixed(1))}/tick
+                        </span>
+                        <span className="ctab-prod-labels__pct" style={{ color: isFull ? '#22d38a' : '#64748b' }}>{pct}%</span>
+                      </div>
                     </div>
                   )}
 
-                  <div className="comp-card__actions">
+                  {/* Action buttons */}
+                  <div className="ctab-company-card__actions">
                     {isProspector ? (
                       <button
-                        className="comp-action comp-action--prospect"
+                        className="ctab-action-btn ctab-action-btn--prospect"
                         onClick={() => handleProspect(company.id)}
                         disabled={player.bitcoin < 1 || player.stamina < 10}
                       >
-                        ⛏️ Prospect (1₿ + 10 STA)
+                        ⛏️ Prospect <span style={{ opacity: 0.7 }}>1₿ + 10 STA</span>
                       </button>
                     ) : (
                       <>
                         <button
-                          className="comp-action comp-action--enterprise"
-                          onClick={(e) => handleEnterprise(e, company.id)}
+                          className="ctab-action-btn ctab-action-btn--enterprise"
+                          onClick={e => handleEnterprise(e, company.id)}
                           disabled={player.entrepreneurship <= 0 || isFull}
+                          title="Spend Entrepreneurship to fill production bar"
                         >
                           💼 Enterprise
                         </button>
                         <button
-                          className="comp-action comp-action--produce"
-                          onClick={(e) => handleProduce(e, company.id)}
+                          className="ctab-action-btn ctab-action-btn--produce"
+                          onClick={e => handleProduce(e, company.id)}
                           disabled={company.productionProgress <= 0}
+                          title="Convert production points to output"
                         >
                           ⚙️ Produce
                         </button>
                       </>
                     )}
                     <button
-                      className="comp-action comp-action--upgrade"
+                      className="ctab-action-btn ctab-action-btn--upgrade"
                       onClick={() => handleUpgrade(company.id)}
-                      title={`Cost: 1 Bitcoin`}
+                      title="Upgrade (1₿)"
                     >
-                      ⬆️
+                      ⬆️ <span style={{ opacity: 0.7 }}>1₿</span>
                     </button>
                   </div>
 
-                  <div className="comp-card__upgrade-cost">
-                    <span>Upgrade: </span>
-                    <span className="comp-cost-item" style={{ color: '#f59e0b' }}>₿ 1</span>
-                  </div>
-
-                  {/* Post Job / Move buttons */}
+                  {/* Post Job / Move row */}
                   {!isProspector && (
-                    <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                    <div className="ctab-company-card__footer">
                       {postJobCompanyId === company.id ? (
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', width: '100%' }}>
-                          <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)' }}>$/PP:</span>
+                        <div className="ctab-post-job-form">
+                          <span style={{ fontSize: '9px', color: '#94a3b8' }}>$/PP:</span>
                           <input
                             type="number"
                             step="0.5"
                             min="0.5"
                             value={postJobPayPerPP}
                             onChange={e => setPostJobPayPerPP(e.target.value)}
-                            style={{ width: '50px', fontSize: '10px', padding: '2px 4px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '4px' }}
+                            className="ctab-post-job-input"
                           />
                           <button
-                            style={{ fontSize: '9px', padding: '2px 6px', background: '#22d38a', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            className="ctab-footer-btn ctab-footer-btn--confirm"
                             onClick={() => {
                               const val = parseFloat(postJobPayPerPP)
                               if (val > 0 && companyStore.postJob(company.id, val)) {
@@ -363,29 +347,30 @@ export default function CompaniesTab() {
                             }}
                           >✓</button>
                           <button
-                            style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            className="ctab-footer-btn"
+                            style={{ color: '#94a3b8', border: '1px solid rgba(148,163,184,0.2)' }}
                             onClick={() => setPostJobCompanyId(null)}
                           >✕</button>
                         </div>
                       ) : (
                         <>
                           <button
-                            style={{ fontSize: '9px', padding: '2px 8px', background: 'transparent', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '4px', cursor: 'pointer', flex: 1 }}
+                            className="ctab-footer-btn ctab-footer-btn--post"
                             onClick={() => setPostJobCompanyId(company.id)}
                           >
                             {hasActiveJob ? '✏️ Edit Job' : '📋 Post Job'}
                           </button>
                           {hasActiveJob && (
                             <button
-                              style={{ fontSize: '9px', padding: '2px 8px', background: 'transparent', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '4px', cursor: 'pointer' }}
+                              className="ctab-footer-btn ctab-footer-btn--remove"
                               onClick={() => { companyStore.removeJob(company.id); flash('Job removed') }}
                             >🗑️</button>
                           )}
                           {moveCompanyId === company.id ? (
                             <select
-                              style={{ fontSize: '9px', padding: '2px', background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px' }}
+                              className="ctab-move-select"
                               value={company.location}
-                              onChange={(e) => {
+                              onChange={e => {
                                 if (companyStore.moveCompany(company.id, e.target.value)) {
                                   flash(`🚚 Moved to ${e.target.value}`)
                                 } else {
@@ -395,12 +380,12 @@ export default function CompaniesTab() {
                               }}
                             >
                               {worldStore.countries.map(c => (
-                                <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+                                <option key={c.code} value={c.code}>{c.code} – {c.name}</option>
                               ))}
                             </select>
                           ) : (
                             <button
-                              style={{ fontSize: '9px', padding: '2px 8px', background: 'transparent', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', cursor: 'pointer' }}
+                              className="ctab-footer-btn ctab-footer-btn--move"
                               onClick={() => setMoveCompanyId(company.id)}
                             >🚚 Move</button>
                           )}
@@ -415,13 +400,13 @@ export default function CompaniesTab() {
 
           {/* Deposit History */}
           {companyStore.deposits.length > 0 && (
-            <div className="comp-deposits">
-              <div className="comp-deposits__title">⛏️ DEPOSIT HISTORY</div>
-              {companyStore.deposits.slice(-5).reverse().map((dep) => (
-                <div key={dep.id} className="comp-deposit-row">
-                  <span className="comp-deposit-row__resource">{dep.resource}</span>
-                  <span className="comp-deposit-row__country">{dep.country}</span>
-                  <span className="comp-deposit-row__reward">+{dep.bitcoinReward} ₿</span>
+            <div className="ctab-log ctab-log--gold">
+              <div className="ctab-log__title">⛏️ DEPOSIT HISTORY</div>
+              {companyStore.deposits.slice(-5).reverse().map(dep => (
+                <div key={dep.id} className="ctab-log__row">
+                  <span className="ctab-log__name">{dep.resource}</span>
+                  <span className="ctab-log__sub">{dep.country}</span>
+                  <span className="ctab-log__val" style={{ color: '#f59e0b' }}>+{dep.bitcoinReward} ₿</span>
                 </div>
               ))}
             </div>
@@ -429,16 +414,12 @@ export default function CompaniesTab() {
 
           {/* Transaction Log */}
           {companyStore.transactions.length > 0 && (
-            <div className="comp-deposits" style={{ borderColor: 'rgba(34, 211, 138, 0.1)' }}>
-              <div className="comp-deposits__title" style={{ color: '#22d38a' }}>📜 TRANSACTION LOG</div>
-              {companyStore.transactions.slice(0, 10).map((tx) => (
-                <div key={tx.id} className="comp-deposit-row">
-                  <span className="comp-deposit-row__country">
-                    {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span className="comp-deposit-row__resource" style={{ marginLeft: 6, fontWeight: 500 }}>
-                    {tx.message}
-                  </span>
+            <div className="ctab-log ctab-log--green">
+              <div className="ctab-log__title">📜 TRANSACTION LOG</div>
+              {companyStore.transactions.slice(0, 8).map(tx => (
+                <div key={tx.id} className="ctab-log__row">
+                  <span className="ctab-log__sub">{new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="ctab-log__name" style={{ marginLeft: 6 }}>{tx.message}</span>
                 </div>
               ))}
             </div>
@@ -446,64 +427,108 @@ export default function CompaniesTab() {
         </>
       )}
 
-      {/* === JOBS BOARD === */}
+      {/* ── JOBS BOARD ───────────────────────────────── */}
       {showJobs && (
         <>
-          <div className="comp-header">
-            <span className="comp-header__title">WORK ON OTHERS' COMPANIES</span>
-            <span className="comp-header__subtitle">
+          <div className="ctab-section-hdr">
+            <div className="ctab-section-hdr__left">
+              <span className="ctab-section-hdr__dot" style={{ background: '#3b82f6' }} />
+              <span className="ctab-section-hdr__title">AVAILABLE JOBS</span>
+            </div>
+            <span className="ctab-section-hdr__badge" style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.25)' }}>
               🔨 Work: {Math.round(player.work)}/{player.maxWork}
             </span>
           </div>
 
-          <div className="comp-list">
-            {companyStore.jobs.map((job) => renderJobCard(job, false))}
+          <div className="ctab-company-list">
+            {companyStore.jobs.map(job => {
+              const template = COMPANY_TEMPLATES[job.companyType]
+              const prodSkill = skills.economic.production
+              const baseProd = 10 + (prodSkill * 5)
+              const contribution = Math.floor(baseProd * (1 + job.productionBonus / 100))
+              const estimatedPay = Math.floor(contribution * job.payPerPP)
+              const netPay = estimatedPay - Math.floor(estimatedPay * 0.05)
+              const isActiveJob = companyStore.activeJobId === job.id
+              const country = worldStore.getCountry(job.location)
+
+              return (
+                <div key={job.id} className="ctab-job-card" style={{ borderColor: isActiveJob ? `${template.color}60` : `${template.color}25` }}>
+                  <div className="ctab-job-card__header" style={{ background: `linear-gradient(135deg, ${template.color}${isActiveJob ? '20' : '10'}, transparent)` }}>
+                    <div className="ctab-job-card__icon" style={{ color: template.color, background: `${template.color}15`, border: `1px solid ${template.color}30` }}>
+                      {template.icon}
+                    </div>
+                    <div className="ctab-job-card__info">
+                      <span className="ctab-job-card__employer">{job.employerName}</span>
+                      <div className="ctab-job-card__meta">
+                        <span style={{ color: template.color, fontSize: '9px', fontWeight: 700 }}>{template.label} LVL {job.companyLevel}</span>
+                        {job.productionBonus > 0 && <span className="ctab-badge ctab-badge--green">+{job.productionBonus}%</span>}
+                        <span className="ctab-badge" style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.08)' }}>📍{country?.code || job.location}</span>
+                      </div>
+                    </div>
+                    <div className="ctab-job-card__pay">
+                      <span className="ctab-job-card__pay-num">${job.payPerPP.toFixed(1)}</span>
+                      <span className="ctab-job-card__pay-lbl">per PP</span>
+                    </div>
+                  </div>
+                  <div className="ctab-job-card__stats">
+                    <span>~{contribution} PP → <strong style={{ color: '#f0fdf4' }}>~${netPay}</strong> net</span>
+                    <span style={{ color: '#64748b', fontSize: '8px' }}>Tax: 10% split</span>
+                  </div>
+                  {isActiveJob ? (
+                    <button className="ctab-job-card__work-btn ctab-job-card__work-btn--active" onClick={handleWork} disabled={player.work <= 0}>
+                      🔨 Work Now
+                    </button>
+                  ) : (
+                    <button
+                      className="ctab-job-card__join-btn"
+                      style={{ borderColor: `${template.color}50`, color: template.color }}
+                      onClick={() => handleJoinJob(job.id)}
+                    >
+                      🤝 Join Job
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </>
       )}
 
-      {/* Build Modal */}
+      {/* ── BUILD MODAL ──────────────────────────────── */}
       {showBuild && (
-        <div className="inv-modal-overlay" onClick={() => setShowBuild(false)}>
-          <div className="inv-modal comp-build-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="inv-modal__title">🏗️ BUILD COMPANY</div>
-            <div className="comp-build-list">
-              {companyStore.getBuildableTypes().map((type) => {
+        <div className="ctab-modal-overlay" onClick={() => setShowBuild(false)}>
+          <div className="ctab-modal" onClick={e => e.stopPropagation()}>
+            <div className="ctab-modal__title">🏗️ BUILD COMPANY</div>
+            <div className="ctab-build-list">
+              {companyStore.getBuildableTypes().map(type => {
                 const t = COMPANY_TEMPLATES[type]
                 const canAfford = player.money >= t.buildCost.money && player.bitcoin >= t.buildCost.bitcoin
                 return (
-                  <div key={type} className="comp-build-item" style={{ borderColor: `${t.color}33` }}>
-                    <div className="comp-build-item__top">
-                      <span className="comp-build-item__icon" style={{ color: t.color }}>{t.icon}</span>
-                      <div className="comp-build-item__info">
-                        <span className="comp-build-item__name">{t.label}</span>
-                        <span className="comp-build-item__desc">{t.desc}</span>
+                  <div key={type} className="ctab-build-item" style={{ borderColor: `${t.color}30` }}>
+                    <div className="ctab-build-item__icon" style={{ color: t.color, background: `${t.color}18`, border: `1px solid ${t.color}30` }}>
+                      {t.icon}
+                    </div>
+                    <div className="ctab-build-item__info">
+                      <span className="ctab-build-item__name">{t.label}</span>
+                      <span className="ctab-build-item__desc">{t.desc}</span>
+                      <div className="ctab-build-item__cost">
+                        <span style={{ color: player.money >= t.buildCost.money ? '#22d38a' : '#ef4444' }}>💰 ${t.buildCost.money.toLocaleString()}</span>
+                        <span style={{ color: player.bitcoin >= t.buildCost.bitcoin ? '#22d38a' : '#ef4444' }}>₿ {t.buildCost.bitcoin}</span>
                       </div>
                     </div>
-                    <div className="comp-build-item__bottom">
-                      <div className="comp-build-item__cost">
-                        <span style={{ color: player.money >= t.buildCost.money ? '#22d38a' : '#ef4444' }}>
-                          💰 ${t.buildCost.money.toLocaleString()}
-                        </span>
-                        <span style={{ color: player.bitcoin >= t.buildCost.bitcoin ? '#22d38a' : '#ef4444' }}>
-                          ₿ {t.buildCost.bitcoin}
-                        </span>
-                      </div>
-                      <button
-                        className="comp-action comp-action--build"
-                        disabled={!canAfford}
-                        onClick={() => handleBuild(type)}
-                      >
-                        Build
-                      </button>
-                    </div>
+                    <button
+                      className={`ctab-build-item__btn ${canAfford ? 'ctab-build-item__btn--ready' : ''}`}
+                      disabled={!canAfford}
+                      onClick={() => handleBuild(type)}
+                      style={canAfford ? { borderColor: t.color, color: t.color } : {}}
+                    >
+                      Build
+                    </button>
                   </div>
                 )
               })}
             </div>
-            <button className="inv-btn inv-btn--cancel" style={{ width: '100%', marginTop: '8px' }} onClick={() => setShowBuild(false)}>
-              Cancel
-            </button>
+            <button className="ctab-modal__cancel" onClick={() => setShowBuild(false)}>Cancel</button>
           </div>
         </div>
       )}

@@ -92,12 +92,13 @@ input:focus, select:focus, textarea:focus {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-secondary);
+  background: rgba(34, 211, 138, 0.2);
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: rgba(34, 211, 138, 0.4);
+  box-shadow: 0 0 6px rgba(34, 211, 138, 0.3);
 }
 
 /* ---- Selection ---- */

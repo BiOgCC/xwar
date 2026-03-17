@@ -3,6 +3,7 @@ import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useUIStore } from '../../stores/uiStore'
 import { useSkillsStore } from '../../stores/skillsStore'
+import { useMarketStore } from '../../stores/marketStore'
 import {
   useInventoryStore,
   generateStats,
@@ -13,12 +14,18 @@ import {
   SLOT_ICONS,
   getItemImagePath,
   WEAPON_SUBTYPES,
+  SCRAP_VALUES,
   type EquipItem,
   type EquipSlot,
   type EquipTier,
   type EquipCategory,
   type WeaponSubtype,
 } from '../../stores/inventoryStore'
+
+/* equipment tier → market sell price (mirrors MarketPanel) */
+const TIER_SELL_PRICE: Record<EquipTier, number> = {
+  t1: 120, t2: 360, t3: 1200, t4: 4500, t5: 18000, t6: 80000
+}
 
 export default function InventoryTab() {
   const player = usePlayerStore()
@@ -521,10 +528,26 @@ export default function InventoryTab() {
               
               <button 
                 className="inv-btn" 
-                style={{ background: '#3b82f6', color: '#ffffff', opacity: 0.5, cursor: 'not-allowed' }}
-                title="Marketplace integration coming soon"
+                style={{ 
+                  background: selectedItem.equipped ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.2)', 
+                  color: selectedItem.equipped ? '#475569' : '#3b82f6',
+                  border: `1px solid ${selectedItem.equipped ? '#334155' : '#3b82f6'}`,
+                  cursor: selectedItem.equipped ? 'not-allowed' : 'pointer',
+                  opacity: selectedItem.equipped ? 0.5 : 1,
+                }}
+                disabled={selectedItem.equipped}
+                title={selectedItem.equipped ? 'Unequip first to sell' : `Sell for 🪙${TIER_SELL_PRICE[selectedItem.tier].toLocaleString()}`}
+                onClick={() => {
+                  if (selectedItem.equipped) return
+                  const gain = TIER_SELL_PRICE[selectedItem.tier]
+                  inventory.removeItem(selectedItem.id)
+                  usePlayerStore.setState(s => ({ money: s.money + gain }))
+                  useMarketStore.getState().executeTrade('equipment', 'sell', 1)
+                  ui.addFloatingText(`SOLD ${selectedItem.name} +🪙${gain.toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+                  setSelectedItem(null)
+                }}
               >
-                Sell to Market
+                💰 Sell to Market (🪙{TIER_SELL_PRICE[selectedItem.tier].toLocaleString()})
               </button>
               
               <button 
