@@ -1214,9 +1214,12 @@ function CombatTab() {
                 const sideColor = side === 'attacker' ? atkClr : defClr
                 return (
                   <div key={side} style={{ marginBottom: '4px' }}>
-                    <div style={{ fontSize: '7px', fontWeight: 900, color: sideColor, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '3px', borderLeft: `2px solid ${sideColor}`, paddingLeft: '4px' }}>
-                      {side.toUpperCase()}: {TACTICAL_ORDERS[currentOrder].label}
-                      {currentOrder !== 'none' && <span style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 600, marginLeft: '4px' }}>{TACTICAL_ORDERS[currentOrder].desc}</span>}
+                    <div style={{ fontSize: '7px', fontWeight: 900, color: sideColor, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '3px', borderLeft: `2px solid ${sideColor}`, paddingLeft: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>{side.toUpperCase()}: {TACTICAL_ORDERS[currentOrder].label}</span>
+                      {currentOrder !== 'none' && <span style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 600 }}>{TACTICAL_ORDERS[currentOrder].desc}</span>}
+                      {player.heroBuffTicksLeft > 0 && ((side === 'attacker' && iso === battle.attackerId) || (side === 'defender' && iso === battle.defenderId)) && (
+                        <span style={{ fontSize: '7px', fontWeight: 900, color: '#0a0a0a', background: 'linear-gradient(90deg, #f59e0b, #fbbf24)', padding: '1px 5px', borderRadius: '2px', letterSpacing: '0.5px', animation: 'pulse 2s infinite', marginLeft: 'auto' }}>HERO +10%</span>
+                      )}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '2px' }}>
                       {(['charge', 'fortify', 'precision', 'blitz'] as TacticalOrder[]).map(ord => {
