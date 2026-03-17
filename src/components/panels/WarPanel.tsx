@@ -433,6 +433,7 @@ function RecruitTab() {
             const fHp = (t.healthMult * (1 + sm.healthMult)).toFixed(2)
             const fDodge = (t.dodgeMult * (1 + sm.dodgeMult)).toFixed(2)
             const fArmor = (t.armorMult * (1 + sm.armorMult)).toFixed(2)
+            const fCritDmg = (t.critDmgMult * (1 + sm.critDmgMult)).toFixed(2)
             // DPT: matches combat formula (baseAtk + manpower*0.5) * atkDmgMult * shots/tick
             const effAtk = t.atkDmgMult * (1 + sm.atkDmgMult)
             const effSpeed = (t.attackSpeed || 1.0) * (1 + sm.attackSpeed)
@@ -463,13 +464,16 @@ function RecruitTab() {
                 <div className="war-recruit-card__desc">{t.description}</div>
 
                 <div className="war-recruit-card__stats">
+                  {/* Offensive */}
                   <div className="war-recruit-stat"><span>ATK</span><span className="war-recruit-stat__val" style={{ color: sm.atkDmgMult > 0 ? '#22d38a' : sm.atkDmgMult < 0 ? '#ef4444' : undefined }}>{fAtk}x</span></div>
-                  <div className="war-recruit-stat"><span>Hit</span><span className="war-recruit-stat__val" style={{ color: sm.hitRate > 0 ? '#22d38a' : sm.hitRate < 0 ? '#ef4444' : undefined }}>{fHit}%</span></div>
+                  <div className="war-recruit-stat"><span>Hit Rate</span><span className="war-recruit-stat__val" style={{ color: sm.hitRate > 0 ? '#22d38a' : sm.hitRate < 0 ? '#ef4444' : undefined }}>{fHit}%</span></div>
                   <div className="war-recruit-stat"><span>CRTH</span><span className="war-recruit-stat__val" style={{ color: sm.critRateMult > 0 ? '#22d38a' : sm.critRateMult < 0 ? '#ef4444' : undefined }}>{fCrit}x</span></div>
+                  <div className="war-recruit-stat"><span>CRTD</span><span className="war-recruit-stat__val" style={{ color: sm.critDmgMult > 0 ? '#22d38a' : sm.critDmgMult < 0 ? '#ef4444' : undefined }}>{fCritDmg}x</span></div>
                   <div className="war-recruit-stat"><span>Speed</span><span className="war-recruit-stat__val" style={{ color: sm.attackSpeed > 0 ? '#22d38a' : sm.attackSpeed < 0 ? '#ef4444' : undefined }}>{fSpeed}s</span></div>
+                  {/* Defensive */}
                   <div className="war-recruit-stat"><span>HP</span><span className="war-recruit-stat__val" style={{ color: sm.healthMult > 0 ? '#22d38a' : sm.healthMult < 0 ? '#ef4444' : undefined }}>{fHp}x</span></div>
-                  <div className="war-recruit-stat"><span>Dodge</span><span className="war-recruit-stat__val" style={{ color: sm.dodgeMult > 0 ? '#22d38a' : sm.dodgeMult < 0 ? '#ef4444' : undefined }}>{fDodge}x</span></div>
                   <div className="war-recruit-stat"><span>Armor</span><span className="war-recruit-stat__val" style={{ color: sm.armorMult > 0 ? '#22d38a' : sm.armorMult < 0 ? '#ef4444' : undefined }}>{fArmor}x</span></div>
+                  <div className="war-recruit-stat"><span>Dodge</span><span className="war-recruit-stat__val" style={{ color: sm.dodgeMult > 0 ? '#22d38a' : sm.dodgeMult < 0 ? '#ef4444' : undefined }}>{fDodge}x</span></div>
                 </div>
 
                 <div className="war-recruit-card__cost" style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
@@ -736,7 +740,7 @@ function ForcesTab({ iso }: { iso: string }) {
                         {/* HP bar */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <div className="war-div-bar" title={`HP: ${strengthPct}%`} style={{ flex: 1, height: '16px' }}>
-                            <div className="war-div-bar__fill war-div-bar__fill--str" style={{ width: `${strengthPct}%` }} />
+                            <div className="war-div-bar__fill war-div-bar__fill--str" style={{ width: `${strengthPct}%`, transition: 'width 0.8s ease' }} />
                             <span className="war-div-bar__label" style={{ fontSize: '10px', fontWeight: 800, textShadow: '0 1px 2px rgba(0,0,0,0.8)', letterSpacing: '0.5px' }}>{div.health}/{div.maxHealth} ({strengthPct}%)</span>
                           </div>
                         </div>
@@ -1177,8 +1181,8 @@ function CombatTab() {
 
             {/* Damage Bar (smaller, secondary) */}
             <div style={{ position: 'relative', height: '12px', borderRadius: '3px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)', margin: '2px 0' }}>
-              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: atkClr, opacity: 0.7 }} />
-              <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${100 - atkPct}%`, background: defClr, opacity: 0.7 }} />
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: atkClr, opacity: 0.7, transition: 'width 0.8s ease' }} />
+              <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${100 - atkPct}%`, background: defClr, opacity: 0.7, transition: 'width 0.8s ease' }} />
               <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: '1px', background: '#fff', transform: 'translateX(-0.5px)', zIndex: 2, opacity: 0.4 }} />
               <span style={{ position: 'absolute', left: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '7px', fontWeight: 700, color: '#fff', zIndex: 3 }}>{atkDmg.toLocaleString()}</span>
               <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '7px', fontWeight: 700, color: '#fff', zIndex: 3 }}>{defDmg.toLocaleString()}</span>
@@ -1407,7 +1411,7 @@ function CombatTab() {
                         <span style={{ color: '#e2e8f0', fontWeight: 700, flex: 1 }}>{d.name}</span>
                         <span style={{ color: '#94a3b8', fontWeight: 600 }}>{d.health}/{d.maxHealth}</span>
                         <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '1px', overflow: 'hidden' }}>
-                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : strPct > 20 ? '#f59e0b' : '#ef4444' }} />
+                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : strPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.8s ease, background 0.5s ease' }} />
                         </div>
                       </div>
                     )
@@ -1430,7 +1434,7 @@ function CombatTab() {
                         <span style={{ color: '#e2e8f0', fontWeight: 700, flex: 1 }}>{d.name}</span>
                         <span style={{ color: '#94a3b8', fontWeight: 600 }}>{d.health}/{d.maxHealth}</span>
                         <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '1px', overflow: 'hidden' }}>
-                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : strPct > 20 ? '#f59e0b' : '#ef4444' }} />
+                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : strPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.8s ease, background 0.5s ease' }} />
                         </div>
                       </div>
                     )

@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import { usePlayerStore, type PlayerState } from '../../stores/playerStore'
 import { useInventoryStore, type EquipItem, TIER_COLORS, TIER_LABELS, TIER_ORDER, generateStats, ARMOR_SLOTS, SLOT_ICONS, getItemImagePath } from '../../stores/inventoryStore'
-import { useMarketStore } from '../../stores/marketStore'
+import { useMarketStore, type DivisionListing } from '../../stores/marketStore'
 import { useUIStore } from '../../stores/uiStore'
 import type { EquipTier, EquipSlot, EquipCategory } from '../../stores/inventoryStore'
+import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/armyStore'
 
 /* ─── Resource item (links to a PlayerState numeric key) ─── */
 interface MarketItem {
@@ -127,7 +128,8 @@ export default function MarketPanel() {
   const [selEquip, setSelEquip] = useState<EquipItem | null>(null)       // sell your gear
   const [selBuySlot, setSelBuySlot] = useState<{ tier: EquipTier; slot: EquipSlot; category: EquipCategory } | null>(null) // buy new gear
   const [qty, setQty] = useState(1)
-  const [tab, setTab] = useState<'trading' | 'equipment'>('trading')
+  const [tab, setTab] = useState<'trading' | 'equipment' | 'divisions'>('trading')
+  const armyStoreState = useArmyStore()
 
   /* ── live resources ── */
   const getOwned = (key: keyof PlayerState) => (player[key] as number) || 0
@@ -292,13 +294,13 @@ export default function MarketPanel() {
 
       {/* ── TAB BAR ── */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 0 }}>
-        {(['trading', 'equipment'] as const).map(t => (
+        {(['trading', 'equipment', 'divisions'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '6px 14px', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, border: 'none',
             borderBottom: tab === t ? '2px solid #3b82f6' : '2px solid transparent',
             background: 'transparent', color: tab === t ? '#fff' : '#64748b',
             textTransform: 'uppercase', cursor: 'pointer', transition: 'color .15s',
-          }}>{t === 'trading' ? '📈 Trading' : '⚔️ Equipment'}</button>
+          }}>{t === 'trading' ? '📈 Trading' : t === 'equipment' ? '⚔️ Equipment' : '🪖 Divisions'}</button>
         ))}
       </div>
 
@@ -385,6 +387,8 @@ export default function MarketPanel() {
       ))}
         </>
       )}
+
+      {tab === 'divisions' && <DivisionsTab />}
 
       {/* ═══════ MODALS ═══════ */}
 
@@ -475,6 +479,158 @@ export default function MarketPanel() {
         )
       })()}
     </div>
+  )
+}
+
+/* ══════ DIVISIONS TAB ══════ */
+
+function DivisionsTab() {
+  const market = useMarketStore()
+  const player = usePlayerStore()
+  const ui = useUIStore()
+  const armyStoreState = useArmyStore()
+  const [listPrice, setListPrice] = useState<Record<string, number>>({})
+  const [feedback, setFeedback] = useState('')
+  const [buyConfirm, setBuyConfirm] = useState<DivisionListing | null>(null)
+
+  const myDivisions = Object.values(armyStoreState.divisions).filter((d: any) => d.ownerId === player.name && d.status !== 'destroyed' && d.status !== 'listed')
+  const myListings = market.divisionListings.filter((l: DivisionListing) => l.sellerId === player.name)
+  const otherListings = market.divisionListings.filter((l: DivisionListing) => l.sellerId !== player.name)
+
+  const showFeedback = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 3000) }
+
+  const starColor = (s: number) => s >= 5 ? '#f59e0b' : s >= 4 ? '#a855f7' : s >= 3 ? '#3b82f6' : '#94a3b8'
+
+  const renderDivCard = (listing: DivisionListing, isMine: boolean) => {
+    const tmpl = DIVISION_TEMPLATES[listing.divType as keyof typeof DIVISION_TEMPLATES]
+    const hpPct = listing.divMaxHealth > 0 ? Math.round((listing.divHealth / listing.divMaxHealth) * 100) : 100
+    return (
+      <div key={listing.id} style={{
+        padding: '10px 12px', marginBottom: 6, borderRadius: 6,
+        background: 'rgba(8,12,18,0.7)', border: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          {tmpl?.icon && <img src={tmpl.icon} alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#e2e8f0' }}>{listing.divName}</div>
+            <div style={{ fontSize: 9, color: '#64748b' }}>
+              {listing.divType} • Lv.{listing.divLevel} • <span style={{ color: starColor(listing.divStars) }}>{'★'.repeat(listing.divStars)}</span>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 14, fontWeight: 900, color: '#fbbf24', fontFamily: 'var(--font-display)' }}>
+              🪙 {listing.price.toLocaleString()}
+            </div>
+            <div style={{ fontSize: 8, color: '#475569' }}>{listing.sellerId} • {listing.sellerCountry}</div>
+          </div>
+        </div>
+        {/* Stats row */}
+        <div style={{ display: 'flex', gap: 8, fontSize: 9, color: '#94a3b8', marginBottom: 6 }}>
+          <span>🛡️ HP: {listing.divHealth}/{listing.divMaxHealth}</span>
+          <span>👥 Troops: {listing.divManpower}/{listing.divMaxManpower}</span>
+        </div>
+        {/* HP bar */}
+        <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden', marginBottom: 8 }}>
+          <div style={{ width: `${hpPct}%`, height: '100%', background: hpPct > 50 ? '#22c55e' : hpPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.3s' }} />
+        </div>
+        {/* Actions */}
+        {isMine ? (
+          <button onClick={() => {
+            const r = market.delistDivision(listing.id)
+            showFeedback(r.message)
+            ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
+          }} style={{ width: '100%', padding: '6px 0', fontSize: 10, fontWeight: 800, border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer' }}>
+            ✕ DELIST
+          </button>
+        ) : (
+          <button onClick={() => setBuyConfirm(listing)}
+            disabled={player.money < listing.price}
+            style={{ width: '100%', padding: '6px 0', fontSize: 10, fontWeight: 800, border: `1px solid ${player.money >= listing.price ? 'rgba(34,211,138,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 4, background: player.money >= listing.price ? 'rgba(34,211,138,0.1)' : 'rgba(0,0,0,0.3)', color: player.money >= listing.price ? '#22d38a' : '#475569', cursor: player.money >= listing.price ? 'pointer' : 'not-allowed' }}>
+            {player.money >= listing.price ? '💰 BUY' : '⛔ NOT ENOUGH'}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {feedback && <div style={{ padding: '6px 10px', marginBottom: 8, fontSize: 11, fontWeight: 700, borderRadius: 4, background: feedback.includes('Not') || feedback.includes('Cannot') || feedback.includes('Minimum') ? 'rgba(239,68,68,0.15)' : 'rgba(34,211,138,0.15)', color: feedback.includes('Not') || feedback.includes('Cannot') || feedback.includes('Minimum') ? '#ef4444' : '#22d38a', border: `1px solid ${feedback.includes('Not') || feedback.includes('Cannot') ? 'rgba(239,68,68,0.3)' : 'rgba(34,211,138,0.3)'}` }}>{feedback}</div>}
+
+      {/* YOUR DIVISIONS — SELL */}
+      <SectionHeader label="YOUR DIVISIONS — SELL" />
+      {myDivisions.length === 0 ? (
+        <div style={{ fontSize: 11, color: '#475569', fontStyle: 'italic', marginBottom: 14 }}>No divisions available to sell.</div>
+      ) : myDivisions.map(div => {
+        const tmpl = DIVISION_TEMPLATES[div.type as keyof typeof DIVISION_TEMPLATES]
+        const divLevel = Math.floor((div.experience || 0) / 10)
+        const price = listPrice[div.id] || 50000
+        const canList = div.status === 'ready' || div.status === 'training'
+        return (
+          <div key={div.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', marginBottom: 4, borderRadius: 5, background: 'rgba(8,12,18,0.5)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            {tmpl?.icon && <img src={tmpl.icon} alt="" style={{ width: 20, height: 20, objectFit: 'contain' }} />}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0' }}>{div.name}</div>
+              <div style={{ fontSize: 8, color: '#64748b' }}>{div.type} • Lv.{divLevel} • {div.status}</div>
+            </div>
+            <input type="number" min={1000} max={10000000} step={1000} value={price}
+              onChange={e => setListPrice(p => ({ ...p, [div.id]: Number(e.target.value) }))}
+              onClick={e => e.stopPropagation()}
+              style={{ width: 80, padding: '3px 6px', fontSize: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#fbbf24', textAlign: 'right', fontFamily: 'var(--font-mono)' }}
+            />
+            <button disabled={!canList} onClick={() => {
+              const r = market.listDivision(div.id, price)
+              showFeedback(r.message)
+              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+            }} style={{ padding: '4px 10px', fontSize: 9, fontWeight: 800, border: `1px solid ${canList ? 'rgba(34,211,138,0.3)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 3, background: canList ? 'rgba(34,211,138,0.1)' : 'rgba(0,0,0,0.3)', color: canList ? '#22d38a' : '#475569', cursor: canList ? 'pointer' : 'not-allowed' }}>
+              LIST
+            </button>
+          </div>
+        )
+      })}
+
+      {/* MARKETPLACE LISTINGS */}
+      <SectionHeader label="DIVISION MARKETPLACE" />
+      {otherListings.length === 0 && myListings.length === 0 ? (
+        <div style={{ fontSize: 11, color: '#475569', fontStyle: 'italic', marginBottom: 14 }}>No divisions listed for sale. Be the first!</div>
+      ) : (
+        otherListings.map(l => renderDivCard(l, false))
+      )}
+
+      {/* YOUR ACTIVE LISTINGS */}
+      {myListings.length > 0 && (
+        <>
+          <SectionHeader label="YOUR LISTINGS" />
+          {myListings.map(l => renderDivCard(l, true))}
+        </>
+      )}
+
+      {/* Buy Confirm Modal */}
+      {buyConfirm && (
+        <Modal onClose={() => setBuyConfirm(null)} borderColor="#22d38a">
+          <ModalTitle color="#22d38a">Buy Division</ModalTitle>
+          <InfoGrid rows={[
+            ['Division', buyConfirm.divName],
+            ['Type', buyConfirm.divType],
+            ['Level', `${buyConfirm.divLevel}`],
+            ['Stars', '★'.repeat(buyConfirm.divStars)],
+            ['HP', `${buyConfirm.divHealth} / ${buyConfirm.divMaxHealth}`],
+            ['Troops', `${buyConfirm.divManpower} / ${buyConfirm.divMaxManpower}`],
+            ['Seller', `${buyConfirm.sellerId} (${buyConfirm.sellerCountry})`],
+            ['Price', `🪙 ${buyConfirm.price.toLocaleString()}`],
+            ['Your money', `🪙 ${player.money.toLocaleString()}`],
+          ]} />
+          <TradeBtn label={`BUY for 🪙${buyConfirm.price.toLocaleString()}`} color="#22d38a" enabled={player.money >= buyConfirm.price}
+            onClick={() => {
+              const r = market.buyDivision(buyConfirm.id)
+              showFeedback(r.message)
+              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+              setBuyConfirm(null)
+            }}
+          />
+        </Modal>
+      )}
+    </>
   )
 }
 
