@@ -3,6 +3,7 @@ import { usePlayerStore, getMilitaryRank } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore, type EquipItem } from './inventoryStore'
 import { useCompanyStore } from './companyStore'
+import { useGovernmentStore } from './governmentStore'
 
 export type DivisionType = 'recon' | 'assault' | 'sniper' | 'rpg' | 'jeep' | 'tank' | 'jet' | 'warship'
 
@@ -36,6 +37,8 @@ export interface DivisionTemplate {
   }
   trainingTime: number
   popCost: number          // Pop Cap cost: infantry=1, mechanized=2
+  seats: number            // Transport capacity: how many infantry divs this unit can carry
+  attackSpeed: number      // Hits per tick multiplier: 1.0 = standard, 1.5 = fast, 0.5 = slow
 }
 
 // Infantry base: atkDmg=0.10, hitRate=0.50, critRate=0.80, critDmg=0.80, health=1.20, dodge=0.90, armor=1.00
@@ -50,7 +53,8 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.20, dodgeMult: 1.30, armorMult: 1.00,
     manpowerCost: 200, trainingTime: 25,
     recruitCost: { money: 40000, oil: 400, materialX: 150, scrap: 200 },
-    popCost: 1,
+    popCost: 1, seats: 0,
+    attackSpeed: 1.5,
   },
   assault: {
     id: 'assault', name: 'Assault Infantry', icon: '/assets/divisions/assault.png', category: 'land', group: 'infantry',
@@ -59,7 +63,8 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.44, dodgeMult: 0.90, armorMult: 1.10,
     manpowerCost: 350, trainingTime: 30,
     recruitCost: { money: 60000, oil: 600, materialX: 250, scrap: 350 },
-    popCost: 1,
+    popCost: 1, seats: 0,
+    attackSpeed: 1,
   },
   sniper: {
     id: 'sniper', name: 'Sniper Division', icon: '/assets/divisions/sniper.png', category: 'land', group: 'infantry',
@@ -68,7 +73,8 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.20, dodgeMult: 0.90, armorMult: 0.80,
     manpowerCost: 150, trainingTime: 40,
     recruitCost: { money: 80000, oil: 500, materialX: 300, scrap: 400 },
-    popCost: 1,
+    popCost: 1, seats: 0,
+    attackSpeed: 0.6,
   },
   rpg: {
     id: 'rpg', name: 'RPG Squadron', icon: '/assets/divisions/rpg.png', category: 'land', group: 'infantry',
@@ -77,7 +83,8 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.50, dodgeMult: 0.70, armorMult: 1.30,
     manpowerCost: 250, trainingTime: 35,
     recruitCost: { money: 100000, oil: 800, materialX: 400, scrap: 500 },
-    popCost: 1,
+    popCost: 1, seats: 0,
+    attackSpeed: 0.8,
   },
 
   // ── MECHANIZED ────────────────────────────
@@ -88,7 +95,8 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.50, dodgeMult: 1.50, armorMult: 1.50,
     manpowerCost: 150, trainingTime: 35,
     recruitCost: { money: 100000, oil: 1500, materialX: 600, scrap: 400 },
-    popCost: 2,
+    popCost: 2, seats: 0,
+    attackSpeed: 1.3,
   },
   tank: {
     id: 'tank', name: 'Tank Battalion', icon: '/assets/divisions/tank.png', category: 'land', group: 'mechanized',
@@ -97,7 +105,8 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.80, dodgeMult: 0.80, armorMult: 2.00,
     manpowerCost: 200, trainingTime: 50,
     recruitCost: { money: 150000, oil: 2500, materialX: 1000, scrap: 600 },
-    popCost: 2,
+    popCost: 2, seats: 1,
+    attackSpeed: 0.5,
   },
   jet: {
     id: 'jet', name: 'Jet Fighters', icon: '/assets/divisions/jet.png', category: 'air', group: 'mechanized',
@@ -106,7 +115,8 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 1.30, dodgeMult: 1.40, armorMult: 1.00,
     manpowerCost: 100, trainingTime: 60,
     recruitCost: { money: 200000, oil: 3000, materialX: 1200, scrap: 700 },
-    popCost: 2,
+    popCost: 2, seats: 2,
+    attackSpeed: 0.7,
   },
   warship: {
     id: 'warship', name: 'Warship Fleet', icon: '/assets/divisions/warship.png', category: 'naval', group: 'mechanized',
@@ -115,7 +125,8 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 2.00, dodgeMult: 0.70, armorMult: 2.50,
     manpowerCost: 250, trainingTime: 60,
     recruitCost: { money: 250000, oil: 4000, materialX: 1500, scrap: 800 },
-    popCost: 2,
+    popCost: 2, seats: 5,
+    attackSpeed: 0.4,
   },
 }
 
@@ -129,25 +140,27 @@ export interface Division {
   ownerId: string        // Player name
   countryCode: string    // Which country's army
 
-  // Health pool: manpower × template.healthMult × playerHealth
+  // Health pool: manpower (acts as HP)
   manpower: number       // Current manpower (acts as HP units)
   maxManpower: number    // Max manpower
-  morale: number         // 0-100, drops in combat, recovers over time
-
+  
   equipment: string[]    // Item IDs from player inventory
   experience: number     // 0-100, gained through combat
+  stance: 'unassigned' | 'force_pool' | 'reserve' | 'first_line_defense'
+  autoTrainingEnabled: boolean  // Passive experience gain when ready
 
-  status: 'training' | 'ready' | 'in_combat' | 'retreating' | 'recovering' | 'destroyed'
-  trainingProgress: number
-  reinforcing: boolean        // Currently being reinforced
-  reinforceProgress: number   // Ticks remaining for reinforcement
+  status: 'training' | 'ready' | 'in_combat' | 'recovering' | 'destroyed'
+  trainingProgress: number  // Legacy: used for retreat/recover tick counter
+  readyAt: number           // Timestamp: when training finishes (0 = not training)
+  reinforcing: boolean
+  reinforceProgress: number
 
   // Combat tracking
   killCount: number
   battlesSurvived: number
 }
 
-// ====== ARMY GROUP ======
+// ====== MILITARY FORCE ======
 
 export type MilitaryRankType = 'private' | 'corporal' | 'sergeant' | 'lieutenant' | 'captain' | 'colonel' | 'general'
 
@@ -241,7 +254,7 @@ export interface ArmyState {
   recalculateArmyTotals: (armyId: string) => void
 
   // Combat effects
-  applyBattleDamage: (divisionId: string, manpowerLoss: number, orgLoss: number, moraleLoss: number, equipDamage: number) => void
+  applyBattleDamage: (divisionId: string, manpowerLoss: number, equipDamage: number) => void
   recoverDivision: (divisionId: string) => void
 
   // Queries
@@ -253,6 +266,16 @@ export interface ArmyState {
   // Pop Cap
   getPlayerPopCap: () => { used: number; max: number }
   getPlayerPopUsed: () => number
+  getCountryPopCap: (countryCode: string) => { used: number; max: number }
+
+  // Equipment from vault
+  equipFromVault: (armyId: string, divisionId: string, equipmentId: string) => { success: boolean; message: string }
+  unequipToVault: (armyId: string, divisionId: string, equipmentId: string) => { success: boolean; message: string }
+
+  // Division lifecycle
+  rebuildDivision: (divisionId: string) => { success: boolean; message: string }
+  setDivisionStance: (divisionId: string, stance: 'unassigned' | 'force_pool' | 'reserve' | 'first_line_defense') => { success: boolean; message: string }
+  toggleAutoTraining: (divisionId: string) => { success: boolean; message: string }
 
   // Reinforcement
   reinforceDivision: (divisionId: string) => { success: boolean; message: string }
@@ -305,9 +328,12 @@ function createInitialDivisions(): Record<string, Division> {
       id, type: d.type, name: d.name,
       category: t.category, ownerId: usePlayerStore.getState().name || 'Commander', countryCode: 'US',
       manpower: t.manpowerCost, maxManpower: t.manpowerCost,
-      morale: 80 + i * 3, equipment: [], experience: 20 + i * 5,
+      equipment: [], experience: 20 + i * 5,
       status: 'ready', trainingProgress: t.trainingTime,
       reinforcing: false, reinforceProgress: 0,
+      readyAt: 0,
+      stance: 'unassigned' as const,
+      autoTrainingEnabled: false,
       killCount: 0, battlesSurvived: 0,
     }
   })
@@ -327,9 +353,12 @@ function createInitialDivisions(): Record<string, Division> {
       id, type: d.type, name: d.name,
       category: t.category, ownerId: 'AI_Commander_Putin', countryCode: 'RU',
       manpower: t.manpowerCost, maxManpower: t.manpowerCost,
-      morale: 75, equipment: [], experience: 30,
+      equipment: [], experience: 30,
       status: 'ready', trainingProgress: t.trainingTime,
       reinforcing: false, reinforceProgress: 0,
+      readyAt: 0,
+      stance: 'unassigned' as const,
+      autoTrainingEnabled: false,
       killCount: 0, battlesSurvived: 0,
     }
   })
@@ -350,9 +379,12 @@ function createInitialDivisions(): Record<string, Division> {
       id, type: d.type, name: d.name,
       category: t.category, ownerId: 'AI_Commander_Xi', countryCode: 'CN',
       manpower: t.manpowerCost, maxManpower: t.manpowerCost,
-      morale: 78, equipment: [], experience: 25,
+      equipment: [], experience: 25,
       status: 'ready', trainingProgress: t.trainingTime,
       reinforcing: false, reinforceProgress: 0,
+      readyAt: 0,
+      stance: 'unassigned' as const,
+      autoTrainingEnabled: false,
       killCount: 0, battlesSurvived: 0,
     }
   })
@@ -460,11 +492,13 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
       countryCode: player.countryCode || 'US',
       manpower: template.manpowerCost,
       maxManpower: template.manpowerCost,
-      morale: 50,
       equipment: [],
       experience: 0,
+      stance: 'unassigned',
+      autoTrainingEnabled: false,
       status: 'training',
       trainingProgress: 0,
+      readyAt: Date.now() + (template.trainingTime * 15_000),
       reinforcing: false,
       reinforceProgress: 0,
       killCount: 0,
@@ -500,7 +534,7 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
             ...div,
             trainingProgress: newProgress,
             status: isComplete ? 'ready' : 'training',
-            morale: isComplete ? 70 : div.morale,
+            
           },
         },
       }
@@ -663,31 +697,26 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     })
   },
 
-  applyBattleDamage: (divisionId, manpowerLoss, _orgLoss, moraleLoss, equipDamage) => {
+  applyBattleDamage: (divisionId, manpowerLoss, equipDamage) => {
     set(state => {
       const div = state.divisions[divisionId]
       if (!div) return state
 
       const newManpower = Math.max(0, div.manpower - manpowerLoss)
-      const newMorale = Math.max(0, div.morale - moraleLoss)
-
-      // Degrade equipment
+            // Degrade equipment
       if (equipDamage > 0 && div.equipment.length > 0) {
         const invStore = useInventoryStore.getState()
         invStore.degradeEquippedItems(equipDamage)
       }
 
       const isDestroyed = newManpower <= 0
-      const isRetreating = newMorale <= 10 && !isDestroyed
-
-      return {
+            return {
         divisions: {
           ...state.divisions,
           [divisionId]: {
             ...div,
             manpower: newManpower,
-            morale: newMorale,
-            status: isDestroyed ? 'destroyed' : isRetreating ? 'retreating' : div.status,
+                        status: isDestroyed ? 'destroyed' : div.status,
           },
         },
       }
@@ -704,7 +733,6 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
           ...state.divisions,
           [divisionId]: {
             ...div,
-            morale: 100,
             status: 'ready',
           },
         },
@@ -722,46 +750,40 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
         let updated = { ...div }
         let changed = false
 
-        // --- Training: progress toward 'ready' ---
+        // --- Training: timestamp-based, check if readyAt has passed ---
         if (div.status === 'training') {
-          const template = DIVISION_TEMPLATES[div.type]
-          const newProgress = div.trainingProgress + 1
-          if (newProgress >= (template?.trainingTime || 30)) {
-            updated = { ...updated, trainingProgress: newProgress, status: 'ready', morale: 100 }
-          } else {
-            updated = { ...updated, trainingProgress: newProgress }
+          if (div.readyAt > 0 && Date.now() >= div.readyAt) {
+            updated = { ...updated, status: 'ready', readyAt: 0 }
+            changed = true
           }
-          changed = true
         }
 
-        // --- Retreating: cool down for 3 ticks, then transition to 'recovering' ---
-        if (div.status === 'retreating') {
-          // Reuse trainingProgress as retreat tick counter
-          const retreatTicks = (div.trainingProgress || 0) + 1
-          if (retreatTicks >= 3) {
-            updated = { ...updated, status: 'recovering', trainingProgress: 0 }
-          } else {
-            updated = { ...updated, trainingProgress: retreatTicks }
-          }
-          changed = true
-        }
-
-        // --- Recovering: +10 morale/tick, become 'ready' at morale >= 50 ---
+        // --- Recovering: after 3 ticks become ready ---
         if (div.status === 'recovering') {
-          const newMorale = Math.min(100, div.morale + 10)
-          if (newMorale >= 50) {
-            updated = { ...updated, morale: newMorale, status: 'ready' }
+          const recoverTicks = (div.trainingProgress || 0) + 1
+          if (recoverTicks >= 3) {
+            updated = { ...updated, status: 'ready', trainingProgress: 0 }
           } else {
-            updated = { ...updated, morale: newMorale }
+            updated = { ...updated, trainingProgress: recoverTicks }
           }
           changed = true
         }
 
-        // --- Ready: passive morale recovery +5/tick up to 100 ---
-        if (div.status === 'ready' && div.morale < 100) {
-          updated = { ...updated, morale: Math.min(100, div.morale + 5) }
-          changed = true
+        
+
+        // --- Auto-training: +0.1 exp per tick (max 2 divisions per player) ---
+        if (div.status === 'ready' && div.autoTrainingEnabled && div.experience < 100) {
+          // Check if player has < 2 auto-training divisions
+          const autoTrainingCount = Object.values(newDivisions).filter(
+            d => d.ownerId === div.ownerId && d.autoTrainingEnabled && d.status === 'ready'
+          ).length
+          if (autoTrainingCount <= 2) {
+            updated = { ...updated, experience: Math.min(100, div.experience + 0.1) }
+            changed = true
+          }
         }
+
+        
 
         if (changed) {
           newDivisions[div.id] = updated
@@ -969,9 +991,12 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
       ownerId: targetPlayer,
       countryCode: army.countryCode,
       manpower: template.manpowerCost, maxManpower: template.manpowerCost,
-      morale: 50, equipment: [], experience: 0,
+      equipment: [], experience: 0,
       status: 'training', trainingProgress: 0,
       reinforcing: false, reinforceProgress: 0,
+      readyAt: 0,
+      stance: 'unassigned' as const,
+      autoTrainingEnabled: false,
       killCount: 0, battlesSurvived: 0,
     }
 
@@ -1227,7 +1252,11 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     const farmLevelSum = companies
       .filter(c => farmTypes.includes(c.type))
       .reduce((sum, c) => sum + c.level, 0)
-    const maxPop = 6 + farmLevelSum
+    const foodShopTypes = ['bakery', 'sushi_bar', 'wagyu_grill']
+    const foodShopPop = companies
+      .filter(c => foodShopTypes.includes(c.type))
+      .reduce((sum, c) => sum + c.level * 2, 0)
+    const maxPop = 6 + farmLevelSum + foodShopPop
     const used = get().getPlayerPopUsed()
     return { used, max: maxPop }
   },
@@ -1244,6 +1273,159 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
       }, 0)
   },
 
+  getCountryPopCap: (countryCode) => {
+    const divs = Object.values(get().divisions)
+    const used = divs
+      .filter(d => d.countryCode === countryCode && d.status !== 'destroyed')
+      .reduce((sum, d) => {
+        const template = DIVISION_TEMPLATES[d.type]
+        return sum + (template?.popCost || 1)
+      }, 0)
+    const companies = useCompanyStore.getState().companies
+    const farmTypes = ['wheat_farm', 'fish_farm', 'steak_farm']
+    const farmLevelSum = companies
+      .filter(c => farmTypes.includes(c.type))
+      .reduce((sum, c) => sum + c.level, 0)
+    const foodShopTypes = ['bakery', 'sushi_bar', 'wagyu_grill']
+    const foodShopPop = companies
+      .filter(c => foodShopTypes.includes(c.type))
+      .reduce((sum, c) => sum + c.level * 2, 0)
+    const govStore = useGovernmentStore.getState()
+    const gov = govStore.governments[countryCode]
+    const citizenCount = gov?.citizens?.length || 1
+    const maxPop = (citizenCount * 6) + farmLevelSum + foodShopPop
+    return { used, max: maxPop }
+  },
+
+  // ====== EQUIPMENT FROM VAULT ======
+
+  equipFromVault: (armyId, divisionId, equipmentId) => {
+    const state = get()
+    const army = state.armies[armyId]
+    const div = state.divisions[divisionId]
+    if (!army) return { success: false, message: 'Force not found.' }
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (!army.vault.equipmentIds.includes(equipmentId)) return { success: false, message: 'Item not in vault.' }
+    if (div.equipment.length >= 3) return { success: false, message: 'Division has max 3 equipment slots.' }
+    if (div.equipment.includes(equipmentId)) return { success: false, message: 'Already equipped.' }
+
+    // Remove from vault, add to division
+    set(s => ({
+      armies: {
+        ...s.armies,
+        [armyId]: {
+          ...army,
+          vault: { ...army.vault, equipmentIds: army.vault.equipmentIds.filter(id => id !== equipmentId) },
+        },
+      },
+      divisions: {
+        ...s.divisions,
+        [divisionId]: { ...div, equipment: [...div.equipment, equipmentId] },
+      },
+    }))
+    return { success: true, message: 'Equipment assigned to division.' }
+  },
+
+  unequipToVault: (armyId, divisionId, equipmentId) => {
+    const state = get()
+    const army = state.armies[armyId]
+    const div = state.divisions[divisionId]
+    if (!army) return { success: false, message: 'Force not found.' }
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (!div.equipment.includes(equipmentId)) return { success: false, message: 'Not equipped.' }
+
+    // Remove from division, add to vault
+    set(s => ({
+      armies: {
+        ...s.armies,
+        [armyId]: {
+          ...army,
+          vault: { ...army.vault, equipmentIds: [...army.vault.equipmentIds, equipmentId] },
+        },
+      },
+      divisions: {
+        ...s.divisions,
+        [divisionId]: { ...div, equipment: div.equipment.filter(id => id !== equipmentId) },
+      },
+    }))
+    return { success: true, message: 'Equipment returned to vault.' }
+  },
+
+  // ====== DIVISION LIFECYCLE ======
+
+  rebuildDivision: (divisionId) => {
+    const div = get().divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (div.manpower >= div.maxManpower) return { success: false, message: 'Division is at full strength.' }
+    if (div.manpower < 1) return { success: false, message: 'Division is destroyed. Disband it instead.' }
+    if (div.status === 'training') return { success: false, message: 'Division is still training.' }
+
+    const template = DIVISION_TEMPLATES[div.type]
+    const missingPct = (div.maxManpower - div.manpower) / div.maxManpower
+    const cost = {
+      money: Math.ceil(template.recruitCost.money * missingPct),
+      oil: Math.ceil(template.recruitCost.oil * missingPct),
+    }
+
+    const player = usePlayerStore.getState()
+    if (player.money < cost.money) return { success: false, message: `Not enough money (${cost.money.toLocaleString()}).` }
+    if (player.oil < cost.oil) return { success: false, message: `Not enough oil (${cost.oil}).` }
+
+    player.spendMoney(cost.money)
+    player.spendOil(cost.oil)
+
+    set(state => ({
+      divisions: {
+        ...state.divisions,
+        [divisionId]: {
+          ...div,
+          manpower: div.maxManpower,
+          status: 'recovering',
+          
+        },
+      },
+    }))
+
+    return { success: true, message: `Rebuilt! Cost: ${cost.money.toLocaleString()} + ${cost.oil} oil.` }
+  },
+
+  setDivisionStance: (divisionId, stance) => {
+    const div = get().divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (div.status === 'destroyed') return { success: false, message: 'Cannot set stance on destroyed division.' }
+    if (div.status === 'in_combat') return { success: false, message: 'Cannot change stance during combat.' }
+
+    set(state => ({
+      divisions: {
+        ...state.divisions,
+        [divisionId]: { ...div, stance },
+      },
+    }))
+    return { success: true, message: `Stance set to ${stance.replace(/_/g, ' ').toUpperCase()}.` }
+  },
+
+  toggleAutoTraining: (divisionId) => {
+    const div = get().divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (div.status !== 'ready') return { success: false, message: 'Division must be ready to auto-train.' }
+
+    // Check max 2 auto-training per player
+    if (!div.autoTrainingEnabled) {
+      const count = Object.values(get().divisions).filter(
+        d => d.ownerId === div.ownerId && d.autoTrainingEnabled && d.status === 'ready'
+      ).length
+      if (count >= 2) return { success: false, message: 'Max 2 divisions can auto-train at once.' }
+    }
+
+    set(state => ({
+      divisions: {
+        ...state.divisions,
+        [divisionId]: { ...div, autoTrainingEnabled: !div.autoTrainingEnabled },
+      },
+    }))
+    return { success: true, message: div.autoTrainingEnabled ? 'Auto-training disabled.' : 'Auto-training enabled.' }
+  },
+
   // ====== REINFORCEMENT ======
 
   reinforceDivision: (divisionId) => {
@@ -1254,30 +1436,30 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     if (div.reinforcing) return { success: false, message: 'Already being reinforced.' }
     if (div.manpower >= div.maxManpower) return { success: false, message: 'Division is at full strength.' }
 
-    const player = usePlayerStore.getState()
-    const reinforceCostMoney = 500
-    const reinforceCostOil = 100
+    const template = DIVISION_TEMPLATES[div.type]
+    const missingPct = (div.maxManpower - div.manpower) / div.maxManpower
+    const reinforceCostMoney = Math.ceil(template.recruitCost.money * missingPct)
+    const reinforceCostOil = Math.ceil(template.recruitCost.oil * missingPct)
 
-    if (player.money < reinforceCostMoney) return { success: false, message: 'Not enough money ($500).' }
-    if (player.oil < reinforceCostOil) return { success: false, message: 'Not enough oil (100).' }
+    const player = usePlayerStore.getState()
+    if (player.money < reinforceCostMoney) return { success: false, message: `Not enough money (${reinforceCostMoney.toLocaleString()}).` }
+    if (player.oil < reinforceCostOil) return { success: false, message: `Not enough oil (${reinforceCostOil}).` }
 
     player.spendMoney(reinforceCostMoney)
     player.spendOil(reinforceCostOil)
-
-    const newManpower = Math.min(div.maxManpower, div.manpower + 500)
 
     set(state => ({
       divisions: {
         ...state.divisions,
         [divisionId]: {
           ...div,
-          manpower: newManpower,
+          manpower: div.maxManpower,
           reinforcing: true,
-          reinforceProgress: 5, // 5 ticks (~75 seconds)
+          reinforceProgress: 5,
         },
       },
     }))
 
-    return { success: true, message: `Reinforcing! +${newManpower - div.manpower} manpower.` }
+    return { success: true, message: `Reinforced to full! Cost: ${reinforceCostMoney.toLocaleString()} + ${reinforceCostOil} oil.` }
   },
 }))

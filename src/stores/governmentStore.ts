@@ -119,6 +119,8 @@ export interface Government {
 }
 
 export interface GovernmentState {
+  autoDefenseEnabled: boolean
+  setAutoDefense: (enabled: boolean) => void
   governments: Record<string, Government>
   laws: Record<string, Law>
   contributionMissions: Record<string, ContributionMission>
@@ -177,6 +179,8 @@ function mkGov(code: string, president: string, congress: string[]): Government 
 }
 
 export const useGovernmentStore = create<GovernmentState>((set, get) => ({
+  autoDefenseEnabled: true,
+  setAutoDefense: (enabled) => set({ autoDefenseEnabled: enabled }),
   governments: {
     'US': mkGov('US', 'Commander_X', ['AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5']),
     'RU': mkGov('RU', 'AI_Commander_Putin', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),

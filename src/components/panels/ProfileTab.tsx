@@ -1,6 +1,7 @@
 import { usePlayerStore } from '../../stores/playerStore'
-import { useInventoryStore } from '../../stores/inventoryStore'
+import { useInventoryStore, getItemImagePath, TIER_COLORS } from '../../stores/inventoryStore'
 import { useSkillsStore } from '../../stores/skillsStore'
+import { useArmyStore } from '../../stores/armyStore'
 
 export default function ProfileTab() {
   const player = usePlayerStore()
@@ -39,16 +40,14 @@ export default function ProfileTab() {
   const finalArmor = 0 + eqArmor + skArmor
   const finalDodge = 5 + eqDodge + skDodge
   const finalHitRate = Math.min(100, 50 + eqPrecision + skPrecision)
-  const hungerCost = 4
-  const lootChance = 7
 
   // Economic Skills
   const eco = skillsStore.economic
   const finalProd = 10 + (eco.production * 5)
   const finalWork = 100 + (eco.work * 20)
   const finalEnt = 100 + (eco.entrepreneurship * 15)
-  const finalProspect = 10 + (eco.prospection * 5)
-  const finalInd = 10 + (eco.industrialist * 5)
+  const finalProspect = (eco.prospection * 5)
+  const finalInd = (eco.industrialist * 5)
 
   return (
     <div className="ptab">
@@ -61,6 +60,12 @@ export default function ProfileTab() {
           </div>
           <div className="ptab-level__info">
             <div className="ptab-level__name">{player.name}</div>
+            {(() => {
+              const { used, max } = useArmyStore.getState().getPlayerPopCap()
+              const pct = max > 0 ? Math.round((used / max) * 100) : 0
+              const color = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#22d38a'
+              return <div style={{ fontSize: '9px', color, fontWeight: 600 }}>🏠 Pop Cap: {used}/{max}</div>
+            })()}
             <div className="ptab-xp">
               <div className="ptab-xp__track">
                 <div className="ptab-xp__fill" style={{ width: `${xpPercent}%` }} />
@@ -85,8 +90,9 @@ export default function ProfileTab() {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>🛡️ Armor Mitigation</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalArmor}%</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>💨 Evasion Dodge</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{finalDodge}%</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>💢 Hit Rate</span><span style={{ color: '#f59e0b', fontWeight: 'bold' }}>{finalHitRate}%</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>🍖 Attack Hunger Cost</span><span style={{ color: '#f59e0b', fontWeight: 'bold' }}>{hungerCost}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px', paddingTop: '2px', borderTop: '1px dotted rgba(255,255,255,0.1)' }}><span>📦 Loot Chance / Hit</span><span style={{ color: '#22d38a', fontWeight: 'bold' }}>{lootChance}% (Accum)</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>⚡ Stamina Capacity</span><span style={{ color: '#ef4444', fontWeight: 'bold' }}>{player.maxStamina}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>🍖 Hunger Capacity</span><span style={{ color: '#f59e0b', fontWeight: 'bold' }}>{player.maxHunger}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px', paddingTop: '2px', borderTop: '1px dotted rgba(255,255,255,0.1)' }}><span>📦 Loot Chance / Hit</span><span style={{ color: '#22d38a', fontWeight: 'bold' }}>7% (Accum)</span></div>
             </div>
           </div>
 
@@ -115,7 +121,13 @@ export default function ProfileTab() {
                   <span style={{ fontSize: '9px', color: '#94a3b8', letterSpacing: '1px' }}>{item.slot.toUpperCase()}</span>
                   <span style={{ fontSize: '9px', color: (item.durability || 100) < 50 ? '#ef4444' : '#22d38a' }}>{(item.durability || 100).toFixed(0)}%</span>
                 </div>
-                <span style={{ fontSize: '11px', fontWeight: 'bold', color: item.tier === 't6' ? '#ef4444' : item.tier === 't5' ? '#f59e0b' : item.tier === 't4' ? '#a855f7' : item.tier === 't3' ? '#3b82f6' : item.tier === 't2' ? '#22c55e' : '#cbd5e1' }}>{item.name}</span>
+                {(() => {
+                  const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+                  return imgUrl ? (
+                    <img src={imgUrl} alt={item.name} style={{ width: '32px', height: '32px', objectFit: 'contain', margin: '2px auto', display: 'block', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                  ) : null
+                })()}
+                <span style={{ fontSize: '11px', fontWeight: 'bold', color: TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#cbd5e1' }}>{item.name}</span>
              </div>
            ))}
         </div>
@@ -182,6 +194,16 @@ export default function ProfileTab() {
             <span className="ptab-stat__icon">₿</span>
             <span className="ptab-stat__label">Bitcoin</span>
             <span className="ptab-stat__value">{player.bitcoin}</span>
+          </div>
+          <div className="ptab-stat">
+            <span className="ptab-stat__icon">🛢️</span>
+            <span className="ptab-stat__label">Oil</span>
+            <span className="ptab-stat__value">{player.oil?.toLocaleString() ?? 0}</span>
+          </div>
+          <div className="ptab-stat">
+            <span className="ptab-stat__icon" style={{color: '#a855f7'}}>⚛️</span>
+            <span className="ptab-stat__label">Material X</span>
+            <span className="ptab-stat__value">{player.materialX?.toLocaleString() ?? 0}</span>
           </div>
         </div>
       </div>

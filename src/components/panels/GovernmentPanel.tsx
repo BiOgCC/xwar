@@ -6,6 +6,7 @@ import { useWorldStore } from '../../stores/worldStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { useBattleStore } from '../../stores/battleStore'
 import { useInventoryStore } from '../../stores/inventoryStore'
+import { useArmyStore } from '../../stores/armyStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useMilitaryStore } from '../../stores/militaryStore'
 import { useCyberStore } from '../../stores/cyberStore'
@@ -229,6 +230,25 @@ export default function GovernmentPanel() {
                 ))}
               </div>
             </div>
+
+            {/* Pop Cap */}
+            {(() => {
+              const armyStore = useArmyStore.getState()
+              const { used: popUsed, max: popMax } = armyStore.getCountryPopCap(iso)
+              const popPct = popMax > 0 ? Math.min(100, Math.round((popUsed / popMax) * 100)) : 0
+              const popColor = popPct >= 90 ? '#ef4444' : popPct >= 70 ? '#f59e0b' : '#22d38a'
+              return (
+                <div style={sectionStyle}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ ...labelStyle, marginBottom: 0 }}>🏠 POP CAP</span>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: popColor }}>{popUsed}/{popMax} ({popPct}%)</span>
+                  </div>
+                  <div style={{ height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${popPct}%`, background: popColor, borderRadius: '3px', transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Active Wars */}
             <div style={sectionStyle}>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useArmyStore } from '../../stores/armyStore'
 import ProfileTab from './ProfileTab'
 import InventoryTab from './InventoryTab'
 import SkillsTab from './SkillsTab'
@@ -59,6 +60,17 @@ export default function ProfilePanel() {
             </div>
           </div>
         ))}
+        {/* Pop Cap — numbers only, after WORK */}
+        {(() => {
+          const popCap = useArmyStore.getState().getPlayerPopCap()
+          return (
+            <div className="profile-bar" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
+              <span style={{ fontSize: '11px', lineHeight: 1 }}>👥</span>
+              <span style={{ fontSize: '8px', fontFamily: 'var(--font-display)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.08em' }}>POP</span>
+              <span style={{ marginLeft: 'auto', fontSize: '9px', fontFamily: 'var(--font-display)', fontWeight: 600, color: popCap.used >= popCap.max ? '#ef4444' : '#38bdf8' }}>{popCap.used}/{popCap.max}</span>
+            </div>
+          )
+        })()}
       </div>
       {/* Production moved to per-company in Companies tab */}
 

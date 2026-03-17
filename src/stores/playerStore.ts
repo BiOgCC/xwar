@@ -104,7 +104,10 @@ export interface PlayerState {
 }
 
 function xpForLevel(level: number): number {
-  return 100 + (level - 1) * 50
+  // Tiered: 100 XP/level for 1-10, 150 for 11-20, 200 for 21-30
+  if (level <= 10) return 100
+  if (level <= 20) return 150
+  return 200
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -138,7 +141,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   level: 12,
   experience: 450,
-  experienceToNext: 650,
+  experienceToNext: 150, // Level 12 is in tier 11-20 → 150 XP needed
   skillPoints: 49,
 
   stamina: 100,

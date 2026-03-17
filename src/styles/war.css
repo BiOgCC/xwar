@@ -587,7 +587,6 @@
 
 .war-div-row--training { border-left-color: #f59e0b; }
 .war-div-row--in_combat { border-left-color: #ef4444; animation: statusPulse 1s infinite; }
-.war-div-row--retreating { border-left-color: #f59e0b; opacity: 0.6; }
 .war-div-row--recovering { border-left-color: #3b82f6; opacity: 0.7; }
 .war-div-row--destroyed { border-left-color: #333; opacity: 0.3; text-decoration: line-through; }
 
@@ -662,7 +661,6 @@
 .war-div-status--ready { color: #22d38a; }
 .war-div-status--training { color: #f59e0b; }
 .war-div-status--in_combat { color: #ef4444; }
-.war-div-status--retreating { color: #f59e0b; }
 .war-div-status--recovering { color: #3b82f6; }
 .war-div-status--destroyed { color: #333; }
 
@@ -961,8 +959,6 @@
 }
 
 .war-battle-div--destroyed { opacity: 0.3; text-decoration: line-through; }
-.war-battle-div--retreating { opacity: 0.5; }
-
 .war-battle-div__icon { font-size: 12px; width: 16px; text-align: center; }
 .war-battle-div__name { flex: 1; font-size: 8px; color: #94a3b8; }
 
@@ -992,13 +988,6 @@
   background: #3b82f6;
   border-radius: 2px;
   transition: width 0.3s;
-}
-
-.war-battle-div__morale {
-  font-size: 7px;
-  color: #64748b;
-  width: 24px;
-  text-align: right;
 }
 
 .war-battle-reserve {
@@ -1058,7 +1047,6 @@
 .war-log-entry--air_strike { border-left-color: #3b82f6; color: #60a5fa; }
 .war-log-entry--artillery_barrage { border-left-color: #f59e0b; color: #d4a574; }
 .war-log-entry--breakthrough { border-left-color: #22d38a; color: #22d38a; font-weight: 700; }
-.war-log-entry--morale_break { border-left-color: #f59e0b; color: #f59e0b; }
 .war-log-entry--phase_change { border-left-color: #8b5cf6; color: #a78bfa; font-weight: 600; }
 
 .war-log-entry__tick {
@@ -1708,12 +1696,6 @@
   color: #94a3b8;
   min-width: 50px;
   text-align: right;
-}
-
-.region-attack-popup__div-morale {
-  font-size: 9px;
-  color: #facc15;
-  min-width: 30px;
 }
 
 /* ====== 3D BATTLE SCENE (kept for WarPanel) ====== */

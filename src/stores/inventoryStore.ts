@@ -7,6 +7,17 @@ export type WeaponSlot = 'weapon'
 export type VehicleSlot = 'vehicle'
 export type EquipSlot = ArmorSlot | WeaponSlot | VehicleSlot
 export type EquipCategory = 'armor' | 'weapon' | 'vehicle'
+export type WeaponSubtype = 'knife' | 'gun' | 'rifle' | 'sniper' | 'tank' | 'rpg' | 'jet' | 'warship'
+
+// Which weapon subtypes are available at each tier
+export const WEAPON_SUBTYPES: Record<EquipTier, WeaponSubtype[]> = {
+  t1: ['knife'],
+  t2: ['gun'],
+  t3: ['rifle'],
+  t4: ['sniper'],
+  t5: ['tank', 'rpg'],
+  t6: ['jet', 'warship'],
+}
 
 export interface EquipStats {
   damage?: number
@@ -26,6 +37,7 @@ export interface EquipItem {
   equipped: boolean
   durability: number
   stats: EquipStats
+  weaponSubtype?: WeaponSubtype
 }
 
 export const TIER_ORDER: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
@@ -62,6 +74,24 @@ export const SLOT_ICONS: Record<EquipSlot, string> = {
   vehicle: '🚢',
 }
 
+// Map generated image assets
+export function getItemImagePath(tier: EquipTier, slot: EquipSlot, category: EquipCategory, weaponSubtype?: WeaponSubtype): string | null {
+  // We missed T5 boots/gloves and T6 armor set due to rate limits
+  if (tier === 't5' && (slot === 'boots' || slot === 'gloves')) return null
+  if (tier === 't6' && category === 'armor') return null
+
+  // Weapon subtypes with their own icons
+  if (category === 'weapon' && weaponSubtype === 'rpg') return '/assets/items/t5_rpg.png'
+  if (category === 'weapon' && weaponSubtype === 'warship') return '/assets/items/t6_weapon_warship.png'
+
+  if (tier === 't6') {
+    if (category === 'vehicle') return '/assets/items/t6_weapon_warship.png'
+    if (category === 'weapon') return '/assets/items/t6_weapon_jet.png'
+  }
+  
+  return `/assets/items/${tier}_${slot}.png`
+}
+
 // Scrap returns per tier
 export const SCRAP_VALUES: Record<EquipTier, number> = {
   t1: 6,
@@ -91,7 +121,7 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-export function generateStats(category: EquipCategory, slot: EquipSlot, tier: EquipTier): { name: string, stats: EquipStats } {
+export function generateStats(category: EquipCategory, slot: EquipSlot, tier: EquipTier, weaponSubtype?: WeaponSubtype): { name: string, stats: EquipStats, weaponSubtype?: WeaponSubtype } {
   const tLevel = parseInt(tier[1], 10) // 1 to 6
   
   if (category === 'weapon') {
@@ -99,15 +129,24 @@ export function generateStats(category: EquipCategory, slot: EquipSlot, tier: Eq
     // T2: Gun (50-80 dmg, 6-10% crit)
     // T3: Rifle (81-120 dmg, 11-15% crit)
     // T4: Sniper (121-150 dmg, 16-20% crit)
-    // T5: Tank (151-199 dmg, 21-30% crit)
-    // T6: Jet (200-300 dmg, 31-49% crit)
+    // T5: Tank (151-199 dmg, 21-30% crit)  |  RPG (same stats)
+    // T6: Jet (200-300 dmg, 31-49% crit)   |  Warship (same stats)
+    
+    // Handle subtypes for T5 and T6
+    if (tier === 't5' && weaponSubtype === 'rpg') {
+      return { name: 'RPG', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) }, weaponSubtype: 'rpg' }
+    }
+    if (tier === 't6' && weaponSubtype === 'warship') {
+      return { name: 'Warship', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) }, weaponSubtype: 'warship' }
+    }
+    
     switch (tier) {
-      case 't1': return { name: 'Knife', stats: { damage: randomInt(20, 49), critRate: 5 } }
-      case 't2': return { name: 'Gun', stats: { damage: randomInt(50, 80), critRate: randomInt(6, 10) } }
-      case 't3': return { name: 'Rifle', stats: { damage: randomInt(81, 120), critRate: randomInt(11, 15) } }
-      case 't4': return { name: 'Sniper', stats: { damage: randomInt(121, 150), critRate: randomInt(16, 20) } }
-      case 't5': return { name: 'Tank', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) } }
-      case 't6': return { name: 'Jet', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) } }
+      case 't1': return { name: 'Knife', stats: { damage: randomInt(20, 49), critRate: 5 }, weaponSubtype: 'knife' }
+      case 't2': return { name: 'Gun', stats: { damage: randomInt(50, 80), critRate: randomInt(6, 10) }, weaponSubtype: 'gun' }
+      case 't3': return { name: 'Rifle', stats: { damage: randomInt(81, 120), critRate: randomInt(11, 15) }, weaponSubtype: 'rifle' }
+      case 't4': return { name: 'Sniper', stats: { damage: randomInt(121, 150), critRate: randomInt(16, 20) }, weaponSubtype: 'sniper' }
+      case 't5': return { name: 'Tank', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) }, weaponSubtype: 'tank' }
+      case 't6': return { name: 'Jet', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) }, weaponSubtype: 'jet' }
     }
   } else if (category === 'vehicle') {
     if (tier === 't6') {
@@ -169,17 +208,25 @@ function rollLootBoxItem(): EquipItem {
     slot = ARMOR_SLOTS[Math.floor(Math.random() * ARMOR_SLOTS.length)]
   }
 
-  const { name, stats } = generateStats(category, slot, tier)
+  // For T5/T6 weapons, randomly pick a subtype
+  let subtype: WeaponSubtype | undefined
+  if (category === 'weapon') {
+    const subtypes = WEAPON_SUBTYPES[tier]
+    subtype = subtypes[Math.floor(Math.random() * subtypes.length)]
+  }
+
+  const result = generateStats(category, slot, tier, subtype)
 
   return {
     id: `item-${++itemCounter}-${Date.now()}`,
-    name,
+    name: result.name,
     slot,
     category,
     tier,
     equipped: false,
     durability: 100,
-    stats,
+    stats: result.stats,
+    weaponSubtype: result.weaponSubtype,
   }
 }
 

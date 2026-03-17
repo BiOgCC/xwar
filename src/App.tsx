@@ -297,7 +297,7 @@ function App() {
             countryCode: code, ownerId: `AI_${code}`,
             status: 'in_combat', experience: 50,
             manpower: 5000 + i * 2000, maxManpower: 8000,
-            morale: 70, equipment: [],
+            equipment: [],
             trainingProgress: 10,
             killCount: 0, battlesSurvived: 0,
           }

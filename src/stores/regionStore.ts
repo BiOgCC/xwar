@@ -362,14 +362,13 @@ export const useRegionStore = create<RegionState>((set, get) => ({
       if (totalMp <= 0) return { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null }
       const rate = Math.max(2, Math.min(20, (totalAtk / Math.max(1, r.defense * 10)) * 8))
       const prog = Math.min(100, r.captureProgress + rate)
-      const dmg = Math.max(50, r.defense * 15), moraleLoss = Math.max(2, r.defense / 8)
+      const dmg = Math.max(50, r.defense * 15)
       divIds.forEach(id => {
         const d = armyState.divisions[id]
         if (d && d.manpower > 0 && d.status !== 'destroyed') {
           const share = dmg / Math.max(1, divIds.length)
           useArmyStore.setState(s => ({ divisions: { ...s.divisions, [id]: {
             ...s.divisions[id], manpower: Math.max(0, d.manpower - share),
-            morale: Math.max(0, d.morale - moraleLoss),
             status: d.manpower - share <= 0 ? 'destroyed' : 'in_combat',
           }}}))
         }

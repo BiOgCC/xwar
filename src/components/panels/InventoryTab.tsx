@@ -11,8 +11,13 @@ import {
   TIER_ORDER,
   ARMOR_SLOTS,
   SLOT_ICONS,
+  getItemImagePath,
+  WEAPON_SUBTYPES,
   type EquipItem,
   type EquipSlot,
+  type EquipTier,
+  type EquipCategory,
+  type WeaponSubtype,
 } from '../../stores/inventoryStore'
 
 export default function InventoryTab() {
@@ -83,12 +88,14 @@ export default function InventoryTab() {
     if (!stats) return null
     return (
       <div style={{ display: 'flex', gap: '4px', fontSize: condensed ? '9px' : '10px', marginTop: condensed ? '2px' : '6px', opacity: 0.8, flexWrap: 'wrap' }}>
+        {Object.keys(stats).length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px' }}>
         {stats.damage && <span>⚔️ {stats.damage}</span>}
         {stats.critRate && <span>🎯 {stats.critRate}%</span>}
         {stats.critDamage && <span>💥 +{stats.critDamage}%</span>}
         {stats.armor && <span>🛡️ +{stats.armor}%</span>}
         {stats.dodge && <span>💨 +{stats.dodge}%</span>}
         {stats.precision && <span>👁️ +{stats.precision}%</span>}
+        </div>}
       </div>
     )
   }
@@ -105,7 +112,13 @@ export default function InventoryTab() {
         onClick={() => handleSlotClick(slotType as any)}
         title={item ? `${item.name} (${TIER_LABELS[item.tier]})` : `${label} — Empty (Click to assign)`}
       >
-        <span className="inv-equip-slot__icon" style={{ opacity: item || val ? 1 : 0.3 }}>{iconStr || (SLOT_ICONS as Record<string, string>)[slotType] || '❓'}</span>
+        {(() => {
+          const imgUrl = item ? getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype) : null;
+          return imgUrl ? (
+            <img src={imgUrl} alt={item?.name || 'Item'} style={{ width: '28px', height: '28px', objectFit: 'contain', opacity: item || val ? 1 : 0.3, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling!.removeAttribute('style'); }} />
+          ) : null;
+        })()}
+        <span className="inv-equip-slot__icon" style={item && getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype) ? { display: 'none' } : { opacity: item || val ? 1 : 0.3 }}>{iconStr || (SLOT_ICONS as Record<string, string>)[slotType] || '❓'}</span>
         <span
           className="inv-equip-slot__label"
           style={item ? { color: TIER_COLORS[item.tier] } : { opacity: val ? 1 : 0.4 }}
@@ -132,7 +145,7 @@ export default function InventoryTab() {
         <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>
           {title}
         </div>
-        <div className="inv-items-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '4px' }}>
+        <div className="inv-items-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px' }}>
           {items.map((item) => (
             <div
               key={item.id}
@@ -140,10 +153,12 @@ export default function InventoryTab() {
               style={{
                 borderColor: `${TIER_COLORS[item.tier]}44`,
                 flexDirection: 'column',
-                alignItems: 'flex-start',
-                padding: '4px 6px',
+                alignItems: 'center',
+                textAlign: 'center',
+                padding: '12px 6px 8px 6px',
                 background: item.equipped ? 'rgba(34, 211, 138, 0.05)' : 'rgba(8,12,18,0.4)',
-                minHeight: '34px',
+                minHeight: '110px',
+                position: 'relative'
               }}
               onClick={() => {
                 if (mode === 'disarm' && !item.equipped) {
@@ -155,13 +170,27 @@ export default function InventoryTab() {
                 }
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '2px' }}>
-                <span style={{ fontSize: '9px', fontFamily: 'var(--font-display)', color: TIER_COLORS[item.tier], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {item.name}
-                </span>
-                {item.equipped && <span style={{ fontSize: '7px', color: '#22d38a', border: '1px solid #22d38a', padding: '1px 2px', borderRadius: '2px', marginLeft: '2px' }}>EQ</span>}
+              {/* EQ Badge */}
+              {item.equipped && <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '8px', fontWeight: 900, color: '#22d38a', border: '1px solid #22d38a', padding: '2px 4px', borderRadius: '3px', background: 'rgba(34,211,138,0.1)' }}>EQUIPPED</div>}
+              
+              {/* Main Image Centered */}
+              <div style={{ height: '54px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', width: '100%' }}>
+                {(() => {
+                  const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype);
+                  return imgUrl ? (
+                    <img src={imgUrl} alt={item.name} style={{ width: '54px', height: '54px', objectFit: 'contain', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                  ) : <span style={{fontSize: '32px'}}>{(SLOT_ICONS as any)[item.slot]}</span>;
+                })()}
               </div>
-              {renderStats(item.stats, true)}
+
+              {/* Name & Stats Below */}
+              <div style={{ fontSize: '11px', fontWeight: 800, fontFamily: 'var(--font-display)', color: TIER_COLORS[item.tier], marginBottom: '4px', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {item.name}
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+                {renderStats(item.stats, true)}
+              </div>
             </div>
           ))}
         </div>
@@ -310,102 +339,126 @@ export default function InventoryTab() {
               ))}
             </div>
 
-            {/* Tier Grid */}
+            {/* Tier Grid — for weapons, iterate over subtypes per tier */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              {TIER_ORDER.map(tier => {
-                const cost = costTable[tier]
-                const canAfford = player.scrap >= cost.scrap && player.oil >= cost.oil && player.money >= cost.money
-                // Use generateStats for preview name
+              {(() => {
                 const category = craftSlot === 'weapon' ? 'weapon' as const : 'armor' as const
-                const previewGen = generateStats(category, craftSlot, tier)
-                const itemName = previewGen.name
-                const preview = statPreview[craftSlot]?.[tier] || ''
-                const tierNum = parseInt(tier[1])
+                
+                // Build flat list of craft entries
+                const entries: { tier: EquipTier; subtype?: WeaponSubtype }[] = []
+                TIER_ORDER.forEach(tier => {
+                  if (craftSlot === 'weapon') {
+                    // For weapons, list all subtypes for this tier
+                    const subtypes = WEAPON_SUBTYPES[tier]
+                    subtypes.forEach(sub => entries.push({ tier, subtype: sub }))
+                  } else {
+                    entries.push({ tier })
+                  }
+                })
 
-                return (
-                  <div key={tier} style={{
-                    padding: '8px', borderRadius: '6px',
-                    background: canAfford ? `rgba(${tierNum > 3 ? '251,191,36' : '255,255,255'},0.03)` : 'rgba(0,0,0,0.2)',
-                    border: `2px solid ${canAfford ? TIER_COLORS[tier] + '55' : 'rgba(255,255,255,0.05)'}`,
-                    opacity: canAfford ? 1 : 0.5,
-                    transition: 'all 0.2s',
-                  }}>
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 900, color: TIER_COLORS[tier] }}>{TIER_LABELS[tier].split(' ')[0]}</span>
-                      <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 700 }}>T{tierNum}</span>
-                    </div>
+                return entries.map(({ tier, subtype }) => {
+                  const cost = costTable[tier]
+                  const canAfford = player.scrap >= cost.scrap && player.oil >= cost.oil && player.money >= cost.money
+                  const previewGen = generateStats(category, craftSlot, tier, subtype)
+                  const itemName = previewGen.name
+                  const preview = statPreview[craftSlot]?.[tier] || ''
+                  const tierNum = parseInt(tier[1])
+                  const cardKey = subtype ? `${tier}-${subtype}` : tier
 
-                    {/* Item Name */}
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0', marginBottom: '4px' }}>
-                      {(SLOT_ICONS as any)[craftSlot]} {itemName}
-                    </div>
+                  return (
+                    <div key={cardKey} style={{
+                      padding: '8px', borderRadius: '6px',
+                      background: canAfford ? `rgba(${tierNum > 3 ? '251,191,36' : '255,255,255'},0.03)` : 'rgba(0,0,0,0.2)',
+                      border: `2px solid ${canAfford ? TIER_COLORS[tier] + '55' : 'rgba(255,255,255,0.05)'}`,
+                      opacity: canAfford ? 1 : 0.5,
+                      transition: 'all 0.2s',
+                    }}>
+                      {/* Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 900, color: TIER_COLORS[tier] }}>{TIER_LABELS[tier].split(' ')[0]}</span>
+                        <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 700 }}>T{tierNum}</span>
+                      </div>
 
-                    {/* Stat Range Preview */}
-                    <div style={{ fontSize: '8px', padding: '2px 4px', marginBottom: '6px', background: `${TIER_COLORS[tier]}10`, border: `1px solid ${TIER_COLORS[tier]}25`, borderRadius: '2px', color: TIER_COLORS[tier] }}>
-                      {preview}
-                    </div>
+                      {/* Main Centered Image */}
+                      <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', width: '100%', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
+                        {(() => {
+                          const imgUrl = getItemImagePath(tier as EquipTier, craftSlot, category, subtype);
+                          return imgUrl ? (
+                            <img src={imgUrl} alt={itemName} style={{ width: '54px', height: '54px', objectFit: 'contain', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                          ) : <span style={{fontSize: '32px'}}>{(SLOT_ICONS as any)[craftSlot]}</span>;
+                        })()}
+                      </div>
 
-                    {/* Cost */}
-                    <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '6px' }}>
-                      🔩{cost.scrap} · 🛢️{cost.oil} · 💵{cost.money}
-                    </div>
+                      {/* Item Name Centered */}
+                      <div style={{ fontSize: '11px', textAlign: 'center', fontWeight: 800, color: TIER_COLORS[tier], marginBottom: '6px' }}>
+                        {itemName}
+                      </div>
 
-                    {/* Craft Button */}
-                    <button
-                      disabled={!canAfford}
-                      style={{
-                        width: '100%', padding: '5px', fontSize: '9px', fontWeight: 900,
-                        border: `1px solid ${canAfford ? TIER_COLORS[tier] : '#333'}`,
-                        borderRadius: '3px', cursor: canAfford ? 'pointer' : 'not-allowed',
-                        background: canAfford ? `${TIER_COLORS[tier]}22` : 'transparent',
-                        color: canAfford ? TIER_COLORS[tier] : '#444',
-                      }}
-                      onClick={() => {
-                        if (!canAfford) return
-                        player.spendMoney(cost.money)
-                        player.spendOil(cost.oil)
-                        player.spendScraps(cost.scrap)
-                        // Use generateStats for randomized stats matching loot system
-                        const { name, stats } = generateStats(category, craftSlot, tier)
+                      {/* Stat Range Preview */}
+                      <div style={{ fontSize: '8px', padding: '2px 4px', marginBottom: '6px', background: `${TIER_COLORS[tier]}10`, border: `1px solid ${TIER_COLORS[tier]}25`, borderRadius: '2px', color: TIER_COLORS[tier], textAlign: 'center' }}>
+                        {preview}
+                      </div>
 
-                        // Superforge check: industrialist skill gives up to 50% chance
-                        const indLevel = useSkillsStore.getState().economic.industrialist || 0
-                        const superforgeChance = Math.min(0.50, indLevel * 0.05)
-                        const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
+                      {/* Cost */}
+                      <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '6px', textAlign: 'center' }}>
+                        🔩{cost.scrap} · 🛢️{cost.oil} · 💵{cost.money}
+                      </div>
 
-                        if (isSuperforged) {
-                          // +10% to all stat values
-                          for (const key of Object.keys(stats) as Array<keyof typeof stats>) {
-                            if (typeof stats[key] === 'number') {
-                              (stats as any)[key] = Math.ceil(stats[key]! * 1.10)
+                      {/* Craft Button */}
+                      <button
+                        disabled={!canAfford}
+                        style={{
+                          width: '100%', padding: '5px', fontSize: '9px', fontWeight: 900,
+                          border: `1px solid ${canAfford ? TIER_COLORS[tier] : '#333'}`,
+                          borderRadius: '3px', cursor: canAfford ? 'pointer' : 'not-allowed',
+                          background: canAfford ? `${TIER_COLORS[tier]}22` : 'transparent',
+                          color: canAfford ? TIER_COLORS[tier] : '#444',
+                        }}
+                        onClick={() => {
+                          if (!canAfford) return
+                          player.spendMoney(cost.money)
+                          player.spendOil(cost.oil)
+                          player.spendScraps(cost.scrap)
+                          const result = generateStats(category, craftSlot, tier, subtype)
+
+                          // Superforge check: industrialist skill gives up to 50% chance
+                          const indLevel = useSkillsStore.getState().economic.industrialist || 0
+                          const superforgeChance = Math.min(0.50, indLevel * 0.05)
+                          const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
+
+                          if (isSuperforged) {
+                            for (const key of Object.keys(result.stats) as Array<keyof typeof result.stats>) {
+                              if (typeof result.stats[key] === 'number') {
+                                (result.stats as any)[key] = Math.ceil(result.stats[key]! * 1.10)
+                              }
                             }
                           }
-                        }
 
-                        const newItem: EquipItem = {
-                          id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-                          name: isSuperforged ? `⚡ ${name}` : name,
-                          slot: craftSlot,
-                          category,
-                          tier,
-                          equipped: false,
-                          durability: 100,
-                          stats,
-                        }
-                        inventory.addItem(newItem)
-                        if (isSuperforged) {
-                          ui.addFloatingText(`⚡ SUPERFORGED ${name}! +10% STATS`, window.innerWidth / 2, window.innerHeight / 2, '#fbbf24')
-                        } else {
-                          ui.addFloatingText(`CRAFTED ${name}!`, window.innerWidth / 2, window.innerHeight / 2, TIER_COLORS[tier])
-                        }
-                      }}
-                    >
-                      🔨 CRAFT
-                    </button>
-                  </div>
-                )
-              })}
+                          const newItem: EquipItem = {
+                            id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                            name: isSuperforged ? `⚡ ${result.name}` : result.name,
+                            slot: craftSlot,
+                            category,
+                            tier,
+                            equipped: false,
+                            durability: 100,
+                            stats: result.stats,
+                            weaponSubtype: result.weaponSubtype,
+                          }
+                          inventory.addItem(newItem)
+                          if (isSuperforged) {
+                            ui.addFloatingText(`⚡ SUPERFORGED ${result.name}! +10% STATS`, window.innerWidth / 2, window.innerHeight / 2, '#fbbf24')
+                          } else {
+                            ui.addFloatingText(`CRAFTED ${result.name}!`, window.innerWidth / 2, window.innerHeight / 2, TIER_COLORS[tier])
+                          }
+                        }}
+                      >
+                        🔨 CRAFT
+                      </button>
+                    </div>
+                  )
+                })
+              })()}
             </div>
           </div>
         )
@@ -442,8 +495,14 @@ export default function InventoryTab() {
             <div className="inv-modal__title" style={{ color: TIER_COLORS[selectedItem.tier] }}>
               {selectedItem.name}
             </div>
-            <div style={{ textAlign: 'center', marginBottom: '16px', fontSize: '32px' }}>
-              {(SLOT_ICONS as Record<string, string>)[selectedItem.slot]}
+            <div style={{ textAlign: 'center', marginBottom: '16px', fontSize: '32px', display: 'flex', justifyContent: 'center' }}>
+              {(() => {
+                const imgUrl = getItemImagePath(selectedItem.tier, selectedItem.slot, selectedItem.category, selectedItem.weaponSubtype);
+                return imgUrl ? (
+                  <img src={imgUrl} alt={selectedItem.name} style={{ width: '64px', height: '64px', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.5))' }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling!.removeAttribute('style'); }} />
+                ) : null;
+              })()}
+              <span style={getItemImagePath(selectedItem.tier, selectedItem.slot, selectedItem.category, selectedItem.weaponSubtype) ? { display: 'none' } : {}}>{(SLOT_ICONS as Record<string, string>)[selectedItem.slot]}</span>
             </div>
             
             <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '4px', marginBottom: '20px' }}>

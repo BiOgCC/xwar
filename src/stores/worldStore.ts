@@ -16,6 +16,8 @@ export interface Country {
   airportLevel: number
   bunkerLevel: number
   militaryBaseLevel: number
+  hasPort: boolean
+  hasAirport: boolean
   taxExempt: boolean
 }
 
@@ -254,7 +256,7 @@ const INITIAL_DEPOSITS: RegionalDeposit[] = [
 ]
 
 const makeCountry = (name: string, code: string, controller: string, empire: string | null, population: number, regions: number, military: number, treasury: number, color: string, conqueredResources: ConqueredResourceType[] = []): Country => ({
-  name, code, controller, empire, population, regions, military, treasury, color, conqueredResources, activeDepositBonus: null, portLevel: 1, airportLevel: 1, bunkerLevel: 1, militaryBaseLevel: 1, taxExempt: false,
+  name, code, controller, empire, population, regions, military, treasury, color, conqueredResources, activeDepositBonus: null, portLevel: 1, airportLevel: 1, bunkerLevel: 1, militaryBaseLevel: 1, hasPort: true, hasAirport: true, taxExempt: false,
 })
 
 export interface WorldState {
