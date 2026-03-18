@@ -596,30 +596,43 @@ export default function InventoryTab() {
 
  {/* Tier Grid */}
  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginBottom: '12px' }}>
- {TIER_ORDER.map(tier => {
- const tc = costTable[tier]
+ {(() => {
+ // Build craft entries: for weapons, expand tiers with multiple subtypes into separate cards
+ type CraftEntry = { tier: EquipTier; subtype?: WeaponSubtype; label: string }
+ const entries: CraftEntry[] = []
+ TIER_ORDER.forEach(tier => {
+   if (craftSlot === 'weapon' && WEAPON_SUBTYPES[tier].length > 1) {
+     WEAPON_SUBTYPES[tier].forEach(sub => {
+       entries.push({ tier, subtype: sub, label: sub.charAt(0).toUpperCase() + sub.slice(1) })
+     })
+   } else {
+     entries.push({ tier, label: TIER_LABELS[tier].split(' ')[0] })
+   }
+ })
+ return entries.map((entry, idx) => {
+ const tc = costTable[entry.tier]
  const canAfford = player.scrap >= tc.scrap && player.oil >= tc.oil && player.money >= tc.money
- const preview = statPreview[craftSlot]?.[tier] || ''
- const imgUrl = getItemImagePath(tier as EquipTier, craftSlot, craftSlot === 'weapon' ? 'weapon' : 'armor', undefined)
+ const preview = statPreview[craftSlot]?.[entry.tier] || ''
+ const imgUrl = getItemImagePath(entry.tier, craftSlot, craftSlot === 'weapon' ? 'weapon' : 'armor', entry.subtype)
 
  return (
- <div key={tier} style={{
+ <div key={`${entry.tier}-${entry.subtype || idx}`} style={{
  padding: '8px 6px', borderRadius: '6px', textAlign: 'center',
  background: canAfford ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)',
- border: `1px solid ${canAfford ? TIER_COLORS[tier] + '44' : 'rgba(255,255,255,0.04)'}`,
+ border: `1px solid ${canAfford ? TIER_COLORS[entry.tier] + '44' : 'rgba(255,255,255,0.04)'}`,
  opacity: canAfford ? 1 : 0.4,
  }}>
  <div style={{ height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '4px' }}>
  {imgUrl ? (
- <img src={imgUrl} alt={TIER_LABELS[tier]} style={{ width: '56px', height: '56px', objectFit: 'contain', filter: `drop-shadow(0 2px 4px ${TIER_COLORS[tier]}30)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+ <img src={imgUrl} alt={entry.label} style={{ width: '56px', height: '56px', objectFit: 'contain', filter: `drop-shadow(0 2px 4px ${TIER_COLORS[entry.tier]}30)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
  ) : (
  <span style={{ fontSize: '20px', opacity: 0.4 }}>{(SLOT_ICONS as any)[craftSlot]}</span>
  )}
  </div>
- <div style={{ fontSize: '10px', fontWeight: 800, color: TIER_COLORS[tier], fontFamily: 'var(--font-display)', marginBottom: '2px' }}>
- {TIER_LABELS[tier].split(' ')[0]}
+ <div style={{ fontSize: '10px', fontWeight: 800, color: TIER_COLORS[entry.tier], fontFamily: 'var(--font-display)', marginBottom: '2px' }}>
+ {entry.subtype ? entry.label : TIER_LABELS[entry.tier].split(' ')[0]}
  </div>
- <div style={{ fontSize: '7px', color: TIER_COLORS[tier], opacity: 0.7, marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
+ <div style={{ fontSize: '7px', color: TIER_COLORS[entry.tier], opacity: 0.7, marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
  {preview}
  </div>
  <div style={{ fontSize: '7px', color: '#475569', marginBottom: '6px', fontFamily: 'var(--font-mono)', letterSpacing: '0.03em' }}>
@@ -627,19 +640,52 @@ export default function InventoryTab() {
  </div>
  <button
  disabled={!canAfford}
- onClick={() => doCraft(tier, craftSlot)}
+ onClick={() => {
+   if (entry.subtype) {
+     // Craft specific subtype
+     const cost = costTable[entry.tier]
+     if (player.scrap < cost.scrap || player.oil < cost.oil || player.money < cost.money) return
+     player.spendMoney(cost.money)
+     player.spendOil(cost.oil)
+     player.spendScraps(cost.scrap)
+     const result = generateStats('weapon', 'weapon', entry.tier, entry.subtype)
+     const indLevel = useSkillsStore.getState().economic.industrialist || 0
+     const superforgeChance = Math.min(0.50, indLevel * 0.05)
+     const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
+     if (isSuperforged) {
+       for (const key of Object.keys(result.stats) as Array<keyof typeof result.stats>) {
+         if (typeof result.stats[key] === 'number') {
+           (result.stats as any)[key] = Math.ceil(result.stats[key]! * 1.10)
+         }
+       }
+     }
+     const newItem: EquipItem = {
+       id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+       name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
+       slot: 'weapon', category: 'weapon', tier: entry.tier, equipped: false, durability: 100,
+       stats: result.stats, weaponSubtype: result.weaponSubtype,
+     }
+     inventory.addItem(newItem)
+     const histEntry = { item: newItem, superforged: isSuperforged }
+     setCraftedItem(histEntry)
+     setCraftHistory(prev => [histEntry, ...prev])
+   } else {
+     doCraft(entry.tier, craftSlot)
+   }
+ }}
  style={{
  width: '100%', padding: '5px', fontSize: '8px', fontWeight: 800,
  fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
- border: `1px solid ${canAfford ? TIER_COLORS[tier] : '#222'}`,
+ border: `1px solid ${canAfford ? TIER_COLORS[entry.tier] : '#222'}`,
  borderRadius: '3px', cursor: canAfford ? 'pointer' : 'not-allowed',
- background: canAfford ? `${TIER_COLORS[tier]}22` : 'transparent',
- color: canAfford ? TIER_COLORS[tier] : '#333',
+ background: canAfford ? `${TIER_COLORS[entry.tier]}22` : 'transparent',
+ color: canAfford ? TIER_COLORS[entry.tier] : '#333',
  }}
  >ROLL</button>
  </div>
  )
- })}
+ })
+ })()}
  </div>
 
  {/* Random Craft Section */}

@@ -77,7 +77,7 @@ export const SLOT_ICONS: Record<EquipSlot, string> = {
 // Map generated image assets
 export function getItemImagePath(tier: EquipTier, slot: EquipSlot, category: EquipCategory, weaponSubtype?: WeaponSubtype): string | null {
   // Weapon subtypes with their own icons
-  if (category === 'weapon' && weaponSubtype === 'rpg') return '/assets/items/t5_weapon.png'
+  if (category === 'weapon' && weaponSubtype === 'rpg') return '/assets/items/t5_weapon_rpg.png'
   if (category === 'weapon' && weaponSubtype === 'warship') return '/assets/items/t6_weapon_warship.png'
 
   if (tier === 't6') {
