@@ -753,7 +753,6 @@ export default function InventoryTab() {
  const gain = TIER_SELL_PRICE[selectedItem.tier]
  inventory.removeItem(selectedItem.id)
  usePlayerStore.setState(s => ({ money: s.money + gain }))
- useMarketStore.getState().executeTrade('equipment', 'sell', 1)
  ui.addFloatingText(`SOLD +$${gain.toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
  setSelectedItem(null)
  }}
