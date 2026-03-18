@@ -1,4 +1,5 @@
-import React, { useState, Suspense } from 'react'
+import React, { useState, Suspense, useMemo } from 'react'
+import { useAnimatedNumber } from '../../hooks/useAnimatedNumber'
 import { useArmyStore, DIVISION_TEMPLATES, getDivisionEquipBonus, WEAPON_DIVISION_MAP, type DivisionType, type MilitaryRankType } from '../../stores/armyStore'
 import { useGovernmentStore, type DivisionListing, type MilitaryContract } from '../../stores/governmentStore'
 import { useBattleStore, getCountryFlag, getCountryName, getBaseSkillStats, TACTICAL_ORDERS } from '../../stores/battleStore'
@@ -9,6 +10,13 @@ import { useUIStore } from '../../stores/uiStore'
 import { useInventoryStore, type WeaponSubtype } from '../../stores/inventoryStore'
 import OccupationPanel from './OccupationPanel'
 import '../../styles/war.css'
+import { playHitSound, playCritSound } from '../../hooks/useCombatSounds'
+
+// Animated number display component (usable in loops unlike hooks)
+function AnimatedNumber({ value, duration = 600 }: { value: number; duration?: number }) {
+  const display = useAnimatedNumber(value, duration)
+  return <>{display.toLocaleString()}</>
+}
 
 const BattleScene3D = React.lazy(() => import('./BattleScene3D'))
 
@@ -52,7 +60,7 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
   return (
     <div className="war-panel">
       {/* Message of the Day — global, above tabs */}
-      <div className="war-motd" style={{ padding: '4px 10px', marginBottom: '4px', background: 'rgba(139,92,246,0.06)', borderRadius: '5px', border: '1px solid rgba(139,92,246,0.12)' }}>
+      <div className="war-motd" style={{ padding: '6px 10px', marginBottom: '6px', background: 'rgba(132, 204, 22, 0.08)', borderRadius: '4px', border: '1px solid rgba(132, 204, 22, 0.2)', boxShadow: 'inset 0 0 10px rgba(132, 204, 22, 0.05)' }}>
         {editingMotd ? (
           <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
             <input
@@ -79,11 +87,11 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setEditingMotd(true)}>
             <div style={{
               flex: 1, fontSize: '8px', letterSpacing: '0.8px', textTransform: 'uppercase',
-              fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#a78bfa',
-              padding: '2px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: '2px',
-              borderLeft: '2px solid #a78bfa',
+              fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#84cc16',
+              padding: '4px 8px', background: 'rgba(132, 204, 22, 0.05)', borderRadius: '2px',
+              borderLeft: '2px solid #84cc16',
             }}>
-              📢 {battleStore.warMotd}
+              {battleStore.warMotd}
             </div>
             <span style={{ fontSize: '8px', color: '#475569' }}>✏️</span>
           </div>
@@ -91,12 +99,12 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
           <button
             onClick={() => setEditingMotd(true)}
             style={{
-              width: '100%', padding: '2px 6px', border: '1px dashed rgba(139,92,246,0.2)',
-              borderRadius: '3px', cursor: 'pointer', background: 'transparent',
-              fontSize: '7px', color: '#64748b', fontFamily: 'var(--font-mono)', textTransform: 'uppercase',
-              letterSpacing: '0.5px',
+              width: '100%', padding: '4px 6px', border: '1px dashed rgba(132, 204, 22, 0.3)',
+              borderRadius: '2px', cursor: 'pointer', background: 'transparent',
+              fontSize: '8px', color: '#84cc16', fontFamily: 'var(--font-mono)', textTransform: 'uppercase',
+              letterSpacing: '1px', fontWeight: 600
             }}
-          >📢 SET MESSAGE OF THE DAY</button>
+          >SET MESSAGE OF THE DAY</button>
         )}
       </div>
       <div className="war-tabs">
@@ -140,6 +148,45 @@ function OverviewTab({ iso }: { iso: string }) {
   const popPct = popCap.max > 0 ? (popCap.used / popCap.max) * 100 : 0
   const popColor = popPct >= 90 ? '#ef4444' : popPct >= 60 ? '#f59e0b' : '#22d38a'
 
+  // --- ARMY INTELLIGENCE METRICS ---
+  // 1. Elite Forces (Star breakdown)
+  const starsCount = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+  myDivisions.forEach(d => { starsCount[d.starQuality as keyof typeof starsCount]++ })
+
+  // 2. Combat Power (DPT & HP of ready/training divs)
+  let totalDpt = 0
+  let totalHp = 0
+  myDivisions.forEach(d => {
+    if (d.status === 'ready' || d.status === 'training' || d.status === 'in_combat') {
+      const t = armyStore.divisions[d.id] ? DIVISION_TEMPLATES?.[d.type] : null
+      if (t) {
+        const effAtk = t.atkDmgMult * (1 + parseFloat(String(d.statModifiers?.atkDmgMult || 0)))
+        const effSpeed = (t.attackSpeed || 1.0) * (1 + parseFloat(String(d.statModifiers?.attackSpeed || 0)))
+        const baseAtk = 100 // estimate
+        const dpt = Math.floor((baseAtk + t.manpowerCost * 3) * effAtk * (1 / Math.max(0.2, effSpeed)))
+        totalDpt += dpt
+        totalHp += d.maxHealth
+      }
+    }
+  })
+
+  // 3. Hall of Fame (Top division by kills)
+  let topDiv = myDivisions[0]
+  myDivisions.forEach(d => { if (d.killCount > (topDiv?.killCount || 0)) topDiv = d })
+
+  // 4. Composition (Land/Air/Naval)
+  const comp = { land: 0, air: 0, naval: 0, total: myDivisions.length }
+  myDivisions.forEach(d => { if (d.category in comp) comp[d.category as keyof typeof comp]++ })
+
+  // 5. Equipment Status (Geared vs Ungeared)
+  const fullyGeared = myDivisions.filter(d => d.equipment?.length === 3).length
+  const someGear = myDivisions.filter(d => (d.equipment?.length || 0) > 0 && (d.equipment?.length || 0) < 3).length
+  const noGear = myDivisions.filter(d => !d.equipment || d.equipment.length === 0).length
+
+  // 6. Experience (Average level)
+  const avgExp = myDivisions.length > 0 ? Math.floor(myDivisions.reduce((s, d) => s + (d.experience || 0), 0) / myDivisions.length) : 0
+  const avgLevel = Math.floor(avgExp / 10) + 1
+
   return (
     <div className="war-overview">
       {/* Compact Stats Row */}
@@ -151,8 +198,8 @@ function OverviewTab({ iso }: { iso: string }) {
             { label: 'TROOPS', value: totalManpower.toLocaleString(), color: '#e2e8f0' },
             { label: 'READY', value: readyDivs, color: '#22d38a' },
             { label: 'TRAINING', value: trainingDivs, color: '#f59e0b' },
-            { label: 'COMBAT', value: inCombatDivs, color: '#ef4444' },
-            { label: 'BATTLES', value: activeBattles.length, color: '#ef4444' },
+            { label: 'COMBAT', value: inCombatDivs, color: '#84cc16' },
+            { label: 'BATTLES', value: activeBattles.length, color: '#84cc16' },
           ].map(s => (
             <div key={s.label} style={{
               flex: '1 1 60px', textAlign: 'center', padding: '4px 2px',
@@ -173,6 +220,76 @@ function OverviewTab({ iso }: { iso: string }) {
           <div style={{ height: '5px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${Math.min(100, popPct)}%`, background: popColor, borderRadius: '3px', transition: 'width 0.3s' }} />
           </div>
+        </div>
+      </div>
+
+      {/* --- ARMY INTELLIGENCE --- */}
+      <div className="war-card">
+        <div className="war-card__title">🧠 ARMY INTELLIGENCE</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px', marginTop: '6px' }}>
+          
+          {/* 1. Elite Forces */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '6px' }}>
+            <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>ELITE FORCES</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700 }}>
+              <span style={{ color: '#f59e0b' }}>5★: {starsCount[5]}</span>
+              <span style={{ color: '#a855f7' }}>4★: {starsCount[4]}</span>
+              <span style={{ color: '#3b82f6' }}>3★: {starsCount[3]}</span>
+            </div>
+          </div>
+
+          {/* 2. Combat Power */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '6px' }}>
+            <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>ESTIMATED POWER</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700 }}>
+              <span style={{ color: '#ef4444' }}>⚔️ {totalDpt.toLocaleString()} DPT</span>
+              <span style={{ color: '#22d38a' }}>🛡️ {totalHp.toLocaleString()} HP</span>
+            </div>
+          </div>
+
+          {/* 3. Hall of Fame */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '6px' }}>
+            <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>TOP DIVISION</div>
+            <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {topDiv ? `${topDiv.name}` : 'No divisions yet'}
+            </div>
+            <div style={{ fontSize: '8px', color: '#f59e0b', fontWeight: 700 }}>
+              {topDiv ? `💀 ${topDiv.killCount} Kills` : '-'}
+            </div>
+          </div>
+
+          {/* 4. Composition */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '6px' }}>
+            <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>COMPOSITION</div>
+            <div style={{ display: 'flex', width: '100%', height: '4px', borderRadius: '2px', overflow: 'hidden', marginBottom: '2px' }}>
+              <div style={{ width: `${comp.total ? (comp.land / comp.total)*100 : 0}%`, background: '#84cc16' }} />
+              <div style={{ width: `${comp.total ? (comp.air / comp.total)*100 : 0}%`, background: '#0ea5e9' }} />
+              <div style={{ width: `${comp.total ? (comp.naval / comp.total)*100 : 0}%`, background: '#3b82f6' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', color: '#cbd5e1' }}>
+              <span>🌲 {comp.land}</span><span>✈️ {comp.air}</span><span>🚢 {comp.naval}</span>
+            </div>
+          </div>
+
+          {/* 5. Equipment */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '6px' }}>
+            <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>EQUIPMENT STATUS</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700 }}>
+              <span style={{ color: fullyGeared > 0 ? '#22d38a' : '#64748b' }}>Full: {fullyGeared}</span>
+              <span style={{ color: someGear > 0 ? '#f59e0b' : '#64748b' }}>Partial: {someGear}</span>
+              <span style={{ color: noGear > 0 ? '#ef4444' : '#64748b' }}>Empty: {noGear}</span>
+            </div>
+          </div>
+
+          {/* 6. Experience */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>ARMY VETERANCY</div>
+            <div style={{ fontSize: '12px', fontWeight: 900, color: '#e2e8f0' }}>Level {avgLevel}</div>
+            <div style={{ width: '100%', height: '2px', background: 'rgba(255,255,255,0.1)', marginTop: '2px' }}>
+              <div style={{ width: `${avgExp % 10}0%`, height: '100%', background: '#22d38a' }} />
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -304,7 +421,7 @@ function RecruitTab() {
       <button
         onClick={() => setShowContractModal(true)}
         style={{
-          width: '100%', padding: '10px 16px', marginBottom: '8px',
+          width: '20%', margin: '0 auto 8px', padding: '10px 16px',
           background: 'linear-gradient(135deg, rgba(34,211,138,0.2), rgba(16,185,129,0.15))',
           border: '1px solid rgba(34,211,138,0.4)', borderRadius: '6px',
           color: '#22d38a', fontWeight: 700, fontSize: '13px',
@@ -546,8 +663,12 @@ function RecruitTab() {
             const sqIdx = listing.id.split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0) % SQUADRONS.length
             const squadron = SQUADRONS[sqIdx]
 
+            let glowStyle = {}
+            if (listing.starQuality === 5) glowStyle = { boxShadow: '0 0 15px rgba(245, 158, 11, 0.4), inset 0 0 10px rgba(245, 158, 11, 0.1)' }
+            if (listing.starQuality === 4) glowStyle = { boxShadow: '0 0 12px rgba(168, 85, 247, 0.4), inset 0 0 8px rgba(168, 85, 247, 0.1)' }
+
             return (
-              <div key={listing.id} className={`war-recruit-card ${!canBuy ? 'war-recruit-card--disabled' : ''}`}>
+              <div key={listing.id} className={`war-recruit-card ${!canBuy ? 'war-recruit-card--disabled' : ''}`} style={glowStyle}>
                 <div className="war-recruit-card__header">
                   <img src={t.icon} alt={t.name} style={{ width: '28px', height: '28px', objectFit: 'contain' }} className="war-recruit-card__icon" />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1126,19 +1247,19 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
         <div className="war-combat-header" style={{
           display: 'flex', alignItems: 'center', gap: '8px',
           padding: '5px 10px', marginBottom: '6px',
-          background: 'rgba(239,68,68,0.08)', borderRadius: '6px',
-          border: '1px solid rgba(239,68,68,0.15)',
+          background: 'rgba(132, 204, 22, 0.08)', borderRadius: '6px',
+          border: '1px solid rgba(132, 204, 22, 0.15)',
         }}>
           <span style={{ fontSize: '12px', animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
           <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: combatTickLeft <= 3 ? '#ef4444' : '#94a3b8' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: combatTickLeft <= 3 ? '#84cc16' : '#94a3b8' }}>
               <span>NEXT TICK</span>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', color: combatTickLeft <= 3 ? '#ef4444' : '#22d38a' }}>{combatTickLeft}s</span>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', color: combatTickLeft <= 3 ? '#84cc16' : '#22d38a' }}>{combatTickLeft}s</span>
             </div>
             <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '2px' }}>
               <div style={{
                 width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%',
-                background: combatTickLeft <= 3 ? '#ef4444' : '#22d38a',
+                background: combatTickLeft <= 3 ? '#84cc16' : '#22d38a',
                 transition: 'width 0.9s linear', borderRadius: '2px',
               }} />
             </div>
@@ -1177,6 +1298,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
       )}
       </div>
 
+
       {/* === Scrollable Battles List === */}
       <div className="war-battles-grid" style={panelFullscreen ? {
         flex: 1, overflowX: 'auto', overflowY: 'auto',
@@ -1197,19 +1319,19 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 padding: '8px 12px',
-                background: 'rgba(239,68,68,0.08)', borderRadius: '6px',
-                border: '1px solid rgba(239,68,68,0.15)',
+                background: 'rgba(132, 204, 22, 0.08)', borderRadius: '6px',
+                border: '1px solid rgba(132, 204, 22, 0.15)',
               }}>
                 <span style={{ fontSize: '14px', animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700, color: combatTickLeft <= 3 ? '#ef4444' : '#94a3b8' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700, color: combatTickLeft <= 3 ? '#84cc16' : '#94a3b8' }}>
                     <span>NEXT TICK</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '12px', color: combatTickLeft <= 3 ? '#ef4444' : '#22d38a' }}>{combatTickLeft}s</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '12px', color: combatTickLeft <= 3 ? '#84cc16' : '#22d38a' }}>{combatTickLeft}s</span>
                   </div>
                   <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '3px' }}>
                     <div style={{
                       width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%',
-                      background: combatTickLeft <= 3 ? '#ef4444' : '#22d38a',
+                      background: combatTickLeft <= 3 ? '#84cc16' : '#22d38a',
                       transition: 'width 0.9s linear', borderRadius: '2px',
                     }} />
                   </div>
@@ -1219,9 +1341,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
             {/* Food Grid */}
             <div style={{ display: 'flex', gap: '4px' }}>
               {[
-                { key: 'bread', icon: '🍞', count: player.bread, sta: 10, heal: 1 },
-                { key: 'sushi', icon: '🍣', count: player.sushi, sta: 20, heal: 2 },
-                { key: 'wagyu', icon: '🥩', count: player.wagyu, sta: 30, heal: 3 },
+                { key: 'bread', count: player.bread, sta: 10, heal: 1 },
+                { key: 'sushi', count: player.sushi, sta: 20, heal: 2 },
+                { key: 'wagyu', count: player.wagyu, sta: 30, heal: 3 },
               ].map(f => (
                 <button key={f.key} disabled={f.count <= 0}
                   onClick={() => {
@@ -1236,12 +1358,44 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                     opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
                   }}
                 >
-                  <div style={{ fontSize: '16px' }}>{f.icon}</div>
-                  <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
+                  <img src={`/assets/food/${f.key}.png`} alt={f.key} style={{ width: '24px', height: '24px', objectFit: 'contain', margin: '0 auto', display: 'block', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
+                  <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0', marginTop: '2px' }}>{f.count}</div>
                   <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
                   <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
                 </button>
               ))}
+            </div>
+            {/* Mini Leaderboard */}
+            <div style={{ marginTop: '4px' }}>
+              <div style={{ fontSize: '8px', fontWeight: 900, color: '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '3px' }}>🏆 TOP DAMAGE TODAY</div>
+              {(() => {
+                const dealers: Record<string, number> = {}
+                activeBattles.forEach(b => {
+                  Object.entries(b.attackerDamageDealers || {}).forEach(([name, dmg]) => { dealers[name] = (dealers[name] || 0) + dmg })
+                  Object.entries(b.defenderDamageDealers || {}).forEach(([name, dmg]) => { dealers[name] = (dealers[name] || 0) + dmg })
+                })
+                const sorted = Object.entries(dealers).sort((a, b) => b[1] - a[1]).slice(0, 5)
+                const maxDmg = sorted[0]?.[1] || 1
+                if (sorted.length === 0) return <div style={{ fontSize: '8px', color: '#475569', textAlign: 'center', padding: '6px' }}>No damage dealt yet</div>
+                return sorted.map(([name, dmg], i) => {
+                  const isMe = name === player.name
+                  const pct = (dmg / maxDmg) * 100
+                  return (
+                    <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 0', borderLeft: isMe ? '2px solid #f59e0b' : '2px solid transparent', paddingLeft: '4px' }}>
+                      <span style={{ fontSize: '8px', fontWeight: 900, color: i === 0 ? '#f59e0b' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : '#64748b', width: '12px', fontFamily: 'var(--font-display)' }}>#{i + 1}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: isMe ? 800 : 600, color: isMe ? '#fbbf24' : '#e2e8f0' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{dmg.toLocaleString()}</span>
+                        </div>
+                        <div style={{ height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '1px', marginTop: '1px' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: isMe ? '#f59e0b' : i === 0 ? '#22d38a' : '#3b82f6', borderRadius: '1px', transition: 'width 0.5s ease' }} />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
             </div>
           </div>
         ) : null
@@ -1257,10 +1411,31 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
         const atkClr = countries.find(c => c.code === battle.attackerId)?.color || '#22d38a'
         const defClr = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
 
+        const activeRd = battle.rounds[battle.rounds.length - 1]
+        const tickAtkDmg = battle.currentTick?.attackerDamage || 0
+        const tickDefDmg = battle.currentTick?.defenderDamage || 0
+        const tickWinnerClr = tickAtkDmg >= tickDefDmg ? atkClr : defClr
+        const rdAtkPts = activeRd?.attackerPoints || 0
+        const rdDefPts = activeRd?.defenderPoints || 0
+        const rdLeaderClr = rdAtkPts >= rdDefPts ? atkClr : defClr
+
+        let glowClass = ''
+        let glowColor = 'transparent'
+        const maxPts = Math.max(rdAtkPts, rdDefPts)
+        const tickDmg = tickAtkDmg + tickDefDmg
+
+        if (maxPts >= 450) {
+          glowClass = ' war-card--critical'
+          glowColor = rdLeaderClr
+        } else if (tickDmg > 500) {
+          glowClass = ' war-card--hot'
+          glowColor = tickWinnerClr
+        }
+
         return (
           <React.Fragment key={battle.id}>
             {centerPanel}
-            <div className="war-card war-card--battle">
+            <div className={`war-card war-card--battle${glowClass}`} style={{ '--glow-color': glowColor } as React.CSSProperties}>
             {/* Battle Header */}
             <div className="war-battle-header" onClick={() => setExpandedBattles(prev => { const next = new Set(prev); if (next.has(battle.id)) next.delete(battle.id); else next.add(battle.id); return next })}>
               <div className="war-battle-sides">
@@ -1389,27 +1564,27 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               )
             })()}
 
-            {/* Damage Bar (smaller, secondary) */}
-            <div style={{ position: 'relative', height: '12px', borderRadius: '3px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)', margin: '2px 0' }}>
-              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: atkClr, opacity: 0.7, transition: 'width 0.8s ease' }} />
-              <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${100 - atkPct}%`, background: defClr, opacity: 0.7, transition: 'width 0.8s ease' }} />
-              <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: '1px', background: '#fff', transform: 'translateX(-0.5px)', zIndex: 2, opacity: 0.4 }} />
-              <span style={{ position: 'absolute', left: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '7px', fontWeight: 700, color: '#fff', zIndex: 3 }}>{atkDmg.toLocaleString()}</span>
-              <span style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '7px', fontWeight: 700, color: '#fff', zIndex: 3 }}>{defDmg.toLocaleString()}</span>
+            {/* Improved Damage Bar */}
+            <div className="war-damage-bar">
+              <div className="war-damage-bar__fill war-damage-bar__fill--atk" style={{ width: `${atkPct}%`, background: `linear-gradient(90deg, ${atkClr}44, ${atkClr})`, boxShadow: `2px 0 8px ${atkClr}55` }} />
+              <div className="war-damage-bar__fill war-damage-bar__fill--def" style={{ width: `${100 - atkPct}%`, background: `linear-gradient(270deg, ${defClr}44, ${defClr})`, boxShadow: `-2px 0 8px ${defClr}55` }} />
+              <div className="war-damage-bar__center" />
+              <span className="war-damage-bar__label war-damage-bar__label--atk"><AnimatedNumber value={atkDmg} /></span>
+              <span className="war-damage-bar__label war-damage-bar__label--def"><AnimatedNumber value={defDmg} /></span>
             </div>
 
             {/* Fight Buttons — always visible */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '4px' }}>
               <button disabled={player.stamina < 5}
                 style={{ padding: '8px 0', background: `${atkClr}15`, border: `2px solid ${atkClr}66`, borderRadius: '2px', color: atkClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); r.isCrit ? playCritSound() : playHitSound(); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
               >
                 ATTACK
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
               </button>
               <button disabled={player.stamina < 5}
                 style={{ padding: '8px 0', background: `${defClr}15`, border: `2px solid ${defClr}66`, borderRadius: '2px', color: defClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); r.isCrit ? playCritSound() : playHitSound(); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
               >
                 DEFEND
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
@@ -1748,9 +1923,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
           {/* Food Grid */}
           <div style={{ display: 'flex', gap: '4px' }}>
             {[
-              { key: 'bread', icon: '🍞', count: player.bread, sta: 10, heal: 1 },
-              { key: 'sushi', icon: '🍣', count: player.sushi, sta: 20, heal: 2 },
-              { key: 'wagyu', icon: '🥩', count: player.wagyu, sta: 30, heal: 3 },
+              { key: 'bread', count: player.bread, sta: 10, heal: 1 },
+              { key: 'sushi', count: player.sushi, sta: 20, heal: 2 },
+              { key: 'wagyu', count: player.wagyu, sta: 30, heal: 3 },
             ].map(f => (
               <button key={f.key} disabled={f.count <= 0}
                 onClick={() => {
@@ -1765,12 +1940,44 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                   opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
                 }}
               >
-                <div style={{ fontSize: '16px' }}>{f.icon}</div>
-                <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
+                <img src={`/assets/food/${f.key}.png`} alt={f.key} style={{ width: '24px', height: '24px', objectFit: 'contain', margin: '0 auto', display: 'block', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
+                <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0', marginTop: '2px' }}>{f.count}</div>
                 <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
                 <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
               </button>
             ))}
+          </div>
+          {/* Mini Leaderboard */}
+          <div style={{ marginTop: '4px' }}>
+            <div style={{ fontSize: '8px', fontWeight: 900, color: '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '3px' }}>🏆 TOP DAMAGE TODAY</div>
+            {(() => {
+              const dealers: Record<string, number> = {}
+              activeBattles.forEach(b => {
+                Object.entries(b.attackerDamageDealers || {}).forEach(([name, dmg]) => { dealers[name] = (dealers[name] || 0) + dmg })
+                Object.entries(b.defenderDamageDealers || {}).forEach(([name, dmg]) => { dealers[name] = (dealers[name] || 0) + dmg })
+              })
+              const sorted = Object.entries(dealers).sort((a, b) => b[1] - a[1]).slice(0, 5)
+              const maxDmg = sorted[0]?.[1] || 1
+              if (sorted.length === 0) return <div style={{ fontSize: '8px', color: '#475569', textAlign: 'center', padding: '6px' }}>No damage dealt yet</div>
+              return sorted.map(([name, dmg], i) => {
+                const isMe = name === player.name
+                const pct = (dmg / maxDmg) * 100
+                return (
+                  <div key={name} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 0', borderLeft: isMe ? '2px solid #f59e0b' : '2px solid transparent', paddingLeft: '4px' }}>
+                    <span style={{ fontSize: '8px', fontWeight: 900, color: i === 0 ? '#f59e0b' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : '#64748b', width: '12px', fontFamily: 'var(--font-display)' }}>#{i + 1}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: isMe ? 800 : 600, color: isMe ? '#fbbf24' : '#e2e8f0' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{dmg.toLocaleString()}</span>
+                      </div>
+                      <div style={{ height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '1px', marginTop: '1px' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: isMe ? '#f59e0b' : i === 0 ? '#22d38a' : '#3b82f6', borderRadius: '1px', transition: 'width 0.5s ease' }} />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            })()}
           </div>
         </div>
       )}

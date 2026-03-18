@@ -24,9 +24,9 @@ export default function InventorySummary() {
         <div className="comp-inv-item"><span title="Wheat">🌾</span>{fmt(player.wheat ?? 0)}</div>
         <div className="comp-inv-item"><span title="Fish">🐟</span>{fmt(player.fish ?? 0)}</div>
         <div className="comp-inv-item"><span title="Steak">🥩</span>{fmt(player.steak ?? 0)}</div>
-        <div className="comp-inv-item"><span title="Bread">🍞</span>{fmt(player.bread ?? 0)}</div>
-        <div className="comp-inv-item"><span title="Sushi">🍣</span>{fmt(player.sushi ?? 0)}</div>
-        <div className="comp-inv-item"><span title="Wagyu">🍱</span>{fmt(player.wagyu ?? 0)}</div>
+        <div className="comp-inv-item"><span title="Bread"><img src="/assets/food/bread.png" alt="Bread" style={{ width: '16px', height: '16px', display: 'inline-block', verticalAlign: 'middle' }} /></span>{fmt(player.bread ?? 0)}</div>
+        <div className="comp-inv-item"><span title="Sushi"><img src="/assets/food/sushi.png" alt="Sushi" style={{ width: '16px', height: '16px', display: 'inline-block', verticalAlign: 'middle' }} /></span>{fmt(player.sushi ?? 0)}</div>
+        <div className="comp-inv-item"><span title="Wagyu"><img src="/assets/food/wagyu.png" alt="Wagyu" style={{ width: '16px', height: '16px', display: 'inline-block', verticalAlign: 'middle' }} /></span>{fmt(player.wagyu ?? 0)}</div>
       </div>
       <div className="comp-inv-row">
         <div className="comp-inv-item"><span title="Green Bullets" style={{color: '#22d38a'}}>🟢</span>{fmt(player.greenBullets ?? 0)}</div>

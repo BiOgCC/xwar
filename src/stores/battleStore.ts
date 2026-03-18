@@ -4,7 +4,7 @@ import { useGovernmentStore } from './governmentStore'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
-import { getDivisionEquipBonus } from './armyStore'
+import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './armyStore'
 
 // ====== PLAYER COMBAT STATS HELPER ======
 export function getPlayerCombatStats() {
@@ -43,12 +43,6 @@ export function getBaseSkillStats() {
     hitRate: Math.min(100, 50 + skills.precision * 5),
   }
 }
-
-import {
-  useArmyStore,
-  DIVISION_TEMPLATES,
-  type Division,
-} from './armyStore'
 
 // ====== TYPES ======
 
@@ -1033,6 +1027,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // Activate HERO buff: +10% division damage for 120 ticks, scoped to THIS battle
     usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
 
+    // Degrade equipped items durability
+    useInventoryStore.getState().degradeEquippedItems(1)
+
     return {
       damage,
       isCrit,
@@ -1058,6 +1055,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     // Activate HERO buff: +10% division damage for 120 ticks, scoped to THIS battle
     usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
+
+    // Degrade equipped items durability
+    useInventoryStore.getState().degradeEquippedItems(1)
 
     set(s => ({
       battles: {

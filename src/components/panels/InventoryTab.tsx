@@ -1,657 +1,782 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useUIStore } from '../../stores/uiStore'
 import { useSkillsStore } from '../../stores/skillsStore'
 import { useMarketStore } from '../../stores/marketStore'
 import {
-  useInventoryStore,
-  generateStats,
-  TIER_COLORS,
-  TIER_LABELS,
-  TIER_ORDER,
-  ARMOR_SLOTS,
-  SLOT_ICONS,
-  getItemImagePath,
-  WEAPON_SUBTYPES,
-  SCRAP_VALUES,
-  type EquipItem,
-  type EquipSlot,
-  type EquipTier,
-  type EquipCategory,
-  type WeaponSubtype,
+ useInventoryStore,
+ generateStats,
+ TIER_COLORS,
+ TIER_LABELS,
+ TIER_ORDER,
+ ARMOR_SLOTS,
+ SLOT_ICONS,
+ getItemImagePath,
+ WEAPON_SUBTYPES,
+ SCRAP_VALUES,
+ type EquipItem,
+ type EquipSlot,
+ type EquipTier,
+ type EquipCategory,
+ type WeaponSubtype,
 } from '../../stores/inventoryStore'
 
-/* equipment tier → market sell price (mirrors MarketPanel) */
+/* equipment tier ?--?T market sell price (mirrors MarketPanel) */
 const TIER_SELL_PRICE: Record<EquipTier, number> = {
-  t1: 120, t2: 360, t3: 1200, t4: 4500, t5: 18000, t6: 80000
+ t1: 120, t2: 360, t3: 1200, t4: 4500, t5: 18000, t6: 80000
 }
 
 export default function InventoryTab() {
-  const player = usePlayerStore()
-  const inventory = useInventoryStore()
-  const ui = useUIStore()
+ const player = usePlayerStore()
+ const inventory = useInventoryStore()
+ const ui = useUIStore()
 
-  // Modal State
-  const [selectedItem, setSelectedItem] = useState<EquipItem | null>(null)
-  const [mode, setMode] = useState<'normal' | 'craft' | 'disarm'>('normal')
-  const [craftSlot, setCraftSlot] = useState<EquipSlot>('weapon')
+ // Modal State
+ const [selectedItem, setSelectedItem] = useState<EquipItem | null>(null)
+ const [mode, setMode] = useState<'normal' | 'craft' | 'disarm'>('normal')
+ const [craftSlot, setCraftSlot] = useState<EquipSlot>('weapon')
 
-  // Slot Pick Modal State
-  const [selectedSlotToFill, setSelectedSlotToFill] = useState<EquipSlot | 'ammo' | null>(null)
+ // Slot Pick Modal State
+ const [pickerSlot, setPickerSlot] = useState<EquipSlot | null>(null)
 
-  const equipped = inventory.items.filter((i) => i.equipped)
-  const unequipped = inventory.items.filter((i) => !i.equipped)
+ // ESC closes any open modal
+ useEffect(() => {
+ const onClose = () => { setSelectedItem(null); setPickerSlot(null) }
+ window.addEventListener('xwar-close-modal', onClose)
+ return () => window.removeEventListener('xwar-close-modal', onClose)
+ }, [])
 
-  const handleOpenLootBox = (e: React.MouseEvent) => {
-    if (player.lootBoxes <= 0) return
-    const result = inventory.openLootBox()
-    if (result) {
-      ui.addFloatingText(`+${result.item.name}, $${result.money}, ${result.scrap} Scrap`, e.clientX, e.clientY, '#f59e0b')
-    }
-  }
+ const equipped = inventory.items.filter((i) => i.equipped)
+ const unequipped = inventory.items.filter((i) => !i.equipped)
 
-  const handleDisarm = () => {
-    if (!selectedItem) return
-    if (selectedItem.equipped) return
-    const scrapGain = inventory.dismantleItem(selectedItem.id)
-    player.addScrap(scrapGain)
-    setSelectedItem(null)
-  }
+ const handleOpenLootBox = (e: React.MouseEvent) => {
+ if (player.lootBoxes <= 0) return
+ const result = inventory.openLootBox()
+ if (result) {
+ ui.addFloatingText(`+${result.item.name}, $${result.money}, ${result.scrap} Scrap`, e.clientX, e.clientY, '#f59e0b')
+ }
+ }
 
-  const handleEquipToggle = () => {
-    if (!selectedItem) return
-    if (selectedItem.equipped) {
-      inventory.unequipItem(selectedItem.id)
-    } else {
-      inventory.equipItem(selectedItem.id)
-    }
-    setSelectedItem(null)
-    setSelectedSlotToFill(null)
-  }
+ const handleDisarm = () => {
+ if (!selectedItem) return
+ if (selectedItem.equipped) return
+ const scrapGain = inventory.dismantleItem(selectedItem.id)
+ player.addScrap(scrapGain)
+ setSelectedItem(null)
+ }
 
-  const handleEquipFromModal = (itemId: string) => {
-    inventory.equipItem(itemId)
-    setSelectedSlotToFill(null)
-  }
+ const handleEquipToggle = () => {
+ if (!selectedItem) return
+ if (selectedItem.equipped) {
+ inventory.unequipItem(selectedItem.id)
+ } else {
+ inventory.equipItem(selectedItem.id)
+ }
+ setSelectedItem(null)
+ setPickerSlot(null)
+ }
 
-  const handleEquipAmmoFromModal = (ammoType: 'none' | 'green' | 'blue' | 'purple' | 'red') => {
-    player.equipAmmo(ammoType)
-    setSelectedSlotToFill(null)
-  }
+ const renderStats = (stats: any, condensed = false) => {
+ if (!stats) return null
+ return (
+ <div style={{ display: 'flex', gap: '4px', fontSize: condensed ? '9px' : '10px', marginTop: condensed ? '2px' : '6px', opacity: 0.8, flexWrap: 'wrap' }}>
+ {Object.keys(stats).length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px' }}>
+        {stats.damage && <span>DMG {stats.damage}</span>}
+ {stats.critRate && <span>ACC {stats.critRate}%</span>}
+        {stats.critDamage && <span>CDMG +{stats.critDamage}%</span>}
+        {stats.armor && <span>ARM +{stats.armor}%</span>}
+        {stats.dodge && <span>EVA +{stats.dodge}%</span>}
+        {stats.precision && <span>PREC +{stats.precision}%</span>}
+ </div>}
+ </div>
+ )
+ }
 
-  const handleSlotClick = (slot: EquipSlot | 'ammo') => {
-    if (slot === 'ammo') {
-      const hasAnyAmmo = player.greenBullets > 0 || player.blueBullets > 0 || player.purpleBullets > 0 || player.redBullets > 0
-      if (hasAnyAmmo || player.equippedAmmo !== 'none') {
-        setSelectedSlotToFill('ammo')
-      }
-    } else {
-      setSelectedSlotToFill(slot)
-    }
-  }
 
-  const renderStats = (stats: any, condensed = false) => {
-    if (!stats) return null
-    return (
-      <div style={{ display: 'flex', gap: '4px', fontSize: condensed ? '9px' : '10px', marginTop: condensed ? '2px' : '6px', opacity: 0.8, flexWrap: 'wrap' }}>
-        {Object.keys(stats).length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px' }}>
-        {stats.damage && <span>⚔️ {stats.damage}</span>}
-        {stats.critRate && <span>🎯 {stats.critRate}%</span>}
-        {stats.critDamage && <span>💥 +{stats.critDamage}%</span>}
-        {stats.armor && <span>🛡️ +{stats.armor}%</span>}
-        {stats.dodge && <span>💨 +{stats.dodge}%</span>}
-        {stats.precision && <span>👁️ +{stats.precision}%</span>}
-        </div>}
-      </div>
-    )
-  }
+ const getSortedItemsForSlot = (slot: EquipSlot) => {
+ // Sort descending by tier order index
+ return inventory.items
+ .filter((i) => i.slot === slot)
+ .sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier))
+ }
 
-  const renderLoadoutSlot = (slotType: string, label: string, item?: EquipItem, val?: string, iconStr?: string) => {
-    return (
-      <div
-        className={`inv-equip-slot ${item || val ? 'inv-equip-slot--filled' : ''}`}
-        style={{
-          borderColor: item ? `${TIER_COLORS[item.tier]}66` : val ? '#22d38a66' : 'rgba(255,255,255,0.05)',
-          cursor: 'pointer',
-          background: item || val ? 'rgba(8,12,18,0.8)' : 'rgba(0,0,0,0.2)'
-        }}
-        onClick={() => handleSlotClick(slotType as any)}
-        title={item ? `${item.name} (${TIER_LABELS[item.tier]})` : `${label} — Empty (Click to assign)`}
-      >
-        {(() => {
-          const imgUrl = item ? getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype) : null;
-          return imgUrl ? (
-            <img src={imgUrl} alt={item?.name || 'Item'} style={{ width: '28px', height: '28px', objectFit: 'contain', opacity: item || val ? 1 : 0.3, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling!.removeAttribute('style'); }} />
-          ) : null;
-        })()}
-        <span className="inv-equip-slot__icon" style={item && getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype) ? { display: 'none' } : { opacity: item || val ? 1 : 0.3 }}>{iconStr || (SLOT_ICONS as Record<string, string>)[slotType] || '❓'}</span>
-        <span
-          className="inv-equip-slot__label"
-          style={item ? { color: TIER_COLORS[item.tier] } : { opacity: val ? 1 : 0.4 }}
-        >
-          {item ? TIER_LABELS[item.tier] : val ? val : `Empty ${label}`}
-        </span>
-      </div>
-    )
-  }
+ const renderEquipmentCategoryRow = (slot: EquipSlot, title: string) => {
+ const items = getSortedItemsForSlot(slot)
+ if (items.length === 0) return null
 
-  const getSortedItemsForSlot = (slot: EquipSlot) => {
-    // Sort descending by tier order index
-    return inventory.items
-      .filter((i) => i.slot === slot)
-      .sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier))
-  }
+ return (
+ <div style={{ marginBottom: '16px' }}>
+ <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+ {title}
+ </div>
+ <div className="ptab-gear-grid">
+ {items.map((item) => {
+ const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
+ const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
+ const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+ const dur = item.durability ?? 100
+ const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
 
-  const renderEquipmentCategoryRow = (slot: EquipSlot, title: string) => {
-    const items = getSortedItemsForSlot(slot)
-    if (items.length === 0) return null
+ const statEntries: { label: string; val: string; color: string }[] = []
+ if (item.stats.damage) statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
+ if (item.stats.critRate) statEntries.push({ label: 'CRIT', val: `${item.stats.critRate}%`, color: '#fb923c' })
+ if (item.stats.critDamage)statEntries.push({ label: 'C.DMG', val: `${item.stats.critDamage}%`, color: '#fb923c' })
+ if (item.stats.armor) statEntries.push({ label: 'ARM', val: `${item.stats.armor}%`, color: '#94a3b8' })
+ if (item.stats.dodge) statEntries.push({ label: 'EVA', val: `${item.stats.dodge}%`, color: '#34d399' })
+ if (item.stats.precision) statEntries.push({ label: 'ACC', val: `${item.stats.precision}%`, color: '#38bdf8' })
 
-    return (
-      <div style={{ marginBottom: '16px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-          {title}
-        </div>
-        <div className="inv-items-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px' }}>
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className={`inv-item ${item.equipped ? 'inv-item--equipped' : ''}`}
-              style={{
-                borderColor: `${TIER_COLORS[item.tier]}44`,
-                flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                padding: '12px 6px 8px 6px',
-                background: item.equipped ? 'rgba(34, 211, 138, 0.05)' : 'rgba(8,12,18,0.4)',
-                minHeight: '110px',
-                position: 'relative'
-              }}
-              onClick={() => {
-                if (mode === 'disarm' && !item.equipped) {
-                  const scrapGain = inventory.dismantleItem(item.id)
-                  player.addScrap(scrapGain)
-                  ui.addFloatingText(`+${scrapGain} SCRAP`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
-                } else {
-                  setSelectedItem(item)
-                }
-              }}
-            >
-              {/* EQ Badge */}
-              {item.equipped && <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '8px', fontWeight: 900, color: '#22d38a', border: '1px solid #22d38a', padding: '2px 4px', borderRadius: '3px', background: 'rgba(34,211,138,0.1)' }}>EQUIPPED</div>}
-              
-              {/* Main Image Centered */}
-              <div style={{ height: '54px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', width: '100%' }}>
-                {(() => {
-                  const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype);
-                  return imgUrl ? (
-                    <img src={imgUrl} alt={item.name} style={{ width: '54px', height: '54px', objectFit: 'contain', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                  ) : <span style={{fontSize: '32px'}}>{(SLOT_ICONS as any)[item.slot]}</span>;
-                })()}
-              </div>
+ return (
+ <div
+ key={item.id}
+ className="ptab-gear-card"
+ style={{
+ borderColor: item.equipped ? 'rgba(132,204,22,0.4)' : `${tierColor}30`,
+ '--card-tier-color': tierColor,
+ boxShadow: item.equipped ? '0 0 8px rgba(132,204,22,0.15)' : undefined,
+ } as React.CSSProperties}
+ onClick={() => {
+ if (mode === 'disarm' && !item.equipped) {
+ const scrapGain = inventory.dismantleItem(item.id)
+ player.addScrap(scrapGain)
+ ui.addFloatingText(`+${scrapGain} SCRAP`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+ } else {
+ setSelectedItem(item)
+ }
+ }}
+ title={item.equipped ? `${item.name} (EQUIPPED)` : item.name}
+ >
+ {/* Equipped badge */}
+ {item.equipped && (
+ <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '7px', fontWeight: 900, color: '#84cc16', letterSpacing: '0.08em' }}>EQ</div>
+ )}
+ <div className="ptab-gear-card__top">
+ <span className="ptab-gear-card__slot">{item.slot.toUpperCase()}</span>
+ <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
+ </div>
+ <div className="ptab-gear-card__img-wrap">
+ {imgUrl ? (
+ <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} />
+ ) : (
+ <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>
+ {item.slot === 'helmet' ? '\u2302' : item.slot === 'chest' ? '\u2666' : item.slot === 'legs' ? '\u2225' : item.slot === 'gloves' ? '\u270B' : item.slot === 'boots' ? '\u25B2' : '\u2694'}
+ </div>
+ )}
+ </div>
+ {statEntries.length > 0 && (
+ <div className="ptab-gear-card__stats">
+ {statEntries.map(s => (
+ <div key={s.label} className="ptab-gear-stat">
+ <span className="ptab-gear-stat__label">{s.label}</span>
+ <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
+ </div>
+ ))}
+ </div>
+ )}
+ <div className="ptab-gear-card__footer">
+ <div className="ptab-gear-card__dur-bar">
+ <div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} />
+ </div>
+ <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
+ </div>
+ </div>
+ )
+ })}
+ </div>
+ </div>
+ )
+ }
 
-              {/* Name & Stats Below */}
-              <div style={{ fontSize: '11px', fontWeight: 800, fontFamily: 'var(--font-display)', color: TIER_COLORS[item.tier], marginBottom: '4px', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {item.name}
-              </div>
-              
-              <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
-                {renderStats(item.stats, true)}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
+ return (
+ <div className="inv-tab">
+ <InventorySummary />
 
-  return (
-    <div className="inv-tab">
-      <InventorySummary />
+ {/* CRAFT & DISARM ACTION BAR */}
+ <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+ <button
+ onClick={() => setMode(mode === 'craft' ? 'normal' : 'craft')}
+ style={{
+ flex: 1, padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
+ border: `2px solid ${mode === 'craft' ? '#fbbf24' : 'rgba(251,191,36,0.3)'}`,
+ borderRadius: '4px', cursor: 'pointer',
+ background: mode === 'craft' ? 'rgba(251,191,36,0.15)' : 'rgba(251,191,36,0.03)',
+ color: mode === 'craft' ? '#fbbf24' : '#b89a3a',
+ }}
+ >
+          CRAFT
+ </button>
+ <button
+ onClick={() => setMode(mode === 'disarm' ? 'normal' : 'disarm')}
+ style={{
+ flex: 1, padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
+ border: `2px solid ${mode === 'disarm' ? '#ef4444' : 'rgba(239,68,68,0.3)'}`,
+ borderRadius: '4px', cursor: 'pointer',
+ background: mode === 'disarm' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.03)',
+ color: mode === 'disarm' ? '#ef4444' : '#a33a3a',
+ }}
+ >
+          DISARM
+ </button>
+ </div>
 
-      {/* Loot Boxes Simplified */}
-      <div className="inv-section">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '24px' }}>💼</span>
-            <span style={{ fontSize: '16px', fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-              <strong style={{ color: '#22d38a', fontSize: '20px' }}>{player.lootBoxes}</strong> cases
-            </span>
-          </div>
-          <button
-            className="comp-action comp-action--produce"
-            style={{ margin: 0, width: 'auto', padding: '6px 20px', fontWeight: 'bold' }}
-            disabled={player.lootBoxes <= 0}
-            onClick={handleOpenLootBox}
-          >
-            Open Box
-          </button>
-        </div>
-      </div>
+ {/* Loot Boxes Simplified */}
+ <div className="inv-section">
+ <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+ <span style={{ fontSize: '24px' }}></span>
+ <span style={{ fontSize: '16px', fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
+ <strong style={{ color: '#22d38a', fontSize: '20px' }}>{player.lootBoxes}</strong> cases
+ </span>
+ </div>
+ <button
+ className="comp-action comp-action--produce"
+ style={{ margin: 0, width: 'auto', padding: '6px 20px', fontWeight: 'bold' }}
+ disabled={player.lootBoxes <= 0}
+ onClick={handleOpenLootBox}
+ >
+ Open Box
+ </button>
+ </div>
+ </div>
 
-      {/* LOADOUT EQUIPPED */}
-      <div className="inv-section">
-        <div className="inv-section__title" style={{ color: '#ffffff' }}>⚙️ LOADOUT EQUIPPED</div>
-        <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '12px' }}>Click an empty slot to equip an item.</div>
-        <div className="inv-equip-grid">
-          {renderLoadoutSlot('weapon', 'Weapon', equipped.find((i) => i.slot === 'weapon'))}
-          {renderLoadoutSlot('ammo', 'Ammo', undefined, player.equippedAmmo !== 'none' ? `${player.equippedAmmo.toUpperCase()} AMMO` : undefined, player.equippedAmmo === 'green' ? '🟢' : player.equippedAmmo === 'blue' ? '🔵' : player.equippedAmmo === 'purple' ? '🟣' : player.equippedAmmo === 'red' ? '🔴' : undefined)}
-          {renderLoadoutSlot('helmet', 'Helmet', equipped.find((i) => i.slot === 'helmet'))}
-          {renderLoadoutSlot('chest', 'Chest', equipped.find((i) => i.slot === 'chest'))}
-          {renderLoadoutSlot('legs', 'Legs', equipped.find((i) => i.slot === 'legs'))}
-          {renderLoadoutSlot('gloves', 'Gloves', equipped.find((i) => i.slot === 'gloves'))}
-          {renderLoadoutSlot('boots', 'Boots', equipped.find((i) => i.slot === 'boots'))}
-        </div>
-      </div>
+      {/* EQUIPPED GEAR (card grid -- same as Profile tab) */}
+ {equipped.length > 0 && (
+ <div className="inv-section">
+ <div className="inv-section__title" style={{ color: '#ffffff' }}>EQUIPPED GEAR</div>
+ <div className="ptab-gear-grid">
+ {equipped.map((item: any) => {
+ const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
+ const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
+ const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+ const dur = item.durability ?? 100
+ const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
 
-      {/* CRAFT & DISARM ACTION BAR */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-        <button
-          onClick={() => setMode(mode === 'craft' ? 'normal' : 'craft')}
-          style={{
-            flex: 1, padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
-            border: `2px solid ${mode === 'craft' ? '#fbbf24' : 'rgba(251,191,36,0.3)'}`,
-            borderRadius: '4px', cursor: 'pointer',
-            background: mode === 'craft' ? 'rgba(251,191,36,0.15)' : 'rgba(251,191,36,0.03)',
-            color: mode === 'craft' ? '#fbbf24' : '#b89a3a',
-          }}
-        >
-          🔨 CRAFT
-        </button>
-        <button
-          onClick={() => setMode(mode === 'disarm' ? 'normal' : 'disarm')}
-          style={{
-            flex: 1, padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
-            border: `2px solid ${mode === 'disarm' ? '#ef4444' : 'rgba(239,68,68,0.3)'}`,
-            borderRadius: '4px', cursor: 'pointer',
-            background: mode === 'disarm' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.03)',
-            color: mode === 'disarm' ? '#ef4444' : '#a33a3a',
-          }}
-        >
-          🔧 DISARM
-        </button>
-      </div>
+ const statEntries: { label: string; val: string; color: string }[] = []
+ if (item.stats.damage) statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
+ if (item.stats.critRate) statEntries.push({ label: 'CRIT', val: `${item.stats.critRate}%`, color: '#fb923c' })
+ if (item.stats.critDamage)statEntries.push({ label: 'C.DMG', val: `${item.stats.critDamage}%`, color: '#fb923c' })
+ if (item.stats.armor) statEntries.push({ label: 'ARM', val: `${item.stats.armor}%`, color: '#94a3b8' })
+ if (item.stats.dodge) statEntries.push({ label: 'EVA', val: `${item.stats.dodge}%`, color: '#34d399' })
+ if (item.stats.precision) statEntries.push({ label: 'ACC', val: `${item.stats.precision}%`, color: '#38bdf8' })
 
-      {/* CRAFT MODE – All Items */}
-      {mode === 'craft' && (() => {
-        // Cost scaling: base × tier multiplier
-        const costTable: Record<string, { scrap: number; oil: number; money: number }> = {
-          t1: { scrap: 20, oil: 5, money: 50 },
-          t2: { scrap: 60, oil: 15, money: 150 },
-          t3: { scrap: 180, oil: 45, money: 500 },
-          t4: { scrap: 540, oil: 130, money: 1500 },
-          t5: { scrap: 1600, oil: 400, money: 5000 },
-          t6: { scrap: 4800, oil: 1200, money: 15000 },
-        }
+ return (
+ <div
+ key={item.id}
+ className="ptab-gear-card"
+ style={{ borderColor: `${tierColor}30`, '--card-tier-color': tierColor } as React.CSSProperties}
+ onClick={() => setPickerSlot(item.slot)}
+ title={`Click to change ${item.slot}`}
+ >
+ <div className="ptab-gear-card__top">
+ <span className="ptab-gear-card__slot">{item.slot.toUpperCase()}</span>
+ <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
+ </div>
+ <div className="ptab-gear-card__img-wrap">
+ {imgUrl ? (
+ <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} />
+ ) : (
+ <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>
+ {item.slot === 'helmet' ? '\u2302' : item.slot === 'chest' ? '\u2666' : item.slot === 'legs' ? '\u2225' : item.slot === 'gloves' ? '\u270B' : item.slot === 'boots' ? '\u25B2' : '\u2694'}
+ </div>
+ )}
+ </div>
+ {statEntries.length > 0 && (
+ <div className="ptab-gear-card__stats">
+ {statEntries.map(s => (
+ <div key={s.label} className="ptab-gear-stat">
+ <span className="ptab-gear-stat__label">{s.label}</span>
+ <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
+ </div>
+ ))}
+ </div>
+ )}
+ <div className="ptab-gear-card__footer">
+ <div className="ptab-gear-card__dur-bar">
+ <div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} />
+ </div>
+ <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
+ </div>
+ </div>
+ )
+ })}
+ </div>
+ </div>
+ )}
 
-        // Stat ranges for preview (matches generateStats in inventoryStore)
-        const statPreview: Record<string, Record<string, string>> = {
-          weapon: {
-            t1: 'DMG 20-49 · CRIT 5%',
-            t2: 'DMG 50-80 · CRIT 6-10%',
-            t3: 'DMG 81-120 · CRIT 11-15%',
-            t4: 'DMG 121-150 · CRIT 16-20%',
-            t5: 'DMG 151-199 · CRIT 21-30%',
-            t6: 'DMG 200-300 · CRIT 31-49%',
-          },
-          helmet: {
-            t1: 'CDMG 12-20%', t2: 'CDMG 32-40%', t3: 'CDMG 52-60%',
-            t4: 'CDMG 72-80%', t5: 'CDMG 92-100%', t6: 'CDMG 112-120%',
-          },
-          chest: {
-            t1: 'ARMOR 2-5%', t2: 'ARMOR 7-10%', t3: 'ARMOR 12-15%',
-            t4: 'ARMOR 17-20%', t5: 'ARMOR 22-25%', t6: 'ARMOR 27-30%',
-          },
-          legs: {
-            t1: 'ARMOR 2-5%', t2: 'ARMOR 7-10%', t3: 'ARMOR 12-15%',
-            t4: 'ARMOR 17-20%', t5: 'ARMOR 22-25%', t6: 'ARMOR 27-30%',
-          },
-          gloves: {
-            t1: 'PREC 1-5%', t2: 'PREC 6-10%', t3: 'PREC 11-15%',
-            t4: 'PREC 16-20%', t5: 'PREC 21-25%', t6: 'PREC 26-30%',
-          },
-          boots: {
-            t1: 'DODGE 2-5%', t2: 'DODGE 7-10%', t3: 'DODGE 12-15%',
-            t4: 'DODGE 17-20%', t5: 'DODGE 22-25%', t6: 'DODGE 27-30%',
-          },
-        }
 
-        const slotTabs: { slot: EquipSlot; icon: string; label: string }[] = [
-          { slot: 'weapon', icon: '⚔️', label: 'WPN' },
-          { slot: 'helmet', icon: '⛑️', label: 'HELM' },
-          { slot: 'chest', icon: '🦺', label: 'CHEST' },
-          { slot: 'legs', icon: '🩳', label: 'LEGS' },
-          { slot: 'gloves', icon: '🧤', label: 'GLVS' },
-          { slot: 'boots', icon: '🥾', label: 'BOOT' },
-        ]
+ {/* CRAFT MODAL */}
+ {mode === 'craft' && (() => {
+ const costTable: Record<string, { scrap: number; oil: number; money: number }> = {
+ t1: { scrap: 20, oil: 5, money: 50 },
+ t2: { scrap: 60, oil: 15, money: 150 },
+ t3: { scrap: 180, oil: 45, money: 500 },
+ t4: { scrap: 540, oil: 130, money: 1500 },
+ t5: { scrap: 1600, oil: 400, money: 5000 },
+ t6: { scrap: 4800, oil: 1200, money: 15000 },
+ }
 
-        return (
-          <div className="inv-section" style={{ borderColor: 'rgba(251,191,36,0.3)', background: 'rgba(251,191,36,0.03)' }}>
-            <div className="inv-section__title" style={{ color: '#fbbf24' }}>🔨 CRAFT EQUIPMENT</div>
-            <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '6px' }}>
-              🔩 {player.scrap.toLocaleString()} Scrap · 🛢️ {player.oil.toLocaleString()} Oil · 💵 ${player.money.toLocaleString()}
-            </div>
+ const statPreview: Record<string, Record<string, string>> = {
+ weapon: {
+ t1: 'DMG 20-49 / CRIT 5%', t2: 'DMG 50-80 / CRIT 6-10%', t3: 'DMG 81-120 / CRIT 11-15%',
+ t4: 'DMG 121-150 / CRIT 16-20%', t5: 'DMG 151-199 / CRIT 21-30%', t6: 'DMG 200-300 / CRIT 31-49%',
+ },
+ helmet: { t1: 'CDMG 12-20%', t2: 'CDMG 32-40%', t3: 'CDMG 52-60%', t4: 'CDMG 72-80%', t5: 'CDMG 92-100%', t6: 'CDMG 112-120%' },
+ chest: { t1: 'ARM 2-5%', t2: 'ARM 7-10%', t3: 'ARM 12-15%', t4: 'ARM 17-20%', t5: 'ARM 22-25%', t6: 'ARM 27-30%' },
+ legs: { t1: 'ARM 2-5%', t2: 'ARM 7-10%', t3: 'ARM 12-15%', t4: 'ARM 17-20%', t5: 'ARM 22-25%', t6: 'ARM 27-30%' },
+ gloves: { t1: 'ACC 1-5%', t2: 'ACC 6-10%', t3: 'ACC 11-15%', t4: 'ACC 16-20%', t5: 'ACC 21-25%', t6: 'ACC 26-30%' },
+ boots: { t1: 'EVA 2-5%', t2: 'EVA 7-10%', t3: 'EVA 12-15%', t4: 'EVA 17-20%', t5: 'EVA 22-25%', t6: 'EVA 27-30%' },
+ }
 
-            {/* Slot Tabs */}
-            <div style={{ display: 'flex', gap: '2px', marginBottom: '8px' }}>
-              {slotTabs.map(st => (
-                <button key={st.slot} onClick={() => setCraftSlot(st.slot)} style={{
-                  flex: 1, padding: '5px 2px', fontSize: '9px', fontWeight: 700,
-                  border: `1px solid ${craftSlot === st.slot ? '#fbbf24' : 'rgba(255,255,255,0.08)'}`,
-                  borderRadius: '3px', background: craftSlot === st.slot ? 'rgba(251,191,36,0.12)' : 'transparent',
-                  color: craftSlot === st.slot ? '#fbbf24' : '#64748b', cursor: 'pointer',
-                }}>
-                  {st.icon} {st.label}
-                </button>
-              ))}
-            </div>
+ const slotTabs: { slot: EquipSlot; label: string }[] = [
+ { slot: 'weapon', label: 'WEAPON' },
+ { slot: 'helmet', label: 'HELMET' },
+ { slot: 'chest', label: 'CHEST' },
+ { slot: 'legs', label: 'LEGS' },
+ { slot: 'gloves', label: 'GLOVES' },
+ { slot: 'boots', label: 'BOOTS' },
+ ]
 
-            {/* Tier Grid — for weapons, iterate over subtypes per tier */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              {(() => {
-                const category = craftSlot === 'weapon' ? 'weapon' as const : 'armor' as const
-                
-                // Build flat list of craft entries
-                const entries: { tier: EquipTier; subtype?: WeaponSubtype }[] = []
-                TIER_ORDER.forEach(tier => {
-                  if (craftSlot === 'weapon') {
-                    // For weapons, list all subtypes for this tier
-                    const subtypes = WEAPON_SUBTYPES[tier]
-                    subtypes.forEach(sub => entries.push({ tier, subtype: sub }))
-                  } else {
-                    entries.push({ tier })
-                  }
-                })
+ const doCraft = (tier: EquipTier, slot: EquipSlot) => {
+ const cost = costTable[tier]
+ if (player.scrap < cost.scrap || player.oil < cost.oil || player.money < cost.money) return
+ player.spendMoney(cost.money)
+ player.spendOil(cost.oil)
+ player.spendScraps(cost.scrap)
+ const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
+ const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][Math.floor(Math.random() * WEAPON_SUBTYPES[tier].length)] : undefined
+ const result = generateStats(category, slot, tier, subtype)
 
-                return entries.map(({ tier, subtype }) => {
-                  const cost = costTable[tier]
-                  const canAfford = player.scrap >= cost.scrap && player.oil >= cost.oil && player.money >= cost.money
-                  const previewGen = generateStats(category, craftSlot, tier, subtype)
-                  const itemName = previewGen.name
-                  const preview = statPreview[craftSlot]?.[tier] || ''
-                  const tierNum = parseInt(tier[1])
-                  const cardKey = subtype ? `${tier}-${subtype}` : tier
+ const indLevel = useSkillsStore.getState().economic.industrialist || 0
+ const superforgeChance = Math.min(0.50, indLevel * 0.05)
+ const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
+ if (isSuperforged) {
+ for (const key of Object.keys(result.stats) as Array<keyof typeof result.stats>) {
+ if (typeof result.stats[key] === 'number') {
+ (result.stats as any)[key] = Math.ceil(result.stats[key]! * 1.10)
+ }
+ }
+ }
 
-                  return (
-                    <div key={cardKey} style={{
-                      padding: '8px', borderRadius: '6px',
-                      background: canAfford ? `rgba(${tierNum > 3 ? '251,191,36' : '255,255,255'},0.03)` : 'rgba(0,0,0,0.2)',
-                      border: `2px solid ${canAfford ? TIER_COLORS[tier] + '55' : 'rgba(255,255,255,0.05)'}`,
-                      opacity: canAfford ? 1 : 0.5,
-                      transition: 'all 0.2s',
-                    }}>
-                      {/* Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 900, color: TIER_COLORS[tier] }}>{TIER_LABELS[tier].split(' ')[0]}</span>
-                        <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 700 }}>T{tierNum}</span>
-                      </div>
+ const newItem: EquipItem = {
+ id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+ name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
+ slot, category, tier, equipped: false, durability: 100,
+ stats: result.stats, weaponSubtype: result.weaponSubtype,
+ }
+ inventory.addItem(newItem)
+ if (isSuperforged) {
+ ui.addFloatingText(`\u26a1 SUPERFORGED ${result.name}! +10%`, window.innerWidth / 2, window.innerHeight / 2, '#fbbf24')
+ } else {
+ ui.addFloatingText(`CRAFTED ${result.name}!`, window.innerWidth / 2, window.innerHeight / 2, TIER_COLORS[tier])
+ }
+ }
 
-                      {/* Main Centered Image */}
-                      <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', width: '100%', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
-                        {(() => {
-                          const imgUrl = getItemImagePath(tier as EquipTier, craftSlot, category, subtype);
-                          return imgUrl ? (
-                            <img src={imgUrl} alt={itemName} style={{ width: '54px', height: '54px', objectFit: 'contain', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                          ) : <span style={{fontSize: '32px'}}>{(SLOT_ICONS as any)[craftSlot]}</span>;
-                        })()}
-                      </div>
+ const doRandomCraft = (tier: EquipTier) => {
+ const allSlots: EquipSlot[] = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots']
+ doCraft(tier, allSlots[Math.floor(Math.random() * allSlots.length)])
+ }
 
-                      {/* Item Name Centered */}
-                      <div style={{ fontSize: '11px', textAlign: 'center', fontWeight: 800, color: TIER_COLORS[tier], marginBottom: '6px' }}>
-                        {itemName}
-                      </div>
+ return (
+ <div className="inv-modal-overlay" onClick={() => setMode('normal')}>
+ <div className="inv-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px', width: '92%' }}>
+ <div className="inv-modal__title" style={{ color: '#fbbf24', letterSpacing: '0.15em', fontFamily: 'var(--font-display)' }}>CRAFT EQUIPMENT</div>
 
-                      {/* Stat Range Preview */}
-                      <div style={{ fontSize: '8px', padding: '2px 4px', marginBottom: '6px', background: `${TIER_COLORS[tier]}10`, border: `1px solid ${TIER_COLORS[tier]}25`, borderRadius: '2px', color: TIER_COLORS[tier], textAlign: 'center' }}>
-                        {preview}
-                      </div>
+ {/* Resources bar */}
+ <div style={{
+ display: 'flex', justifyContent: 'center', gap: '14px', fontSize: '9px', color: '#94a3b8',
+ marginBottom: '12px', padding: '6px 10px', background: 'rgba(0,0,0,0.3)', borderRadius: '4px',
+ fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'uppercase',
+ }}>
+ <span>{player.scrap.toLocaleString()} SCRAP</span>
+ <span>{player.oil.toLocaleString()} OIL</span>
+ <span>${player.money.toLocaleString()}</span>
+ </div>
 
-                      {/* Cost */}
-                      <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '6px', textAlign: 'center' }}>
-                        🔩{cost.scrap} · 🛢️{cost.oil} · 💵{cost.money}
-                      </div>
+ {/* Slot Tabs */}
+ <div style={{ display: 'flex', gap: '2px', marginBottom: '12px' }}>
+ {slotTabs.map(st => (
+ <button key={st.slot} onClick={() => setCraftSlot(st.slot)} style={{
+ flex: 1, padding: '6px 2px', fontSize: '8px', fontWeight: 700,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.06em',
+ border: `1px solid ${craftSlot === st.slot ? '#fbbf24' : 'rgba(255,255,255,0.08)'}`,
+ borderRadius: '3px', background: craftSlot === st.slot ? 'rgba(251,191,36,0.12)' : 'transparent',
+ color: craftSlot === st.slot ? '#fbbf24' : '#64748b', cursor: 'pointer',
+ }}>
+ {st.label}
+ </button>
+ ))}
+ </div>
 
-                      {/* Craft Button */}
-                      <button
-                        disabled={!canAfford}
-                        style={{
-                          width: '100%', padding: '5px', fontSize: '9px', fontWeight: 900,
-                          border: `1px solid ${canAfford ? TIER_COLORS[tier] : '#333'}`,
-                          borderRadius: '3px', cursor: canAfford ? 'pointer' : 'not-allowed',
-                          background: canAfford ? `${TIER_COLORS[tier]}22` : 'transparent',
-                          color: canAfford ? TIER_COLORS[tier] : '#444',
-                        }}
-                        onClick={() => {
-                          if (!canAfford) return
-                          player.spendMoney(cost.money)
-                          player.spendOil(cost.oil)
-                          player.spendScraps(cost.scrap)
-                          const result = generateStats(category, craftSlot, tier, subtype)
+ {/* Tier Grid */}
+ <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginBottom: '12px' }}>
+ {TIER_ORDER.map(tier => {
+ const tc = costTable[tier]
+ const canAfford = player.scrap >= tc.scrap && player.oil >= tc.oil && player.money >= tc.money
+ const preview = statPreview[craftSlot]?.[tier] || ''
+ const imgUrl = getItemImagePath(tier as EquipTier, craftSlot, craftSlot === 'weapon' ? 'weapon' : 'armor', undefined)
 
-                          // Superforge check: industrialist skill gives up to 50% chance
-                          const indLevel = useSkillsStore.getState().economic.industrialist || 0
-                          const superforgeChance = Math.min(0.50, indLevel * 0.05)
-                          const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
+ return (
+ <div key={tier} style={{
+ padding: '8px 6px', borderRadius: '6px', textAlign: 'center',
+ background: canAfford ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)',
+ border: `1px solid ${canAfford ? TIER_COLORS[tier] + '44' : 'rgba(255,255,255,0.04)'}`,
+ opacity: canAfford ? 1 : 0.4,
+ }}>
+ <div style={{ height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '4px' }}>
+ {imgUrl ? (
+ <img src={imgUrl} alt={TIER_LABELS[tier]} style={{ width: '34px', height: '34px', objectFit: 'contain', filter: `drop-shadow(0 2px 4px ${TIER_COLORS[tier]}30)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+ ) : (
+ <span style={{ fontSize: '20px', opacity: 0.4 }}>{(SLOT_ICONS as any)[craftSlot]}</span>
+ )}
+ </div>
+ <div style={{ fontSize: '10px', fontWeight: 800, color: TIER_COLORS[tier], fontFamily: 'var(--font-display)', marginBottom: '2px' }}>
+ {TIER_LABELS[tier].split(' ')[0]}
+ </div>
+ <div style={{ fontSize: '7px', color: TIER_COLORS[tier], opacity: 0.7, marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
+ {preview}
+ </div>
+ <div style={{ fontSize: '7px', color: '#475569', marginBottom: '6px', fontFamily: 'var(--font-mono)', letterSpacing: '0.03em' }}>
+ {tc.scrap} / {tc.oil} / ${tc.money}
+ </div>
+ <button
+ disabled={!canAfford}
+ onClick={() => doCraft(tier, craftSlot)}
+ style={{
+ width: '100%', padding: '5px', fontSize: '8px', fontWeight: 800,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
+ border: `1px solid ${canAfford ? TIER_COLORS[tier] : '#222'}`,
+ borderRadius: '3px', cursor: canAfford ? 'pointer' : 'not-allowed',
+ background: canAfford ? `${TIER_COLORS[tier]}22` : 'transparent',
+ color: canAfford ? TIER_COLORS[tier] : '#333',
+ }}
+ >ROLL</button>
+ </div>
+ )
+ })}
+ </div>
 
-                          if (isSuperforged) {
-                            for (const key of Object.keys(result.stats) as Array<keyof typeof result.stats>) {
-                              if (typeof result.stats[key] === 'number') {
-                                (result.stats as any)[key] = Math.ceil(result.stats[key]! * 1.10)
-                              }
-                            }
-                          }
+ {/* Random Craft Section */}
+ <div style={{
+ padding: '10px', borderRadius: '6px', marginBottom: '12px',
+ background: 'rgba(251,191,36,0.04)', border: '1px solid rgba(251,191,36,0.15)',
+ }}>
+ <div style={{ fontSize: '9px', fontWeight: 700, color: '#fbbf24', fontFamily: 'var(--font-display)', letterSpacing: '0.1em', marginBottom: '6px', textAlign: 'center' }}>
+ RANDOM CRAFT // ANY SLOT, ANY SUBTYPE
+ </div>
+ <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+ {TIER_ORDER.map(tier => {
+ const tc = costTable[tier]
+ const canAfford = player.scrap >= tc.scrap && player.oil >= tc.oil && player.money >= tc.money
+ return (
+ <button
+ key={`rand-${tier}`}
+ disabled={!canAfford}
+ onClick={() => doRandomCraft(tier)}
+ style={{
+ padding: '5px 4px', fontSize: '8px', fontWeight: 800,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.06em',
+ border: `1px solid ${canAfford ? TIER_COLORS[tier] + '55' : '#222'}`,
+ borderRadius: '3px', cursor: canAfford ? 'pointer' : 'not-allowed',
+ background: canAfford ? 'rgba(251,191,36,0.08)' : 'transparent',
+ color: canAfford ? TIER_COLORS[tier] : '#333',
+ opacity: canAfford ? 1 : 0.4,
+ }}
+ >{TIER_LABELS[tier].split(' ')[0]}</button>
+ )
+ })}
+ </div>
+ </div>
 
-                          const newItem: EquipItem = {
-                            id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-                            name: isSuperforged ? `⚡ ${result.name}` : result.name,
-                            slot: craftSlot,
-                            category,
-                            tier,
-                            equipped: false,
-                            durability: 100,
-                            stats: result.stats,
-                            weaponSubtype: result.weaponSubtype,
-                          }
-                          inventory.addItem(newItem)
-                          if (isSuperforged) {
-                            ui.addFloatingText(`⚡ SUPERFORGED ${result.name}! +10% STATS`, window.innerWidth / 2, window.innerHeight / 2, '#fbbf24')
-                          } else {
-                            ui.addFloatingText(`CRAFTED ${result.name}!`, window.innerWidth / 2, window.innerHeight / 2, TIER_COLORS[tier])
-                          }
-                        }}
-                      >
-                        🔨 CRAFT
-                      </button>
-                    </div>
-                  )
-                })
-              })()}
-            </div>
-          </div>
-        )
-      })()}
+ <button
+ onClick={() => setMode('normal')}
+ style={{
+ width: '100%', padding: '8px', fontSize: '9px', fontWeight: 600,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
+ background: 'transparent', color: '#475569',
+ border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px',
+ cursor: 'pointer',
+ }}
+ >CLOSE</button>
+ </div>
+ </div>
+ )
+ })()}
 
-      {/* DISARM MODE info */}
-      {mode === 'disarm' && (
-        <div style={{ fontSize: '10px', color: '#ef4444', textAlign: 'center', padding: '6px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '3px', marginBottom: '6px' }}>
-          🔧 DISARM MODE — Click any unequipped item below to dismantle for scrap
-        </div>
-      )}
 
-      {/* EQUIPMENT LIST */}
-      <div className="inv-section">
-        <div className="inv-section__title">🎒 EQUIPMENT</div>
-        
-        {renderEquipmentCategoryRow('weapon', 'Weapon')}
-        {/* We skip rendering AMMO here since it's not an item in inventoryStore but rather a boolean/count in playerStore. Ammo is managed just via the Loadout slot click logic. */}
-        {renderEquipmentCategoryRow('helmet', 'Helmet')}
-        {renderEquipmentCategoryRow('chest', 'Chest')}
-        {renderEquipmentCategoryRow('legs', 'Legs')}
-        {renderEquipmentCategoryRow('gloves', 'Gloves')}
-        {renderEquipmentCategoryRow('boots', 'Boots')}
-        
-        {inventory.items.length === 0 && (
-          <div className="inv-empty">You have no equipment.</div>
-        )}
-      </div>
+ {/* DISARM MODE info */}
+ {mode === 'disarm' && (
+ <div style={{ fontSize: '10px', color: '#ef4444', textAlign: 'center', padding: '6px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '3px', marginBottom: '6px' }}>
+          DISARM MODE -- Click any unequipped item below to dismantle for scrap
+ </div>
+ )}
 
-      {/* Item Interaction Modal */}
-      {selectedItem && (
-        <div className="inv-modal-overlay" onClick={() => setSelectedItem(null)}>
-          <div className="inv-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '300px' }}>
-            <div className="inv-modal__title" style={{ color: TIER_COLORS[selectedItem.tier] }}>
-              {selectedItem.name}
-            </div>
-            <div style={{ textAlign: 'center', marginBottom: '16px', fontSize: '32px', display: 'flex', justifyContent: 'center' }}>
-              {(() => {
-                const imgUrl = getItemImagePath(selectedItem.tier, selectedItem.slot, selectedItem.category, selectedItem.weaponSubtype);
-                return imgUrl ? (
-                  <img src={imgUrl} alt={selectedItem.name} style={{ width: '64px', height: '64px', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.5))' }} onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling!.removeAttribute('style'); }} />
-                ) : null;
-              })()}
-              <span style={getItemImagePath(selectedItem.tier, selectedItem.slot, selectedItem.category, selectedItem.weaponSubtype) ? { display: 'none' } : {}}>{(SLOT_ICONS as Record<string, string>)[selectedItem.slot]}</span>
-            </div>
-            
-            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '4px', marginBottom: '20px' }}>
-              <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '4px' }}>Tier: {TIER_LABELS[selectedItem.tier]}</div>
-              {renderStats(selectedItem.stats)}
-            </div>
+ {/* EQUIPMENT LIST */}
+ <div className="inv-section">
+ <div className="inv-section__title">?T EQUIPMENT</div>
+ 
+ {renderEquipmentCategoryRow('weapon', 'Weapon')}
+ {/* We skip rendering AMMO here since it's not an item in inventoryStore but rather a boolean/count in playerStore. Ammo is managed just via the Loadout slot click logic. */}
+ {renderEquipmentCategoryRow('helmet', 'Helmet')}
+ {renderEquipmentCategoryRow('chest', 'Chest')}
+ {renderEquipmentCategoryRow('legs', 'Legs')}
+ {renderEquipmentCategoryRow('gloves', 'Gloves')}
+ {renderEquipmentCategoryRow('boots', 'Boots')}
+ 
+ {inventory.items.length === 0 && (
+ <div className="inv-empty">You have no equipment.</div>
+ )}
+ </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button 
-                className="inv-btn inv-btn--confirm" 
-                onClick={handleEquipToggle}
-                style={{ background: selectedItem.equipped ? '#f59e0b' : '#22d38a', color: '#0a0e17' }}
-              >
-                {selectedItem.equipped ? 'Unequip' : 'Equip'}
-              </button>
-              
-              <button 
-                className="inv-btn" 
-                style={{ 
-                  background: selectedItem.equipped ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.2)', 
-                  color: selectedItem.equipped ? '#475569' : '#3b82f6',
-                  border: `1px solid ${selectedItem.equipped ? '#334155' : '#3b82f6'}`,
-                  cursor: selectedItem.equipped ? 'not-allowed' : 'pointer',
-                  opacity: selectedItem.equipped ? 0.5 : 1,
-                }}
-                disabled={selectedItem.equipped}
-                title={selectedItem.equipped ? 'Unequip first to sell' : `Sell for 🪙${TIER_SELL_PRICE[selectedItem.tier].toLocaleString()}`}
-                onClick={() => {
-                  if (selectedItem.equipped) return
-                  const gain = TIER_SELL_PRICE[selectedItem.tier]
-                  inventory.removeItem(selectedItem.id)
-                  usePlayerStore.setState(s => ({ money: s.money + gain }))
-                  useMarketStore.getState().executeTrade('equipment', 'sell', 1)
-                  ui.addFloatingText(`SOLD ${selectedItem.name} +🪙${gain.toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
-                  setSelectedItem(null)
-                }}
-              >
-                💰 Sell to Market (🪙{TIER_SELL_PRICE[selectedItem.tier].toLocaleString()})
-              </button>
-              
-              <button 
-                className="inv-btn inv-btn--dismantle" 
-                onClick={handleDisarm}
-                disabled={selectedItem.equipped}
-                title={selectedItem.equipped ? "Unequip first to disarm" : "Dismantle for scrap"}
-              >
-                Disarm (Scrap)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ==== Item Interaction Modal -- Premium ==== */}
+ {selectedItem && (
+ <div className="inv-modal-overlay" onClick={() => setSelectedItem(null)}>
+ <div className="inv-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '340px' }}>
 
-      {/* Select Item to Fill Slot Modal */}
-      {selectedSlotToFill && (
-        <div className="inv-modal-overlay" onClick={() => setSelectedSlotToFill(null)}>
-          <div className="inv-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '360px', width: '90%' }}>
-            <div className="inv-modal__title">
-              Equip {(selectedSlotToFill as string).toUpperCase()}
-            </div>
-            
-            <div style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: '4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {selectedSlotToFill === 'ammo' ? (
-                // Render Ammo Options
-                <>
-                  <div 
-                    className="inv-item" 
-                    style={{ padding: '10px', cursor: 'pointer', background: player.equippedAmmo === 'none' ? 'rgba(34, 211, 138, 0.1)' : 'rgba(8,12,18,0.8)', border: player.equippedAmmo === 'none' ? '1px solid #22d38a' : '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                    onClick={() => handleEquipAmmoFromModal('none')}
-                  >
-                    <span>⭕ No Ammo</span>
-                    {player.equippedAmmo === 'none' && <span style={{ color: '#22d38a', fontSize: '12px' }}>EQUIPPED</span>}
-                  </div>
-                  {player.greenBullets > 0 && (
-                    <div className="inv-item" style={{ padding: '10px', cursor: 'pointer', background: player.equippedAmmo === 'green' ? 'rgba(34, 211, 138, 0.1)' : 'rgba(8,12,18,0.8)', border: player.equippedAmmo === 'green' ? '1px solid #22d38a' : '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleEquipAmmoFromModal('green')}>
-                      <span style={{ color: '#22c55e' }}>🟢 Green Ammo ({player.greenBullets})</span>
-                      {player.equippedAmmo === 'green' && <span style={{ color: '#22d38a', fontSize: '12px' }}>EQUIPPED</span>}
-                    </div>
-                  )}
-                  {player.blueBullets > 0 && (
-                    <div className="inv-item" style={{ padding: '10px', cursor: 'pointer', background: player.equippedAmmo === 'blue' ? 'rgba(34, 211, 138, 0.1)' : 'rgba(8,12,18,0.8)', border: player.equippedAmmo === 'blue' ? '1px solid #22d38a' : '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleEquipAmmoFromModal('blue')}>
-                      <span style={{ color: '#3b82f6' }}>🔵 Blue Ammo ({player.blueBullets})</span>
-                      {player.equippedAmmo === 'blue' && <span style={{ color: '#22d38a', fontSize: '12px' }}>EQUIPPED</span>}
-                    </div>
-                  )}
-                  {player.purpleBullets > 0 && (
-                    <div className="inv-item" style={{ padding: '10px', cursor: 'pointer', background: player.equippedAmmo === 'purple' ? 'rgba(34, 211, 138, 0.1)' : 'rgba(8,12,18,0.8)', border: player.equippedAmmo === 'purple' ? '1px solid #22d38a' : '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleEquipAmmoFromModal('purple')}>
-                      <span style={{ color: '#a855f7' }}>🟣 Purple Ammo ({player.purpleBullets})</span>
-                      {player.equippedAmmo === 'purple' && <span style={{ color: '#22d38a', fontSize: '12px' }}>EQUIPPED</span>}
-                    </div>
-                  )}
-                  {player.redBullets > 0 && (
-                    <div className="inv-item" style={{ padding: '10px', cursor: 'pointer', background: player.equippedAmmo === 'red' ? 'rgba(34, 211, 138, 0.1)' : 'rgba(8,12,18,0.8)', border: player.equippedAmmo === 'red' ? '1px solid #22d38a' : '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => handleEquipAmmoFromModal('red')}>
-                      <span style={{ color: '#ef4444' }}>🔴 Red Ammo ({player.redBullets})</span>
-                      {player.equippedAmmo === 'red' && <span style={{ color: '#22d38a', fontSize: '12px' }}>EQUIPPED</span>}
-                    </div>
-                  )}
-                </>
-              ) : (
-                // Render Default Items for Slot
-                (() => {
-                  const availableItems = inventory.items
-                    .filter(i => i.slot === selectedSlotToFill && !i.equipped)
-                    .sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier))
+ {/* Hero Image Area */}
+ <div style={{
+ display: 'flex', flexDirection: 'column', alignItems: 'center',
+ padding: '16px 0 12px', marginBottom: '12px',
+ background: `radial-gradient(ellipse at center, ${TIER_COLORS[selectedItem.tier]}10 0%, transparent 70%)`,
+ }}>
+ {(() => {
+ const imgUrl = getItemImagePath(selectedItem.tier, selectedItem.slot, selectedItem.category, selectedItem.weaponSubtype);
+ return imgUrl ? (
+ <img src={imgUrl} alt={selectedItem.name} style={{
+ width: '72px', height: '72px', objectFit: 'contain',
+ filter: `drop-shadow(0 4px 16px ${TIER_COLORS[selectedItem.tier]}40)`,
+ marginBottom: '8px',
+ }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+ ) : (
+ <div style={{ fontSize: '48px', marginBottom: '8px', opacity: 0.5 }}>
+ {selectedItem.slot === 'helmet' ? '\u2302' : selectedItem.slot === 'chest' ? '\u2666' : '\u2694'}
+ </div>
+ );
+ })()}
+ <div style={{
+ fontSize: '14px', fontWeight: 800, fontFamily: 'var(--font-display)',
+ color: TIER_COLORS[selectedItem.tier], letterSpacing: '0.08em',
+ textShadow: `0 0 12px ${TIER_COLORS[selectedItem.tier]}50`,
+ }}>{selectedItem.name}</div>
+ <div style={{
+ fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)',
+ color: '#64748b', letterSpacing: '0.1em', marginTop: '2px',
+ }}>{TIER_LABELS[selectedItem.tier]} \u2022 {selectedItem.slot.toUpperCase()}</div>
+ </div>
 
-                  if (availableItems.length === 0) {
-                    return <div style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>No items available to equip for this slot.</div>
-                  }
+ {/* Stat Grid */}
+ <div style={{
+ background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '10px 12px',
+ marginBottom: '16px', border: '1px solid rgba(255,255,255,0.04)',
+ }}>
+ {[
+ selectedItem.stats.damage && { label: 'DAMAGE', val: `${selectedItem.stats.damage}`, color: '#f87171' },
+ selectedItem.stats.critRate && { label: 'CRIT RATE', val: `${selectedItem.stats.critRate}%`, color: '#fb923c' },
+ selectedItem.stats.critDamage && { label: 'CRIT DMG', val: `+${selectedItem.stats.critDamage}%`, color: '#fb923c' },
+ selectedItem.stats.armor && { label: 'ARMOR', val: `+${selectedItem.stats.armor}%`, color: '#94a3b8' },
+ selectedItem.stats.dodge && { label: 'EVASION', val: `+${selectedItem.stats.dodge}%`, color: '#34d399' },
+ selectedItem.stats.precision && { label: 'ACCURACY', val: `+${selectedItem.stats.precision}%`, color: '#38bdf8' },
+ ].filter(Boolean).map((s: any) => (
+ <div key={s.label} style={{
+ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+ padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)',
+ }}>
+ <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>{s.label}</span>
+ <span style={{ color: s.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{s.val}</span>
+ </div>
+ ))}
+ {/* Durability */}
+ <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)', borderTop: '1px solid rgba(255,255,255,0.04)', marginTop: '4px', paddingTop: '6px' }}>
+ <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>DURABILITY</span>
+ <span style={{ color: (selectedItem.durability ?? 100) < 30 ? '#ef4444' : (selectedItem.durability ?? 100) < 60 ? '#f59e0b' : '#22d38a', fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{(selectedItem.durability ?? 100).toFixed(0)}%</span>
+ </div>
+ </div>
 
-                  return availableItems.map(item => (
-                    <div
-                      key={item.id}
-                      className="inv-item"
-                      style={{
-                        borderColor: `${TIER_COLORS[item.tier]}44`,
-                        background: 'rgba(8,12,18,0.8)',
-                        padding: '12px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'flex-start'
-                      }}
-                      onClick={() => handleEquipFromModal(item.id)}
-                    >
-                      <span style={{ fontSize: '12px', fontFamily: 'var(--font-display)', color: TIER_COLORS[item.tier] }}>{item.name}</span>
-                      {renderStats(item.stats)}
-                    </div>
-                  ))
-                })()
-              )}
-            </div>
-            
-            <button 
-              className="inv-btn" 
-              style={{ background: 'rgba(255,255,255,0.1)', color: '#ffffff', marginTop: '16px' }}
-              onClick={() => setSelectedSlotToFill(null)}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+ {/* Action Buttons */}
+ <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+ <button
+ onClick={handleEquipToggle}
+ style={{
+ width: '100%', padding: '10px', fontSize: '11px', fontWeight: 800,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.1em',
+ border: 'none', borderRadius: '6px', cursor: 'pointer',
+ background: selectedItem.equipped
+ ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+ : 'linear-gradient(135deg, #84cc16, #65a30d)',
+ color: '#0a0e17',
+ boxShadow: selectedItem.equipped
+ ? '0 0 16px rgba(245,158,11,0.3)'
+ : '0 0 16px rgba(132,204,22,0.3)',
+ }}
+ >
+ {selectedItem.equipped ? 'UNEQUIP' : 'EQUIP'}
+ </button>
+
+ <div style={{ display: 'flex', gap: '6px' }}>
+ <button
+ style={{
+ flex: 1, padding: '8px', fontSize: '9px', fontWeight: 700,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
+ background: 'rgba(59,130,246,0.12)', color: selectedItem.equipped ? '#334155' : '#3b82f6',
+ border: `1px solid ${selectedItem.equipped ? '#1e293b' : 'rgba(59,130,246,0.3)'}`,
+ borderRadius: '4px', cursor: selectedItem.equipped ? 'not-allowed' : 'pointer',
+ opacity: selectedItem.equipped ? 0.4 : 1,
+ }}
+ disabled={selectedItem.equipped}
+ onClick={() => {
+ if (selectedItem.equipped) return
+ const gain = TIER_SELL_PRICE[selectedItem.tier]
+ inventory.removeItem(selectedItem.id)
+ usePlayerStore.setState(s => ({ money: s.money + gain }))
+ useMarketStore.getState().executeTrade('equipment', 'sell', 1)
+ ui.addFloatingText(`SOLD +$${gain.toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+ setSelectedItem(null)
+ }}
+ >
+ SELL ${TIER_SELL_PRICE[selectedItem.tier].toLocaleString()}
+ </button>
+
+ <button
+ style={{
+ flex: 1, padding: '8px', fontSize: '9px', fontWeight: 700,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
+ background: 'rgba(245,158,11,0.1)', color: selectedItem.equipped ? '#334155' : '#f59e0b',
+ border: `1px solid ${selectedItem.equipped ? '#1e293b' : 'rgba(245,158,11,0.3)'}`,
+ borderRadius: '4px', cursor: selectedItem.equipped ? 'not-allowed' : 'pointer',
+ opacity: selectedItem.equipped ? 0.4 : 1,
+ }}
+ disabled={selectedItem.equipped}
+ onClick={handleDisarm}
+ >
+ DISARM (+{SCRAP_VALUES[selectedItem.tier]} SCRAP)
+ </button>
+ </div>
+
+ <button
+ onClick={() => setSelectedItem(null)}
+ style={{
+ width: '100%', padding: '6px', fontSize: '9px', fontWeight: 600,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
+ background: 'transparent', color: '#475569',
+ border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px',
+ cursor: 'pointer',
+ }}
+ >
+ CLOSE
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+
+      {/* ==== Slot Picker Modal (Inventory) ==== */}
+ {pickerSlot && (() => {
+ const currentlyEquipped = equipped.find((i: any) => i.slot === pickerSlot)
+ const availableItems = inventory.items
+ .filter(i => i.slot === pickerSlot)
+ .sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier))
+
+ return (
+ <div className="inv-modal-overlay" onClick={() => setPickerSlot(null)}>
+ <div className="inv-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px', width: '90%' }}>
+ <div className="inv-modal__title" style={{ color: '#84cc16' }}>
+ {pickerSlot.toUpperCase()} GEAR
+ </div>
+
+ {currentlyEquipped && (
+ <div style={{
+ display: 'flex', alignItems: 'center', gap: '10px',
+ padding: '10px 12px', marginBottom: '10px',
+ background: 'rgba(132, 204, 22, 0.06)',
+ border: '1px solid rgba(132, 204, 22, 0.2)',
+ borderRadius: '6px',
+ }}>
+ <div style={{ width: '40px', height: '40px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ {(() => {
+ const imgUrl = getItemImagePath(currentlyEquipped.tier, currentlyEquipped.slot, currentlyEquipped.category, currentlyEquipped.weaponSubtype)
+ return imgUrl ? (
+ <img src={imgUrl} alt={currentlyEquipped.name} style={{ width: '36px', height: '36px', objectFit: 'contain', filter: `drop-shadow(0 2px 6px ${TIER_COLORS[currentlyEquipped.tier]}40)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+ ) : (
+ <span style={{ fontSize: '24px', opacity: 0.4 }}>{(SLOT_ICONS as any)[currentlyEquipped.slot]}</span>
+ )
+ })()}
+ </div>
+ <div style={{ flex: 1, minWidth: 0 }}>
+ <div style={{ fontSize: '11px', fontFamily: 'var(--font-display)', fontWeight: 700, color: TIER_COLORS[currentlyEquipped.tier] }}>{currentlyEquipped.name}</div>
+ <div style={{ fontSize: '8px', color: '#84cc16', fontWeight: 700, letterSpacing: '0.1em', marginTop: '1px' }}>EQUIPPED</div>
+ </div>
+ <button
+ onClick={() => { inventory.unequipItem(currentlyEquipped.id); setPickerSlot(null) }}
+ style={{
+ padding: '6px 12px', fontSize: '9px', fontWeight: 700,
+ fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
+ background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+ border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px',
+ cursor: 'pointer', flexShrink: 0,
+ }}
+ >UNEQUIP</button>
+ </div>
+ )}
+
+ <div style={{ maxHeight: '350px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+ {availableItems.filter(i => !i.equipped).length === 0 && (
+ <div style={{ color: '#475569', textAlign: 'center', padding: '20px', fontSize: '10px' }}>No other items for this slot.</div>
+ )}
+ {availableItems.filter(i => !i.equipped).map(item => {
+ const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+ return (
+ <div
+ key={item.id}
+ style={{
+ display: 'flex', alignItems: 'center', gap: '10px',
+ padding: '8px 12px', borderRadius: '5px',
+ background: 'rgba(8,12,18,0.8)',
+ border: `1px solid ${TIER_COLORS[item.tier]}33`,
+ cursor: 'pointer', transition: 'all 150ms ease',
+ }}
+ onClick={() => { inventory.equipItem(item.id); setPickerSlot(null) }}
+ onMouseEnter={e => { e.currentTarget.style.background = 'rgba(132,204,22,0.06)'; e.currentTarget.style.borderColor = `${TIER_COLORS[item.tier]}66` }}
+ onMouseLeave={e => { e.currentTarget.style.background = 'rgba(8,12,18,0.8)'; e.currentTarget.style.borderColor = `${TIER_COLORS[item.tier]}33` }}
+ >
+ <div style={{ width: '36px', height: '36px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+ {imgUrl ? (
+ <img src={imgUrl} alt={item.name} style={{ width: '32px', height: '32px', objectFit: 'contain', filter: `drop-shadow(0 2px 4px ${TIER_COLORS[item.tier]}30)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+ ) : (
+ <span style={{ fontSize: '20px', opacity: 0.4 }}>{(SLOT_ICONS as any)[item.slot]}</span>
+ )}
+ </div>
+ <div style={{ flex: 1, minWidth: 0 }}>
+ <div style={{ fontSize: '10px', fontFamily: 'var(--font-display)', fontWeight: 700, color: TIER_COLORS[item.tier], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+ <div style={{ fontSize: '8px', color: '#475569', fontFamily: 'var(--font-display)' }}>{TIER_LABELS[item.tier]}</div>
+ <div style={{ display: 'flex', gap: '6px', marginTop: '2px', fontSize: '8px', fontFamily: 'var(--font-mono)' }}>
+ {item.stats.damage && <span style={{ color: '#f87171' }}>DMG {item.stats.damage}</span>}
+ {item.stats.critRate && <span style={{ color: '#fb923c' }}>CRIT {item.stats.critRate}%</span>}
+ {item.stats.critDamage && <span style={{ color: '#fb923c' }}>CDMG +{item.stats.critDamage}%</span>}
+ {item.stats.armor && <span style={{ color: '#94a3b8' }}>ARM +{item.stats.armor}%</span>}
+ {item.stats.dodge && <span style={{ color: '#34d399' }}>EVA +{item.stats.dodge}%</span>}
+ {item.stats.precision && <span style={{ color: '#38bdf8' }}>ACC +{item.stats.precision}%</span>}
+ </div>
+ </div>
+ <div style={{ fontSize: '8px', color: '#84cc16', fontWeight: 700, fontFamily: 'var(--font-display)', flexShrink: 0 }}>EQUIP</div>
+ </div>
+ )
+ })}
+ </div>
+
+ <button
+ onClick={() => setPickerSlot(null)}
+ style={{
+ width: '100%', padding: '8px', marginTop: '12px',
+ fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)',
+ letterSpacing: '0.08em', background: 'transparent', color: '#475569',
+ border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px',
+ cursor: 'pointer',
+ }}
+ >CLOSE</button>
+ </div>
+ </div>
+ )
+ })()}
+ </div>
+ )
 }
+

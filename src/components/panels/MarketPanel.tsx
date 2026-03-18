@@ -10,7 +10,7 @@ import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/armyStore'
 interface MarketItem {
   id: string
   name: string
-  icon: string
+  icon: React.ReactNode
   basePrice: number
   stateKey: keyof PlayerState
   rarity: string
@@ -76,11 +76,11 @@ const RESOURCE_CATEGORIES: { name: string; items: MarketItem[] }[] = [
   {
     name: 'Food',
     items: [
-      { id: 'food_sushi',  name: 'Sushi',  icon: '🍣', basePrice: 7.19, stateKey: 'sushi',  rarity: 'purple', marketId: 'food' },
+      { id: 'food_sushi',  name: 'Sushi',  icon: <img src="/assets/food/sushi.png" alt="Sushi" style={{ width: '24px', height: '24px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, basePrice: 7.19, stateKey: 'sushi',  rarity: 'purple', marketId: 'food' },
       { id: 'food_steak',  name: 'Steak',  icon: '🥩', basePrice: 3.50, stateKey: 'steak',  rarity: 'blue',   marketId: 'food' },
-      { id: 'food_bread',  name: 'Bread',  icon: '🍞', basePrice: 1.81, stateKey: 'bread',  rarity: 'green',  marketId: 'food' },
+      { id: 'food_bread',  name: 'Bread',  icon: <img src="/assets/food/bread.png" alt="Bread" style={{ width: '24px', height: '24px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, basePrice: 1.81, stateKey: 'bread',  rarity: 'green',  marketId: 'food' },
       { id: 'food_fish',   name: 'Fish',   icon: '🐟', basePrice: 3.44, stateKey: 'fish',   rarity: 'grey',   marketId: 'food' },
-      { id: 'food_wagyu',  name: 'Wagyu',  icon: '🍱', basePrice: 9.50, stateKey: 'wagyu',  rarity: 'red',    marketId: 'food' },
+      { id: 'food_wagyu',  name: 'Wagyu',  icon: <img src="/assets/food/wagyu.png" alt="Wagyu" style={{ width: '24px', height: '24px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, basePrice: 9.50, stateKey: 'wagyu',  rarity: 'red',    marketId: 'food' },
       { id: 'food_wheat',  name: 'Wheat',  icon: '🌾', basePrice: 0.08, stateKey: 'wheat',  rarity: 'grey',   marketId: 'food' },
     ],
   },

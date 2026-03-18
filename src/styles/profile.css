@@ -592,37 +592,64 @@
   color: rgba(10, 14, 23, 0.6);
 }
 
-/* Craft Modal */
+/* Inventory Modals — Premium Redesign */
 .inv-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(16px) saturate(0.8);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 500;
+  z-index: 9000;
+  animation: modal-fade-in 200ms ease;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-slide-up {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .inv-modal {
-  background: linear-gradient(180deg, #131d2e 0%, #0f1824 100%);
-  border: 1px solid rgba(34, 211, 138, 0.25);
-  border-radius: 10px;
-  padding: 18px;
+  background: linear-gradient(180deg, #0d1520 0%, #080e18 100%);
+  border: 1px solid rgba(132, 204, 22, 0.2);
+  border-radius: 12px;
+  padding: 20px;
   min-width: 300px;
-  max-width: 360px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(34, 211, 138, 0.1);
+  max-width: 380px;
+  width: 90%;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.8),
+    0 0 40px rgba(132, 204, 22, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  animation: modal-slide-up 250ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.inv-modal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(132, 204, 22, 0.5), transparent);
 }
 
 .inv-modal__title {
   font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-primary);
-  letter-spacing: 0.1em;
-  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin-bottom: 16px;
   text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(34, 211, 138, 0.4);
+  text-align: center;
 }
 
 .inv-modal__field {
@@ -1945,70 +1972,134 @@
   flex-shrink: 0;
 }
 
-/* ─── Gear cards ─── */
+/* ─── Gear cards ─── *//* ─── Equipped Gear Grid — Vertical Stat Cards ─── */
 .ptab-gear-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 6px;
 }
 
 .ptab-gear-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 8px 6px;
-  background: rgba(10, 14, 23, 0.8);
+  padding: 0;
+  background: rgba(8, 12, 20, 0.9);
   border: 1px solid;
-  border-radius: 8px;
+  border-radius: 6px;
+  overflow: hidden;
   text-align: center;
-  transition: transform 150ms ease, box-shadow 150ms ease;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.ptab-gear-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--card-tier-color, #64748b);
+  box-shadow: 0 0 8px var(--card-tier-color, transparent);
 }
 
 .ptab-gear-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.5), 0 0 12px color-mix(in srgb, var(--card-tier-color, #64748b) 30%, transparent);
 }
 
 .ptab-gear-card__top {
   display: flex;
   justify-content: space-between;
-  width: 100%;
+  align-items: center;
+  padding: 4px 6px 2px;
+  background: rgba(255,255,255,0.03);
 }
 
 .ptab-gear-card__slot {
   font-family: var(--font-display);
-  font-size: 6px;
-  color: #64748b;
-  letter-spacing: 0.08em;
+  font-size: 7px;
+  color: #475569;
+  letter-spacing: 0.1em;
+  font-weight: 600;
 }
 
 .ptab-gear-card__tier {
   font-family: var(--font-display);
-  font-size: 6px;
+  font-size: 7px;
   font-weight: 800;
   letter-spacing: 0.06em;
 }
 
+.ptab-gear-card__img-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  min-height: 52px;
+}
+
 .ptab-gear-card__img {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
 }
 
 .ptab-gear-card__name {
   font-family: var(--font-display);
   font-size: 8px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
+  padding: 0 4px 4px;
   word-break: break-word;
+}
+
+/* ─── Inline Stats ─── */
+.ptab-gear-card__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 5px;
+  background: rgba(0,0,0,0.3);
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+.ptab-gear-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  line-height: 1.6;
+}
+
+.ptab-gear-stat__label {
+  color: #475569;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ptab-gear-stat__val {
+  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 8px;
+}
+
+/* ─── Durability ─── */
+.ptab-gear-card__footer {
+  padding: 3px 5px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .ptab-gear-card__dur-bar {
   width: 100%;
   height: 3px;
-  background: rgba(100,116,139,0.2);
+  background: rgba(100,116,139,0.15);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -2023,6 +2114,7 @@
   font-family: var(--font-display);
   font-size: 7px;
   font-weight: 600;
+  text-align: right;
 }
 
 /* ─── Food buttons ─── */

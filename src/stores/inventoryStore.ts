@@ -76,12 +76,8 @@ export const SLOT_ICONS: Record<EquipSlot, string> = {
 
 // Map generated image assets
 export function getItemImagePath(tier: EquipTier, slot: EquipSlot, category: EquipCategory, weaponSubtype?: WeaponSubtype): string | null {
-  // We missed T5 boots/gloves and T6 armor set due to rate limits
-  if (tier === 't5' && (slot === 'boots' || slot === 'gloves')) return null
-  if (tier === 't6' && category === 'armor') return null
-
   // Weapon subtypes with their own icons
-  if (category === 'weapon' && weaponSubtype === 'rpg') return '/assets/items/t5_rpg.png'
+  if (category === 'weapon' && weaponSubtype === 'rpg') return '/assets/items/t5_weapon.png'
   if (category === 'weapon' && weaponSubtype === 'warship') return '/assets/items/t6_weapon_warship.png'
 
   if (tier === 't6') {
