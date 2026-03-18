@@ -449,7 +449,7 @@ export default function ProfileTab() {
                     {(() => {
                       const imgUrl = getItemImagePath(currentlyEquipped.tier, currentlyEquipped.slot, currentlyEquipped.category, currentlyEquipped.weaponSubtype)
                       return imgUrl ? (
-                        <img src={imgUrl} alt={currentlyEquipped.name} style={{ width: '36px', height: '36px', objectFit: 'contain', filter: `drop-shadow(0 2px 6px ${TIER_COLORS[currentlyEquipped.tier]}40)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+                        <img src={imgUrl} alt={currentlyEquipped.name} style={{ width: '56px', height: '56px', objectFit: 'contain', filter: `drop-shadow(0 2px 6px ${TIER_COLORS[currentlyEquipped.tier]}40)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
                       ) : (
                         <span style={{ fontSize: '24px', opacity: 0.4 }}>{(SLOT_ICONS as any)[currentlyEquipped.slot]}</span>
                       )
@@ -496,7 +496,7 @@ export default function ProfileTab() {
                     >
                       <div style={{ width: '36px', height: '36px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {imgUrl ? (
-                          <img src={imgUrl} alt={item.name} style={{ width: '32px', height: '32px', objectFit: 'contain', filter: `drop-shadow(0 2px 4px ${TIER_COLORS[item.tier]}30)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+                          <img src={imgUrl} alt={item.name} style={{ width: '48px', height: '48px', objectFit: 'contain', filter: `drop-shadow(0 2px 4px ${TIER_COLORS[item.tier]}30)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
                         ) : (
                           <span style={{ fontSize: '20px', opacity: 0.4 }}>{(SLOT_ICONS as any)[item.slot]}</span>
                         )}

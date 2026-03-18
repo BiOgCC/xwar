@@ -259,23 +259,31 @@ function rollItemOfTier(tier: EquipTier): EquipItem {
 function getStarterKit(): EquipItem[] {
   const kit: EquipItem[] = []
   const slots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots', 'weapon']
+  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
   
-  for (let i = 0; i < 3; i++) {
+  tiers.forEach(tier => {
     slots.forEach(slot => {
       const category: EquipCategory = slot === 'weapon' ? 'weapon' : 'armor'
-      const { name, stats } = generateStats(category, slot, 't3')
+      const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][0] : undefined
+      const { name, stats, weaponSubtype } = generateStats(category, slot, tier, subtype)
       kit.push({
-        id: `start-${slot}-${i}-${Math.random().toString(36).substring(2, 9)}`,
+        id: `start-${tier}-${slot}-${Math.random().toString(36).substring(2, 9)}`,
         name,
         slot,
         category,
-        tier: 't3',
-        equipped: i === 0, // Equip first set only
+        tier,
+        equipped: tier === 't3', // Equip T3 set
         durability: 100,
-        stats
+        stats,
+        weaponSubtype,
       })
     })
-  }
+  })
+  // Add a second T5 weapon (rpg) and T6 weapon (warship) for subtype variety
+  const rpg = generateStats('weapon', 'weapon', 't5', 'rpg')
+  kit.push({ id: `start-t5-rpg-${Math.random().toString(36).substring(2, 9)}`, name: rpg.name, slot: 'weapon', category: 'weapon', tier: 't5', equipped: false, durability: 100, stats: rpg.stats, weaponSubtype: rpg.weaponSubtype })
+  const warship = generateStats('weapon', 'weapon', 't6', 'warship')
+  kit.push({ id: `start-t6-warship-${Math.random().toString(36).substring(2, 9)}`, name: warship.name, slot: 'weapon', category: 'weapon', tier: 't6', equipped: false, durability: 100, stats: warship.stats, weaponSubtype: warship.weaponSubtype })
   return kit
 }
 
