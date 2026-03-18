@@ -414,6 +414,17 @@
   animation: panel-slide-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.hud-panel--fullscreen {
+  width: 100%;
+  border-left: none;
+}
+
+.hud-panel--fullscreen .hud-panel__body > * {
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 @keyframes panel-slide-in {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }

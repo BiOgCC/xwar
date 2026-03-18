@@ -137,6 +137,26 @@ function App() {
   const [expandedBattle, setExpandedBattle] = useState<string | null>(null)
   const [swapSlot, setSwapSlot] = useState<string | null>(null)
   const [selectedWarRegion, setSelectedWarRegion] = useState<Region | null>(null)
+  const [panelFullscreen, setPanelFullscreen] = useState(false)
+  const lastPanelRef = useRef<string | null>(null)
+
+  // Track last closed panel
+  useEffect(() => {
+    if (activePanel) lastPanelRef.current = activePanel
+  }, [activePanel])
+
+  // ESC key: fullscreen → minimize, normal → close, closed → reopen last
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (panelFullscreen) { setPanelFullscreen(false) }
+        else if (activePanel) { togglePanel(activePanel) }
+        else if (lastPanelRef.current) { setActivePanel(lastPanelRef.current as any) }
+      }
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [panelFullscreen, activePanel])
 
   // 30 min (1800s) Game Tick Timer + 15s Combat Tick
   const [timeLeft, setTimeLeft] = useState(1800)
@@ -569,7 +589,7 @@ function App() {
 
         {/* ====== RIGHT PANEL (opened) ====== */}
         {activePanel && (
-          <aside className="hud-panel">
+          <aside className={`hud-panel ${panelFullscreen ? 'hud-panel--fullscreen' : ''}`}>
             <div className="hud-panel__header">
               <h3 className="hud-panel__title">
                 {activePanel === 'government'
@@ -580,12 +600,20 @@ function App() {
                   ? `${getCountryFlag(selectedForeignCountry)} ${getCountryName(selectedForeignCountry).toUpperCase()}`
                   : activePanel?.toUpperCase()}
               </h3>
-              <button className="hud-panel__close" onClick={() => togglePanel(activePanel)}>✕</button>
+              <button onClick={() => { if (panelFullscreen) setPanelFullscreen(false); else setPanelFullscreen(true) }}
+                title={panelFullscreen ? 'Minimize' : 'Full Screen'}
+                style={{
+                  width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: panelFullscreen ? 14 : 11, border: '1px solid rgba(255,255,255,0.15)', borderRadius: 3,
+                  background: 'rgba(255,255,255,0.05)', color: '#94a3b8', cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >{panelFullscreen ? '—' : '☐'}</button>
             </div>
             <div className="hud-panel__body">
               {activePanel === 'profile' && <ProfilePanel />}
               {activePanel === 'military' && <MilitaryPanel />}
-              {activePanel === 'combat' && <WarPanel />}
+              {activePanel === 'combat' && <WarPanel panelFullscreen={panelFullscreen} />}
               {activePanel === 'foreign_country' && <ForeignCountryPanel />}
               {activePanel === 'market' && (
                 <MarketPanel />

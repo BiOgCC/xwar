@@ -13,7 +13,7 @@ import '../../styles/war.css'
 const BattleScene3D = React.lazy(() => import('./BattleScene3D'))
 
 type WarTab = 'overview' | 'recruit' | 'armies' | 'battles'
-export default function WarPanel() {
+export default function WarPanel({ panelFullscreen }: { panelFullscreen?: boolean }) {
   const [tab, setTab] = useState<WarTab>('overview')
   const [editingMotd, setEditingMotd] = useState(false)
   const armyStore = useArmyStore()
@@ -38,8 +38,9 @@ export default function WarPanel() {
   ]
 
   return (
-    <div className="war-panel">
-      {/* Message of the Day — global, above tabs */}
+    <div className="war-panel" style={panelFullscreen ? { maxWidth: tab === 'battles' ? 'none' : '400px', margin: '0 auto', width: '100%' } : undefined}>
+      {/* Message of the Day — global, above tabs (hidden in fullscreen) */}
+      {!panelFullscreen && (
       <div style={{ padding: '4px 10px', marginBottom: '4px', background: 'rgba(139,92,246,0.06)', borderRadius: '5px', border: '1px solid rgba(139,92,246,0.12)' }}>
         {editingMotd ? (
           <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
@@ -87,6 +88,7 @@ export default function WarPanel() {
           >📢 SET MESSAGE OF THE DAY</button>
         )}
       </div>
+      )}
       <div className="war-tabs">
         {tabs.map(t => (
           <button
@@ -104,7 +106,7 @@ export default function WarPanel() {
         {tab === 'overview' && <OverviewTab iso={iso} />}
         {tab === 'recruit' && <RecruitTab />}
         {tab === 'armies' && <ForcesTab iso={iso} />}
-        {tab === 'battles' && <CombatTab />}
+        {tab === 'battles' && <CombatTab panelFullscreen={panelFullscreen} />}
       </div>
     </div>
   )
@@ -962,12 +964,13 @@ function ForcesTab({ iso }: { iso: string }) {
 
 // ====== COMBAT TAB — Battle Engagement + Deploy + Fight ======
 
-function CombatTab() {
+function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
   const battleStore = useBattleStore()
   const armyStore = useArmyStore()
   const player = usePlayerStore()
   const ui = useUIStore()
-  const [expandedBattle, setExpandedBattle] = useState<string | null>(null)
+  const [expandedBattles, setExpandedBattles] = useState<Set<string>>(new Set())
+  const toggleBattle = (id: string) => setExpandedBattles(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s })
   const [deployCount, setDeployCount] = useState<Record<string, number>>({})
   const [editingOrderMsg, setEditingOrderMsg] = useState<Record<string, boolean>>({})
   const [scene3DBattle, setScene3DBattle] = useState<{
@@ -997,8 +1000,6 @@ function CombatTab() {
 
   return (
     <div className="war-battles" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* === Fixed Header: Tick Timer + Food === */}
-      <div style={{ flexShrink: 0 }}>
       {/* 3D Battle Scene Overlay */}
       {scene3DBattle && (
         <Suspense fallback={
@@ -1017,6 +1018,52 @@ function CombatTab() {
           />
         </Suspense>
       )}
+
+      {/* === Fullscreen Header: compact tick + food === */}
+      {panelFullscreen ? (
+        <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ width: '20%', minWidth: 200, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Row 1: Tick timer */}
+            {activeBattles.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: 4, border: '1px solid rgba(239,68,68,0.15)' }}>
+                <span style={{ fontSize: 10, animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 7, fontWeight: 700, color: '#94a3b8' }}>
+                    <span>TICK</span>
+                    <span style={{ color: combatTickLeft <= 3 ? '#ef4444' : '#22d38a', fontSize: 9 }}>{combatTickLeft}s</span>
+                  </div>
+                  <div style={{ width: '100%', height: 2, background: 'rgba(255,255,255,0.08)', borderRadius: 1, marginTop: 1 }}>
+                    <div style={{ width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%', background: combatTickLeft <= 3 ? '#ef4444' : '#22d38a', transition: 'width 0.9s linear', borderRadius: 1 }} />
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Row 2: Food grid */}
+            <div style={{ display: 'flex', gap: 3 }}>
+              {[
+                { key: 'bread', icon: '🍞', count: player.bread, sta: 10, heal: 1 },
+                { key: 'sushi', icon: '🍣', count: player.sushi, sta: 20, heal: 2 },
+                { key: 'wagyu', icon: '🥩', count: player.wagyu, sta: 30, heal: 3 },
+              ].map(f => (
+                <button key={f.key} disabled={f.count <= 0}
+                  onClick={() => { player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu'); armyStore.healDivisionsWithFood(f.key as 'bread' | 'sushi' | 'wagyu') }}
+                  style={{
+                    flex: 1, padding: '3px 4px', borderRadius: 3, cursor: f.count > 0 ? 'pointer' : 'not-allowed',
+                    background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                    opacity: f.count > 0 ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 10,
+                  }}
+                >
+                  {f.icon} <span style={{ fontSize: 8, fontWeight: 700, color: '#e2e8f0' }}>{f.count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+      /* === Normal Header: Tick Timer + Food === */
+      <div style={{ flexShrink: 0 }}>
+      {/* 3D Battle Scene Overlay */}
 
       {/* Tick Timer */}
       {activeBattles.length > 0 && (
@@ -1043,7 +1090,7 @@ function CombatTab() {
         </div>
       )}
 
-      {/* Quick Food — recover stamina + heal deployed divisions */}
+      {/* Quick Food */}
       <div style={{ display: 'flex', gap: '3px', marginBottom: '6px' }}>
         {[
           { key: 'bread', icon: '🍞', label: 'Bread', count: player.bread, sta: 10, heal: 1 },
@@ -1071,15 +1118,19 @@ function CombatTab() {
         ))}
       </div>
       </div>
+      )}
 
-      {/* === Scrollable Battles List === */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+      {/* === Battle Cards Area === */}
+      <div style={panelFullscreen ? {
+        flex: 1, display: 'flex', flexDirection: 'row', overflowX: 'auto', overflowY: 'hidden', gap: 8, padding: '4px',
+      } : { flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
       {activeBattles.length === 0 && pastBattles.length === 0 && (
         <div className="war-card"><div className="war-empty">No active battles. Launch an attack from the Forces tab.</div></div>
       )}
 
       {activeBattles.map(battle => {
-        const isExpanded = expandedBattle === battle.id
+        const battleCardStyle: React.CSSProperties = panelFullscreen ? { width: 'calc(20% - 7px)', minWidth: '280px', flexShrink: 0, height: '100%', overflowY: 'auto' } : {}
+        const isExpanded = expandedBattles.has(battle.id)
         const activeRound = battle.rounds[battle.rounds.length - 1]
         const atkDmg = battle.attacker?.damageDealt || 0
         const defDmg = battle.defender?.damageDealt || 0
@@ -1092,9 +1143,9 @@ function CombatTab() {
         const defClr = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
 
         return (
-          <div className="war-card war-card--battle" key={battle.id}>
+          <div className="war-card war-card--battle" key={battle.id} style={battleCardStyle}>
             {/* Battle Header */}
-            <div className="war-battle-header" onClick={() => setExpandedBattle(isExpanded ? null : battle.id)}>
+            <div className="war-battle-header" onClick={() => toggleBattle(battle.id)}>
               <div className="war-battle-sides">
                 <div className="war-battle-side war-battle-side--atk">
                   <span className="war-battle-flag">{getCountryFlag(battle.attackerId)}</span>
@@ -1109,7 +1160,7 @@ function CombatTab() {
                 </div>
                 <div className="war-battle-center">
                   <div className="war-battle-vs">VS</div>
-                  <div className="war-battle-terrain">⚔️ {battle.regionName}</div>
+                  <div className="war-battle-terrain" style={{ minHeight: '3em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚔️ {battle.regionName}</div>
                   <div className="war-battle-tick">T{battle.ticksElapsed}</div>
                 </div>
                 <div className="war-battle-side war-battle-side--def">
@@ -1124,15 +1175,14 @@ function CombatTab() {
                   <span className="war-battle-flag">{getCountryFlag(battle.defenderId)}</span>
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2px' }}>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setExpandedBattle(isExpanded ? null : battle.id) }}
+                  onClick={(e) => { e.stopPropagation(); toggleBattle(battle.id) }}
                   style={{
-                    width: '100%', padding: '5px 0', border: `1px solid rgba(255,255,255,0.1)`,
-                    borderRadius: '2px', cursor: 'pointer', fontSize: '9px', fontWeight: 900,
-                    fontFamily: 'var(--font-display)', letterSpacing: '1.5px',
-                    background: isExpanded ? 'rgba(239,68,68,0.1)' : 'rgba(34,211,138,0.1)',
-                    color: isExpanded ? '#f87171' : '#22d38a',
+                    padding: '2px 12px', border: 'none',
+                    borderRadius: '2px', cursor: 'pointer', fontSize: '7px', fontWeight: 700,
+                    fontFamily: 'var(--font-mono)', letterSpacing: '1px',
+                    background: 'transparent', color: '#475569',
                     transition: 'all 0.15s',
                   }}
                 >{isExpanded ? '▲ COLLAPSE' : '▼ EXPAND'}</button>
