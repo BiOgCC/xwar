@@ -1,0 +1,111 @@
+/* ============================================
+   XWAR — News Ticker
+   Scrolling event feed bar
+   ============================================ */
+
+.news-ticker {
+  width: 100%;
+  height: 24px;
+  background: linear-gradient(90deg, rgba(10,14,23,0.95) 0%, rgba(15,23,42,0.90) 50%, rgba(10,14,23,0.95) 100%);
+  border-bottom: 1px solid rgba(251,191,36,0.10);
+  overflow: hidden;
+  position: relative;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+/* Fade edges */
+.news-ticker::before,
+.news-ticker::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.news-ticker::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(10,14,23,1) 0%, transparent 100%);
+}
+
+.news-ticker::after {
+  right: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(10,14,23,1) 100%);
+}
+
+/* Scrolling track */
+.news-ticker__track {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  white-space: nowrap;
+  animation: ticker-scroll var(--ticker-duration, 60s) linear infinite;
+  gap: 32px;
+  padding-left: 100%;
+}
+
+.news-ticker:hover .news-ticker__track {
+  animation-play-state: paused;
+}
+
+/* Individual event */
+.news-ticker__event {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(226,232,240,0.8);
+  flex-shrink: 0;
+  cursor: default;
+  transition: color 150ms ease;
+}
+
+.news-ticker__event:hover {
+  color: #e2e8f0;
+}
+
+.news-ticker__icon {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.news-ticker__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.news-ticker__msg {
+  text-transform: uppercase;
+}
+
+.news-ticker__sep {
+  color: rgba(100,116,139,0.3);
+  font-size: 8px;
+  margin: 0 4px;
+}
+
+/* Scroll animation */
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+/* Breaking news flash for very recent events */
+.news-ticker__event--fresh {
+  color: #fbbf24;
+  animation: ticker-flash 2s ease;
+}
+
+@keyframes ticker-flash {
+  0%, 50% { color: #fbbf24; }
+  100% { color: rgba(226,232,240,0.8); }
+}

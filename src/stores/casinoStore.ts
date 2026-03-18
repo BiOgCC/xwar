@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
+import { useNewsStore } from './newsStore'
 import { useInventoryStore, generateStats, WEAPON_SUBTYPES } from './inventoryStore'
 import type { EquipTier, EquipSlot, EquipItem } from './inventoryStore'
 
@@ -222,6 +223,16 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
         winAmount = `LOST $${s.currentBet.toLocaleString()}`
         winType = 'lose'
         break
+      }
+    }
+
+    // Push to news ticker
+    if (winType === 'win') {
+      const betLabel = BET_TIERS.find(t => t.amount === s.currentBet)?.label || `$${s.currentBet.toLocaleString()}`
+      if (segment.type === 'item') {
+        useNewsStore.getState().pushEvent('casino', `${player.name} hit JACKPOT on ${betLabel} bet — won ${winAmount}!`)
+      } else if (segment.multiplier >= 5) {
+        useNewsStore.getState().pushEvent('casino', `${player.name} won BIG at the casino — ${winAmount} on a ${betLabel} bet!`)
       }
     }
 

@@ -1,0 +1,341 @@
+/* ============================================
+   XWAR — Stock Market
+   Dark terminal aesthetic, green/red tickers
+   ============================================ */
+
+.stock-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+/* ── Header ── */
+.stock-header {
+  text-align: center;
+  padding: 10px 0 6px;
+}
+
+.stock-header__title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #22c55e;
+  text-shadow: 0 0 24px rgba(34,197,94,0.3);
+}
+
+.stock-header__sub {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: rgba(226,232,240,0.4);
+  margin-top: 4px;
+}
+
+.stock-header__value {
+  font-family: var(--font-display);
+  font-weight: 900;
+  color: #fbbf24;
+}
+
+.stock-header__sep {
+  margin: 0 6px;
+  opacity: 0.3;
+}
+
+.stock-header__cash {
+  font-family: var(--font-display);
+  font-weight: 900;
+  color: #22c55e;
+}
+
+/* ── Message ── */
+.stock-message {
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+  animation: stock-pop 300ms ease;
+}
+
+.stock-message--success {
+  background: rgba(34,197,94,0.10);
+  border: 1px solid rgba(34,197,94,0.30);
+  color: #22c55e;
+}
+
+.stock-message--error {
+  background: rgba(239,68,68,0.10);
+  border: 1px solid rgba(239,68,68,0.30);
+  color: #ef4444;
+}
+
+@keyframes stock-pop {
+  0% { transform: scale(0.95); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Stock list ── */
+.stock-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.stock-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(34,197,94,0.06);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.stock-row:hover {
+  background: rgba(34,197,94,0.05);
+  border-color: rgba(34,197,94,0.15);
+}
+
+.stock-row--selected {
+  background: rgba(34,197,94,0.08);
+  border-color: rgba(34,197,94,0.25);
+}
+
+.stock-row__left {
+  min-width: 60px;
+}
+
+.stock-row__code {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 900;
+  color: #e2e8f0;
+  letter-spacing: 0.04em;
+}
+
+.stock-row__name {
+  font-size: 7px;
+  color: rgba(148,163,184,0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60px;
+}
+
+.stock-row__chart {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.stock-sparkline {
+  opacity: 0.7;
+}
+
+.stock-row__right {
+  text-align: right;
+  min-width: 55px;
+}
+
+.stock-row__price {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 900;
+  color: #e2e8f0;
+}
+
+.stock-row__change {
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.stock-row__change--up { color: #22c55e; }
+.stock-row__change--down { color: #ef4444; }
+
+.stock-row__shares {
+  font-size: 7px;
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+/* ── Trade panel ── */
+.stock-trade {
+  background: linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.6));
+  border: 1px solid rgba(34,197,94,0.15);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.stock-trade__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.stock-trade__code {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 900;
+  color: #22c55e;
+}
+
+.stock-trade__price {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(226,232,240,0.6);
+}
+
+.stock-trade__qty {
+  margin-bottom: 8px;
+}
+
+.stock-trade__label {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: rgba(226,232,240,0.3);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.stock-trade__qty-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.stock-trade__qty-btn {
+  flex: 1;
+  padding: 4px 0;
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(34,197,94,0.10);
+  border-radius: 3px;
+  color: rgba(226,232,240,0.5);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.stock-trade__qty-btn:hover {
+  background: rgba(34,197,94,0.08);
+  color: #22c55e;
+}
+
+.stock-trade__qty-btn--active {
+  background: rgba(34,197,94,0.12);
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.stock-trade__summary {
+  font-size: 9px;
+  color: rgba(226,232,240,0.4);
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stock-trade__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.stock-trade__btn {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 200ms;
+}
+
+.stock-trade__btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.stock-trade__btn--buy {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border-color: #22c55e;
+  color: #fff;
+}
+
+.stock-trade__btn--buy:hover:not(:disabled) {
+  box-shadow: 0 2px 16px rgba(34,197,94,0.4);
+  transform: translateY(-1px);
+}
+
+.stock-trade__btn--sell {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.stock-trade__btn--sell:hover:not(:disabled) {
+  box-shadow: 0 2px 16px rgba(239,68,68,0.4);
+  transform: translateY(-1px);
+}
+
+/* ── Portfolio ── */
+.stock-portfolio {
+  border-top: 1px solid rgba(34,197,94,0.10);
+  padding-top: 8px;
+}
+
+.stock-portfolio__title {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(226,232,240,0.3);
+  margin-bottom: 6px;
+}
+
+.stock-portfolio__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 9px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.stock-portfolio__code {
+  font-family: var(--font-display);
+  font-weight: 900;
+  color: #e2e8f0;
+  min-width: 24px;
+}
+
+.stock-portfolio__shares {
+  color: rgba(148,163,184,0.5);
+  flex: 1;
+}
+
+.stock-portfolio__value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.stock-portfolio__pnl {
+  font-weight: 700;
+  min-width: 42px;
+  text-align: right;
+}
+
+.stock-portfolio__pnl--up { color: #22c55e; }
+.stock-portfolio__pnl--down { color: #ef4444; }

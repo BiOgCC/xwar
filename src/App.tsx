@@ -28,6 +28,10 @@ import ForeignCountryPanel from './components/panels/ForeignCountryPanel'
 import MarketPanel from './components/panels/MarketPanel'
 import CompaniesPanel from './components/panels/CompaniesPanel'
 import CasinoPanel from './components/panels/CasinoPanel'
+import BountyPanel from './components/panels/BountyPanel'
+import StockMarketPanel from './components/panels/StockMarketPanel'
+import { useNewsStore } from './stores/newsStore'
+import './styles/ticker.css'
 
 const SIDEBAR_CIVILIAN = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
@@ -35,6 +39,8 @@ const SIDEBAR_CIVILIAN = [
   { id: 'companies' as const, icon: '🏭', label: 'COMPANIES' },
   { id: 'resources' as const, icon: '💰', label: 'RESOURCES' },
   { id: 'casino' as const, icon: '🎰', label: 'CASINO' },
+  { id: 'bounty' as const, icon: '🎯', label: 'BOUNTY' },
+  { id: 'stocks' as const, icon: '📈', label: 'STOCKS' },
   { id: 'chat' as const, icon: '💬', label: 'CHAT' },
 ]
 
@@ -113,6 +119,7 @@ function App() {
   const inventory = useInventoryStore()
   const equipped = inventory.getEquipped()
   const skillsStore = useSkillsStore()
+  const newsEvents = useNewsStore(s => s.events)
   
   // Calculate Combat Stats for Panel Display
   let eqDmg = 0, eqCritRate = 0, eqCritDmg = 0, eqArmor = 0, eqDodge = 0, eqPrecision = 0
@@ -505,6 +512,21 @@ function App() {
         </div>
       </header>
 
+      {/* ====== NEWS TICKER ====== */}
+      {newsEvents.length > 0 && (
+        <div className="news-ticker">
+          <div className="news-ticker__track" style={{ '--ticker-duration': `${Math.max(20, newsEvents.length * 5)}s` } as React.CSSProperties}>
+            {newsEvents.map((ev, i) => (
+              <span key={ev.id} className={`news-ticker__event ${Date.now() - ev.timestamp < 10000 ? 'news-ticker__event--fresh' : ''}`}>
+                <span className="news-ticker__dot" style={{ background: ev.color }} />
+                <span className="news-ticker__msg" style={{ color: ev.color }}>{ev.message}</span>
+                {i < newsEvents.length - 1 && <span className="news-ticker__sep">◆</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ====== MAP AREA ====== */}
       <div className="hud-map">
         {/* Always show the map */}
@@ -652,6 +674,8 @@ function App() {
               )}
               {activePanel === 'companies' && <CompaniesPanel />}
               {activePanel === 'casino' && <CasinoPanel />}
+              {activePanel === 'bounty' && <BountyPanel />}
+              {activePanel === 'stocks' && <StockMarketPanel />}
               {activePanel === 'resources' && (
                 <>
                   <div className="hud-card">
