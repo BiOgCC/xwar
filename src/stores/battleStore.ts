@@ -102,6 +102,11 @@ export interface BattleRound {
   attackerPoints: number
   defenderPoints: number
   status: 'active' | 'attacker_won' | 'defender_won'
+  startedAt: number
+  endedAt?: number
+  ticksElapsed?: number
+  attackerDmgTotal?: number
+  defenderDmgTotal?: number
 }
 
 // ====== BATTLE ======
@@ -266,7 +271,7 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     attacker: createEmptyBattleSide(attackerId),
     defender: createEmptyBattleSide(defenderId),
     attackerRoundsWon: 0, defenderRoundsWon: 0,
-    rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active' }],
+    rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: Date.now() }],
     currentTick: { attackerDamage: 0, defenderDamage: 0 },
     combatLog: [],
     attackerDamageDealers: {}, defenderDamageDealers: {},
@@ -393,7 +398,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       },
 
       attackerRoundsWon: 0, defenderRoundsWon: 0,
-      rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active' }],
+      rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }],
       currentTick: { attackerDamage: 0, defenderDamage: 0 },
       combatLog: [{
         tick: 0, timestamp: now, type: 'phase_change', side: 'attacker',
@@ -918,6 +923,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       let defRoundsWon = battle.defenderRoundsWon
 
       if (activeRound.attackerPoints >= POINTS_TO_WIN_ROUND || activeRound.defenderPoints >= POINTS_TO_WIN_ROUND) {
+        // Record round end data
+        activeRound.endedAt = now
+        activeRound.ticksElapsed = tick - (battle.rounds.slice(0, -1).reduce((sum, r) => sum + (r.ticksElapsed || 0), 0))
+        activeRound.attackerDmgTotal = battle.attacker.damageDealt
+        activeRound.defenderDmgTotal = battle.defender.damageDealt
         if (activeRound.attackerPoints >= POINTS_TO_WIN_ROUND) { atkRoundsWon++; activeRound.status = 'attacker_won' }
         else { defRoundsWon++; activeRound.status = 'defender_won' }
         if (atkRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
@@ -929,7 +939,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           newStatus = 'defender_won'
           newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}!` })
         } else {
-          newRounds = [...newRounds, { attackerPoints: 0, defenderPoints: 0, status: 'active' }]
+          newRounds = [...newRounds, { attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }]
           newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `🔔 Round ${battle.rounds.length} complete! New round begins.` })
         }
       }

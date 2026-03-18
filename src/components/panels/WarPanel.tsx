@@ -12,8 +12,20 @@ import '../../styles/war.css'
 
 const BattleScene3D = React.lazy(() => import('./BattleScene3D'))
 
+// Shared time helpers
+const fmtElapsed = (startedAt: number) => {
+  const s = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60
+  return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${m}:${String(sec).padStart(2,'0')}`
+}
+const fmtTicks = (ticks: number) => {
+  const s = Math.max(0, ticks * 15)
+  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60
+  return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${m}:${String(sec).padStart(2,'0')}`
+}
+
 type WarTab = 'overview' | 'recruit' | 'armies' | 'battles'
-export default function WarPanel({ panelFullscreen }: { panelFullscreen?: boolean }) {
+export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: boolean; setPanelFullscreen?: (v: boolean) => void }) {
   const [tab, setTab] = useState<WarTab>('overview')
   const [editingMotd, setEditingMotd] = useState(false)
   const armyStore = useArmyStore()
@@ -38,9 +50,8 @@ export default function WarPanel({ panelFullscreen }: { panelFullscreen?: boolea
   ]
 
   return (
-    <div className="war-panel" style={panelFullscreen ? { maxWidth: tab === 'battles' ? 'none' : '400px', margin: '0 auto', width: '100%' } : undefined}>
-      {/* Message of the Day — global, above tabs (hidden in fullscreen) */}
-      {!panelFullscreen && (
+    <div className="war-panel">
+      {/* Message of the Day — global, above tabs */}
       <div style={{ padding: '4px 10px', marginBottom: '4px', background: 'rgba(139,92,246,0.06)', borderRadius: '5px', border: '1px solid rgba(139,92,246,0.12)' }}>
         {editingMotd ? (
           <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
@@ -88,7 +99,6 @@ export default function WarPanel({ panelFullscreen }: { panelFullscreen?: boolea
           >📢 SET MESSAGE OF THE DAY</button>
         )}
       </div>
-      )}
       <div className="war-tabs">
         {tabs.map(t => (
           <button
@@ -106,7 +116,7 @@ export default function WarPanel({ panelFullscreen }: { panelFullscreen?: boolea
         {tab === 'overview' && <OverviewTab iso={iso} />}
         {tab === 'recruit' && <RecruitTab />}
         {tab === 'armies' && <ForcesTab iso={iso} />}
-        {tab === 'battles' && <CombatTab panelFullscreen={panelFullscreen} />}
+        {tab === 'battles' && <CombatTab panelFullscreen={panelFullscreen} setPanelFullscreen={setPanelFullscreen} />}
       </div>
     </div>
   )
@@ -185,7 +195,7 @@ function OverviewTab({ iso }: { iso: string }) {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 700, color: '#e2e8f0', marginBottom: '3px' }}>
                   <span>{getCountryFlag(battle.attackerId)} {getCountryName(battle.attackerId)}</span>
-                  <span style={{ color: '#64748b', fontSize: '8px' }}>T{battle.ticksElapsed} • R{battle.rounds.length}/3</span>
+                  <span style={{ color: '#64748b', fontSize: '8px' }}>{fmtElapsed(battle.startedAt)} • R{battle.rounds.length}/3</span>
                   <span>{getCountryName(battle.defenderId)} {getCountryFlag(battle.defenderId)}</span>
                 </div>
                 {/* Compact damage bar */}
@@ -226,6 +236,12 @@ function RecruitTab() {
   const [feedback, setFeedback] = useState('')
   const [showContractModal, setShowContractModal] = useState(false)
   const [contractAmount, setContractAmount] = useState(100000)
+  const [filterGroups, setFilterGroups] = useState<Set<string>>(new Set())
+  const [filterStars, setFilterStars] = useState<Set<number>>(new Set())
+  const [sortPrice, setSortPrice] = useState<0 | 1 | 2>(0) // 0=none, 1=high→low, 2=low→high
+  const [searchName, setSearchName] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [contractsCollapsed, setContractsCollapsed] = useState(false)
 
   const countryCode = player.countryCode || 'US'
   const gov = govStore.governments[countryCode]
@@ -374,7 +390,18 @@ function RecruitTab() {
       {/* ====== ACTIVE CONTRACTS ====== */}
       {myContracts.length > 0 && (
         <div style={{ marginBottom: '8px' }}>
-          {myContracts.map(c => {
+          {myContracts.length > 1 && (
+            <button onClick={() => setContractsCollapsed(!contractsCollapsed)} style={{
+              width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '4px 10px', marginBottom: '4px', background: 'rgba(245,158,11,0.06)',
+              border: '1px solid rgba(245,158,11,0.15)', borderRadius: 4, cursor: 'pointer',
+              fontSize: 9, fontWeight: 700, color: '#f59e0b',
+            }}>
+              <span>📋 {myContracts.length} ACTIVE CONTRACTS</span>
+              <span>{contractsCollapsed ? '▼ EXPAND' : '▲ COLLAPSE'}</span>
+            </button>
+          )}
+          {!contractsCollapsed && myContracts.map(c => {
             const payout = Math.floor(c.investedAmount * (1 + c.profitRate))
             const profit = payout - c.investedAmount
             const timeLeftMs = Math.max(0, c.unlocksAt - Date.now())
@@ -403,13 +430,75 @@ function RecruitTab() {
         </div>
       )}
 
-      {/* ====== DIVISION SHOP ====== */}
+      {/* ====== DIVISION SHOP — FILTERS ====== */}
       <div className="war-card" style={{ marginBottom: '8px' }}>
-        <div className="war-card__title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="war-card__title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <span>DIVISION SHOP</span>
           <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 400 }}>
-            {shopQuotas.map(q => `${q.category}: ${q.currentSlots}/${q.maxSlots}`).join(' | ')}
+            {shopListings.length} listed
           </span>
+        </div>
+        {/* Type filter */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+          {['all', ...Array.from(new Set(shopQuotas.map(q => q.category)))].map(grp => {
+            const active = grp === 'all' ? filterGroups.size === 0 : filterGroups.has(grp)
+            const count = grp === 'all' ? shopListings.length : shopListings.filter(l => DIVISION_TEMPLATES[l.divisionType]?.group === grp).length
+            return (
+              <button key={grp} onClick={() => {
+                if (grp === 'all') { setFilterGroups(new Set()) }
+                else { setFilterGroups(prev => { const next = new Set(prev); if (next.has(grp)) next.delete(grp); else next.add(grp); return next }) }
+              }} style={{
+                padding: '3px 8px', fontSize: 9, fontWeight: 700, border: `1px solid ${active ? '#3b82f6' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: 3, background: active ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.04)',
+                color: active ? '#60a5fa' : '#94a3b8', cursor: 'pointer', textTransform: 'uppercase', transition: 'all .15s',
+              }}>{grp === 'all' ? 'ALL' : grp} <span style={{ color: '#64748b', fontWeight: 400 }}>({count})</span></button>
+            )
+          })}
+        </div>
+        {/* Star filter */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 8, color: '#64748b', marginRight: 2 }}>STARS:</span>
+          <button onClick={() => setFilterStars(new Set())} style={{
+            padding: '2px 6px', fontSize: 9, fontWeight: 700, border: `1px solid ${filterStars.size === 0 ? '#f59e0b' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 3, background: filterStars.size === 0 ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
+            color: filterStars.size === 0 ? '#f59e0b' : '#64748b', cursor: 'pointer',
+          }}>ALL</button>
+          {[1,2,3,4,5].map(s => {
+            const active = filterStars.has(s)
+            return (
+              <button key={s} onClick={() => setFilterStars(prev => { const next = new Set(prev); if (next.has(s)) next.delete(s); else next.add(s); return next })} style={{
+                padding: '2px 5px', fontSize: 10, fontWeight: 700, border: `1px solid ${active ? '#f59e0b' : 'rgba(255,255,255,0.08)'}`,
+                borderRadius: 3, background: active ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
+                color: active ? '#f59e0b' : '#64748b', cursor: 'pointer', letterSpacing: '-1px',
+              }}>{'★'.repeat(s)}</button>
+            )
+          })}
+        </div>
+        {/* Search + Sort row */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 6 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+            <input type="text" placeholder="Search by name..." value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') setSearchName(searchInput) }}
+              style={{ flex: 1, padding: '4px 8px', fontSize: 10, background: 'transparent', border: 'none', outline: 'none', color: '#e2e8f0', fontFamily: 'inherit' }}
+            />
+            <button onClick={() => setSearchName(searchInput)} style={{
+              padding: '4px 8px', background: 'rgba(59,130,246,0.2)', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.1)',
+              color: '#60a5fa', cursor: 'pointer', fontSize: 12, fontWeight: 700, lineHeight: 1,
+            }}>↵</button>
+          </div>
+          {searchName && <button onClick={() => { setSearchName(''); setSearchInput('') }} style={{
+            padding: '3px 6px', fontSize: 9, fontWeight: 700, border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: 3, background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer',
+          }}>✕</button>}
+          <button onClick={() => setSortPrice(p => ((p + 1) % 3) as 0 | 1 | 2)} style={{
+            padding: '3px 8px', fontSize: 9, fontWeight: 700,
+            border: `1px solid ${sortPrice ? '#22d38a' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 3, background: sortPrice ? 'rgba(34,211,138,0.15)' : 'rgba(255,255,255,0.04)',
+            color: sortPrice ? '#22d38a' : '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap',
+          }}>
+            {sortPrice === 0 ? '⇅' : sortPrice === 1 ? '↓' : '↑'} PRICE
+          </button>
         </div>
       </div>
 
@@ -420,8 +509,18 @@ function RecruitTab() {
       ) : (
         <div className="war-recruit-grid">
           {(() => {
-            const avgPrice = shopListings.length > 0 ? shopListings.reduce((s, l) => s + l.price, 0) / shopListings.length : 0
-            return shopListings.map(listing => {
+            const filtered = shopListings.filter(l => {
+              const tmpl = DIVISION_TEMPLATES[l.divisionType]
+              if (filterGroups.size > 0 && !filterGroups.has(tmpl?.group || '')) return false
+              if (filterStars.size > 0 && !filterStars.has(l.starQuality)) return false
+              if (searchName && !tmpl?.name.toLowerCase().includes(searchName.toLowerCase())) return false
+              return true
+            })
+            if (filtered.length === 0) return <div style={{ textAlign: 'center', padding: '16px', fontSize: '11px', color: '#64748b', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', border: '1px dashed rgba(255,255,255,0.08)', gridColumn: '1 / -1' }}>No divisions match your filters.</div>
+            if (sortPrice === 1) filtered.sort((a, b) => b.price - a.price)
+            else if (sortPrice === 2) filtered.sort((a, b) => a.price - b.price)
+            const avgPrice = filtered.length > 0 ? filtered.reduce((s, l) => s + l.price, 0) / filtered.length : 0
+            return filtered.map(listing => {
             const t = DIVISION_TEMPLATES[listing.divisionType]
             const canBuy = player.money >= listing.price
             const timeLeft = Math.max(0, Math.floor((listing.expiresAt - Date.now()) / 60000))
@@ -964,13 +1063,12 @@ function ForcesTab({ iso }: { iso: string }) {
 
 // ====== COMBAT TAB — Battle Engagement + Deploy + Fight ======
 
-function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
+function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: boolean; setPanelFullscreen?: (v: boolean) => void }) {
   const battleStore = useBattleStore()
   const armyStore = useArmyStore()
   const player = usePlayerStore()
   const ui = useUIStore()
-  const [expandedBattles, setExpandedBattles] = useState<Set<string>>(new Set())
-  const toggleBattle = (id: string) => setExpandedBattles(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s })
+  const [expandedBattle, setExpandedBattle] = useState<string | null>(null)
   const [deployCount, setDeployCount] = useState<Record<string, number>>({})
   const [editingOrderMsg, setEditingOrderMsg] = useState<Record<string, boolean>>({})
   const [scene3DBattle, setScene3DBattle] = useState<{
@@ -981,10 +1079,12 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
 
   // Combat tick timer
   const [combatTickLeft, setCombatTickLocal] = useState(() => useBattleStore.getState().combatTickLeft)
+  const [viewingRound, setViewingRound] = useState<{ battleId: string; roundIdx: number } | null>(null)
   React.useEffect(() => {
     const unsub = useBattleStore.subscribe((state) => { setCombatTickLocal(state.combatTickLeft) })
     return unsub
   }, [])
+
 
   const iso = player.countryCode || 'US'
   const activeBattles = Object.values(battleStore.battles).filter(b => b.status === 'active')
@@ -1000,6 +1100,8 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
 
   return (
     <div className="war-battles" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* === Fixed Header: Tick Timer + Food === */}
+      <div style={{ flexShrink: 0 }}>
       {/* 3D Battle Scene Overlay */}
       {scene3DBattle && (
         <Suspense fallback={
@@ -1018,52 +1120,6 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
           />
         </Suspense>
       )}
-
-      {/* === Fullscreen Header: compact tick + food === */}
-      {panelFullscreen ? (
-        <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ width: '20%', minWidth: 200, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {/* Row 1: Tick timer */}
-            {activeBattles.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px', background: 'rgba(239,68,68,0.08)', borderRadius: 4, border: '1px solid rgba(239,68,68,0.15)' }}>
-                <span style={{ fontSize: 10, animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 7, fontWeight: 700, color: '#94a3b8' }}>
-                    <span>TICK</span>
-                    <span style={{ color: combatTickLeft <= 3 ? '#ef4444' : '#22d38a', fontSize: 9 }}>{combatTickLeft}s</span>
-                  </div>
-                  <div style={{ width: '100%', height: 2, background: 'rgba(255,255,255,0.08)', borderRadius: 1, marginTop: 1 }}>
-                    <div style={{ width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%', background: combatTickLeft <= 3 ? '#ef4444' : '#22d38a', transition: 'width 0.9s linear', borderRadius: 1 }} />
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* Row 2: Food grid */}
-            <div style={{ display: 'flex', gap: 3 }}>
-              {[
-                { key: 'bread', icon: '🍞', count: player.bread, sta: 10, heal: 1 },
-                { key: 'sushi', icon: '🍣', count: player.sushi, sta: 20, heal: 2 },
-                { key: 'wagyu', icon: '🥩', count: player.wagyu, sta: 30, heal: 3 },
-              ].map(f => (
-                <button key={f.key} disabled={f.count <= 0}
-                  onClick={() => { player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu'); armyStore.healDivisionsWithFood(f.key as 'bread' | 'sushi' | 'wagyu') }}
-                  style={{
-                    flex: 1, padding: '3px 4px', borderRadius: 3, cursor: f.count > 0 ? 'pointer' : 'not-allowed',
-                    background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
-                    opacity: f.count > 0 ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, fontSize: 10,
-                  }}
-                >
-                  {f.icon} <span style={{ fontSize: 8, fontWeight: 700, color: '#e2e8f0' }}>{f.count}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : (
-      /* === Normal Header: Tick Timer + Food === */
-      <div style={{ flexShrink: 0 }}>
-      {/* 3D Battle Scene Overlay */}
 
       {/* Tick Timer */}
       {activeBattles.length > 0 && (
@@ -1090,7 +1146,7 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
         </div>
       )}
 
-      {/* Quick Food */}
+      {/* Quick Food — recover stamina + heal deployed divisions */}
       <div style={{ display: 'flex', gap: '3px', marginBottom: '6px' }}>
         {[
           { key: 'bread', icon: '🍞', label: 'Bread', count: player.bread, sta: 10, heal: 1 },
@@ -1118,19 +1174,20 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
         ))}
       </div>
       </div>
-      )}
 
-      {/* === Battle Cards Area === */}
+      {/* === Scrollable Battles List === */}
       <div style={panelFullscreen ? {
-        flex: 1, display: 'flex', flexDirection: 'row', overflowX: 'auto', overflowY: 'hidden', gap: 8, padding: '4px',
+        flex: 1, overflowX: 'auto', overflowY: 'hidden',
+        display: 'grid', gridAutoFlow: 'column', gridTemplateRows: '1fr 1fr',
+        gap: '8px', padding: '4px',
       } : { flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
       {activeBattles.length === 0 && pastBattles.length === 0 && (
         <div className="war-card"><div className="war-empty">No active battles. Launch an attack from the Forces tab.</div></div>
       )}
 
       {activeBattles.map(battle => {
-        const battleCardStyle: React.CSSProperties = panelFullscreen ? { width: 'calc(20% - 7px)', minWidth: '280px', flexShrink: 0, height: '100%', overflowY: 'auto' } : {}
-        const isExpanded = expandedBattles.has(battle.id)
+        const battleCardStyle = panelFullscreen ? { minWidth: '360px', maxWidth: '420px' } : {}
+        const isExpanded = expandedBattle === battle.id
         const activeRound = battle.rounds[battle.rounds.length - 1]
         const atkDmg = battle.attacker?.damageDealt || 0
         const defDmg = battle.defender?.damageDealt || 0
@@ -1143,9 +1200,9 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
         const defClr = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
 
         return (
-          <div className="war-card war-card--battle" key={battle.id} style={battleCardStyle}>
+          <div className="war-card war-card--battle" key={battle.id}>
             {/* Battle Header */}
-            <div className="war-battle-header" onClick={() => toggleBattle(battle.id)}>
+            <div className="war-battle-header" onClick={() => setExpandedBattle(isExpanded ? null : battle.id)}>
               <div className="war-battle-sides">
                 <div className="war-battle-side war-battle-side--atk">
                   <span className="war-battle-flag">{getCountryFlag(battle.attackerId)}</span>
@@ -1160,8 +1217,21 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
                 </div>
                 <div className="war-battle-center">
                   <div className="war-battle-vs">VS</div>
-                  <div className="war-battle-terrain" style={{ minHeight: '3em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚔️ {battle.regionName}</div>
-                  <div className="war-battle-tick">T{battle.ticksElapsed}</div>
+                  <div className="war-battle-terrain">⚔️ {battle.regionName}</div>
+                  <div style={{ fontSize: '9px', color: '#64748b', fontFamily: 'var(--font-mono)', fontWeight: 400 }}>{fmtElapsed(battle.rounds[battle.rounds.length - 1]?.startedAt || battle.startedAt)}</div>
+                  {/* Clickable round labels */}
+                  <div style={{ display: 'flex', gap: 3, marginTop: 2 }}>
+                    {battle.rounds.map((rd, ri) => {
+                      if (rd.status === 'active') return null
+                      const won = rd.status === 'attacker_won'
+                      return (
+                        <button key={ri} onClick={(e) => { e.stopPropagation(); setViewingRound(viewingRound?.battleId === battle.id && viewingRound?.roundIdx === ri ? null : { battleId: battle.id, roundIdx: ri }) }}
+                          style={{ padding: '1px 5px', fontSize: 7, fontWeight: 800, border: `1px solid ${won ? 'rgba(34,211,138,0.4)' : 'rgba(59,130,246,0.4)'}`, borderRadius: 2, background: viewingRound?.battleId === battle.id && viewingRound?.roundIdx === ri ? (won ? 'rgba(34,211,138,0.25)' : 'rgba(59,130,246,0.25)') : 'rgba(0,0,0,0.3)', color: won ? '#22d38a' : '#60a5fa', cursor: 'pointer', letterSpacing: '0.5px' }}>
+                          R{ri + 1}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
                 <div className="war-battle-side war-battle-side--def">
                   <span className="war-battle-rounds">{battle.defenderRoundsWon}</span>
@@ -1175,19 +1245,52 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
                   <span className="war-battle-flag">{getCountryFlag(battle.defenderId)}</span>
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
                 <button
-                  onClick={(e) => { e.stopPropagation(); toggleBattle(battle.id) }}
+                  onClick={(e) => { e.stopPropagation(); setExpandedBattle(isExpanded ? null : battle.id) }}
                   style={{
-                    padding: '2px 12px', border: 'none',
-                    borderRadius: '2px', cursor: 'pointer', fontSize: '7px', fontWeight: 700,
-                    fontFamily: 'var(--font-mono)', letterSpacing: '1px',
-                    background: 'transparent', color: '#475569',
+                    width: '100%', padding: '5px 0', border: `1px solid rgba(255,255,255,0.1)`,
+                    borderRadius: '2px', cursor: 'pointer', fontSize: '9px', fontWeight: 900,
+                    fontFamily: 'var(--font-display)', letterSpacing: '1.5px',
+                    background: isExpanded ? 'rgba(239,68,68,0.1)' : 'rgba(34,211,138,0.1)',
+                    color: isExpanded ? '#f87171' : '#22d38a',
                     transition: 'all 0.15s',
                   }}
                 >{isExpanded ? '▲ COLLAPSE' : '▼ EXPAND'}</button>
               </div>
             </div>
+
+            {/* Round Snapshot Popover */}
+            {viewingRound && viewingRound.battleId === battle.id && (() => {
+              const rd = battle.rounds[viewingRound.roundIdx]
+              if (!rd || rd.status === 'active') return null
+              const won = rd.status === 'attacker_won'
+              return (
+                <div style={{ margin: '4px 0', padding: '8px 10px', background: 'rgba(0,0,0,0.5)', border: `1px solid ${won ? 'rgba(34,211,138,0.3)' : 'rgba(59,130,246,0.3)'}`, borderRadius: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 900, color: won ? '#22d38a' : '#60a5fa', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
+                      ROUND {viewingRound.roundIdx + 1} — {won ? getCountryName(battle.attackerId) + ' WON' : getCountryName(battle.defenderId) + ' WON'}
+                    </span>
+                    <button onClick={() => setViewingRound(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>✕</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 9 }}>
+                    <div style={{ padding: '4px 6px', background: 'rgba(239,68,68,0.08)', borderRadius: 3, border: '1px solid rgba(239,68,68,0.15)' }}>
+                      <div style={{ color: '#94a3b8', fontSize: 7, fontWeight: 700, marginBottom: 2 }}>ATTACKER</div>
+                      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>⚔️ {(rd.attackerDmgTotal || 0).toLocaleString()} dmg</div>
+                      <div style={{ color: '#f87171', fontWeight: 600 }}>{rd.attackerPoints} pts</div>
+                    </div>
+                    <div style={{ padding: '4px 6px', background: 'rgba(59,130,246,0.08)', borderRadius: 3, border: '1px solid rgba(59,130,246,0.15)' }}>
+                      <div style={{ color: '#94a3b8', fontSize: 7, fontWeight: 700, marginBottom: 2 }}>DEFENDER</div>
+                      <div style={{ color: '#e2e8f0', fontWeight: 700 }}>🛡️ {(rd.defenderDmgTotal || 0).toLocaleString()} dmg</div>
+                      <div style={{ color: '#60a5fa', fontWeight: 600 }}>{rd.defenderPoints} pts</div>
+                    </div>
+                  </div>
+                  {rd.ticksElapsed && <div style={{ marginTop: 4, fontSize: 8, color: '#64748b', textAlign: 'center' }}>
+                    {fmtTicks(rd.ticksElapsed)} • ended {rd.endedAt ? new Date(rd.endedAt).toLocaleTimeString() : '—'}
+                  </div>}
+                </div>
+              )
+            })()}
 
             {/* Ground Points Bar — THE MOST IMPORTANT BAR */}
             {activeRound && (() => {
@@ -1502,7 +1605,7 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
                     <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}>DST <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{battle.attacker.divisionsDestroyed}</span></div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid rgba(255,255,255,0.05)', borderRight: '1px solid rgba(255,255,255,0.05)', padding: '0 10px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 900, color: '#64748b', fontFamily: 'var(--font-display)' }}>T{battle.ticksElapsed}</span>
+                    <span style={{ fontSize: '12px', fontWeight: 900, color: '#64748b', fontFamily: 'var(--font-display)' }}>{fmtElapsed(battle.startedAt)}</span>
                   </div>
                   <div style={{ padding: '6px 8px', borderRight: `2px solid ${defClr}`, textAlign: 'right' }}>
                     <div style={{ fontSize: '8px', fontWeight: 900, color: defClr, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '4px' }}>DEFENDER</div>
@@ -1541,7 +1644,7 @@ function CombatTab({ panelFullscreen }: { panelFullscreen?: boolean }) {
                       const msgParts = entry.message.replace(/^[⚔️🛡️💨💀🚀⏸️\s]+/, '').replace(/T\d+:\s*/, '').split(/(\d+)/g)
                       return (
                         <div key={`${entry.timestamp}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 8px', background: rowBg, borderLeft: `2px solid ${color}` }}>
-                          <span style={{ fontSize: '7px', fontWeight: 700, color: '#94a3b8', background: 'rgba(0,0,0,0.4)', padding: '1px 4px', borderRadius: '3px', flexShrink: 0, fontFamily: 'var(--font-mono, monospace)' }}>T{entry.tick}</span>
+                          <span style={{ fontSize: '7px', fontWeight: 700, color: '#94a3b8', background: 'rgba(0,0,0,0.4)', padding: '1px 4px', borderRadius: '3px', flexShrink: 0, fontFamily: 'var(--font-mono, monospace)' }}>{fmtTicks(entry.tick)}</span>
                           <span style={{ fontWeight: 800, color, flexShrink: 0, letterSpacing: '0.5px' }}>{prefix}</span>
                           <span style={{ color: '#94a3b8' }}>
                             {msgParts.map((p, j) => /^\d+$/.test(p) ? <span key={j} style={{ color: '#e2e8f0', fontWeight: 700 }}>{p}</span> : <span key={j}>{p}</span>)}
