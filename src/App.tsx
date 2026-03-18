@@ -27,12 +27,14 @@ import WarPanel from './components/panels/WarPanel'
 import ForeignCountryPanel from './components/panels/ForeignCountryPanel'
 import MarketPanel from './components/panels/MarketPanel'
 import CompaniesPanel from './components/panels/CompaniesPanel'
+import CasinoPanel from './components/panels/CasinoPanel'
 
 const SIDEBAR_CIVILIAN = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
   { id: 'market' as const, icon: '📊', label: 'MARKET' },
   { id: 'companies' as const, icon: '🏭', label: 'COMPANIES' },
   { id: 'resources' as const, icon: '💰', label: 'RESOURCES' },
+  { id: 'casino' as const, icon: '🎰', label: 'CASINO' },
   { id: 'chat' as const, icon: '💬', label: 'CHAT' },
 ]
 
@@ -649,6 +651,7 @@ function App() {
                 <MarketPanel />
               )}
               {activePanel === 'companies' && <CompaniesPanel />}
+              {activePanel === 'casino' && <CasinoPanel />}
               {activePanel === 'resources' && (
                 <>
                   <div className="hud-card">

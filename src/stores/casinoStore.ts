@@ -1,45 +1,104 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
+import { useWorldStore } from './worldStore'
+import { useInventoryStore, generateStats, WEAPON_SUBTYPES } from './inventoryStore'
+import type { EquipTier, EquipSlot, EquipItem } from './inventoryStore'
 
-// ── Wheel Segments ──
-// Each segment defines a prize. Rewards SCALE with bet tier.
-// multiplier × betAmount = actual payout for money prizes.
-// resource prizes also scale: base × tierMultiplier
+/* ══════════════════════════════════════════════
+   XWAR Warzone Casino — Tiered Reward Tables
+   ══════════════════════════════════════════════ */
+
+const C1 = '#d4a017' // golden yellow
+const C2 = '#2d2d2d' // dark gray
+const C3 = '#6b7280' // clear gray
 
 export interface WheelSegment {
   label: string
-  type: 'money' | 'scrap' | 'oil' | 'bankrupt' | 'multiply' | 'materialX'
-  multiplier: number      // For money: payout = bet × multiplier. For resources: base amount
+  type: 'multiply' | 'item' | 'bankrupt'
+  multiplier: number
+  itemTier?: EquipTier
   color: string
   bgColor: string
+  probability: number
 }
 
-export const WHEEL_SEGMENTS: WheelSegment[] = [
-  { label: '2x',         type: 'multiply',  multiplier: 2,    color: '#fff',    bgColor: '#fbbf24' },
-  { label: 'SCRAP',      type: 'scrap',     multiplier: 500,  color: '#fff',    bgColor: '#f59e0b' },
-  { label: '3x',         type: 'multiply',  multiplier: 3,    color: '#fff',    bgColor: '#ef4444' },
-  { label: 'BANKRUPT',   type: 'bankrupt',  multiplier: 0,    color: '#fff',    bgColor: '#ef4444' },
-  { label: 'OIL',        type: 'oil',       multiplier: 150,  color: '#fff',    bgColor: '#06b6d4' },
-  { label: '5x',         type: 'multiply',  multiplier: 5,    color: '#fff',    bgColor: '#a855f7' },
-  { label: 'MAT-X',      type: 'materialX', multiplier: 100,  color: '#fff',    bgColor: '#6366f1' },
-  { label: 'BANKRUPT',   type: 'bankrupt',  multiplier: 0,    color: '#fff',    bgColor: '#dc2626' },
-  { label: '1.5x',       type: 'multiply',  multiplier: 1.5,  color: '#fff',    bgColor: '#3b82f6' },
-  { label: 'SCRAP',      type: 'scrap',     multiplier: 200,  color: '#fff',    bgColor: '#d97706' },
-  { label: '10x',        type: 'multiply',  multiplier: 10,   color: '#fff',    bgColor: '#ec4899' },
-  { label: 'OIL',        type: 'oil',       multiplier: 300,  color: '#fff',    bgColor: '#0891b2' },
+// ─── $50K TABLE ─── Conservative: small multipliers, T4 items, ~88% return
+// EV ≈ (25%×1.5 + 15%×2 + 5%×3 + 13% items) = 0.375+0.30+0.15 = 0.825 + items
+const WHEEL_50K: WheelSegment[] = [
+  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C1, probability: 15 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 9 },
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C3, probability: 10 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 9 },
+  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C2, probability: 8,  itemTier: 't4' },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 8 },
+  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C1, probability: 5 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 9 },
+  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C3, probability: 5,  itemTier: 't4' },
+  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C1, probability: 10 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 7 },
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C3, probability: 5 },
+]
+
+// ─── $250K TABLE ─── Balanced: mid multipliers, T4+T5 items, ~85% return
+// EV ≈ (18%×1.5 + 12%×2 + 6%×3 + 3%×5 + 10% items) = 0.27+0.24+0.18+0.15 = 0.84 + items
+const WHEEL_250K: WheelSegment[] = [
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C1, probability: 8 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 10 },
+  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C3, probability: 6 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 11 },
+  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C2, probability: 6,  itemTier: 't4' },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 10 },
+  { label: '×5',       type: 'multiply', multiplier: 5,    color: '#fbbf24', bgColor: C1, probability: 3 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 10 },
+  { label: 'T5 ITEM',  type: 'item',     multiplier: 0,    color: '#c084fc', bgColor: C3, probability: 4,  itemTier: 't5' },
+  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C1, probability: 10 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 10 },
+  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C3, probability: 8 },
+]
+
+// ─── $500K TABLE ─── High risk: big multipliers, T5+T6 items, ~82% return
+// EV ≈ (12%×2 + 8%×3 + 4%×5 + 2%×10 + 6% items) = 0.24+0.24+0.20+0.20 = 0.88 + items (but more bust)
+const WHEEL_500K: WheelSegment[] = [
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C1, probability: 8 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 12 },
+  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C3, probability: 5 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 12 },
+  { label: 'T5 ITEM',  type: 'item',     multiplier: 0,    color: '#c084fc', bgColor: C2, probability: 4,  itemTier: 't5' },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 12 },
+  { label: '×5',       type: 'multiply', multiplier: 5,    color: '#fbbf24', bgColor: C1, probability: 4 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 12 },
+  { label: 'T6 ITEM',  type: 'item',     multiplier: 0,    color: '#f0abfc', bgColor: C3, probability: 2,  itemTier: 't6' },
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C1, probability: 4 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 13 },
+  { label: '×10',      type: 'multiply', multiplier: 10,   color: '#f0abfc', bgColor: C3, probability: 2 },
 ]
 
 export const BET_TIERS = [
-  { amount: 100000, label: '$100,000' },
-  { amount: 200000, label: '$200,000' },
-  { amount: 300000, label: '$300,000' },
+  { amount: 50_000,    label: '$50K' },
+  { amount: 250_000,   label: '$250K' },
+  { amount: 500_000,   label: '$500K' },
 ]
 
-// Tier multiplier for resource prizes — higher bet = better resources
-function getTierMultiplier(betAmount: number): number {
-  if (betAmount >= 300000) return 3
-  if (betAmount >= 200000) return 2
-  return 1
+// Map bet amount → its wheel segments
+export const TIER_WHEELS: Record<number, WheelSegment[]> = {
+  50_000:  WHEEL_50K,
+  250_000: WHEEL_250K,
+  500_000: WHEEL_500K,
+}
+
+export function getSegmentsForBet(bet: number): WheelSegment[] {
+  return TIER_WHEELS[bet] || WHEEL_50K
+}
+
+// Weighted random pick for a given segments array
+function weightedRandomIndex(segments: WheelSegment[]): number {
+  const totalWeight = segments.reduce((sum, s) => sum + s.probability, 0)
+  let roll = Math.random() * totalWeight
+  for (let i = 0; i < segments.length; i++) {
+    roll -= segments[i].probability
+    if (roll <= 0) return i
+  }
+  return segments.length - 1
 }
 
 export type CasinoPhase = 'idle' | 'spinning' | 'result'
@@ -47,8 +106,9 @@ export type CasinoPhase = 'idle' | 'spinning' | 'result'
 export interface CasinoState {
   phase: CasinoPhase
   currentBet: number
-  targetAngle: number      // Final rotation angle for CSS
-  resultIndex: number      // Winning segment index
+  targetAngle: number
+  resultIndex: number
+  activeSegments: WheelSegment[]
   lastWinText: string
   lastWinAmount: string
   lastWinType: 'win' | 'lose' | null
@@ -56,11 +116,8 @@ export interface CasinoState {
   totalSpins: number
   totalWon: number
   totalLost: number
-
-  // Actions
   spinForBet: (betAmount: number) => void
   resolveResult: () => void
-  betAgain: () => void
   resetCasino: () => void
 }
 
@@ -71,6 +128,7 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
   currentBet: 0,
   targetAngle: 0,
   resultIndex: 0,
+  activeSegments: WHEEL_50K,
   lastWinText: '',
   lastWinAmount: '',
   lastWinType: null,
@@ -81,28 +139,24 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
 
   spinForBet: (betAmount: number) => {
     const player = usePlayerStore.getState()
-    if (player.money < betAmount) return
-    if (get().phase === 'spinning') return
+    if (player.money < betAmount || get().phase === 'spinning') return
 
-    // Deduct bet
+    // Player pays the bet
     player.spendMoney(betAmount)
 
-    // Pick random segment
-    const segCount = WHEEL_SEGMENTS.length
-    const winIndex = Math.floor(Math.random() * segCount)
+    // 10% of bet goes to player's country treasury
+    const betTax = Math.floor(betAmount * 0.10)
+    useWorldStore.getState().addTreasuryTax(player.countryCode, betTax)
 
-    // Calculate rotation: multiple full spins + land on the segment
-    // Segments go clockwise. Segment 0 is at the top.
-    // Each segment spans (360/segCount) degrees.
-    // We want the pointer (at top, 0°) to land in the middle of winIndex.
+    const segments = getSegmentsForBet(betAmount)
+    const winIndex = weightedRandomIndex(segments)
+    const segCount = segments.length
     const segAngle = 360 / segCount
-    // The wheel rotates clockwise, so to land on segment winIndex,
-    // we need to rotate so that segment is at the top (pointer position).
-    // Segment i center is at i * segAngle + segAngle/2 from the start.
     const targetSegCenter = winIndex * segAngle + segAngle / 2
-    const fullSpins = (5 + Math.floor(Math.random() * 3)) * 360 // 5-7 full rotations
-    const finalAngle = fullSpins + targetSegCenter + (spinCounter * 360 * 10) // accumulate to keep spinning forward
-
+    // CSS rotate() is clockwise: to put segment at top pointer, rotate by (360 - center)
+    const landAngle = 360 - targetSegCenter
+    const fullSpins = (5 + Math.floor(Math.random() * 3)) * 360
+    const finalAngle = fullSpins + landAngle + spinCounter * 360 * 10
     spinCounter++
 
     set({
@@ -110,6 +164,7 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
       currentBet: betAmount,
       targetAngle: finalAngle,
       resultIndex: winIndex,
+      activeSegments: segments,
     })
   },
 
@@ -117,8 +172,7 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
     const s = get()
     if (s.phase !== 'spinning') return
 
-    const segment = WHEEL_SEGMENTS[s.resultIndex]
-    const tierMult = getTierMultiplier(s.currentBet)
+    const segment = s.activeSegments[s.resultIndex]
     const player = usePlayerStore.getState()
 
     let winText = ''
@@ -127,49 +181,49 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
 
     switch (segment.type) {
       case 'multiply': {
+        // Payout created from thin air
         const payout = Math.floor(s.currentBet * segment.multiplier)
         player.earnMoney(payout)
+
+        // 10% of winnings taxed to country treasury
+        const winTax = Math.floor(payout * 0.10)
+        useWorldStore.getState().addTreasuryTax(player.countryCode, winTax)
+
         winText = 'YOU WON!'
         winAmount = `$${payout.toLocaleString()}`
         break
       }
-      case 'money': {
-        const payout = Math.floor(s.currentBet * segment.multiplier)
-        player.earnMoney(payout)
-        winText = 'YOU WON!'
-        winAmount = `$${payout.toLocaleString()}`
-        break
-      }
-      case 'scrap': {
-        const amount = Math.floor(segment.multiplier * tierMult)
-        player.addScrap(amount)
-        winText = 'YOU WON!'
-        winAmount = `${amount.toLocaleString()} SCRAP`
-        break
-      }
-      case 'oil': {
-        const amount = Math.floor(segment.multiplier * tierMult)
-        usePlayerStore.setState(ps => ({ oil: ps.oil + amount }))
-        winText = 'YOU WON!'
-        winAmount = `${amount.toLocaleString()} OIL`
-        break
-      }
-      case 'materialX': {
-        const amount = Math.floor(segment.multiplier * tierMult)
-        usePlayerStore.setState(ps => ({ materialX: ps.materialX + amount }))
-        winText = 'YOU WON!'
-        winAmount = `${amount.toLocaleString()} MATERIAL-X`
+      case 'item': {
+        // Item created from thin air
+        const tier = segment.itemTier || 't4'
+        const allSlots: EquipSlot[] = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots']
+        const slot = allSlots[Math.floor(Math.random() * allSlots.length)]
+        const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
+        const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][Math.floor(Math.random() * WEAPON_SUBTYPES[tier].length)] : undefined
+        const result = generateStats(category, slot, tier, subtype)
+
+        const newItem: EquipItem = {
+          id: `casino_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          name: `🎰 ${result.name}`,
+          slot, category, tier,
+          equipped: false,
+          durability: 100,
+          stats: result.stats,
+          weaponSubtype: result.weaponSubtype,
+        }
+        useInventoryStore.getState().addItem(newItem)
+        winText = 'JACKPOT!'
+        winAmount = `${tier.toUpperCase()} ${slot.toUpperCase()}`
         break
       }
       case 'bankrupt': {
-        winText = 'BANKRUPT'
+        // Money already lost (deducted on bet), 10% bet tax already sent
+        winText = 'BANKRUPT!'
         winAmount = `LOST $${s.currentBet.toLocaleString()}`
         winType = 'lose'
         break
       }
     }
-
-    const isWin = winType === 'win'
 
     set(prev => ({
       phase: 'result',
@@ -177,20 +231,13 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
       lastWinAmount: winAmount,
       lastWinType: winType,
       totalSpins: prev.totalSpins + 1,
-      totalWon: isWin ? prev.totalWon + 1 : prev.totalWon,
-      totalLost: !isWin ? prev.totalLost + 1 : prev.totalLost,
+      totalWon: winType === 'win' ? prev.totalWon + 1 : prev.totalWon,
+      totalLost: winType === 'lose' ? prev.totalLost + 1 : prev.totalLost,
       history: [
         { segment, bet: prev.currentBet },
         ...prev.history,
       ].slice(0, 15),
     }))
-  },
-
-  betAgain: () => {
-    const s = get()
-    if (s.phase !== 'result') return
-    // Re-spin at the same bet tier
-    get().spinForBet(s.currentBet)
   },
 
   resetCasino: () => {
