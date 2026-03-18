@@ -144,7 +144,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   bitcoin: 10000,
   companiesOwned: 3,
   lootBoxes: 5,
-  militaryBoxes: 0,
+  militaryBoxes: 5,
   staminaPills: 0,
   energyLeaves: 0,
   lootChancePool: 0,

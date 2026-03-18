@@ -1,10 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useUIStore } from '../../stores/uiStore'
 import { usePrestigeStore, getPrestigeItemImage } from '../../stores/prestigeStore'
 import { useSkillsStore } from '../../stores/skillsStore'
 import { useMarketStore } from '../../stores/marketStore'
+import LootBoxOpener from '../shared/LootBoxOpener'
+import GameModal from '../shared/GameModal'
+import { motion, AnimatePresence } from 'framer-motion'
+import { SPRINGS } from '../shared/AnimationSystem'
+import ResourceIcon from '../shared/ResourceIcon'
 import {
  useInventoryStore,
  generateStats,
@@ -42,6 +47,10 @@ export default function InventoryTab() {
  // Slot Pick Modal State
  const [pickerSlot, setPickerSlot] = useState<EquipSlot | null>(null)
  const [showAmmoPicker, setShowAmmoPicker] = useState(false)
+ const [showLootBox, setShowLootBox] = useState(false)
+ const [showMilitaryBox, setShowMilitaryBox] = useState(false)
+ const [craftedItem, setCraftedItem] = useState<{ item: EquipItem; superforged: boolean } | null>(null)
+ const [craftHistory, setCraftHistory] = useState<{ item: EquipItem; superforged: boolean }[]>([])
 
  // ESC closes any open modal
  useEffect(() => {
@@ -53,13 +62,23 @@ export default function InventoryTab() {
  const equipped = inventory.items.filter((i) => i.equipped)
  const unequipped = inventory.items.filter((i) => !i.equipped)
 
- const handleOpenLootBox = (e: React.MouseEvent) => {
+ const handleOpenLootBox = () => {
  if (player.lootBoxes <= 0) return
- const result = inventory.openLootBox()
- if (result) {
- ui.addFloatingText(`+${result.item.name}, $${result.money}, ${result.scrap} Scrap`, e.clientX, e.clientY, '#f59e0b')
+ setShowLootBox(true)
  }
+
+ const handleOpenMilitaryBox = () => {
+ if (player.militaryBoxes <= 0) return
+ setShowMilitaryBox(true)
  }
+
+ const handleLootBoxOpen = useCallback(() => {
+ return inventory.openLootBox()
+ }, [inventory])
+
+ const handleMilitaryBoxOpen = useCallback(() => {
+ return inventory.openMilitaryBox()
+ }, [inventory])
 
  const handleDisarm = () => {
  if (!selectedItem) return
@@ -222,25 +241,70 @@ export default function InventoryTab() {
  </button>
  </div>
 
- {/* Loot Boxes Simplified */}
+ {/* Loot Boxes — Civilian & Military */}
  <div className="inv-section">
- <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
- <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
- <span style={{ fontSize: '24px' }}></span>
- <span style={{ fontSize: '16px', fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
- <strong style={{ color: '#22d38a', fontSize: '20px' }}>{player.lootBoxes}</strong> cases
- </span>
+ <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+ {/* Civilian Loot Box */}
+ <div style={{
+ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+ background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px',
+ border: '1px solid rgba(34,211,138,0.2)',
+ }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+ <img src="/assets/items/lootbox_civilian.png" alt="Civilian Loot Box" style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(34,211,138,0.3))' }} />
+ <div>
+ <div style={{ fontSize: '10px', fontWeight: 700, color: '#22d38a', letterSpacing: '0.08em', fontFamily: 'var(--font-display)' }}>CIVILIAN</div>
+ <div style={{ fontSize: '18px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{player.lootBoxes}</div>
+ </div>
  </div>
  <button
  className="comp-action comp-action--produce"
- style={{ margin: 0, width: 'auto', padding: '6px 20px', fontWeight: 'bold' }}
+ style={{ margin: 0, width: 'auto', padding: '6px 16px', fontWeight: 'bold', fontSize: '11px' }}
  disabled={player.lootBoxes <= 0}
  onClick={handleOpenLootBox}
  >
- Open Box
+ Open
+ </button>
+ </div>
+
+ {/* Military Loot Box */}
+ <div style={{
+ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+ background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px',
+ border: '1px solid rgba(239,68,68,0.2)',
+ }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+ <img src="/assets/items/lootbox_military.png" alt="Military Loot Box" style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(239,68,68,0.3))' }} />
+ <div>
+ <div style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', letterSpacing: '0.08em', fontFamily: 'var(--font-display)' }}>MILITARY</div>
+ <div style={{ fontSize: '18px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{player.militaryBoxes}</div>
+ </div>
+ </div>
+ <button
+ className="comp-action comp-action--produce"
+ style={{ margin: 0, width: 'auto', padding: '6px 16px', fontWeight: 'bold', fontSize: '11px', borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444', background: 'rgba(239,68,68,0.1)' }}
+ disabled={player.militaryBoxes <= 0}
+ onClick={handleOpenMilitaryBox}
+ >
+ Open
  </button>
  </div>
  </div>
+ </div>
+
+ {/* LootBox Animated Openers */}
+ <LootBoxOpener
+ isOpen={showLootBox}
+ onClose={() => setShowLootBox(false)}
+ onOpenBox={handleLootBoxOpen}
+ boxType="civilian"
+ />
+ <LootBoxOpener
+ isOpen={showMilitaryBox}
+ onClose={() => setShowMilitaryBox(false)}
+ onOpenBox={handleMilitaryBoxOpen}
+ boxType="military"
+ />
 
       {/* EQUIPPED GEAR — Armor/Prestige + Weapon/Ammo */}
  {(() => {
@@ -490,11 +554,9 @@ export default function InventoryTab() {
  stats: result.stats, weaponSubtype: result.weaponSubtype,
  }
  inventory.addItem(newItem)
- if (isSuperforged) {
- ui.addFloatingText(`\u26a1 SUPERFORGED ${result.name}! +10%`, window.innerWidth / 2, window.innerHeight / 2, '#fbbf24')
- } else {
- ui.addFloatingText(`CRAFTED ${result.name}!`, window.innerWidth / 2, window.innerHeight / 2, TIER_COLORS[tier])
- }
+ const entry = { item: newItem, superforged: isSuperforged }
+ setCraftedItem(entry)
+ setCraftHistory(prev => [entry, ...prev])
  }
 
  const doRandomCraft = (tier: EquipTier) => {
@@ -503,9 +565,8 @@ export default function InventoryTab() {
  }
 
  return (
- <div className="inv-modal-overlay" onClick={() => setMode('normal')}>
- <div className="inv-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px', width: '92%' }}>
- <div className="inv-modal__title" style={{ color: '#fbbf24', letterSpacing: '0.15em', fontFamily: 'var(--font-display)' }}>CRAFT EQUIPMENT</div>
+ <GameModal isOpen={true} onClose={() => setMode('normal')} title="CRAFT EQUIPMENT" size="lg" glowColor="#fbbf24">
+ <div>
 
  {/* Resources bar */}
  <div style={{
@@ -513,9 +574,9 @@ export default function InventoryTab() {
  marginBottom: '12px', padding: '6px 10px', background: 'rgba(0,0,0,0.3)', borderRadius: '4px',
  fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'uppercase',
  }}>
- <span>{player.scrap.toLocaleString()} SCRAP</span>
- <span>{player.oil.toLocaleString()} OIL</span>
- <span>${player.money.toLocaleString()}</span>
+ <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><ResourceIcon resourceKey="scrap" size={14} />{player.scrap.toLocaleString()} SCRAP</span>
+ <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><ResourceIcon resourceKey="oil" size={14} />{player.oil.toLocaleString()} OIL</span>
+ <span>💰 ${player.money.toLocaleString()}</span>
  </div>
 
  {/* Slot Tabs */}
@@ -613,6 +674,74 @@ export default function InventoryTab() {
  </div>
  </div>
 
+ {/* Session Craft History */}
+ {craftHistory.length > 0 && (
+ <div style={{ marginBottom: '8px' }}>
+ <div style={{
+ fontSize: '9px', fontWeight: 700, color: '#94a3b8',
+ fontFamily: 'var(--font-display)', letterSpacing: '0.1em',
+ marginBottom: '6px', textAlign: 'center',
+ }}>CRAFTED THIS SESSION ({craftHistory.length})</div>
+ <div style={{
+ display: 'flex', gap: '6px', overflowX: 'auto',
+ padding: '4px 2px 8px', scrollbarWidth: 'thin',
+ }}>
+ {craftHistory.map((entry, idx) => {
+ const ci = entry.item
+ const tc = TIER_COLORS[ci.tier]
+ const img = getItemImagePath(ci.tier, ci.slot, ci.category, ci.weaponSubtype)
+ const mainStat = ci.stats.damage
+ ? `DMG ${ci.stats.damage}`
+ : ci.stats.armor
+ ? `ARM ${ci.stats.armor}%`
+ : ci.stats.critDamage
+ ? `CDMG ${ci.stats.critDamage}%`
+ : ci.stats.dodge
+ ? `EVA ${ci.stats.dodge}%`
+ : ci.stats.precision
+ ? `ACC ${ci.stats.precision}%`
+ : ''
+ return (
+ <motion.div
+ key={ci.id}
+ initial={{ opacity: 0, scale: 0.7, y: 10 }}
+ animate={{ opacity: 1, scale: 1, y: 0 }}
+ transition={{ delay: idx < 3 ? idx * 0.06 : 0, ...SPRINGS.snappy }}
+ style={{
+ minWidth: '80px', maxWidth: '80px', flexShrink: 0,
+ background: 'rgba(0,0,0,0.4)', borderRadius: '6px',
+ border: `1px solid ${entry.superforged ? '#fbbf2480' : tc + '40'}`,
+ padding: '6px 4px', textAlign: 'center', cursor: 'pointer',
+ boxShadow: entry.superforged ? '0 0 8px rgba(251,191,36,0.2)' : undefined,
+ }}
+ title={ci.name}
+ onClick={() => setCraftedItem(entry)}
+ >
+ <div style={{ height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '2px' }}>
+ {img ? (
+ <img src={img} alt={ci.name} style={{ width: '24px', height: '24px', objectFit: 'contain', filter: `drop-shadow(0 1px 3px ${tc}40)` }} />
+ ) : (
+ <span style={{ fontSize: '18px', opacity: 0.4 }}>{SLOT_ICONS[ci.slot]}</span>
+ )}
+ </div>
+ <div style={{ fontSize: '7px', fontWeight: 800, color: tc, fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+ {entry.superforged ? '⚡' : ''}{TIER_LABELS[ci.tier].split(' ')[0]}
+ </div>
+ <div style={{ fontSize: '6px', color: '#64748b', fontFamily: 'var(--font-mono)', marginTop: '1px' }}>
+ {ci.slot.toUpperCase()}
+ </div>
+ {mainStat && (
+ <div style={{ fontSize: '6px', color: '#94a3b8', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
+ {mainStat}
+ </div>
+ )}
+ </motion.div>
+ )
+ })}
+ </div>
+ </div>
+ )}
+
  <button
  onClick={() => setMode('normal')}
  style={{
@@ -624,9 +753,173 @@ export default function InventoryTab() {
  }}
  >CLOSE</button>
  </div>
- </div>
+ </GameModal>
  )
  })()}
+
+ {/* Crafted Item Result Overlay */}
+ <AnimatePresence>
+ {craftedItem && (
+ <motion.div
+ key="craft-result-overlay"
+ initial={{ opacity: 0 }}
+ animate={{ opacity: 1 }}
+ exit={{ opacity: 0 }}
+ transition={{ duration: 0.2 }}
+ onClick={() => setCraftedItem(null)}
+ style={{
+ position: 'fixed', inset: 0, zIndex: 10001,
+ background: 'rgba(0,0,0,0.75)',
+ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+ cursor: 'pointer',
+ }}
+ >
+ {/* Header text */}
+ <motion.div
+ initial={{ opacity: 0, y: -20 }}
+ animate={{ opacity: 1, y: 0 }}
+ transition={{ delay: 0.15, ...SPRINGS.snappy }}
+ style={{
+ fontSize: '12px', fontWeight: 900,
+ fontFamily: 'var(--font-display)',
+ letterSpacing: '0.2em',
+ color: craftedItem.superforged ? '#fbbf24' : TIER_COLORS[craftedItem.item.tier],
+ textShadow: `0 0 20px ${craftedItem.superforged ? '#fbbf24' : TIER_COLORS[craftedItem.item.tier]}60`,
+ marginBottom: '12px',
+ }}
+ >
+ {craftedItem.superforged ? '⚡ SUPERFORGED!' : 'ITEM CRAFTED!'}
+ </motion.div>
+
+ {/* Item Card */}
+ <motion.div
+ initial={{ opacity: 0, scale: 0.3, rotateX: 45 }}
+ animate={{ opacity: 1, scale: 1, rotateX: 0 }}
+ exit={{ opacity: 0, scale: 0.5 }}
+ transition={SPRINGS.snappy}
+ onClick={e => e.stopPropagation()}
+ style={{
+ width: '260px',
+ background: 'rgba(12,16,24,0.95)',
+ border: `2px solid ${TIER_COLORS[craftedItem.item.tier]}60`,
+ borderRadius: '10px',
+ padding: '20px 16px',
+ boxShadow: `0 0 40px ${TIER_COLORS[craftedItem.item.tier]}30, 0 20px 60px rgba(0,0,0,0.5)`,
+ }}
+ >
+ {/* Item image */}
+ {(() => {
+ const item = craftedItem.item
+ const tierColor = TIER_COLORS[item.tier]
+ const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+ return (
+ <>
+ <div style={{
+ display: 'flex', flexDirection: 'column', alignItems: 'center',
+ padding: '12px 0', marginBottom: '12px',
+ background: `radial-gradient(ellipse at center, ${tierColor}15 0%, transparent 70%)`,
+ borderRadius: '8px',
+ }}>
+ <motion.div
+ animate={craftedItem.superforged ? {
+ filter: ['drop-shadow(0 0 8px #fbbf2440)', 'drop-shadow(0 0 16px #fbbf2480)', 'drop-shadow(0 0 8px #fbbf2440)'],
+ } : {}}
+ transition={{ duration: 1.5, repeat: Infinity }}
+ >
+ {imgUrl ? (
+ <img src={imgUrl} alt={item.name} style={{
+ width: '64px', height: '64px', objectFit: 'contain',
+ filter: `drop-shadow(0 4px 16px ${tierColor}50)`,
+ }} />
+ ) : (
+ <div style={{ fontSize: '48px', opacity: 0.5 }}>{SLOT_ICONS[item.slot]}</div>
+ )}
+ </motion.div>
+ <motion.div
+ initial={{ opacity: 0 }}
+ animate={{ opacity: 1 }}
+ transition={{ delay: 0.3 }}
+ style={{
+ fontSize: '14px', fontWeight: 900, fontFamily: 'var(--font-display)',
+ color: tierColor, letterSpacing: '0.08em', marginTop: '8px',
+ textShadow: `0 0 12px ${tierColor}50`,
+ }}
+ >{item.name}</motion.div>
+ <div style={{
+ fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)',
+ color: '#64748b', letterSpacing: '0.1em', marginTop: '2px',
+ }}>{TIER_LABELS[item.tier]} • {item.slot.toUpperCase()}</div>
+ </div>
+
+ {/* Stats */}
+ <motion.div
+ initial={{ opacity: 0, y: 10 }}
+ animate={{ opacity: 1, y: 0 }}
+ transition={{ delay: 0.4 }}
+ style={{
+ background: 'rgba(0,0,0,0.3)', borderRadius: '6px',
+ padding: '10px 12px', marginBottom: '12px',
+ border: '1px solid rgba(255,255,255,0.04)',
+ }}
+ >
+ {[
+ item.stats.damage && { label: 'DAMAGE', val: `${item.stats.damage}`, color: '#f87171' },
+ item.stats.critRate && { label: 'CRIT RATE', val: `${item.stats.critRate}%`, color: '#fb923c' },
+ item.stats.critDamage && { label: 'CRIT DMG', val: `+${item.stats.critDamage}%`, color: '#fb923c' },
+ item.stats.armor && { label: 'ARMOR', val: `+${item.stats.armor}%`, color: '#94a3b8' },
+ item.stats.dodge && { label: 'EVASION', val: `+${item.stats.dodge}%`, color: '#34d399' },
+ item.stats.precision && { label: 'ACCURACY', val: `+${item.stats.precision}%`, color: '#38bdf8' },
+ ].filter(Boolean).map((s: any, i) => (
+ <motion.div
+ key={s.label}
+ initial={{ opacity: 0, x: -10 }}
+ animate={{ opacity: 1, x: 0 }}
+ transition={{ delay: 0.5 + i * 0.08 }}
+ style={{
+ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+ padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)',
+ }}
+ >
+ <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>{s.label}</span>
+ <span style={{ color: s.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{s.val}</span>
+ </motion.div>
+ ))}
+ </motion.div>
+
+ {/* Superforged badge */}
+ {craftedItem.superforged && (
+ <motion.div
+ initial={{ opacity: 0, scale: 0 }}
+ animate={{ opacity: 1, scale: 1 }}
+ transition={{ delay: 0.7, type: 'spring', stiffness: 400, damping: 15 }}
+ style={{
+ textAlign: 'center', padding: '6px 12px', marginBottom: '8px',
+ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)',
+ borderRadius: '4px', fontSize: '9px', fontWeight: 900,
+ fontFamily: 'var(--font-display)', color: '#fbbf24',
+ letterSpacing: '0.12em',
+ }}
+ >⚡ SUPERFORGED +10% ALL STATS</motion.div>
+ )}
+
+ {/* Close hint */}
+ <motion.div
+ initial={{ opacity: 0 }}
+ animate={{ opacity: 0.5 }}
+ transition={{ delay: 0.8 }}
+ style={{
+ textAlign: 'center', fontSize: '8px', fontWeight: 600,
+ fontFamily: 'var(--font-display)', color: '#475569',
+ letterSpacing: '0.1em',
+ }}
+ >CLICK ANYWHERE TO CLOSE</motion.div>
+ </>
+ )
+ })()}
+ </motion.div>
+ </motion.div>
+ )}
+ </AnimatePresence>
 
 
  {/* DISARM MODE info */}
@@ -655,8 +948,7 @@ export default function InventoryTab() {
 
       {/* ==== Item Interaction Modal -- Premium ==== */}
  {selectedItem && (
- <div className="inv-modal-overlay" onClick={() => setSelectedItem(null)}>
- <div className="inv-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '340px' }}>
+ <GameModal isOpen={true} onClose={() => setSelectedItem(null)} size="sm" glowColor={TIER_COLORS[selectedItem.tier]}>
 
  {/* Hero Image Area */}
  <div style={{
@@ -789,8 +1081,7 @@ export default function InventoryTab() {
  CLOSE
  </button>
  </div>
- </div>
- </div>
+ </GameModal>
  )}
 
       {/* ==== Slot Picker Modal (Inventory) ==== */}

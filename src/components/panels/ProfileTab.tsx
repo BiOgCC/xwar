@@ -5,6 +5,7 @@ import { useSkillsStore } from '../../stores/skillsStore'
 import { useArmyStore } from '../../stores/armyStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePrestigeStore, getPrestigeItemImage } from '../../stores/prestigeStore'
+import ResourceIcon from '../shared/ResourceIcon'
 
 export default function ProfileTab() {
   const player = usePlayerStore()
@@ -389,13 +390,13 @@ export default function ProfileTab() {
         <div className="ptab-currency-grid">
           {[
             { icon: '💰', label: 'Cash',      val: `$${player.money.toLocaleString()}`,          color: '#22d38a' },
-            { icon: '₿',  label: 'Bitcoin',   val: `${player.bitcoin}`,                           color: '#f59e0b' },
-            { icon: '🔩', label: 'Scrap',      val: player.scrap.toLocaleString(),                color: '#94a3b8' },
-            { icon: '🛢️', label: 'Oil',        val: (player.oil ?? 0).toLocaleString(),           color: '#6366f1' },
-            { icon: '⚛️', label: 'Material X', val: (player.materialX ?? 0).toLocaleString(),    color: '#a855f7' },
+            { icon: '₿',  label: 'Bitcoin',   val: `${player.bitcoin}`,                           color: '#f59e0b', img: '/assets/items/icon_bitcoin.png' },
+            { icon: '🔩', label: 'Scrap',      val: player.scrap.toLocaleString(),                color: '#94a3b8', img: '/assets/items/icon_scrap.png' },
+            { icon: '🛢️', label: 'Oil',        val: (player.oil ?? 0).toLocaleString(),           color: '#6366f1', img: '/assets/items/icon_oil.png' },
+            { icon: '⚛️', label: 'Material X', val: (player.materialX ?? 0).toLocaleString(),    color: '#a855f7', img: '/assets/items/icon_materialx.png' },
           ].map(c => (
             <div key={c.label} className="ptab-currency-card">
-              <span className="ptab-currency-card__icon">{c.icon}</span>
+              <span className="ptab-currency-card__icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{'img' in c ? <ResourceIcon resourceKey={c.label === 'Bitcoin' ? 'bitcoin' : c.label === 'Scrap' ? 'scrap' : c.label === 'Oil' ? 'oil' : 'materialX'} size={20} /> : c.icon}</span>
               <span className="ptab-currency-card__label">{c.label}</span>
               <span className="ptab-currency-card__val" style={{ color: c.color }}>{c.val}</span>
             </div>

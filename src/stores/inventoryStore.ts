@@ -98,10 +98,21 @@ export const SCRAP_VALUES: Record<EquipTier, number> = {
   t6: 1480,
 }
 
+export type LootBoxRewardType = 'item' | 'money' | 'resources'
+
+export interface LootBoxResult {
+  rewardType: LootBoxRewardType
+  item?: EquipItem
+  money: number
+  scrap: number
+  oil: number
+}
+
 export interface InventoryState {
   items: EquipItem[]
 
-  openLootBox: () => { item: EquipItem; scrap: number; money: number } | null
+  openLootBox: () => LootBoxResult | null
+  openMilitaryBox: () => LootBoxResult | null
   dismantleItem: (itemId: string) => number // returns scrap gained
   equipItem: (itemId: string) => void
   unequipItem: (itemId: string) => void
@@ -194,6 +205,24 @@ function rollLootBoxItem(): EquipItem {
   else if (rT < 11.00) tier = 't3'
   else if (rT < 50.00) tier = 't2'
 
+  return rollItemOfTier(tier)
+}
+
+function rollMilitaryBoxItem(): EquipItem {
+  // Military: T1: 5%, T2: 15%, T3: 30%, T4: 25%, T5: 18%, T6: 7%
+  const rT = Math.random() * 100
+  let tier: EquipTier = 't3'
+  if (rT < 7.00) tier = 't6'
+  else if (rT < 25.00) tier = 't5'
+  else if (rT < 50.00) tier = 't4'
+  else if (rT < 80.00) tier = 't3'
+  else if (rT < 95.00) tier = 't2'
+  else tier = 't1'
+
+  return rollItemOfTier(tier)
+}
+
+function rollItemOfTier(tier: EquipTier): EquipItem {
   // Type chance (66% Armor, 34% Weapon, but if T6, 20% chance of Vehicle)
   let category: EquipCategory = Math.random() < 0.66 ? 'armor' : 'weapon'
   let slot: EquipSlot = 'weapon'
@@ -259,17 +288,53 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
     usePlayerStore.setState(s => ({ lootBoxes: s.lootBoxes - 1 }))
 
-    const item = rollLootBoxItem()
-    const scrap = randomInt(50, 500)
-    const money = randomInt(100, 1000)
+    // Civilian box: 35% money, 25% resources, 40% item
+    const roll = Math.random() * 100
+    let rewardType: LootBoxRewardType
+    let item: EquipItem | undefined
+    let money = 0
+    let scrap = 0
+    let oil = 0
 
-    usePlayerStore.setState(s => ({ 
+    if (roll < 35) {
+      // Money only
+      rewardType = 'money'
+      money = randomInt(200, 2000)
+    } else if (roll < 60) {
+      // Resources
+      rewardType = 'resources'
+      scrap = randomInt(100, 800)
+      oil = randomInt(50, 400)
+      money = randomInt(50, 300)
+    } else {
+      // Item + some bonus money/scrap
+      rewardType = 'item'
+      item = rollLootBoxItem()
+      scrap = randomInt(20, 200)
+      money = randomInt(50, 500)
+      set(s => ({ items: [...s.items, item!] }))
+    }
+
+    usePlayerStore.setState(s => ({
       scrap: s.scrap + scrap,
-      money: s.money + money 
+      money: s.money + money,
+      oil: s.oil + oil,
     }))
 
+    return { rewardType, item, scrap, money, oil }
+  },
+
+  openMilitaryBox: () => {
+    const playerStore = usePlayerStore.getState()
+    if (playerStore.militaryBoxes <= 0) return null
+
+    usePlayerStore.setState(s => ({ militaryBoxes: s.militaryBoxes - 1 }))
+
+    // Military box: ONLY items, high T5/T6 chance
+    const item = rollMilitaryBoxItem()
     set(s => ({ items: [...s.items, item] }))
-    return { item, scrap, money }
+
+    return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0 }
   },
 
   dismantleItem: (itemId) => {

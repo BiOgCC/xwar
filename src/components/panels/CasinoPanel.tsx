@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useCasinoStore, getSegmentsForBet, BET_TIERS } from '../../stores/casinoStore'
 import { useWorldStore } from '../../stores/worldStore'
+import { popVariants, SPRINGS, useScreenShake } from '../shared/AnimationSystem'
 import '../../styles/casino.css'
 
 /* ── SVG Wheel geometry helpers ── */
@@ -25,6 +27,7 @@ export default function CasinoPanel() {
   const [wheelAngle, setWheelAngle] = useState(0)
   const [selectedBet, setSelectedBet] = useState(BET_TIERS[0].amount)
   const resolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const shake = useScreenShake()
 
   useEffect(() => {
     return () => { if (resolveTimerRef.current) clearTimeout(resolveTimerRef.current) }
@@ -211,17 +214,41 @@ export default function CasinoPanel() {
       )}
 
       {/* ═══ SPINNING INDICATOR ═══ */}
-      {casino.phase === 'spinning' && (
-        <div className="casino-spinning-text">SPINNING...</div>
-      )}
+      <AnimatePresence>
+        {casino.phase === 'spinning' && (
+          <motion.div
+            className="casino-spinning-text"
+            key="spinning"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }}
+            exit={{ opacity: 0, scale: 0.5 }}
+            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            SPINNING...
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══ RESULT ═══ */}
-      {casino.phase === 'result' && casino.lastWinType && (
-        <div className={`casino-result casino-result--${casino.lastWinType === 'win' ? 'win' : 'lose'}`}>
-          <div className="casino-result__label">{casino.lastWinText}</div>
-          <div className="casino-result__amount">{casino.lastWinAmount}</div>
-        </div>
-      )}
+      <AnimatePresence>
+        {casino.phase === 'result' && casino.lastWinType && (
+          <motion.div
+            key="result"
+            className={`casino-result casino-result--${casino.lastWinType === 'win' ? 'win' : 'lose'}`}
+            variants={popVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            onAnimationComplete={() => {
+              if (casino.lastWinType === 'win') shake(4, 250)
+              else shake(6, 350)
+            }}
+          >
+            <div className="casino-result__label">{casino.lastWinText}</div>
+            <div className="casino-result__amount">{casino.lastWinAmount}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══ BALANCE BAR ═══ */}
       <div className="casino-balance">

@@ -9,6 +9,7 @@ import './styles/profile.css'
 import './styles/war.css'
 import './styles/combat.css'
 import './styles/map.css'
+import './styles/animations.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

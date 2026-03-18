@@ -22,6 +22,7 @@ export interface ResourceDef {
   id: ResourceId
   name: string
   icon: string
+  iconImage?: string           // path to graphic asset (replaces emoji in market)
   category: string
   playerKey: string        // key in playerStore
   fundKey?: NationalFundKey // if tradeable from/to country fund
@@ -30,29 +31,36 @@ export interface ResourceDef {
 
 export const RESOURCE_DEFS: ResourceDef[] = [
   // Construction
-  { id: 'oil',       name: 'Oil',         icon: '🛢️', category: 'Construction', playerKey: 'oil',       fundKey: 'oil',       basePrice: 0.16 },
-  { id: 'scrap',     name: 'Scrap',       icon: '🔩',  category: 'Construction', playerKey: 'scrap',     fundKey: 'scraps',    basePrice: 0.22 },
-  { id: 'materialX', name: 'Material X',  icon: '⚛️', category: 'Construction', playerKey: 'materialX', fundKey: 'materialX', basePrice: 1.62 },
-  { id: 'bitcoin',   name: 'Bitcoin',     icon: '₿',   category: 'Construction', playerKey: 'bitcoin',   fundKey: 'bitcoin',   basePrice: 85.00 },
+  { id: 'oil',       name: 'Oil',         icon: '🛢️', iconImage: '/assets/items/icon_oil.png',       category: 'Construction', playerKey: 'oil',       fundKey: 'oil',       basePrice: 0.16 },
+  { id: 'scrap',     name: 'Scrap',       icon: '🔩',  iconImage: '/assets/items/icon_scrap.png',     category: 'Construction', playerKey: 'scrap',     fundKey: 'scraps',    basePrice: 0.22 },
+  { id: 'materialX', name: 'Material X',  icon: '⚛️', iconImage: '/assets/items/icon_materialx.png', category: 'Construction', playerKey: 'materialX', fundKey: 'materialX', basePrice: 1.62 },
+  { id: 'bitcoin',   name: 'Bitcoin',     icon: '₿',   iconImage: '/assets/items/icon_bitcoin.png',   category: 'Construction', playerKey: 'bitcoin',   fundKey: 'bitcoin',   basePrice: 85.00 },
   // Food
-  { id: 'bread',  name: 'Bread',  icon: '🍞', category: 'Food', playerKey: 'bread',  basePrice: 1.81 },
+  { id: 'bread',  name: 'Bread',  icon: '🍞', iconImage: '/assets/food/bread.png',  category: 'Food', playerKey: 'bread',  basePrice: 1.81 },
   { id: 'steak',  name: 'Steak',  icon: '🥩', category: 'Food', playerKey: 'steak',  basePrice: 3.50 },
-  { id: 'sushi',  name: 'Sushi',  icon: '🍣', category: 'Food', playerKey: 'sushi',  basePrice: 7.19 },
+  { id: 'sushi',  name: 'Sushi',  icon: '🍣', iconImage: '/assets/food/sushi.png',  category: 'Food', playerKey: 'sushi',  basePrice: 7.19 },
   { id: 'fish',   name: 'Fish',   icon: '🐟', category: 'Food', playerKey: 'fish',   basePrice: 3.44 },
-  { id: 'wagyu',  name: 'Wagyu',  icon: '🥩', category: 'Food', playerKey: 'wagyu',  basePrice: 9.50 },
+  { id: 'wagyu',  name: 'Wagyu',  icon: '🥩', iconImage: '/assets/food/wagyu.png',  category: 'Food', playerKey: 'wagyu',  basePrice: 9.50 },
   { id: 'wheat',  name: 'Wheat',  icon: '🌾', category: 'Food', playerKey: 'wheat',  basePrice: 0.08 },
   // Ammo
-  { id: 'blueBullets',   name: 'Blue Ammo',   icon: '🔵', category: 'Ammo', playerKey: 'blueBullets',   basePrice: 0.62 },
-  { id: 'greenBullets',  name: 'Green Ammo',  icon: '🟢', category: 'Ammo', playerKey: 'greenBullets',  basePrice: 0.17 },
-  { id: 'purpleBullets', name: 'Purple Ammo', icon: '🟣', category: 'Ammo', playerKey: 'purpleBullets', basePrice: 2.51 },
-  { id: 'redBullets',    name: 'Red Ammo',    icon: '🔴', category: 'Ammo', playerKey: 'redBullets',    basePrice: 0.08 },
+  { id: 'blueBullets',   name: 'Blue Ammo',   icon: '🔵', iconImage: '/assets/items/ammo_blue.png',   category: 'Ammo', playerKey: 'blueBullets',   basePrice: 0.62 },
+  { id: 'greenBullets',  name: 'Green Ammo',  icon: '🟢', iconImage: '/assets/items/ammo_green.png',  category: 'Ammo', playerKey: 'greenBullets',  basePrice: 0.17 },
+  { id: 'purpleBullets', name: 'Purple Ammo', icon: '🟣', iconImage: '/assets/items/ammo_purple.png', category: 'Ammo', playerKey: 'purpleBullets', basePrice: 2.51 },
+  { id: 'redBullets',    name: 'Red Ammo',    icon: '🔴', iconImage: '/assets/items/ammo_red.png',    category: 'Ammo', playerKey: 'redBullets',    basePrice: 0.08 },
   // Cases
-  { id: 'lootBoxes',    name: 'Basic Case',   icon: '📦', category: 'Cases', playerKey: 'lootBoxes',    basePrice: 34.79 },
-  { id: 'militaryBoxes', name: 'Military Box', icon: '🧰', category: 'Cases', playerKey: 'militaryBoxes', basePrice: 3.46 },
+  { id: 'lootBoxes',     name: 'Civilian Loot Box', icon: '📦', iconImage: '/assets/items/lootbox_civilian.png', category: 'Cases', playerKey: 'lootBoxes',    basePrice: 34.79 },
+  { id: 'militaryBoxes', name: 'Military Loot Box', icon: '🧰', iconImage: '/assets/items/lootbox_military.png', category: 'Cases', playerKey: 'militaryBoxes', basePrice: 3.46 },
   // Buffs
   { id: 'staminaPills', name: 'Stamina Pill', icon: '💊', category: 'Buffs', playerKey: 'staminaPills', basePrice: 31.70 },
   { id: 'energyLeaves', name: 'Energy Leaf',  icon: '🍃', category: 'Buffs', playerKey: 'energyLeaves', basePrice: 0.07 },
 ]
+
+/** Quick lookup: playerKey or id → ResourceDef */
+export const RESOURCE_BY_KEY: Record<string, ResourceDef> = {}
+RESOURCE_DEFS.forEach(r => {
+  RESOURCE_BY_KEY[r.id] = r
+  RESOURCE_BY_KEY[r.playerKey] = r
+})
 
 /** Market price data for a resource (live ticker) */
 export interface MarketTicker {

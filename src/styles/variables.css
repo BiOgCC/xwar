@@ -91,6 +91,13 @@
   --transition-base: 250ms ease;
   --transition-slow: 400ms ease;
 
+  /* ---- Animation ---- */
+  --anim-modal-in: 280ms;
+  --anim-modal-out: 160ms;
+  --anim-reward-stagger: 150ms;
+  --anim-button-press: 100ms;
+  --anim-glow-cycle: 800ms;
+
   /* ---- Z-Index ---- */
   --z-map: 1;
   --z-sidebar: 100;
