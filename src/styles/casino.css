@@ -478,3 +478,18 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+@keyframes confetti-burst {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(0.5);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(calc(var(--tx) * 0.15), calc(var(--ty) * 0.15)) rotate(calc(var(--spin) * 0.15)) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--tx), calc(var(--ty) + 80px)) rotate(var(--spin)) scale(0.3);
+  }
+}

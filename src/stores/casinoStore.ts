@@ -113,6 +113,7 @@ export interface CasinoState {
   lastWinText: string
   lastWinAmount: string
   lastWinType: 'win' | 'lose' | null
+  lastWonItem: EquipItem | null
   history: { segment: WheelSegment; bet: number }[]
   totalSpins: number
   totalWon: number
@@ -133,6 +134,7 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
   lastWinText: '',
   lastWinAmount: '',
   lastWinType: null,
+  lastWonItem: null,
   history: [],
   totalSpins: 0,
   totalWon: 0,
@@ -215,6 +217,8 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
         useInventoryStore.getState().addItem(newItem)
         winText = 'JACKPOT!'
         winAmount = `${tier.toUpperCase()} ${slot.toUpperCase()}`
+        // Store won item for popup display
+        set({ lastWonItem: newItem })
         break
       }
       case 'bankrupt': {
@@ -258,6 +262,7 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
       lastWinText: '',
       lastWinAmount: '',
       lastWinType: null,
+      lastWonItem: null,
     })
   },
 }))
