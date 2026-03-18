@@ -2387,3 +2387,80 @@
 .ctab-build-item__btn--ready:hover { filter: brightness(1.15); background: rgba(255,255,255,0.05); transform: translateY(-1px); }
 .ctab-modal__cancel { display: block; width: 100%; margin-top: 12px; padding: 10px; font-family: var(--font-display); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: #64748b; background: rgba(255,255,255,0.04); border: 1px solid rgba(148,163,184,0.15); border-radius: 8px; cursor: pointer; transition: all 160ms ease; }
 .ctab-modal__cancel:hover { color: #94a3b8; background: rgba(255,255,255,0.08); }
+
+/* ============================================
+   CONTAINER QUERY REFLOWS — fullscreen multi-column
+   ============================================ */
+
+@container panel (min-width: 700px) {
+  /* Profile bars: horizontal row */
+  .profile-bars {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .profile-bar {
+    flex: 1 1 200px;
+    min-width: 160px;
+  }
+
+  /* Inventory items: more columns */
+  .inv-items-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  /* Supply grid: 4 columns */
+  .inv-supply-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  /* Equipment grid: 6 columns */
+  .inv-equip-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  /* Profile tab sections: 2-column layout */
+  .ptab {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  /* Stats grid: wider */
+  .ptab-stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  /* Skills: side-by-side trees */
+  .skills-tab {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .skills-sp {
+    grid-column: 1 / -1;
+  }
+
+  /* Companies tab: multi-column */
+  .ctab-companies {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+@container panel (min-width: 1000px) {
+  .inv-items-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+
+  .ctab-companies {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .ptab-stats-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}

@@ -130,14 +130,39 @@ function App() {
   const finalDodge = 5 + eqDodge + (mil.dodge * 5)
   const finalHitRate = Math.min(100, 50 + eqPrecision + (mil.precision * 5))
 
-  const { activePanel, togglePanel, floatingTexts, cycleResourceView, resourceViewMode, setProfileDefaultTab, setActivePanel, setForeignCountry, selectedForeignCountry } = useUIStore()
+  const { activePanel, togglePanel, floatingTexts, cycleResourceView, resourceViewMode, setProfileDefaultTab, setActivePanel, setForeignCountry, selectedForeignCountry, panelFullscreen, setPanelFullscreen, lastClosedPanel } = useUIStore()
   const [mousePos, setMousePos] = useState({ lat: '0.00° N', lng: '0.00° E' })
   const [selectedRegion, setSelectedRegion] = useState<RegionInfo | null>(null)
   const mapRef = useRef<GameMapHandle>(null)
   const [expandedBattle, setExpandedBattle] = useState<string | null>(null)
   const [swapSlot, setSwapSlot] = useState<string | null>(null)
   const [selectedWarRegion, setSelectedWarRegion] = useState<Region | null>(null)
-  const [panelFullscreen, setPanelFullscreen] = useState(false)
+
+  // ====== ESC KEY HANDLER ======
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      // Don't intercept ESC if a modal or input is focused
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      const ui = useUIStore.getState()
+      if (ui.activePanel) {
+        if (ui.panelFullscreen) {
+          // Fullscreen → minimize (back to sidebar panel)
+          ui.setPanelFullscreen(false)
+        } else {
+          // Sidebar panel → close it
+          ui.togglePanel(ui.activePanel)
+        }
+      } else if (ui.lastClosedPanel) {
+        // No panel open → reopen last closed panel
+        ui.setActivePanel(ui.lastClosedPanel)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // 30 min (1800s) Game Tick Timer + 15s Combat Tick
   const [timeLeft, setTimeLeft] = useState(1800)
@@ -581,7 +606,16 @@ function App() {
                   ? `${getCountryFlag(selectedForeignCountry)} ${getCountryName(selectedForeignCountry).toUpperCase()}`
                   : activePanel?.toUpperCase()}
               </h3>
-              <button className="hud-panel__close" onClick={() => togglePanel(activePanel)}>✕</button>
+              <div className="hud-panel__actions">
+                <button
+                  className="hud-panel__fullscreen-btn"
+                  onClick={() => setPanelFullscreen(!panelFullscreen)}
+                  title={panelFullscreen ? 'Minimize (ESC)' : 'Fullscreen'}
+                >
+                  {panelFullscreen ? '⊟' : '⛶'}
+                </button>
+                <button className="hud-panel__close" onClick={() => togglePanel(activePanel)}>✕</button>
+              </div>
             </div>
             <div className="hud-panel__body">
               {activePanel === 'profile' && <ProfilePanel />}

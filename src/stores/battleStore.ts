@@ -521,7 +521,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     // Decrement HERO buff timer each combat tick
     const heroTicks = usePlayerStore.getState().heroBuffTicksLeft
-    if (heroTicks > 0) usePlayerStore.setState({ heroBuffTicksLeft: heroTicks - 1 })
+    if (heroTicks > 0) {
+      const newTicks = heroTicks - 1
+      usePlayerStore.setState({ heroBuffTicksLeft: newTicks, ...(newTicks === 0 ? { heroBuffBattleId: null } : {}) })
+    }
 
     Object.values(newBattles).forEach(battle => {
       if (battle.status !== 'active') return
@@ -625,8 +628,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           let dmg = Math.floor((playerStats.attackDamage + div.manpower * 3 + eq.bonusAtk) * (tAtkDmg + atkDivLevel * 0.01))
           // Apply aura attack bonus
           dmg = Math.floor(dmg * (1 + atkAura.attackPct / 100))
-          // Apply HERO buff (+10%) if division owner has active buff
-          const atkOwnerBuff = div.ownerId === usePlayerStore.getState().name && usePlayerStore.getState().heroBuffTicksLeft > 0
+          // Apply HERO buff (+10%) if division owner has active buff on THIS battle
+          const ps = usePlayerStore.getState()
+          const atkOwnerBuff = div.ownerId === ps.name && ps.heroBuffTicksLeft > 0 && ps.heroBuffBattleId === battle.id
           if (atkOwnerBuff) dmg = Math.floor(dmg * 1.10)
           const effectiveCritRate = deviate((playerStats.critRate + atkOrd.critBonus + eq.bonusCritRate) * (tCritRate + atkDivLevel * 0.01))
           if (Math.random() * 100 < effectiveCritRate) {
@@ -691,8 +695,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           let dmg = Math.floor((playerStats.attackDamage + d.manpower * 3 + deq.bonusAtk) * (dAtkDmg + defDivLevel * 0.01))
           // Apply aura attack bonus
           dmg = Math.floor(dmg * (1 + defAura.attackPct / 100))
-          // Apply HERO buff (+10%) if division owner has active buff
-          const defOwnerBuff = d.ownerId === usePlayerStore.getState().name && usePlayerStore.getState().heroBuffTicksLeft > 0
+          // Apply HERO buff (+10%) if division owner has active buff on THIS battle
+          const dps = usePlayerStore.getState()
+          const defOwnerBuff = d.ownerId === dps.name && dps.heroBuffTicksLeft > 0 && dps.heroBuffBattleId === battle.id
           if (defOwnerBuff) dmg = Math.floor(dmg * 1.10)
           const effectiveCritRate = deviate((playerStats.critRate + defOrd.critBonus + deq.bonusCritRate) * (dCritRate + defDivLevel * 0.01))
           if (Math.random() * 100 < effectiveCritRate) {
@@ -1025,8 +1030,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     get().addDamage(battleId, side, damage, isCrit, false, player.name)
 
-    // Activate HERO buff: +10% division damage for 120 ticks
-    usePlayerStore.setState({ heroBuffTicksLeft: 120 })
+    // Activate HERO buff: +10% division damage for 120 ticks, scoped to THIS battle
+    usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
 
     return {
       damage,
@@ -1051,8 +1056,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const isAttacker = forceSide ? forceSide === 'attacker' : playerCountry === battle.attackerId
     const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
 
-    // Activate HERO buff: +10% division damage for 120 ticks
-    usePlayerStore.setState({ heroBuffTicksLeft: 120 })
+    // Activate HERO buff: +10% division damage for 120 ticks, scoped to THIS battle
+    usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
 
     set(s => ({
       battles: {

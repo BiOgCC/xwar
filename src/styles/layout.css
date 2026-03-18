@@ -418,6 +418,12 @@
 .hud-panel--fullscreen {
   width: 100%;
   border-left: none;
+  animation: panel-expand 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes panel-expand {
+  from { width: 380px; }
+  to { width: 100%; }
 }
 
 @keyframes panel-slide-in {
@@ -459,6 +465,34 @@
   background: rgba(239, 68, 68, 0.1);
 }
 
+/* Panel header actions row */
+.hud-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hud-panel__fullscreen-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: var(--text-muted);
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.hud-panel__fullscreen-btn:hover {
+  color: var(--accent-primary);
+  background: rgba(34, 211, 138, 0.08);
+  border-color: rgba(34, 211, 138, 0.2);
+}
+
 .hud-panel__body {
   flex: 1;
   overflow-y: auto;
@@ -468,6 +502,24 @@
   gap: 10px;
   scrollbar-width: thin;
   scrollbar-color: rgba(34, 211, 138, 0.2) transparent;
+  /* Enable CSS Container Queries */
+  container-type: inline-size;
+  container-name: panel;
+}
+
+/* ---- Fullscreen multi-column reflow via Container Queries ---- */
+@container panel (min-width: 700px) {
+  /* Default card grid: wrap cards into multi-column */
+  .hud-card {
+    max-width: 20%;
+    min-width: 280px;
+  }
+}
+
+@container panel (min-width: 600px) {
+  .hud-card__stats {
+    flex-wrap: wrap;
+  }
 }
 
 /* =============================================

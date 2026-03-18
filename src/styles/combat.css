@@ -811,3 +811,27 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.2; }
 }
+
+/* ============================================
+   CONTAINER QUERY REFLOWS — fullscreen multi-column
+   ============================================ */
+
+@container panel (min-width: 700px) {
+  .battle-actions {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .occ-actions-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .occupation-panel {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .occupation-header {
+    grid-column: 1 / -1;
+  }
+}

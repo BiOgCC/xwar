@@ -52,7 +52,7 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
   return (
     <div className="war-panel">
       {/* Message of the Day — global, above tabs */}
-      <div style={{ padding: '4px 10px', marginBottom: '4px', background: 'rgba(139,92,246,0.06)', borderRadius: '5px', border: '1px solid rgba(139,92,246,0.12)' }}>
+      <div className="war-motd" style={{ padding: '4px 10px', marginBottom: '4px', background: 'rgba(139,92,246,0.06)', borderRadius: '5px', border: '1px solid rgba(139,92,246,0.12)' }}>
         {editingMotd ? (
           <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
             <input
@@ -1068,7 +1068,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
   const armyStore = useArmyStore()
   const player = usePlayerStore()
   const ui = useUIStore()
-  const [expandedBattle, setExpandedBattle] = useState<string | null>(null)
+  const [expandedBattles, setExpandedBattles] = useState<Set<string>>(new Set())
   const [deployCount, setDeployCount] = useState<Record<string, number>>({})
   const [editingOrderMsg, setEditingOrderMsg] = useState<Record<string, boolean>>({})
   const [scene3DBattle, setScene3DBattle] = useState<{
@@ -1100,7 +1100,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
 
   return (
     <div className="war-battles" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* === Fixed Header: Tick Timer + Food === */}
+      {/* === Fixed Header: Tick Timer + Food (sidebar mode only) === */}
       <div style={{ flexShrink: 0 }}>
       {/* 3D Battle Scene Overlay */}
       {scene3DBattle && (
@@ -1121,9 +1121,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
         </Suspense>
       )}
 
-      {/* Tick Timer */}
-      {activeBattles.length > 0 && (
-        <div style={{
+      {/* Tick Timer — only in sidebar mode */}
+      {!panelFullscreen && activeBattles.length > 0 && (
+        <div className="war-combat-header" style={{
           display: 'flex', alignItems: 'center', gap: '8px',
           padding: '5px 10px', marginBottom: '6px',
           background: 'rgba(239,68,68,0.08)', borderRadius: '6px',
@@ -1146,48 +1146,106 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
         </div>
       )}
 
-      {/* Quick Food — recover stamina + heal deployed divisions */}
-      <div style={{ display: 'flex', gap: '3px', marginBottom: '6px' }}>
-        {[
-          { key: 'bread', icon: '🍞', label: 'Bread', count: player.bread, sta: 10, heal: 1 },
-          { key: 'sushi', icon: '🍣', label: 'Sushi', count: player.sushi, sta: 20, heal: 2 },
-          { key: 'wagyu', icon: '🥩', label: 'Wagyu', count: player.wagyu, sta: 30, heal: 3 },
-        ].map(f => (
-          <button key={f.key} disabled={f.count <= 0}
-            onClick={() => {
-              player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu')
-              const result = armyStore.healDivisionsWithFood(f.key as 'bread' | 'sushi' | 'wagyu')
-              if (result.success) console.log(result.message)
-            }}
-            style={{
-              flex: 1, padding: '5px 2px', borderRadius: '4px', cursor: f.count > 0 ? 'pointer' : 'not-allowed',
-              background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
-              border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
-              opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
-            }}
-          >
-            <div style={{ fontSize: '14px' }}>{f.icon}</div>
-            <div style={{ fontSize: '8px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
-            <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
-            <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
-          </button>
-        ))}
-      </div>
+      {/* Quick Food — sidebar mode only */}
+      {!panelFullscreen && (
+        <div className="war-combat-food" style={{ display: 'flex', gap: '3px', marginBottom: '6px' }}>
+          {[
+            { key: 'bread', icon: '🍞', label: 'Bread', count: player.bread, sta: 10, heal: 1 },
+            { key: 'sushi', icon: '🍣', label: 'Sushi', count: player.sushi, sta: 20, heal: 2 },
+            { key: 'wagyu', icon: '🥩', label: 'Wagyu', count: player.wagyu, sta: 30, heal: 3 },
+          ].map(f => (
+            <button key={f.key} disabled={f.count <= 0}
+              onClick={() => {
+                player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu')
+                const result = armyStore.healDivisionsWithFood(f.key as 'bread' | 'sushi' | 'wagyu')
+                if (result.success) console.log(result.message)
+              }}
+              style={{
+                flex: 1, padding: '5px 2px', borderRadius: '4px', cursor: f.count > 0 ? 'pointer' : 'not-allowed',
+                background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
+              }}
+            >
+              <div style={{ fontSize: '14px' }}>{f.icon}</div>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
+              <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
+              <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
+            </button>
+          ))}
+        </div>
+      )}
       </div>
 
       {/* === Scrollable Battles List === */}
-      <div style={panelFullscreen ? {
-        flex: 1, overflowX: 'auto', overflowY: 'hidden',
-        display: 'grid', gridAutoFlow: 'column', gridTemplateRows: '1fr 1fr',
-        gap: '8px', padding: '4px',
+      <div className="war-battles-grid" style={panelFullscreen ? {
+        flex: 1, overflowX: 'auto', overflowY: 'auto',
+        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: '8px', padding: '4px', alignContent: 'start', alignItems: 'start',
       } : { flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
       {activeBattles.length === 0 && pastBattles.length === 0 && (
-        <div className="war-card"><div className="war-empty">No active battles. Launch an attack from the Forces tab.</div></div>
+        <div className="war-card" style={{ gridColumn: '1 / -1' }}><div className="war-empty">No active battles. Launch an attack from the Forces tab.</div></div>
       )}
 
-      {activeBattles.map(battle => {
-        const battleCardStyle = panelFullscreen ? { minWidth: '360px', maxWidth: '420px' } : {}
-        const isExpanded = expandedBattle === battle.id
+      {/* In fullscreen: insert center panel (tick+food) at slot 3 */}
+      {activeBattles.map((battle, idx) => {
+        // Render center panel BEFORE the 3rd battle card (index 2) in fullscreen
+        const centerPanel = (panelFullscreen && idx === 2) ? (
+          <div key="center-panel" className="war-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch', justifyContent: 'flex-start' }}>
+            {/* Tick Timer */}
+            {activeBattles.length > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '8px 12px',
+                background: 'rgba(239,68,68,0.08)', borderRadius: '6px',
+                border: '1px solid rgba(239,68,68,0.15)',
+              }}>
+                <span style={{ fontSize: '14px', animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700, color: combatTickLeft <= 3 ? '#ef4444' : '#94a3b8' }}>
+                    <span>NEXT TICK</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '12px', color: combatTickLeft <= 3 ? '#ef4444' : '#22d38a' }}>{combatTickLeft}s</span>
+                  </div>
+                  <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '3px' }}>
+                    <div style={{
+                      width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%',
+                      background: combatTickLeft <= 3 ? '#ef4444' : '#22d38a',
+                      transition: 'width 0.9s linear', borderRadius: '2px',
+                    }} />
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Food Grid */}
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {[
+                { key: 'bread', icon: '🍞', count: player.bread, sta: 10, heal: 1 },
+                { key: 'sushi', icon: '🍣', count: player.sushi, sta: 20, heal: 2 },
+                { key: 'wagyu', icon: '🥩', count: player.wagyu, sta: 30, heal: 3 },
+              ].map(f => (
+                <button key={f.key} disabled={f.count <= 0}
+                  onClick={() => {
+                    player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu')
+                    const result = armyStore.healDivisionsWithFood(f.key as 'bread' | 'sushi' | 'wagyu')
+                    if (result.success) console.log(result.message)
+                  }}
+                  style={{
+                    flex: 1, padding: '6px 3px', borderRadius: '4px', cursor: f.count > 0 ? 'pointer' : 'not-allowed',
+                    background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                    opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
+                  }}
+                >
+                  <div style={{ fontSize: '16px' }}>{f.icon}</div>
+                  <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
+                  <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
+                  <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null
+        const isExpanded = expandedBattles.has(battle.id)
         const activeRound = battle.rounds[battle.rounds.length - 1]
         const atkDmg = battle.attacker?.damageDealt || 0
         const defDmg = battle.defender?.damageDealt || 0
@@ -1200,14 +1258,16 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
         const defClr = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
 
         return (
-          <div className="war-card war-card--battle" key={battle.id}>
+          <React.Fragment key={battle.id}>
+            {centerPanel}
+            <div className="war-card war-card--battle">
             {/* Battle Header */}
-            <div className="war-battle-header" onClick={() => setExpandedBattle(isExpanded ? null : battle.id)}>
+            <div className="war-battle-header" onClick={() => setExpandedBattles(prev => { const next = new Set(prev); if (next.has(battle.id)) next.delete(battle.id); else next.add(battle.id); return next })}>
               <div className="war-battle-sides">
                 <div className="war-battle-side war-battle-side--atk">
                   <span className="war-battle-flag">{getCountryFlag(battle.attackerId)}</span>
                   <div>
-                    {player.heroBuffTicksLeft > 0 && iso === battle.attackerId && (
+                    {player.heroBuffTicksLeft > 0 && player.heroBuffBattleId === battle.id && iso === battle.attackerId && (
                       <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', fontFamily: 'var(--font-display)', animation: 'pulse 2s infinite' }}>HERO</div>
                     )}
                     <div className="war-battle-country">{getCountryName(battle.attackerId)}</div>
@@ -1236,7 +1296,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                 <div className="war-battle-side war-battle-side--def">
                   <span className="war-battle-rounds">{battle.defenderRoundsWon}</span>
                   <div style={{ textAlign: 'right' }}>
-                    {player.heroBuffTicksLeft > 0 && iso === battle.defenderId && (
+                    {player.heroBuffTicksLeft > 0 && player.heroBuffBattleId === battle.id && iso === battle.defenderId && (
                       <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', fontFamily: 'var(--font-display)', animation: 'pulse 2s infinite' }}>HERO</div>
                     )}
                     <div className="war-battle-country">{getCountryName(battle.defenderId)}</div>
@@ -1245,18 +1305,15 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                   <span className="war-battle-flag">{getCountryFlag(battle.defenderId)}</span>
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2px' }}>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setExpandedBattle(isExpanded ? null : battle.id) }}
+                  onClick={(e) => { e.stopPropagation(); setExpandedBattles(prev => { const next = new Set(prev); if (next.has(battle.id)) next.delete(battle.id); else next.add(battle.id); return next }) }}
                   style={{
-                    width: '100%', padding: '5px 0', border: `1px solid rgba(255,255,255,0.1)`,
-                    borderRadius: '2px', cursor: 'pointer', fontSize: '9px', fontWeight: 900,
-                    fontFamily: 'var(--font-display)', letterSpacing: '1.5px',
-                    background: isExpanded ? 'rgba(239,68,68,0.1)' : 'rgba(34,211,138,0.1)',
-                    color: isExpanded ? '#f87171' : '#22d38a',
-                    transition: 'all 0.15s',
+                    padding: '1px 16px', border: 'none', borderRadius: '2px', cursor: 'pointer',
+                    fontSize: '8px', fontWeight: 600, background: 'rgba(255,255,255,0.04)',
+                    color: '#64748b', transition: 'all 0.15s', lineHeight: 1,
                   }}
-                >{isExpanded ? '▲ COLLAPSE' : '▼ EXPAND'}</button>
+                >{isExpanded ? '▲' : '▼'}</button>
               </div>
             </div>
 
@@ -1368,13 +1425,16 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               {/* Per-side order rows */}
               {(['attacker', 'defender'] as const).map(side => {
                 const currentOrder = side === 'attacker' ? (battle.attackerOrder || 'none') : (battle.defenderOrder || 'none')
+                const otherSideOrder = side === 'attacker' ? (battle.defenderOrder || 'none') : (battle.attackerOrder || 'none')
                 const sideColor = side === 'attacker' ? atkClr : defClr
+                // Disable this side if the OTHER side has an active order
+                const sideDisabled = otherSideOrder !== 'none'
                 return (
-                  <div key={side} style={{ marginBottom: '4px' }}>
+                  <div key={side} style={{ marginBottom: '4px', opacity: sideDisabled ? 0.35 : 1 }}>
                     <div style={{ fontSize: '7px', fontWeight: 900, color: sideColor, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '3px', borderLeft: `2px solid ${sideColor}`, paddingLeft: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span>{side.toUpperCase()}: {TACTICAL_ORDERS[currentOrder].label}</span>
                       {currentOrder !== 'none' && <span style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 600 }}>{TACTICAL_ORDERS[currentOrder].desc}</span>}
-                      {player.heroBuffTicksLeft > 0 && ((side === 'attacker' && iso === battle.attackerId) || (side === 'defender' && iso === battle.defenderId)) && (
+                      {player.heroBuffTicksLeft > 0 && player.heroBuffBattleId === battle.id && ((side === 'attacker' && iso === battle.attackerId) || (side === 'defender' && iso === battle.defenderId)) && (
                         <span style={{ fontSize: '7px', fontWeight: 900, color: '#0a0a0a', background: 'linear-gradient(90deg, #f59e0b, #fbbf24)', padding: '1px 5px', borderRadius: '2px', letterSpacing: '0.5px', animation: 'pulse 2s infinite', marginLeft: 'auto' }}>HERO +10%</span>
                       )}
                     </div>
@@ -1384,10 +1444,11 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                         const isActive = currentOrder === ord
                         return (
                           <button key={ord}
-                            onClick={(e) => { e.stopPropagation(); battleStore.setBattleOrder(battle.id, side, isActive ? 'none' : ord) }}
+                            disabled={sideDisabled}
+                            onClick={(e) => { e.stopPropagation(); if (!sideDisabled) battleStore.setBattleOrder(battle.id, side, isActive ? 'none' : ord) }}
                             style={{
                               padding: '3px 2px', border: `1px solid ${isActive ? o.color : 'rgba(255,255,255,0.08)'}`,
-                              borderRadius: '2px', cursor: 'pointer', fontSize: '7px', fontWeight: 800,
+                              borderRadius: '2px', cursor: sideDisabled ? 'not-allowed' : 'pointer', fontSize: '7px', fontWeight: 800,
                               fontFamily: 'var(--font-display)', letterSpacing: '0.5px',
                               background: isActive ? `${o.color}20` : 'rgba(255,255,255,0.03)',
                               color: isActive ? o.color : '#64748b',
@@ -1657,13 +1718,62 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               </div>
             </>)}
           </div>
+          </React.Fragment>
         )
-      })}
-
-      {/* Occupy Section */}
-      <div style={{ marginTop: '8px' }}>
-        <OccupationPanel />
-      </div>
+      })}      {/* Fallback: if fewer than 3 battles, render center panel after all battle cards */}
+      {panelFullscreen && activeBattles.length > 0 && activeBattles.length < 3 && (
+        <div className="war-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch', justifyContent: 'flex-start' }}>
+          {/* Tick Timer */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '8px 12px',
+            background: 'rgba(239,68,68,0.08)', borderRadius: '6px',
+            border: '1px solid rgba(239,68,68,0.15)',
+          }}>
+            <span style={{ fontSize: '14px', animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700, color: combatTickLeft <= 3 ? '#ef4444' : '#94a3b8' }}>
+                <span>NEXT TICK</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '12px', color: combatTickLeft <= 3 ? '#ef4444' : '#22d38a' }}>{combatTickLeft}s</span>
+              </div>
+              <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '3px' }}>
+                <div style={{
+                  width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%',
+                  background: combatTickLeft <= 3 ? '#ef4444' : '#22d38a',
+                  transition: 'width 0.9s linear', borderRadius: '2px',
+                }} />
+              </div>
+            </div>
+          </div>
+          {/* Food Grid */}
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {[
+              { key: 'bread', icon: '🍞', count: player.bread, sta: 10, heal: 1 },
+              { key: 'sushi', icon: '🍣', count: player.sushi, sta: 20, heal: 2 },
+              { key: 'wagyu', icon: '🥩', count: player.wagyu, sta: 30, heal: 3 },
+            ].map(f => (
+              <button key={f.key} disabled={f.count <= 0}
+                onClick={() => {
+                  player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu')
+                  const result = armyStore.healDivisionsWithFood(f.key as 'bread' | 'sushi' | 'wagyu')
+                  if (result.success) console.log(result.message)
+                }}
+                style={{
+                  flex: 1, padding: '6px 3px', borderRadius: '4px', cursor: f.count > 0 ? 'pointer' : 'not-allowed',
+                  background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                  opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
+                }}
+              >
+                <div style={{ fontSize: '16px' }}>{f.icon}</div>
+                <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
+                <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
+                <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Past Battles */}
       {pastBattles.length > 0 && (

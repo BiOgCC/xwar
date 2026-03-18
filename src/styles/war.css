@@ -113,7 +113,6 @@
 .war-card--battle {
   border-color: rgba(239, 68, 68, 0.3);
   background: rgba(239, 68, 68, 0.03);
-  overflow: hidden;
 }
 
 .war-card__title {
@@ -1920,4 +1919,76 @@
 
 .war-launch-3d-btn__icon {
   font-size: 14px;
+}
+
+/* ============================================
+   CONTAINER QUERY REFLOWS — fullscreen multi-column
+   ============================================ */
+
+/* Medium width: 2 columns */
+@container panel (min-width: 700px) {
+  /* MOTD — centered, max 20% */
+  .war-motd {
+    max-width: 20%;
+    min-width: 280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Tick timer — centered, max 20% */
+  .war-combat-header {
+    max-width: 20%;
+    min-width: 280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Food grid — centered, max 20% */
+  .war-combat-food {
+    max-width: 20%;
+    min-width: 280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Recruit grid: multi-column, cards flow left to right */
+  .war-recruit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .war-recruit-card__stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .war-overview {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .war-armies {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+/* Large width: 3+ columns */
+@container panel (min-width: 1000px) {
+  .war-recruit-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .war-overview {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Ultra-wide: 5 columns */
+@container panel (min-width: 1400px) {
+  .war-recruit-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
 }

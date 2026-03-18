@@ -27,6 +27,8 @@ export interface FloatingText {
 
 export interface UIState {
   activePanel: PanelType
+  lastClosedPanel: PanelType
+  panelFullscreen: boolean
   showModal: boolean
   modalContent: string | null
   notifications: Notification[]
@@ -37,6 +39,7 @@ export interface UIState {
   selectedForeignCountry: string | null
   setActivePanel: (panel: PanelType) => void
   togglePanel: (panel: PanelType) => void
+  setPanelFullscreen: (v: boolean) => void
   setProfileDefaultTab: (tab: string | null) => void
   cycleResourceView: () => void
   setForeignCountry: (code: string | null) => void
@@ -54,6 +57,8 @@ let chatCounter = 0
 
 export const useUIStore = create<UIState>((set) => ({
   activePanel: null,
+  lastClosedPanel: null,
+  panelFullscreen: false,
   selectedForeignCountry: null,
   showModal: false,
   modalContent: null,
@@ -73,9 +78,15 @@ export const useUIStore = create<UIState>((set) => ({
   setActivePanel: (panel) => set({ activePanel: panel }),
 
   togglePanel: (panel) =>
-    set((state) => ({
-      activePanel: state.activePanel === panel ? null : panel,
-    })),
+    set((state) => {
+      if (state.activePanel === panel) {
+        // Closing — remember it, and exit fullscreen
+        return { activePanel: null, lastClosedPanel: panel, panelFullscreen: false }
+      }
+      return { activePanel: panel }
+    }),
+
+  setPanelFullscreen: (v) => set({ panelFullscreen: v }),
 
   setProfileDefaultTab: (tab) => set({ profileDefaultTab: tab }),
 
