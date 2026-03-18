@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useUIStore } from '../../stores/uiStore'
+import { usePrestigeStore, getPrestigeItemImage } from '../../stores/prestigeStore'
 import { useSkillsStore } from '../../stores/skillsStore'
 import { useMarketStore } from '../../stores/marketStore'
 import {
@@ -31,6 +32,7 @@ export default function InventoryTab() {
  const player = usePlayerStore()
  const inventory = useInventoryStore()
  const ui = useUIStore()
+ const prestigeStore = usePrestigeStore()
 
  // Modal State
  const [selectedItem, setSelectedItem] = useState<EquipItem | null>(null)
@@ -39,10 +41,11 @@ export default function InventoryTab() {
 
  // Slot Pick Modal State
  const [pickerSlot, setPickerSlot] = useState<EquipSlot | null>(null)
+ const [showAmmoPicker, setShowAmmoPicker] = useState(false)
 
  // ESC closes any open modal
  useEffect(() => {
- const onClose = () => { setSelectedItem(null); setPickerSlot(null) }
+ const onClose = () => { setSelectedItem(null); setPickerSlot(null); setShowAmmoPicker(false) }
  window.addEventListener('xwar-close-modal', onClose)
  return () => window.removeEventListener('xwar-close-modal', onClose)
  }, [])
@@ -239,69 +242,192 @@ export default function InventoryTab() {
  </div>
  </div>
 
-      {/* EQUIPPED GEAR (card grid -- same as Profile tab) */}
- {equipped.length > 0 && (
- <div className="inv-section">
- <div className="inv-section__title" style={{ color: '#ffffff' }}>EQUIPPED GEAR</div>
- <div className="ptab-gear-grid">
- {equipped.map((item: any) => {
- const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
- const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
- const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
- const dur = item.durability ?? 100
- const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
+      {/* EQUIPPED GEAR — Armor/Prestige + Weapon/Ammo */}
+ {(() => {
+   const equippedPrestige = prestigeStore.items.find((i: any) => i.equipped && i.craftedBy === player.name)
+   const ammoMultipliers: Record<string, { dmg: number; crit: number }> = {
+     none: { dmg: 1.0, crit: 0 }, green: { dmg: 1.1, crit: 0 },
+     blue: { dmg: 1.2, crit: 0 }, purple: { dmg: 1.4, crit: 0 },
+     red: { dmg: 1.4, crit: 10 },
+   }
+   const ammoBonus = ammoMultipliers[player.equippedAmmo] || ammoMultipliers.none
+   return (
+     <div className="inv-section">
+       <div className="inv-section__title" style={{ color: '#ffffff' }}>ARMOR & PRESTIGE</div>
+       <div className="ptab-gear-grid">
+         {['helmet', 'chest', 'legs', 'gloves', 'boots'].map(slotStr => {
+           const item = equipped.find((i: any) => i.slot === slotStr);
+           if (!item) {
+             return (
+               <div key={slotStr} className="ptab-gear-card" style={{ borderColor: 'rgba(255,255,255,0.05)', opacity: 0.5 }}>
+                 <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">{slotStr.toUpperCase()}</span></div>
+                 <div className="ptab-gear-card__img-wrap">
+                   <div style={{ fontSize: '28px', opacity: 0.2 }}>
+                     {slotStr === 'helmet' ? '\u2302' : slotStr === 'chest' ? '\u2666' : slotStr === 'legs' ? '\u2225' : slotStr === 'gloves' ? '\u270B' : '\u25B2'}
+                   </div>
+                 </div>
+               </div>
+             )
+           }
+           const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
+           const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
+           const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+           const dur = item.durability ?? 100
+           const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
+           const statEntries: { label: string; val: string; color: string }[] = []
+           if (item.stats.damage)    statEntries.push({ label: 'DMG', val: String(item.stats.damage), color: '#f87171' })
+           if (item.stats.critRate)  statEntries.push({ label: 'CRIT', val: `${item.stats.critRate}%`, color: '#fb923c' })
+           if (item.stats.critDamage)statEntries.push({ label: 'C.DMG', val: `${item.stats.critDamage}%`, color: '#fb923c' })
+           if (item.stats.armor)     statEntries.push({ label: 'ARM', val: `${item.stats.armor}%`, color: '#94a3b8' })
+           if (item.stats.dodge)     statEntries.push({ label: 'EVA', val: `${item.stats.dodge}%`, color: '#34d399' })
+           if (item.stats.precision) statEntries.push({ label: 'ACC', val: `${item.stats.precision}%`, color: '#38bdf8' })
+           return (
+             <div key={item.id} className="ptab-gear-card" style={{ borderColor: `${tierColor}30`, '--card-tier-color': tierColor } as React.CSSProperties} onClick={() => setPickerSlot(item.slot)}>
+               <div className="ptab-gear-card__top">
+                 <span className="ptab-gear-card__slot">{item.slot.toUpperCase()}</span>
+                 <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
+               </div>
+               <div className="ptab-gear-card__img-wrap">
+                 {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} /> : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>?</div>}
+               </div>
+               {statEntries.length > 0 && (
+                 <div className="ptab-gear-card__stats">
+                   {statEntries.map(s => (
+                     <div key={s.label} className="ptab-gear-stat">
+                       <span className="ptab-gear-stat__label">{s.label}</span>
+                       <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
+                     </div>
+                   ))}
+                 </div>
+               )}
+               <div className="ptab-gear-card__footer">
+                 <div className="ptab-gear-card__dur-bar"><div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} /></div>
+                 <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
+               </div>
+             </div>
+           )
+         })}
+         {/* Prestige Slot */}
+         {equippedPrestige ? (() => {
+           const p = equippedPrestige
+           const pColor = p.category === 'military' ? '#ef4444' : '#38bdf8'
+           const pStats: { label: string; val: string; color: string }[] = []
+           if (p.bonusStats.damage) pStats.push({ label: 'DMG', val: `${p.bonusStats.damage}%`, color: '#f87171' })
+           if (p.bonusStats.crit_damage) pStats.push({ label: 'C.DMG', val: `${p.bonusStats.crit_damage}%`, color: '#fb923c' })
+           if (p.bonusStats.prospection) pStats.push({ label: 'PROS', val: `+${p.bonusStats.prospection}`, color: '#38bdf8' })
+           if (p.bonusStats.industrialist) pStats.push({ label: 'IND', val: `${p.bonusStats.industrialist}%`, color: '#fbbf24' })
+           return (
+             <div key="prestige" className="ptab-gear-card" style={{ borderColor: `${pColor}50`, '--card-tier-color': pColor, background: `linear-gradient(to bottom, ${pColor}10, transparent)` } as React.CSSProperties} onClick={() => ui.setActivePanel('prestige')}>
+               <div className="ptab-gear-card__top">
+                 <span className="ptab-gear-card__slot">PRESTIGE</span>
+                 <span className="ptab-gear-card__tier" style={{ color: pColor }}>{p.category.toUpperCase()}</span>
+               </div>
+               <div className="ptab-gear-card__img-wrap">
+                 <img src={getPrestigeItemImage(p.category)} alt={p.category === 'military' ? 'Crown' : 'Ring'} style={{ width: '40px', height: '40px', objectFit: 'contain', filter: `drop-shadow(0 0 8px ${pColor}66)` }} />
+               </div>
+               {pStats.length > 0 && (
+                 <div className="ptab-gear-card__stats">
+                   {pStats.slice(0,3).map(s => (
+                     <div key={s.label} className="ptab-gear-stat">
+                       <span className="ptab-gear-stat__label">{s.label}</span>
+                       <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
+                     </div>
+                   ))}
+                 </div>
+               )}
+               <div className="ptab-gear-card__footer" style={{ justifyContent: 'center' }}>
+                 <div className="ptab-gear-card__dur-lbl" style={{ color: '#eab308' }}>INFINITE</div>
+               </div>
+             </div>
+           )
+         })() : (
+           <div key="prestige_empty" className="ptab-gear-card" style={{ borderColor: 'rgba(234,179,8,0.2)', opacity: 0.6 }} onClick={() => ui.setActivePanel('prestige')}>
+             <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot" style={{color:'#eab308'}}>PRESTIGE</span></div>
+             <div className="ptab-gear-card__img-wrap">
+               <img src="/assets/items/prestige_crown.png" alt="Prestige" style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.3 }} />
+             </div>
+           </div>
+         )}
+       </div>
 
- const statEntries: { label: string; val: string; color: string }[] = []
- if (item.stats.damage) statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
- if (item.stats.critRate) statEntries.push({ label: 'CRIT', val: `${item.stats.critRate}%`, color: '#fb923c' })
- if (item.stats.critDamage)statEntries.push({ label: 'C.DMG', val: `${item.stats.critDamage}%`, color: '#fb923c' })
- if (item.stats.armor) statEntries.push({ label: 'ARM', val: `${item.stats.armor}%`, color: '#94a3b8' })
- if (item.stats.dodge) statEntries.push({ label: 'EVA', val: `${item.stats.dodge}%`, color: '#34d399' })
- if (item.stats.precision) statEntries.push({ label: 'ACC', val: `${item.stats.precision}%`, color: '#38bdf8' })
+       <div className="inv-section__title" style={{ marginTop: '16px', color: '#ffffff' }}>WEAPONRY & AMMO</div>
+       <div className="ptab-gear-grid">
+         {(() => {
+           const item = equipped.find((i: any) => i.slot === 'weapon');
+           if (!item) {
+             return (
+               <div key="weapon" className="ptab-gear-card" style={{ borderColor: 'rgba(255,255,255,0.05)', opacity: 0.5 }}>
+                 <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">WEAPON</span></div>
+                 <div className="ptab-gear-card__img-wrap"><div style={{ fontSize: '28px', opacity: 0.2 }}>\u2694</div></div>
+               </div>
+             )
+           }
+           const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
+           const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
+           const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+           const dur = item.durability ?? 100
+           const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
+           return (
+             <div key={item.id} className="ptab-gear-card" style={{ borderColor: `${tierColor}30`, '--card-tier-color': tierColor } as React.CSSProperties} onClick={() => setPickerSlot(item.slot)}>
+               <div className="ptab-gear-card__top">
+                 <span className="ptab-gear-card__slot">{item.slot.toUpperCase()}</span>
+                 <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
+               </div>
+               <div className="ptab-gear-card__img-wrap">
+                 {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} /> : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>\u2694</div>}
+               </div>
+               <div className="ptab-gear-card__stats">
+                 {item.stats.damage && <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">DMG</span><span className="ptab-gear-stat__val" style={{ color: '#f87171' }}>{item.stats.damage}</span></div>}
+                 {item.stats.critRate && <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">CRIT</span><span className="ptab-gear-stat__val" style={{ color: '#fb923c' }}>{item.stats.critRate}%</span></div>}
+               </div>
+               <div className="ptab-gear-card__footer">
+                 <div className="ptab-gear-card__dur-bar"><div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} /></div>
+                 <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
+               </div>
+             </div>
+           )
+         })()}
 
- return (
- <div
- key={item.id}
- className="ptab-gear-card"
- style={{ borderColor: `${tierColor}30`, '--card-tier-color': tierColor } as React.CSSProperties}
- onClick={() => setPickerSlot(item.slot)}
- title={`Click to change ${item.slot}`}
- >
- <div className="ptab-gear-card__top">
- <span className="ptab-gear-card__slot">{item.slot.toUpperCase()}</span>
- <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
- </div>
- <div className="ptab-gear-card__img-wrap">
- {imgUrl ? (
- <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} />
- ) : (
- <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>
- {item.slot === 'helmet' ? '\u2302' : item.slot === 'chest' ? '\u2666' : item.slot === 'legs' ? '\u2225' : item.slot === 'gloves' ? '\u270B' : item.slot === 'boots' ? '\u25B2' : '\u2694'}
- </div>
- )}
- </div>
- {statEntries.length > 0 && (
- <div className="ptab-gear-card__stats">
- {statEntries.map(s => (
- <div key={s.label} className="ptab-gear-stat">
- <span className="ptab-gear-stat__label">{s.label}</span>
- <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
- </div>
- ))}
- </div>
- )}
- <div className="ptab-gear-card__footer">
- <div className="ptab-gear-card__dur-bar">
- <div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} />
- </div>
- <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
- </div>
- </div>
- )
- })}
- </div>
- </div>
- )}
+         {/* Ammo Slot */}
+         {(() => {
+           const ammo = player.equippedAmmo
+           if (ammo === 'none') {
+             return (
+               <div key="ammo_empty" className="ptab-gear-card" style={{ borderColor: 'rgba(255,255,255,0.1)', opacity: 0.6, cursor: 'pointer' }} onClick={() => setShowAmmoPicker(true)}>
+                 <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">AMMO</span></div>
+                 <div className="ptab-gear-card__img-wrap"><div style={{ fontSize: '28px', opacity: 0.3 }}>\u25cf</div></div>
+                 <div className="ptab-gear-card__footer" style={{ justifyContent: 'center' }}>
+                   <div className="ptab-gear-card__dur-lbl" style={{ color: '#64748b', fontSize: '7px' }}>CLICK TO EQUIP</div>
+                 </div>
+               </div>
+             )
+           }
+           const ammoColors: Record<string, string> = { green: '#10b981', blue: '#3b82f6', purple: '#a855f7', red: '#ef4444' }
+           const aColor = ammoColors[ammo] || '#fff'
+           const aCount = player[`${ammo}Bullets` as keyof typeof player] as number
+           return (
+             <div key="ammo" className="ptab-gear-card" style={{ borderColor: `${aColor}30`, '--card-tier-color': aColor, cursor: 'pointer' } as React.CSSProperties} onClick={() => setShowAmmoPicker(true)}>
+               <div className="ptab-gear-card__top">
+                 <span className="ptab-gear-card__slot">AMMO</span>
+                 <span className="ptab-gear-card__tier" style={{ color: aColor }}>{ammo.toUpperCase()}</span>
+               </div>
+               <div className="ptab-gear-card__img-wrap">
+                 <img src={`/assets/items/ammo_${ammo}.png`} alt={ammo} className="ptab-gear-card__img" style={{ filter: `drop-shadow(0 0 8px ${aColor}66)` }} />
+               </div>
+               <div className="ptab-gear-card__stats">
+                 <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">AMNT</span><span className="ptab-gear-stat__val" style={{ color: aColor }}>{aCount?.toLocaleString()}</span></div>
+                 <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">MULT</span><span className="ptab-gear-stat__val" style={{ color: aColor }}>\u00d7{ammoBonus.dmg}</span></div>
+               </div>
+               <div className="ptab-gear-card__footer" style={{ justifyContent: 'center' }}>
+                 <div className="ptab-gear-card__dur-lbl" style={{ color: aColor }}>EQUIPPED</div>
+               </div>
+             </div>
+           )
+         })()}
+       </div>
+     </div>
+   )
+ })()}
 
 
  {/* CRAFT MODAL */}
@@ -776,7 +902,55 @@ export default function InventoryTab() {
  </div>
  )
  })()}
+
+      {/* ── AMMO PICKER MODAL ─────────────────────── */}
+      {showAmmoPicker && (() => {
+        const ammoTypes: Array<{ key: 'none' | 'green' | 'blue' | 'purple' | 'red'; label: string; color: string; bonus: string }> = [
+          { key: 'green',  label: 'Green Ammo',  color: '#10b981', bonus: '\u00d71.1 DMG' },
+          { key: 'blue',   label: 'Blue Ammo',   color: '#3b82f6', bonus: '\u00d71.2 DMG' },
+          { key: 'purple', label: 'Purple Ammo', color: '#a855f7', bonus: '\u00d71.4 DMG' },
+          { key: 'red',    label: 'Red Ammo',    color: '#ef4444', bonus: '\u00d71.4 DMG +10% CRIT' },
+        ]
+        return (
+          <div className="inv-modal-overlay" onClick={() => setShowAmmoPicker(false)}>
+            <div className="inv-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '340px', width: '90%' }}>
+              <div className="inv-modal__title" style={{ color: '#fbbf24' }}>SELECT AMMO</div>
+              <div style={{ padding: '10px 12px', marginBottom: '10px', background: player.equippedAmmo !== 'none' ? 'rgba(251,191,36,0.06)' : 'rgba(71,85,105,0.1)', border: `1px solid ${player.equippedAmmo !== 'none' ? 'rgba(251,191,36,0.2)' : 'rgba(71,85,105,0.2)'}`, borderRadius: '6px', textAlign: 'center' }}>
+                <div style={{ fontSize: '9px', color: '#64748b', fontFamily: 'var(--font-display)', letterSpacing: '0.1em', marginBottom: '4px' }}>CURRENTLY EQUIPPED</div>
+                <div style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-display)', color: player.equippedAmmo === 'none' ? '#475569' : '#fbbf24' }}>
+                  {player.equippedAmmo === 'none' ? 'No Ammo' : `${player.equippedAmmo.toUpperCase()} AMMO`}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '300px', overflowY: 'auto' }}>
+                {ammoTypes.map(at => {
+                  const count = player[`${at.key}Bullets` as keyof typeof player] as number
+                  const isEquipped = player.equippedAmmo === at.key
+                  const hasAmmo = count > 0
+                  return (
+                    <div key={at.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '5px', background: isEquipped ? 'rgba(132,204,22,0.06)' : 'rgba(8,12,18,0.8)', border: `1px solid ${isEquipped ? 'rgba(132,204,22,0.3)' : hasAmmo ? `${at.color}33` : 'rgba(71,85,105,0.15)'}`, cursor: hasAmmo ? 'pointer' : 'not-allowed', opacity: hasAmmo ? 1 : 0.4, transition: 'all 150ms ease' }} onClick={() => { if (hasAmmo) { player.equipAmmo(at.key); setShowAmmoPicker(false) } }}>
+                      <div style={{ width: '36px', height: '36px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img src={`/assets/items/ammo_${at.key}.png`} alt={at.label} style={{ width: '30px', height: '30px', objectFit: 'contain', filter: `drop-shadow(0 2px 6px ${at.color}40)` }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '11px', fontFamily: 'var(--font-display)', fontWeight: 700, color: at.color }}>{at.label}</div>
+                        <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono)', marginTop: '1px' }}>{at.bonus}</div>
+                        <div style={{ fontSize: '9px', color: '#64748b', fontFamily: 'var(--font-mono)', marginTop: '1px' }}>Stock: <span style={{ color: hasAmmo ? at.color : '#ef4444', fontWeight: 700 }}>{count.toLocaleString()}</span></div>
+                      </div>
+                      <div style={{ fontSize: '8px', fontWeight: 700, fontFamily: 'var(--font-display)', flexShrink: 0, color: isEquipped ? '#84cc16' : hasAmmo ? at.color : '#475569' }}>
+                        {isEquipped ? 'EQUIPPED' : hasAmmo ? 'EQUIP' : 'EMPTY'}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {player.equippedAmmo !== 'none' && (
+                <button onClick={() => { player.equipAmmo('none'); setShowAmmoPicker(false) }} style={{ width: '100%', padding: '8px', marginTop: '8px', fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '4px', cursor: 'pointer' }}>UNEQUIP AMMO</button>
+              )}
+              <button onClick={() => setShowAmmoPicker(false)} style={{ width: '100%', padding: '8px', marginTop: '6px', fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'transparent', color: '#475569', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', cursor: 'pointer' }}>CLOSE</button>
+            </div>
+          </div>
+        )
+      })()}
  </div>
  )
 }
-

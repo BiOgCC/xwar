@@ -60,7 +60,7 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
   return (
     <div className="war-panel">
       {/* Message of the Day — global, above tabs */}
-      <div className="war-motd" style={{ padding: '6px 10px', marginBottom: '6px', background: 'rgba(132, 204, 22, 0.08)', borderRadius: '4px', border: '1px solid rgba(132, 204, 22, 0.2)', boxShadow: 'inset 0 0 10px rgba(132, 204, 22, 0.05)' }}>
+      <div className="war-motd" style={{ padding: '6px 10px', marginBottom: '6px', background: 'rgba(96, 165, 250, 0.08)', borderRadius: '4px', border: '1px solid rgba(96, 165, 250, 0.2)', boxShadow: 'inset 0 0 10px rgba(96, 165, 250, 0.05)' }}>
         {editingMotd ? (
           <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
             <input
@@ -79,7 +79,7 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
               onClick={() => setEditingMotd(false)}
               style={{
                 padding: '2px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer',
-                background: 'rgba(34,197,94,0.2)', color: '#22c55e', fontSize: '10px', fontWeight: 700,
+                background: 'rgba(59,130,246,0.2)', color: '#3b82f6', fontSize: '10px', fontWeight: 700,
               }}
             >✅</button>
           </div>
@@ -87,9 +87,9 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => setEditingMotd(true)}>
             <div style={{
               flex: 1, fontSize: '8px', letterSpacing: '0.8px', textTransform: 'uppercase',
-              fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#84cc16',
-              padding: '4px 8px', background: 'rgba(132, 204, 22, 0.05)', borderRadius: '2px',
-              borderLeft: '2px solid #84cc16',
+              fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#60a5fa',
+              padding: '4px 8px', background: 'rgba(96, 165, 250, 0.05)', borderRadius: '2px',
+              borderLeft: '2px solid #60a5fa',
             }}>
               {battleStore.warMotd}
             </div>
@@ -99,9 +99,9 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
           <button
             onClick={() => setEditingMotd(true)}
             style={{
-              width: '100%', padding: '4px 6px', border: '1px dashed rgba(132, 204, 22, 0.3)',
+              width: '100%', padding: '4px 6px', border: '1px dashed rgba(96, 165, 250, 0.3)',
               borderRadius: '2px', cursor: 'pointer', background: 'transparent',
-              fontSize: '8px', color: '#84cc16', fontFamily: 'var(--font-mono)', textTransform: 'uppercase',
+              fontSize: '8px', color: '#60a5fa', fontFamily: 'var(--font-mono)', textTransform: 'uppercase',
               letterSpacing: '1px', fontWeight: 600
             }}
           >SET MESSAGE OF THE DAY</button>
@@ -146,7 +146,7 @@ function OverviewTab({ iso }: { iso: string }) {
 
   const popCap = armyStore.getPlayerPopCap()
   const popPct = popCap.max > 0 ? (popCap.used / popCap.max) * 100 : 0
-  const popColor = popPct >= 90 ? '#ef4444' : popPct >= 60 ? '#f59e0b' : '#22d38a'
+  const popColor = popPct >= 90 ? '#ef4444' : popPct >= 60 ? '#f59e0b' : '#3b82f6'
 
   // --- ARMY INTELLIGENCE METRICS ---
   // 1. Elite Forces (Star breakdown)
@@ -196,10 +196,10 @@ function OverviewTab({ iso }: { iso: string }) {
           {[
             { label: 'DIVS', value: myDivisions.length, color: '#e2e8f0' },
             { label: 'TROOPS', value: totalManpower.toLocaleString(), color: '#e2e8f0' },
-            { label: 'READY', value: readyDivs, color: '#22d38a' },
+            { label: 'READY', value: readyDivs, color: '#3b82f6' },
             { label: 'TRAINING', value: trainingDivs, color: '#f59e0b' },
-            { label: 'COMBAT', value: inCombatDivs, color: '#84cc16' },
-            { label: 'BATTLES', value: activeBattles.length, color: '#84cc16' },
+            { label: 'COMBAT', value: inCombatDivs, color: '#60a5fa' },
+            { label: 'BATTLES', value: activeBattles.length, color: '#60a5fa' },
           ].map(s => (
             <div key={s.label} style={{
               flex: '1 1 60px', textAlign: 'center', padding: '4px 2px',
@@ -243,7 +243,7 @@ function OverviewTab({ iso }: { iso: string }) {
             <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>ESTIMATED POWER</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700 }}>
               <span style={{ color: '#ef4444' }}>⚔️ {totalDpt.toLocaleString()} DPT</span>
-              <span style={{ color: '#22d38a' }}>🛡️ {totalHp.toLocaleString()} HP</span>
+              <span style={{ color: '#3b82f6' }}>🛡️ {totalHp.toLocaleString()} HP</span>
             </div>
           </div>
 
@@ -262,7 +262,7 @@ function OverviewTab({ iso }: { iso: string }) {
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '6px' }}>
             <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>COMPOSITION</div>
             <div style={{ display: 'flex', width: '100%', height: '4px', borderRadius: '2px', overflow: 'hidden', marginBottom: '2px' }}>
-              <div style={{ width: `${comp.total ? (comp.land / comp.total)*100 : 0}%`, background: '#84cc16' }} />
+              <div style={{ width: `${comp.total ? (comp.land / comp.total)*100 : 0}%`, background: '#60a5fa' }} />
               <div style={{ width: `${comp.total ? (comp.air / comp.total)*100 : 0}%`, background: '#0ea5e9' }} />
               <div style={{ width: `${comp.total ? (comp.naval / comp.total)*100 : 0}%`, background: '#3b82f6' }} />
             </div>
@@ -275,7 +275,7 @@ function OverviewTab({ iso }: { iso: string }) {
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '6px' }}>
             <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>EQUIPMENT STATUS</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700 }}>
-              <span style={{ color: fullyGeared > 0 ? '#22d38a' : '#64748b' }}>Full: {fullyGeared}</span>
+              <span style={{ color: fullyGeared > 0 ? '#3b82f6' : '#64748b' }}>Full: {fullyGeared}</span>
               <span style={{ color: someGear > 0 ? '#f59e0b' : '#64748b' }}>Partial: {someGear}</span>
               <span style={{ color: noGear > 0 ? '#ef4444' : '#64748b' }}>Empty: {noGear}</span>
             </div>
@@ -286,7 +286,7 @@ function OverviewTab({ iso }: { iso: string }) {
             <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>ARMY VETERANCY</div>
             <div style={{ fontSize: '12px', fontWeight: 900, color: '#e2e8f0' }}>Level {avgLevel}</div>
             <div style={{ width: '100%', height: '2px', background: 'rgba(255,255,255,0.1)', marginTop: '2px' }}>
-              <div style={{ width: `${avgExp % 10}0%`, height: '100%', background: '#22d38a' }} />
+              <div style={{ width: `${avgExp % 10}0%`, height: '100%', background: '#3b82f6' }} />
             </div>
           </div>
 
@@ -317,7 +317,7 @@ function OverviewTab({ iso }: { iso: string }) {
                 </div>
                 {/* Compact damage bar */}
                 <div style={{ position: 'relative', height: '14px', borderRadius: '3px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
-                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: '#22d38a', opacity: 0.8 }} />
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: '#3b82f6', opacity: 0.8 }} />
                   <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${100 - atkPct}%`, background: '#ef4444', opacity: 0.8 }} />
                   <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: '2px', background: '#fff', transform: 'translateX(-1px)', zIndex: 2, opacity: 0.5 }} />
                   <span style={{ position: 'absolute', left: '4px', top: '50%', transform: 'translateY(-50%)', fontSize: '8px', fontWeight: 700, color: '#fff', zIndex: 3 }}>{atkDmg.toLocaleString()}</span>
@@ -325,7 +325,7 @@ function OverviewTab({ iso }: { iso: string }) {
                 </div>
                 {activeRound && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', color: '#94a3b8', marginTop: '2px' }}>
-                    <span style={{ color: '#22d38a' }}>{activeRound.attackerPoints} pts</span>
+                    <span style={{ color: '#3b82f6' }}>{activeRound.attackerPoints} pts</span>
                     <span>600 to win</span>
                     <span style={{ color: '#ef4444' }}>{activeRound.defenderPoints} pts</span>
                   </div>
@@ -422,9 +422,9 @@ function RecruitTab() {
         onClick={() => setShowContractModal(true)}
         style={{
           width: '20%', margin: '0 auto 8px', padding: '10px 16px',
-          background: 'linear-gradient(135deg, rgba(34,211,138,0.2), rgba(16,185,129,0.15))',
-          border: '1px solid rgba(34,211,138,0.4)', borderRadius: '6px',
-          color: '#22d38a', fontWeight: 700, fontSize: '13px',
+          background: 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(37,99,235,0.15))',
+          border: '1px solid rgba(59,130,246,0.4)', borderRadius: '6px',
+          color: '#3b82f6', fontWeight: 700, fontSize: '13px',
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
           transition: 'all 0.2s', letterSpacing: '0.5px', fontFamily: 'var(--font-display)',
         }}
@@ -435,15 +435,15 @@ function RecruitTab() {
       {/* ====== CONTRACT MODAL ====== */}
       {showContractModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '380px', background: '#1a1f2e', border: '1px solid rgba(34,211,138,0.3)', borderRadius: '10px', padding: '20px', position: 'relative' }}>
+          <div style={{ width: '380px', background: '#1a1f2e', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '10px', padding: '20px', position: 'relative' }}>
             <button onClick={() => setShowContractModal(false)} style={{ position: 'absolute', top: '10px', right: '12px', background: 'none', border: 'none', color: '#64748b', fontSize: '16px', cursor: 'pointer' }}>✕</button>
 
-            <div style={{ fontSize: '14px', fontWeight: 700, color: '#22d38a', marginBottom: '12px', fontFamily: 'var(--font-display)' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: '#3b82f6', marginBottom: '12px', fontFamily: 'var(--font-display)' }}>
               💸 MILITARY CONTRACT
             </div>
 
             <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '16px', lineHeight: '1.6' }}>
-              Invest money into the national defense fund. Your investment will be <b style={{ color: '#f59e0b' }}>locked for 24 hours</b>, after which you receive a <b style={{ color: '#22d38a' }}>fixed 11% profit</b>. Each contract <b style={{ color: '#a855f7' }}>instantly spawns 1 new division</b> in the shop.
+              Invest money into the national defense fund. Your investment will be <b style={{ color: '#f59e0b' }}>locked for 24 hours</b>, after which you receive a <b style={{ color: '#3b82f6' }}>fixed 11% profit</b>. Each contract <b style={{ color: '#a855f7' }}>instantly spawns 1 new division</b> in the shop.
             </div>
 
             {/* Amount Slider */}
@@ -459,7 +459,7 @@ function RecruitTab() {
                 step={10000}
                 value={contractAmount}
                 onChange={(e) => setContractAmount(Number(e.target.value))}
-                style={{ width: '100%', accentColor: '#22d38a' }}
+                style={{ width: '100%', accentColor: '#3b82f6' }}
               />
               <div style={{ textAlign: 'center', fontSize: '20px', fontWeight: 700, color: '#e2e8f0', fontFamily: 'var(--font-display)', marginTop: '4px' }}>
                 ${contractAmount.toLocaleString()}
@@ -474,7 +474,7 @@ function RecruitTab() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
                 <span style={{ color: '#94a3b8' }}>Profit (11%)</span>
-                <span style={{ color: '#22d38a', fontWeight: 600 }}>+${projectedProfit.toLocaleString()}</span>
+                <span style={{ color: '#3b82f6', fontWeight: 600 }}>+${projectedProfit.toLocaleString()}</span>
               </div>
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                 <span style={{ color: '#f59e0b', fontWeight: 700 }}>Payout (24h)</span>
@@ -493,9 +493,9 @@ function RecruitTab() {
                 disabled={player.money < contractAmount}
                 style={{
                   flex: 2, padding: '8px',
-                  background: player.money >= contractAmount ? 'rgba(34,211,138,0.2)' : 'rgba(100,116,139,0.1)',
-                  border: `1px solid ${player.money >= contractAmount ? 'rgba(34,211,138,0.4)' : 'rgba(100,116,139,0.2)'}`,
-                  borderRadius: '5px', color: player.money >= contractAmount ? '#22d38a' : '#64748b',
+                  background: player.money >= contractAmount ? 'rgba(59,130,246,0.2)' : 'rgba(100,116,139,0.1)',
+                  border: `1px solid ${player.money >= contractAmount ? 'rgba(59,130,246,0.4)' : 'rgba(100,116,139,0.2)'}`,
+                  borderRadius: '5px', color: player.money >= contractAmount ? '#3b82f6' : '#64748b',
                   fontWeight: 700, fontSize: '12px', cursor: player.money >= contractAmount ? 'pointer' : 'not-allowed',
                 }}
               >CONFIRM CONTRACT</button>
@@ -525,11 +525,11 @@ function RecruitTab() {
             const hoursLeft = Math.floor(timeLeftMs / 3600000)
             const minsLeft = Math.floor((timeLeftMs % 3600000) / 60000)
             return (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: c.status === 'claimable' ? 'rgba(34,211,138,0.08)' : 'rgba(245,158,11,0.06)', border: `1px solid ${c.status === 'claimable' ? 'rgba(34,211,138,0.2)' : 'rgba(245,158,11,0.15)'}`, borderRadius: '5px', marginBottom: '4px' }}>
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: c.status === 'claimable' ? 'rgba(59,130,246,0.08)' : 'rgba(245,158,11,0.06)', border: `1px solid ${c.status === 'claimable' ? 'rgba(59,130,246,0.2)' : 'rgba(245,158,11,0.15)'}`, borderRadius: '5px', marginBottom: '4px' }}>
                 <div>
                   <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>
                     {c.status === 'locked' ? '🔒' : '✅'} ${c.investedAmount.toLocaleString()} → ${payout.toLocaleString()}
-                    <span style={{ color: '#22d38a', marginLeft: '4px', fontSize: '9px' }}>+${profit.toLocaleString()}</span>
+                    <span style={{ color: '#3b82f6', marginLeft: '4px', fontSize: '9px' }}>+${profit.toLocaleString()}</span>
                   </div>
                   {c.status === 'locked' && (
                     <div style={{ fontSize: '8px', color: '#f59e0b' }}>Unlocks in {hoursLeft}h {minsLeft}m</div>
@@ -538,7 +538,7 @@ function RecruitTab() {
                 {c.status === 'claimable' && (
                   <button
                     onClick={() => handleClaimContract(c.id)}
-                    style={{ padding: '4px 12px', background: 'rgba(34,211,138,0.2)', border: '1px solid rgba(34,211,138,0.4)', borderRadius: '4px', color: '#22d38a', fontWeight: 700, fontSize: '10px', cursor: 'pointer', animation: 'pulse 1.5s infinite' }}
+                    style={{ padding: '4px 12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: '4px', color: '#3b82f6', fontWeight: 700, fontSize: '10px', cursor: 'pointer', animation: 'pulse 1.5s infinite' }}
                   >CLAIM ${payout.toLocaleString()}</button>
                 )}
               </div>
@@ -610,9 +610,9 @@ function RecruitTab() {
           }}>✕</button>}
           <button onClick={() => setSortPrice(p => ((p + 1) % 3) as 0 | 1 | 2)} style={{
             padding: '3px 8px', fontSize: 9, fontWeight: 700,
-            border: `1px solid ${sortPrice ? '#22d38a' : 'rgba(255,255,255,0.1)'}`,
-            borderRadius: 3, background: sortPrice ? 'rgba(34,211,138,0.15)' : 'rgba(255,255,255,0.04)',
-            color: sortPrice ? '#22d38a' : '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap',
+            border: `1px solid ${sortPrice ? '#3b82f6' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 3, background: sortPrice ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
+            color: sortPrice ? '#3b82f6' : '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap',
           }}>
             {sortPrice === 0 ? '⇅' : sortPrice === 1 ? '↓' : '↑'} PRICE
           </button>
@@ -657,7 +657,7 @@ function RecruitTab() {
             const effSpeed = (t.attackSpeed || 1.0) * (1 + sm.attackSpeed)
             const baseAtk = 100 // player base attack estimate
             const dpt = Math.floor((baseAtk + t.manpowerCost * 3) * effAtk * (1 / Math.max(0.2, effSpeed)))
-            const priceColor = listing.price <= avgPrice ? '#22d38a' : '#f59e0b'
+            const priceColor = listing.price <= avgPrice ? '#3b82f6' : '#f59e0b'
             // Squadron callsign from listing ID hash
             const SQUADRONS = ['Iron Wolves','Phantom Hawks','Steel Vipers','Thunder Eagles','Shadow Foxes','War Hounds','Night Stalkers','Crimson Lancers','Ghost Riders','Storm Breakers','Death Dealers','Black Scorpions','Blood Ravens','Hellfire Squad','Dire Wolves','Ice Fangs','Void Reapers','Apex Hunters','Bone Crushers','Wrath Brigade']
             const sqIdx = listing.id.split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0) % SQUADRONS.length
@@ -687,15 +687,15 @@ function RecruitTab() {
 
                 <div className="war-recruit-card__stats">
                   {/* Offensive */}
-                  <div className="war-recruit-stat"><span>ATK</span><span className="war-recruit-stat__val" style={{ color: sm.atkDmgMult > 0 ? '#22d38a' : sm.atkDmgMult < 0 ? '#ef4444' : undefined }}>{fAtk}x</span></div>
-                  <div className="war-recruit-stat"><span>Hit Rate</span><span className="war-recruit-stat__val" style={{ color: sm.hitRate > 0 ? '#22d38a' : sm.hitRate < 0 ? '#ef4444' : undefined }}>{fHit}%</span></div>
-                  <div className="war-recruit-stat"><span>CRTH</span><span className="war-recruit-stat__val" style={{ color: sm.critRateMult > 0 ? '#22d38a' : sm.critRateMult < 0 ? '#ef4444' : undefined }}>{fCrit}x</span></div>
-                  <div className="war-recruit-stat"><span>CRTD</span><span className="war-recruit-stat__val" style={{ color: sm.critDmgMult > 0 ? '#22d38a' : sm.critDmgMult < 0 ? '#ef4444' : undefined }}>{fCritDmg}x</span></div>
-                  <div className="war-recruit-stat"><span>Speed</span><span className="war-recruit-stat__val" style={{ color: sm.attackSpeed > 0 ? '#22d38a' : sm.attackSpeed < 0 ? '#ef4444' : undefined }}>{fSpeed}s</span></div>
+                  <div className="war-recruit-stat"><span>ATK</span><span className="war-recruit-stat__val" style={{ color: sm.atkDmgMult > 0 ? '#3b82f6' : sm.atkDmgMult < 0 ? '#ef4444' : undefined }}>{fAtk}x</span></div>
+                  <div className="war-recruit-stat"><span>Hit Rate</span><span className="war-recruit-stat__val" style={{ color: sm.hitRate > 0 ? '#3b82f6' : sm.hitRate < 0 ? '#ef4444' : undefined }}>{fHit}%</span></div>
+                  <div className="war-recruit-stat"><span>CRTH</span><span className="war-recruit-stat__val" style={{ color: sm.critRateMult > 0 ? '#3b82f6' : sm.critRateMult < 0 ? '#ef4444' : undefined }}>{fCrit}x</span></div>
+                  <div className="war-recruit-stat"><span>CRTD</span><span className="war-recruit-stat__val" style={{ color: sm.critDmgMult > 0 ? '#3b82f6' : sm.critDmgMult < 0 ? '#ef4444' : undefined }}>{fCritDmg}x</span></div>
+                  <div className="war-recruit-stat"><span>Speed</span><span className="war-recruit-stat__val" style={{ color: sm.attackSpeed > 0 ? '#3b82f6' : sm.attackSpeed < 0 ? '#ef4444' : undefined }}>{fSpeed}s</span></div>
                   {/* Defensive */}
-                  <div className="war-recruit-stat"><span>HP</span><span className="war-recruit-stat__val" style={{ color: sm.healthMult > 0 ? '#22d38a' : sm.healthMult < 0 ? '#ef4444' : undefined }}>{fHp}x</span></div>
-                  <div className="war-recruit-stat"><span>Armor</span><span className="war-recruit-stat__val" style={{ color: sm.armorMult > 0 ? '#22d38a' : sm.armorMult < 0 ? '#ef4444' : undefined }}>{fArmor}x</span></div>
-                  <div className="war-recruit-stat"><span>Dodge</span><span className="war-recruit-stat__val" style={{ color: sm.dodgeMult > 0 ? '#22d38a' : sm.dodgeMult < 0 ? '#ef4444' : undefined }}>{fDodge}x</span></div>
+                  <div className="war-recruit-stat"><span>HP</span><span className="war-recruit-stat__val" style={{ color: sm.healthMult > 0 ? '#3b82f6' : sm.healthMult < 0 ? '#ef4444' : undefined }}>{fHp}x</span></div>
+                  <div className="war-recruit-stat"><span>Armor</span><span className="war-recruit-stat__val" style={{ color: sm.armorMult > 0 ? '#3b82f6' : sm.armorMult < 0 ? '#ef4444' : undefined }}>{fArmor}x</span></div>
+                  <div className="war-recruit-stat"><span>Dodge</span><span className="war-recruit-stat__val" style={{ color: sm.dodgeMult > 0 ? '#3b82f6' : sm.dodgeMult < 0 ? '#ef4444' : undefined }}>{fDodge}x</span></div>
                 </div>
 
                 <div className="war-recruit-card__cost" style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
@@ -810,7 +810,7 @@ function ForcesTab({ iso }: { iso: string }) {
           </div>
           {currentArmy ? (
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '9px', color: '#22d38a', fontWeight: 700 }}>✅ {currentArmy.name}</div>
+              <div style={{ fontSize: '9px', color: '#3b82f6', fontWeight: 700 }}>✅ {currentArmy.name}</div>
               <div style={{ fontSize: '7px', color: '#64748b' }}>{currentArmy.members.length} members</div>
               {currentArmy.commanderId !== player.name && (
                 <button className="war-btn war-btn--danger" style={{ fontSize: '7px', padding: '2px 6px', marginTop: '2px' }} onClick={handleLeave}>LEAVE</button>
@@ -932,7 +932,7 @@ function ForcesTab({ iso }: { iso: string }) {
                     const finalSpeed = Math.max(0.2, (template.attackSpeed || 1.0) - eq.bonusSpeed)
                     const finalCritDmg = (ps.critMultiplier * (template.critDmgMult + divLevel * 0.01) * 100).toFixed(0)
                     const statusColors: Record<string, string> = {
-                      training: '#f59e0b', ready: '#22d38a', in_combat: '#ef4444', recovering: '#3b82f6', destroyed: '#64748b'
+                      training: '#f59e0b', ready: '#3b82f6', in_combat: '#ef4444', recovering: '#3b82f6', destroyed: '#64748b'
                     }
                     const statusLabels: Record<string, string> = {
                       training: '🔨 TRAINING', ready: '✅ READY', in_combat: '⚔️ COMBAT', recovering: '💤 RECOVERING', destroyed: '💀 DESTROYED'
@@ -955,7 +955,7 @@ function ForcesTab({ iso }: { iso: string }) {
                             title="Recall from battle"
                             onClick={() => {
                               const r = armyStore.recallArmy(army.id)
-                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#3b82f6' : '#ef4444')
                             }}
                           >✕</button>
                         </div>
@@ -1000,10 +1000,10 @@ function ForcesTab({ iso }: { iso: string }) {
                             </button>
                           ) : (
                             <button
-                              style={{ flex: 1, padding: '6px 0', fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '1px', borderRadius: '4px', border: '1px solid rgba(34,211,138,0.5)', background: 'rgba(34,211,138,0.15)', color: '#22d38a', cursor: 'pointer', transition: 'all 0.15s' }}
+                              style={{ flex: 1, padding: '6px 0', fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '1px', borderRadius: '4px', border: '1px solid rgba(59,130,246,0.5)', background: 'rgba(59,130,246,0.15)', color: '#3b82f6', cursor: 'pointer', transition: 'all 0.15s' }}
                               onClick={() => {
                                 const r = armyStore.rebuildDivision(div.id)
-                                ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                                ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#3b82f6' : '#ef4444')
                               }}
                             >
                               🍞 FEED
@@ -1016,7 +1016,7 @@ function ForcesTab({ iso }: { iso: string }) {
                           const matchingSub = Object.entries(WEAPON_DIVISION_MAP).find(([, dt]) => dt === div.type)?.[0] as WeaponSubtype | undefined
                           const equipped = div.equipment.map(eid => inv.items.find(i => i.id === eid)).find(i => i && i.category === 'weapon' && i.weaponSubtype === matchingSub)
                           if (equipped) {
-                            return <div style={{ fontSize: '8px', color: '#22d38a', fontWeight: 700, marginTop: '2px' }}>⚔️ {equipped.name} — {Math.floor(equipped.durability)}% durability</div>
+                            return <div style={{ fontSize: '8px', color: '#3b82f6', fontWeight: 700, marginTop: '2px' }}>⚔️ {equipped.name} — {Math.floor(equipped.durability)}% durability</div>
                           }
                           return <div style={{ fontSize: '8px', color: '#64748b', marginTop: '2px' }}>No weapon equipped</div>
                         })()}
@@ -1035,7 +1035,7 @@ function ForcesTab({ iso }: { iso: string }) {
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px' }}>
                         {[
                           { label: '✈️', val: av.air, buff: `+${aura.critDmgPct}% CDmg`, color: '#60a5fa' },
-                          { label: '🚶', val: av.ground, buff: `+${aura.dodgePct}% Dodge`, color: '#22d38a' },
+                          { label: '🚶', val: av.ground, buff: `+${aura.dodgePct}% Dodge`, color: '#3b82f6' },
                           { label: '🪖', val: av.tanks, buff: `+${aura.attackPct}% Atk`, color: '#f59e0b' },
                           { label: '🚢', val: av.navy, buff: `+${aura.precisionPct}% Prec`, color: '#a78bfa' },
                         ].map(cat => (
@@ -1134,11 +1134,11 @@ function ForcesTab({ iso }: { iso: string }) {
               {/* Currently equipped */}
               {currentlyEquipped.length > 0 && (
                 <div style={{ marginBottom: '8px' }}>
-                  <div style={{ fontSize: '9px', color: '#22d38a', fontWeight: 700, marginBottom: '4px' }}>EQUIPPED</div>
+                  <div style={{ fontSize: '9px', color: '#3b82f6', fontWeight: 700, marginBottom: '4px' }}>EQUIPPED</div>
                   {currentlyEquipped.map(w => (
-                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: 'rgba(34,211,138,0.08)', border: '1px solid rgba(34,211,138,0.2)', borderRadius: '4px', marginBottom: '4px' }}>
+                    <div key={w.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '4px', marginBottom: '4px' }}>
                       <div>
-                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#22d38a' }}>{w.name}</div>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#3b82f6' }}>{w.name}</div>
                         <div style={{ fontSize: '8px', color: '#94a3b8' }}>⚔️ {w.stats.damage || 0} dmg • 💥 {w.stats.critRate || 0}% crit • {Math.floor(w.durability)}% dur</div>
                       </div>
                       <button style={{ fontSize: '8px', padding: '2px 6px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '3px', cursor: 'pointer' }}
@@ -1166,7 +1166,7 @@ function ForcesTab({ iso }: { iso: string }) {
                     <button style={{ fontSize: '9px', padding: '3px 8px', background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '3px', cursor: 'pointer', fontWeight: 700 }}
                       onClick={() => {
                         const r = armyStore.equipItemToDivision(div.id, w.id)
-                        ui.addFloatingText(r ? `Equipped ${w.name}!` : 'Failed to equip', window.innerWidth / 2, window.innerHeight / 2, r ? '#22d38a' : '#ef4444')
+                        ui.addFloatingText(r ? `Equipped ${w.name}!` : 'Failed to equip', window.innerWidth / 2, window.innerHeight / 2, r ? '#3b82f6' : '#ef4444')
                         setWeaponPickerDivId(null)
                       }}>
                       EQUIP
@@ -1247,19 +1247,19 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
         <div className="war-combat-header" style={{
           display: 'flex', alignItems: 'center', gap: '8px',
           padding: '5px 10px', marginBottom: '6px',
-          background: 'rgba(132, 204, 22, 0.08)', borderRadius: '6px',
-          border: '1px solid rgba(132, 204, 22, 0.15)',
+          background: 'rgba(96, 165, 250, 0.08)', borderRadius: '6px',
+          border: '1px solid rgba(96, 165, 250, 0.15)',
         }}>
           <span style={{ fontSize: '12px', animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
           <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: combatTickLeft <= 3 ? '#84cc16' : '#94a3b8' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: combatTickLeft <= 3 ? '#60a5fa' : '#94a3b8' }}>
               <span>NEXT TICK</span>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', color: combatTickLeft <= 3 ? '#84cc16' : '#22d38a' }}>{combatTickLeft}s</span>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', color: combatTickLeft <= 3 ? '#60a5fa' : '#3b82f6' }}>{combatTickLeft}s</span>
             </div>
             <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '2px' }}>
               <div style={{
                 width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%',
-                background: combatTickLeft <= 3 ? '#84cc16' : '#22d38a',
+                background: combatTickLeft <= 3 ? '#60a5fa' : '#3b82f6',
                 transition: 'width 0.9s linear', borderRadius: '2px',
               }} />
             </div>
@@ -1283,15 +1283,15 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               }}
               style={{
                 flex: 1, padding: '5px 2px', borderRadius: '4px', cursor: f.count > 0 ? 'pointer' : 'not-allowed',
-                background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                background: f.count > 0 ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${f.count > 0 ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.06)'}`,
                 opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
               }}
             >
               <div style={{ fontSize: '14px' }}>{f.icon}</div>
               <div style={{ fontSize: '8px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
               <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
-              <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
+              <div style={{ fontSize: '7px', color: '#3b82f6' }}>+{f.heal}% HP</div>
             </button>
           ))}
         </div>
@@ -1319,19 +1319,19 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 padding: '8px 12px',
-                background: 'rgba(132, 204, 22, 0.08)', borderRadius: '6px',
-                border: '1px solid rgba(132, 204, 22, 0.15)',
+                background: 'rgba(96, 165, 250, 0.08)', borderRadius: '6px',
+                border: '1px solid rgba(96, 165, 250, 0.15)',
               }}>
                 <span style={{ fontSize: '14px', animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700, color: combatTickLeft <= 3 ? '#84cc16' : '#94a3b8' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700, color: combatTickLeft <= 3 ? '#60a5fa' : '#94a3b8' }}>
                     <span>NEXT TICK</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '12px', color: combatTickLeft <= 3 ? '#84cc16' : '#22d38a' }}>{combatTickLeft}s</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '12px', color: combatTickLeft <= 3 ? '#60a5fa' : '#3b82f6' }}>{combatTickLeft}s</span>
                   </div>
                   <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '3px' }}>
                     <div style={{
                       width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%',
-                      background: combatTickLeft <= 3 ? '#84cc16' : '#22d38a',
+                      background: combatTickLeft <= 3 ? '#60a5fa' : '#3b82f6',
                       transition: 'width 0.9s linear', borderRadius: '2px',
                     }} />
                   </div>
@@ -1353,15 +1353,15 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                   }}
                   style={{
                     flex: 1, padding: '6px 3px', borderRadius: '4px', cursor: f.count > 0 ? 'pointer' : 'not-allowed',
-                    background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                    background: f.count > 0 ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${f.count > 0 ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.06)'}`,
                     opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
                   }}
                 >
                   <img src={`/assets/food/${f.key}.png`} alt={f.key} style={{ width: '24px', height: '24px', objectFit: 'contain', margin: '0 auto', display: 'block', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
                   <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0', marginTop: '2px' }}>{f.count}</div>
                   <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
-                  <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
+                  <div style={{ fontSize: '7px', color: '#3b82f6' }}>+{f.heal}% HP</div>
                 </button>
               ))}
             </div>
@@ -1389,7 +1389,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                           <span style={{ fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{dmg.toLocaleString()}</span>
                         </div>
                         <div style={{ height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '1px', marginTop: '1px' }}>
-                          <div style={{ height: '100%', width: `${pct}%`, background: isMe ? '#f59e0b' : i === 0 ? '#22d38a' : '#3b82f6', borderRadius: '1px', transition: 'width 0.5s ease' }} />
+                          <div style={{ height: '100%', width: `${pct}%`, background: isMe ? '#f59e0b' : i === 0 ? '#3b82f6' : '#3b82f6', borderRadius: '1px', transition: 'width 0.5s ease' }} />
                         </div>
                       </div>
                     </div>
@@ -1408,7 +1408,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
         const mySide: 'attacker' | 'defender' = iso === battle.attackerId ? 'attacker' : 'defender'
 
         const countries = useWorldStore.getState().countries
-        const atkClr = countries.find(c => c.code === battle.attackerId)?.color || '#22d38a'
+        const atkClr = countries.find(c => c.code === battle.attackerId)?.color || '#3b82f6'
         const defClr = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
 
         const activeRd = battle.rounds[battle.rounds.length - 1]
@@ -1461,7 +1461,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                       const won = rd.status === 'attacker_won'
                       return (
                         <button key={ri} onClick={(e) => { e.stopPropagation(); setViewingRound(viewingRound?.battleId === battle.id && viewingRound?.roundIdx === ri ? null : { battleId: battle.id, roundIdx: ri }) }}
-                          style={{ padding: '1px 5px', fontSize: 7, fontWeight: 800, border: `1px solid ${won ? 'rgba(34,211,138,0.4)' : 'rgba(59,130,246,0.4)'}`, borderRadius: 2, background: viewingRound?.battleId === battle.id && viewingRound?.roundIdx === ri ? (won ? 'rgba(34,211,138,0.25)' : 'rgba(59,130,246,0.25)') : 'rgba(0,0,0,0.3)', color: won ? '#22d38a' : '#60a5fa', cursor: 'pointer', letterSpacing: '0.5px' }}>
+                          style={{ padding: '1px 5px', fontSize: 7, fontWeight: 800, border: `1px solid ${won ? 'rgba(59,130,246,0.4)' : 'rgba(59,130,246,0.4)'}`, borderRadius: 2, background: viewingRound?.battleId === battle.id && viewingRound?.roundIdx === ri ? (won ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.25)') : 'rgba(0,0,0,0.3)', color: won ? '#3b82f6' : '#60a5fa', cursor: 'pointer', letterSpacing: '0.5px' }}>
                           R{ri + 1}
                         </button>
                       )
@@ -1498,9 +1498,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               if (!rd || rd.status === 'active') return null
               const won = rd.status === 'attacker_won'
               return (
-                <div style={{ margin: '4px 0', padding: '8px 10px', background: 'rgba(0,0,0,0.5)', border: `1px solid ${won ? 'rgba(34,211,138,0.3)' : 'rgba(59,130,246,0.3)'}`, borderRadius: 6 }}>
+                <div style={{ margin: '4px 0', padding: '8px 10px', background: 'rgba(0,0,0,0.5)', border: `1px solid ${won ? 'rgba(59,130,246,0.3)' : 'rgba(59,130,246,0.3)'}`, borderRadius: 6 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 900, color: won ? '#22d38a' : '#60a5fa', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
+                    <span style={{ fontSize: 10, fontWeight: 900, color: won ? '#3b82f6' : '#60a5fa', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
                       ROUND {viewingRound.roundIdx + 1} — {won ? getCountryName(battle.attackerId) + ' WON' : getCountryName(battle.defenderId) + ' WON'}
                     </span>
                     <button onClick={() => setViewingRound(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>✕</button>
@@ -1657,7 +1657,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                     />
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: false })) }}
-                      style={{ padding: '2px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer', background: 'rgba(34,197,94,0.2)', color: '#22c55e', fontSize: '10px', fontWeight: 700 }}
+                      style={{ padding: '2px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer', background: 'rgba(59,130,246,0.2)', color: '#3b82f6', fontSize: '10px', fontWeight: 700 }}
                     >OK</button>
                   </div>
                 ) : battle.orderMessage ? (
@@ -1732,7 +1732,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                             const divToRecall = group.engaged[group.engaged.length - 1]
                             if (divToRecall) {
                               const r = battleStore.recallDivisionFromBattle(battle.id, divToRecall.id, mySide)
-                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#22d38a' : '#ef4444')
+                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#3b82f6' : '#ef4444')
                             }
                           }}
                           style={{
@@ -1756,8 +1756,8 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                           }}
                           style={{
                             width: '18px', height: '18px', border: 'none', borderRadius: '3px', cursor: canDeploy ? 'pointer' : 'not-allowed',
-                            background: canDeploy ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.03)',
-                            color: canDeploy ? '#22c55e' : '#334155', fontSize: '11px', fontWeight: 900,
+                            background: canDeploy ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.03)',
+                            color: canDeploy ? '#3b82f6' : '#334155', fontSize: '11px', fontWeight: 900,
                             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
                           }}
                         >+</button>
@@ -1800,7 +1800,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                         <span style={{ color: '#e2e8f0', fontWeight: 700, flex: 1 }}>{d.name}</span>
                         <span style={{ color: '#94a3b8', fontWeight: 600 }}>{d.health}/{d.maxHealth}</span>
                         <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '1px', overflow: 'hidden' }}>
-                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : strPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.8s ease, background 0.5s ease' }} />
+                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#3b82f6' : strPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.8s ease, background 0.5s ease' }} />
                         </div>
                       </div>
                     )
@@ -1823,7 +1823,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                         <span style={{ color: '#e2e8f0', fontWeight: 700, flex: 1 }}>{d.name}</span>
                         <span style={{ color: '#94a3b8', fontWeight: 600 }}>{d.health}/{d.maxHealth}</span>
                         <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '1px', overflow: 'hidden' }}>
-                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#22c55e' : strPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.8s ease, background 0.5s ease' }} />
+                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#3b82f6' : strPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.8s ease, background 0.5s ease' }} />
                         </div>
                       </div>
                     )
@@ -1872,7 +1872,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                       else if ((entry.type as string) === 'dodge') { color = '#fbbf24'; prefix = '[DGE]'; bgTint = 'rgba(251,191,36,0.04)' }
                       else if ((entry.type as string) === 'crit') { color = '#fb923c'; prefix = '[CRT]'; bgTint = 'rgba(251,146,60,0.06)' }
                       else if (entry.type === 'destroyed') { color = '#64748b'; prefix = '[KIA]'; bgTint = 'rgba(100,116,139,0.06)' }
-                      else if ((entry.type as string) === 'reinforcement') { color = '#22d38a'; prefix = '[RNF]'; bgTint = 'rgba(34,211,138,0.04)' }
+                      else if ((entry.type as string) === 'reinforcement') { color = '#3b82f6'; prefix = '[RNF]'; bgTint = 'rgba(59,130,246,0.04)' }
                       else if (entry.type === 'phase_change') { color = '#a78bfa'; prefix = '[SYS]'; bgTint = 'rgba(167,139,250,0.04)' }
                       // Alternating row
                       const rowBg = i % 2 === 0 ? bgTint : `rgba(255,255,255,0.015)`
@@ -1909,12 +1909,12 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700, color: combatTickLeft <= 3 ? '#ef4444' : '#94a3b8' }}>
                 <span>NEXT TICK</span>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '12px', color: combatTickLeft <= 3 ? '#ef4444' : '#22d38a' }}>{combatTickLeft}s</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: '12px', color: combatTickLeft <= 3 ? '#ef4444' : '#3b82f6' }}>{combatTickLeft}s</span>
               </div>
               <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '3px' }}>
                 <div style={{
                   width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%',
-                  background: combatTickLeft <= 3 ? '#ef4444' : '#22d38a',
+                  background: combatTickLeft <= 3 ? '#ef4444' : '#3b82f6',
                   transition: 'width 0.9s linear', borderRadius: '2px',
                 }} />
               </div>
@@ -1935,15 +1935,15 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                 }}
                 style={{
                   flex: 1, padding: '6px 3px', borderRadius: '4px', cursor: f.count > 0 ? 'pointer' : 'not-allowed',
-                  background: f.count > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${f.count > 0 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                  background: f.count > 0 ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${f.count > 0 ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.06)'}`,
                   opacity: f.count > 0 ? 1 : 0.4, transition: 'all 0.2s',
                 }}
               >
                 <img src={`/assets/food/${f.key}.png`} alt={f.key} style={{ width: '24px', height: '24px', objectFit: 'contain', margin: '0 auto', display: 'block', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
                 <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0', marginTop: '2px' }}>{f.count}</div>
                 <div style={{ fontSize: '7px', color: '#ef4444' }}>+{f.sta} STA</div>
-                <div style={{ fontSize: '7px', color: '#22c55e' }}>+{f.heal}% HP</div>
+                <div style={{ fontSize: '7px', color: '#3b82f6' }}>+{f.heal}% HP</div>
               </button>
             ))}
           </div>
@@ -1971,7 +1971,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                         <span style={{ fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{dmg.toLocaleString()}</span>
                       </div>
                       <div style={{ height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '1px', marginTop: '1px' }}>
-                        <div style={{ height: '100%', width: `${pct}%`, background: isMe ? '#f59e0b' : i === 0 ? '#22d38a' : '#3b82f6', borderRadius: '1px', transition: 'width 0.5s ease' }} />
+                        <div style={{ height: '100%', width: `${pct}%`, background: isMe ? '#f59e0b' : i === 0 ? '#3b82f6' : '#3b82f6', borderRadius: '1px', transition: 'width 0.5s ease' }} />
                       </div>
                     </div>
                   </div>

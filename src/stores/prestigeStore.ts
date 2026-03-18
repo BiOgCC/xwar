@@ -50,7 +50,7 @@ export interface PrestigeBlueprint {
   creatorPlayerName: string
   weekNumber: number
   itemName: string
-  itemType: 'weapon' | 'helmet' | 'chest' | 'legs' | 'gloves' | 'boots'
+  itemType: 'weapon' | 'helmet' | 'chest' | 'legs' | 'gloves' | 'boots' | 'ring' | 'crown'
   category: PrestigeCategory
   bonusStats: Record<string, number>
   tradable: boolean
@@ -92,14 +92,13 @@ export interface PrestigeArchiveEntry {
 // ====== MILITARY PRESTIGE ITEM GENERATION ======
 
 const MILITARY_ITEM_NAMES = [
-  'Titan Assault Gauntlets', 'Warlord\'s Fury Blade', 'Siege Breaker Helm',
-  'Ironclad Vanguard Plate', 'Shadow Strike Rifle', 'Dominator Greaves',
-  'Thunder Fist Knuckles', 'Eclipse War Boots', 'Berserker\'s Edge',
-  'Crimson Commander Armor',
+  'Crown of the Titan', 'Crown of the Warlord', 'Crown of the Siege',
+  'Crown of the Vanguard', 'Crown of Shadows', 'Crown of Thunder',
+  'Crown of the Eclipse', 'Crown of the Berserker', 'Crown of Crimson',
+  'Crown of Dominion',
 ]
 
-const MILITARY_ITEM_TYPES: ('weapon' | 'helmet' | 'chest' | 'legs' | 'gloves' | 'boots')[] =
-  ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots']
+const MILITARY_ITEM_TYPES: ('crown')[] = ['crown']
 
 function generateMilitaryStats(): Record<string, number> {
   const stats: Record<string, number> = {}
@@ -115,13 +114,21 @@ function generateMilitaryStats(): Record<string, number> {
 // ====== ECONOMIC PRESTIGE ITEM GENERATION ======
 
 const ECONOMIC_ITEM_NAMES = [
-  'Helm of the Industrial Mind', 'Prospector\'s Golden Crown', 'Architect\'s Insight Visor',
-  'Forge Master Gauntlets', 'Midas Touch Gloves', 'Industrial Overlord Helm',
-  'Resource Diviner\'s Cap', 'Tycoon\'s Command Gloves', 'Engineer\'s Precision Grip',
-  'Grand Administrator\'s Coronet',
+  'Ring of the Industrial Mind', 'Ring of the Golden Prospect', 'Ring of Arcane Insight',
+  'Ring of the Forge Master', 'Ring of the Midas Touch', 'Ring of the Overlord',
+  'Ring of the Diviner', 'Ring of the Tycoon', 'Ring of Precision',
+  'Ring of Administration',
 ]
 
-const ECONOMIC_ITEM_TYPES: ('helmet' | 'gloves')[] = ['helmet', 'gloves']
+const ECONOMIC_ITEM_TYPES: ('ring')[] = ['ring']
+
+// ====== PRESTIGE ITEM IMAGE HELPER ======
+
+export function getPrestigeItemImage(category: PrestigeCategory): string {
+  return category === 'military'
+    ? '/assets/items/prestige_crown.png'
+    : '/assets/items/prestige_ring.png'
+}
 
 function generateEconomicStats(): Record<string, number> {
   return {

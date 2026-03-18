@@ -62,9 +62,9 @@
 }
 
 .op-lifecycle__badge--won {
-  background: rgba(34, 211, 138, 0.15);
-  color: #22d38a;
-  border: 1px solid rgba(34, 211, 138, 0.4);
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.4);
 }
 
 .op-lifecycle__badge--lost {
@@ -167,10 +167,10 @@
 .contest-bar__fill--atk {
   position: absolute;
   top: 0; left: 0; bottom: 0;
-  background: linear-gradient(90deg, #22d38a, #10b981);
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
   border-radius: 4px 0 0 4px;
   transition: width 400ms ease;
-  box-shadow: 0 0 12px rgba(34, 211, 138, 0.4);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
 }
 
 .contest-bar__fill--def {
@@ -199,7 +199,7 @@
   font-weight: 700;
 }
 
-.contest-bar__labels span:first-child { color: #22d38a; }
+.contest-bar__labels span:first-child { color: #3b82f6; }
 .contest-bar__labels span:last-child { color: #ef4444; }
 
 /* Contributors List */
@@ -223,7 +223,7 @@
 
 .contest-contrib__name { color: #94a3b8; flex: 1; }
 .contest-contrib__val { font-weight: 700; font-family: var(--font-display); }
-.contest-contrib__val--atk { color: #22d38a; }
+.contest-contrib__val--atk { color: #3b82f6; }
 .contest-contrib__val--def { color: #ef4444; }
 
 /* ====== CONTEST ACTION BUTTON ====== */
@@ -314,7 +314,7 @@
 }
 
 .battle-points__side--atk {
-  background: linear-gradient(135deg, rgba(34, 211, 138, 0.08), transparent);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), transparent);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -330,8 +330,8 @@
 }
 
 .battle-points__value--atk {
-  color: #22d38a;
-  text-shadow: 0 0 12px rgba(34, 211, 138, 0.5);
+  color: #3b82f6;
+  text-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
 }
 
 .battle-points__value--def {
@@ -564,9 +564,9 @@
 .occ-action-card--hijack-prod:hover { border-color: #a855f7; }
 .occ-action-card--hijack-prod .occ-action-card__name { color: #a855f7; }
 
-.occ-action-card--hijack-tax  { border-color: rgba(34, 211, 138, 0.3); }
-.occ-action-card--hijack-tax:hover { border-color: #22d38a; }
-.occ-action-card--hijack-tax .occ-action-card__name { color: #22d38a; }
+.occ-action-card--hijack-tax  { border-color: rgba(59, 130, 246, 0.3); }
+.occ-action-card--hijack-tax:hover { border-color: #3b82f6; }
+.occ-action-card--hijack-tax .occ-action-card__name { color: #3b82f6; }
 
 .occ-action-card--passive { border-color: rgba(100, 116, 139, 0.3); }
 .occ-action-card--passive:hover { border-color: #94a3b8; }
@@ -702,7 +702,7 @@
 .tick-damage__fill--atk {
   position: absolute;
   top: 0; left: 0; bottom: 0;
-  background: linear-gradient(90deg, #22d38a, #10b981);
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
   transition: width 300ms ease;
   border-radius: 4px 0 0 4px;
 }
@@ -748,7 +748,7 @@
   font-weight: 700;
 }
 
-.tick-damage__footer span:first-child { color: #22d38a; }
+.tick-damage__footer span:first-child { color: #3b82f6; }
 .tick-damage__footer span:last-child { color: #ef4444; }
 
 .tick-damage__winner {
@@ -777,7 +777,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #22d38a;
+  background: #3b82f6;
   animation: tickBlink 1s infinite;
 }
 

@@ -5,6 +5,7 @@ import {
   usePrestigeStore,
   MILITARY_TITLES,
   ECONOMIC_TITLES,
+  getPrestigeItemImage,
   type PrestigeCategory,
 } from '../../stores/prestigeStore'
 
@@ -183,8 +184,11 @@ export default function PrestigePanel() {
                     background: item.equipped ? 'rgba(251,191,36,0.08)' : 'rgba(255,255,255,0.02)',
                     border: `1px solid ${item.equipped ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.08)'}`,
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#fbbf24' }}>{item.itemName}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <img src={getPrestigeItemImage(item.category)} alt={item.category} style={{ width: '28px', height: '28px', filter: `drop-shadow(0 0 6px ${item.category === 'military' ? '#ef444466' : '#22d38a66'})` }} />
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#fbbf24' }}>{item.itemName}</span>
+                      </div>
                       <span style={{ fontSize: '8px', color: '#22d38a' }}>∞ DURABILITY</span>
                     </div>
                     <div style={{ fontSize: '9px', color: '#94a3b8' }}>
@@ -224,8 +228,11 @@ export default function PrestigePanel() {
                     padding: '8px', background: 'rgba(0,0,0,0.3)',
                     border: '1px solid rgba(251,191,36,0.2)', borderRadius: '4px',
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#fbbf24' }}>{bp.itemName}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <img src={getPrestigeItemImage(bp.category)} alt={bp.category} style={{ width: '24px', height: '24px', filter: `drop-shadow(0 0 6px ${bp.category === 'military' ? '#ef444466' : '#22d38a66'})` }} />
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#fbbf24' }}>{bp.itemName}</span>
+                      </div>
                       <span style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700 }}>SINGLE USE</span>
                     </div>
                     <div style={{ fontSize: '9px', color: '#94a3b8' }}>{bp.itemType} · {bp.category} · Week {bp.weekNumber}</div>
@@ -283,7 +290,10 @@ export default function PrestigePanel() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
                 {prestige.blueprints.filter(b => b.creatorPlayerId === player.name).map(bp => (
                   <div key={bp.blueprintId} style={{ padding: '8px', background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '4px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#fbbf24' }}>{bp.itemName}</div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <img src={getPrestigeItemImage(bp.category)} alt={bp.category} style={{ width: '22px', height: '22px', filter: `drop-shadow(0 0 4px ${bp.category === 'military' ? '#ef444466' : '#22d38a66'})` }} />
+                      {bp.itemName}
+                    </div>
                     <div style={{ fontSize: '9px', color: '#94a3b8' }}>{bp.itemType} · {bp.category} · Single Use</div>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', margin: '4px 0' }}>
                       {Object.entries(bp.bonusStats).map(([k, v]) => (
@@ -317,8 +327,11 @@ export default function PrestigePanel() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
                   {listings.map(bp => (
                     <div key={bp.blueprintId} style={{ padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: '4px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#fbbf24' }}>{bp.itemName}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <img src={getPrestigeItemImage(bp.category)} alt={bp.category} style={{ width: '28px', height: '28px', filter: `drop-shadow(0 0 6px ${bp.category === 'military' ? '#ef444466' : '#22d38a66'})` }} />
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#fbbf24' }}>{bp.itemName}</span>
+                        </div>
                         <span style={{ fontSize: '12px', fontWeight: 900, color: '#22d38a' }}>${bp.marketPrice.toLocaleString()}</span>
                       </div>
                       <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>

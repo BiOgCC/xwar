@@ -1,0 +1,375 @@
+/* ============================================
+   XWAR Casino — Warzone Casino Styles
+   ============================================ */
+
+/* ---- Casino Panel ---- */
+.casino-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+/* ---- Header ---- */
+.casino-header {
+  text-align: center;
+  padding: 14px 10px 10px;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.08) 0%, transparent 100%);
+  border: 1px solid rgba(251, 191, 36, 0.15);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.casino-header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #fbbf24, transparent);
+}
+
+.casino-header__title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: #fbbf24;
+  text-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+  margin-bottom: 4px;
+}
+
+.casino-header__sub {
+  font-size: 8px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---- Bet Buttons (Direct Spin) ---- */
+.casino-bets {
+  display: flex;
+  gap: 6px;
+}
+
+.casino-bet-btn {
+  flex: 1;
+  padding: 10px 4px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  background: rgba(251, 191, 36, 0.06);
+  color: #fbbf24;
+  cursor: pointer;
+  transition: all 200ms ease;
+  text-align: center;
+}
+
+.casino-bet-btn:hover:not(:disabled) {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.5);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.15);
+  transform: translateY(-1px);
+}
+
+.casino-bet-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.casino-bet-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.casino-bet-btn--active {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.15));
+  border-color: #fbbf24;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+/* ---- Wheel Container ---- */
+.casino-wheel-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.casino-wheel-outer {
+  position: relative;
+  width: 260px;
+  height: 260px;
+}
+
+/* Pointer triangle at top */
+.casino-pointer {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 12px solid transparent;
+  border-right: 12px solid transparent;
+  border-top: 22px solid #fbbf24;
+  z-index: 10;
+  filter: drop-shadow(0 2px 6px rgba(251, 191, 36, 0.6));
+}
+
+/* SVG Wheel */
+.casino-wheel-svg {
+  width: 260px;
+  height: 260px;
+  transition: transform 4s cubic-bezier(0.15, 0.85, 0.25, 1);
+  filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.5));
+}
+
+.casino-wheel-svg.spinning {
+  transition: transform 4s cubic-bezier(0.15, 0.85, 0.25, 1);
+}
+
+/* Center decoration */
+.casino-wheel-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #1a2035 0%, #0a0e17 100%);
+  border: 3px solid rgba(251, 191, 36, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  z-index: 5;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.2), inset 0 0 8px rgba(0,0,0,0.5);
+}
+
+/* ---- Spin / Bet Again Button ---- */
+.casino-spin-btn {
+  width: 100%;
+  padding: 14px 16px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 2px solid #fbbf24;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #0a0e17;
+  cursor: pointer;
+  transition: all 200ms ease;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
+}
+
+.casino-spin-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  box-shadow: 0 4px 30px rgba(251, 191, 36, 0.5);
+  transform: translateY(-1px);
+}
+
+.casino-spin-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.casino-spin-btn--again {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border-color: #ef4444;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+}
+
+.casino-spin-btn--again:hover:not(:disabled) {
+  background: linear-gradient(135deg, #34eaa0, #ef4444);
+  box-shadow: 0 4px 30px rgba(239, 68, 68, 0.5);
+}
+
+/* ---- Result Display ---- */
+.casino-result {
+  text-align: center;
+  padding: 14px 10px;
+  border-radius: 8px;
+  animation: casino-result-pop 400ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.casino-result::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  padding: 1px;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: xor;
+  -webkit-mask-composite: xor;
+}
+
+.casino-result--win {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.casino-result--lose {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.casino-result__label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  margin-bottom: 2px;
+}
+
+.casino-result--win .casino-result__label {
+  color: #ef4444;
+}
+
+.casino-result--lose .casino-result__label {
+  color: #ef4444;
+}
+
+.casino-result__amount {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.casino-result--win .casino-result__amount {
+  color: #ef4444;
+  text-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+}
+
+.casino-result--lose .casino-result__amount {
+  color: #ef4444;
+  text-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+}
+
+@keyframes casino-result-pop {
+  0% { opacity: 0; transform: scale(0.9); }
+  60% { transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ---- Balance Bar ---- */
+.casino-balance {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 9px;
+  color: var(--text-muted);
+  padding: 4px 0;
+  font-family: var(--font-display);
+  letter-spacing: 0.05em;
+}
+
+.casino-balance__value {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+/* ---- Prize Table ---- */
+.casino-prizes {
+  background: rgba(17, 24, 39, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.casino-prizes__title {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.casino-prizes__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.casino-prize-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 2px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.casino-prize-chip__label {
+  font-size: 7px;
+  opacity: 0.7;
+  letter-spacing: 0.05em;
+}
+
+/* ---- History Strip ---- */
+.casino-history {
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.casino-history__dot {
+  min-width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 800;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* ---- Stats Row ---- */
+.casino-stats {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+.casino-stats__item {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.casino-stats__num {
+  font-weight: 800;
+}
+
+.casino-stats__num--wins {
+  color: #ef4444;
+}
+
+.casino-stats__num--losses {
+  color: #ef4444;
+}
