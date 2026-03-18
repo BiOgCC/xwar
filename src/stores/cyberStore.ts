@@ -611,7 +611,7 @@ function generateEspionageReport(
     const country = world.countries.find(c => c.code === target.country)
     const govStore = useGovernmentStore.getState()
     const gov = govStore.governments[target.country]
-    const fund = gov?.nationalFund || { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
+    const fund = useWorldStore.getState().getCountry(target.country)?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
     const citizens = gov?.citizens || []
 
     // Simulate citizen-owned supplies (food & bullets)

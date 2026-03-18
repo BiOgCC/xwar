@@ -116,7 +116,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
         controller: country.controller,
         empire: country.empire,
         military: country.military,
-        treasury: country.treasury,
+        treasury: country.fund.money,
         regions: country.regions,
         color: country.color,
         lngLat,

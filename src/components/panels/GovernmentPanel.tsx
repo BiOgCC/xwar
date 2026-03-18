@@ -102,7 +102,7 @@ export default function GovernmentPanel() {
           useGovernmentStore.setState((s) => ({ governments: { ...s.governments, [iso]: { ...s.governments[iso], swornEnemy: updatedLaw.targetCountryId! } } }))
           ui.addFloatingText(`ENEMY: ${updatedLaw.targetCountryId}`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
         } else if (updatedLaw.type === 'authorize_nuclear_action') {
-          const f = useGovernmentStore.getState().governments[iso]?.nationalFund
+          const f = useWorldStore.getState().getCountry(iso)?.fund
           if (f && f.oil >= NUKE_COST.oil && f.scraps >= NUKE_COST.scraps && f.materialX >= NUKE_COST.materialX && f.bitcoin >= NUKE_COST.bitcoin && f.jets >= NUKE_COST.jets) {
             useGovernmentStore.setState((s) => ({ governments: { ...s.governments, [iso]: { ...s.governments[iso], nuclearAuthorized: true } } }))
             ui.addFloatingText('☢️ AUTHORIZED', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
@@ -156,7 +156,7 @@ export default function GovernmentPanel() {
     ui.addFloatingText(`☢️ NUKED ${nukeTarget}! ${disabled} disabled`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
   }
 
-  const fund = gov.nationalFund
+  const fund = world.getCountry(iso)?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
   const activeLaws = Object.values(govStore.laws).filter(l => l.countryId === iso && l.status === 'active')
 
   const ss: React.CSSProperties = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: '#fff', padding: '6px', fontFamily: 'var(--font-mono)', fontSize: '11px', width: '100%' }
@@ -641,11 +641,12 @@ export default function GovernmentPanel() {
                               disabled={pts >= maxPts}
                               style={{ fontSize: '8px', padding: '2px 6px', borderColor: skill.color, color: skill.color, marginTop: '2px' }}
                               onClick={() => {
-                                const currentFund = useGovernmentStore.getState().governments[iso]?.nationalFund
+                                const currentFund = useWorldStore.getState().getCountry(iso)?.fund
                                 if (!currentFund || currentFund.money < 5000) {
                                   ui.addFloatingText('FUND: $5,000 REQUIRED', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
                                   return
                                 }
+                                useWorldStore.getState().spendFromFund(iso, { money: 5000 })
                                 useGovernmentStore.setState((s) => {
                                   const g = s.governments[iso]
                                   return {
@@ -653,7 +654,6 @@ export default function GovernmentPanel() {
                                       ...s.governments,
                                       [iso]: {
                                         ...g,
-                                        nationalFund: { ...g.nationalFund, money: g.nationalFund.money - 5000 },
                                         ideologyPoints: { ...g.ideologyPoints, [skill.key]: g.ideologyPoints[skill.key] + 1 },
                                       }
                                     }

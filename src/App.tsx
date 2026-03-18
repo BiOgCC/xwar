@@ -30,6 +30,7 @@ import CompaniesPanel from './components/panels/CompaniesPanel'
 import CasinoPanel from './components/panels/CasinoPanel'
 import BountyPanel from './components/panels/BountyPanel'
 import StockMarketPanel from './components/panels/StockMarketPanel'
+import AlliancePanel from './components/panels/AlliancePanel'
 import { useNewsStore } from './stores/newsStore'
 import './styles/ticker.css'
 
@@ -41,6 +42,7 @@ const SIDEBAR_CIVILIAN = [
   { id: 'casino' as const, icon: '🎰', label: 'CASINO' },
   { id: 'bounty' as const, icon: '🎯', label: 'BOUNTY' },
   { id: 'stocks' as const, icon: '📈', label: 'STOCKS' },
+  { id: 'alliance' as const, icon: '🤝', label: 'ALLIANCE' },
   { id: 'chat' as const, icon: '💬', label: 'CHAT' },
 ]
 
@@ -676,6 +678,7 @@ function App() {
               {activePanel === 'casino' && <CasinoPanel />}
               {activePanel === 'bounty' && <BountyPanel />}
               {activePanel === 'stocks' && <StockMarketPanel />}
+              {activePanel === 'alliance' && <AlliancePanel />}
               {activePanel === 'resources' && (
                 <>
                   <div className="hud-card">

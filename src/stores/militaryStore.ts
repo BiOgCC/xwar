@@ -3,7 +3,7 @@ import { useBattleStore } from './battleStore'
 import type { BattleType } from './battleStore'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
-import { useGovernmentStore } from './governmentStore'
+import { useGovernmentStore, getCountryFund } from './governmentStore'
 import {
   type OperationPhase,
   type ContestState,
@@ -447,13 +447,11 @@ export function generateMilitaryReport(campaignId: string): MilitaryReport | nul
   // Calculate stolen resources (assault = 10% of national fund)
   let moneyStolen = 0, oilStolen = 0, materialXStolen = 0, bitcoinStolen = 0
   if (isVictory && campaign.operationId === 'assault' && campaign.targetCountry) {
-    const targetGov = govStore.governments[campaign.targetCountry]
-    if (targetGov) {
-      moneyStolen = Math.floor((targetGov.nationalFund.money || 0) * 0.1)
-      oilStolen = Math.floor((targetGov.nationalFund.oil || 0) * 0.1)
-      materialXStolen = Math.floor((targetGov.nationalFund.materialX || 0) * 0.1)
-      bitcoinStolen = Math.floor((targetGov.nationalFund.bitcoin || 0) * 0.1)
-    }
+    const targetFund = getCountryFund(campaign.targetCountry)
+    moneyStolen = Math.floor((targetFund.money || 0) * 0.1)
+    oilStolen = Math.floor((targetFund.oil || 0) * 0.1)
+    materialXStolen = Math.floor((targetFund.materialX || 0) * 0.1)
+    bitcoinStolen = Math.floor((targetFund.bitcoin || 0) * 0.1)
   }
 
   // Infrastructure damage (sabotage downgrades random infra)

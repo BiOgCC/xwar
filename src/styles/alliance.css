@@ -1,0 +1,369 @@
+/* ============================================
+   XWAR — Alliance Wars
+   Military coalition command center
+   ============================================ */
+
+.alliance-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+/* ── Header ── */
+.alliance-header {
+  text-align: center;
+  padding: 10px 0 6px;
+}
+
+.alliance-header__tag {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #3b82f6;
+}
+
+.alliance-header__title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #3b82f6;
+  text-shadow: 0 0 24px rgba(59,130,246,0.3);
+}
+
+.alliance-header__sub {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: rgba(226,232,240,0.4);
+  margin-top: 2px;
+}
+
+/* ── Tabs ── */
+.alliance-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.alliance-tab {
+  flex: 1;
+  padding: 6px 0;
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(59,130,246,0.12);
+  border-radius: 4px;
+  color: rgba(226,232,240,0.5);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.alliance-tab:hover { background: rgba(59,130,246,0.08); color: #93c5fd; }
+.alliance-tab--active { background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.35); color: #3b82f6; }
+
+/* ── Messages ── */
+.alliance-msg {
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+  animation: alliance-pop 300ms ease;
+}
+
+.alliance-msg--success { background: rgba(34,197,94,0.10); border: 1px solid rgba(34,197,94,0.30); color: #22c55e; }
+.alliance-msg--error { background: rgba(239,68,68,0.10); border: 1px solid rgba(239,68,68,0.30); color: #ef4444; }
+
+@keyframes alliance-pop {
+  0% { transform: scale(0.95); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Inputs ── */
+.alliance-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(59,130,246,0.12);
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 10px;
+  outline: none;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+  transition: border-color 150ms;
+}
+
+.alliance-input:focus { border-color: rgba(59,130,246,0.35); }
+.alliance-input::placeholder { color: rgba(148,163,184,0.3); }
+
+/* ── Buttons ── */
+.alliance-btn {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 200ms;
+  border: 1px solid;
+}
+
+.alliance-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.alliance-btn--create {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.alliance-btn--join {
+  padding: 4px 12px;
+  width: auto;
+  background: rgba(59,130,246,0.15);
+  border-color: #3b82f6;
+  color: #3b82f6;
+  font-size: 8px;
+}
+
+.alliance-btn--join:hover { background: rgba(59,130,246,0.25); }
+
+.alliance-btn--contribute {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border-color: #22c55e;
+  color: #fff;
+}
+
+.alliance-btn--leave {
+  background: rgba(239,68,68,0.08);
+  border-color: rgba(239,68,68,0.20);
+  color: #ef4444;
+  font-size: 9px;
+}
+
+.alliance-btn--leave:hover { background: rgba(239,68,68,0.15); }
+
+.alliance-btn--war {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border-color: #ef4444;
+  color: #fff;
+}
+
+.alliance-btn--war:hover:not(:disabled) { box-shadow: 0 4px 24px rgba(239,68,68,0.4); }
+
+.alliance-btn--create:hover:not(:disabled),
+.alliance-btn--contribute:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(59,130,246,0.3);
+}
+
+/* ── Create form ── */
+.alliance-create {
+  background: linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.6));
+  border: 1px solid rgba(59,130,246,0.10);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.alliance-create__title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(226,232,240,0.4);
+  margin-bottom: 8px;
+}
+
+/* ── Treasury ── */
+.alliance-treasury {
+  background: linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.6));
+  border: 1px solid rgba(59,130,246,0.10);
+  border-radius: 6px;
+  padding: 10px;
+  text-align: center;
+}
+
+.alliance-treasury__label {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: rgba(226,232,240,0.3);
+}
+
+.alliance-treasury__value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 900;
+  color: #fbbf24;
+  text-shadow: 0 0 16px rgba(251,191,36,0.3);
+  margin: 4px 0 8px;
+}
+
+.alliance-treasury__amounts {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.alliance-amt-btn {
+  flex: 1;
+  padding: 4px 0;
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(59,130,246,0.10);
+  border-radius: 3px;
+  color: rgba(226,232,240,0.5);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.alliance-amt-btn:hover { background: rgba(59,130,246,0.08); color: #93c5fd; }
+.alliance-amt-btn--active { background: rgba(59,130,246,0.12); border-color: #3b82f6; color: #3b82f6; }
+
+/* ── Members ── */
+.alliance-members__title {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(226,232,240,0.3);
+  margin-bottom: 6px;
+}
+
+.alliance-member {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.alliance-member__role { width: 16px; text-align: center; font-size: 12px; }
+.alliance-member__name { font-weight: 700; color: #e2e8f0; flex: 1; }
+.alliance-member__country { font-size: 8px; color: rgba(148,163,184,0.5); }
+.alliance-member__contribution { font-family: var(--font-display); font-size: 9px; color: #fbbf24; font-weight: 700; }
+
+/* ── Alliance cards (browse) ── */
+.alliance-browse { display: flex; flex-direction: column; gap: 6px; }
+.alliance-browse__title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(226,232,240,0.3);
+  margin-bottom: 2px;
+}
+
+.alliance-card {
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(59,130,246,0.08);
+  border-radius: 6px;
+  padding: 8px 10px;
+  transition: border-color 150ms;
+}
+
+.alliance-card:hover { border-color: rgba(59,130,246,0.20); }
+.alliance-card--mine { border-color: rgba(59,130,246,0.30); background: rgba(59,130,246,0.05); }
+
+.alliance-card__header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.alliance-card__tag { font-family: var(--font-display); font-size: 11px; font-weight: 900; color: #3b82f6; }
+.alliance-card__name { font-size: 11px; font-weight: 700; color: #e2e8f0; }
+
+.alliance-card__meta { display: flex; gap: 10px; font-size: 8px; color: rgba(148,163,184,0.5); margin-bottom: 4px; }
+.alliance-card__treasury { font-family: var(--font-display); color: #fbbf24; font-weight: 700; }
+.alliance-card__badge { font-size: 7px; color: #3b82f6; font-weight: 700; letter-spacing: 0.1em; }
+
+/* ── Wars ── */
+.alliance-wars { display: flex; flex-direction: column; gap: 6px; }
+
+.alliance-war-declare {
+  background: linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.6));
+  border: 1px solid rgba(239,68,68,0.10);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 4px;
+}
+
+.alliance-war-declare__title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #ef4444;
+  margin-bottom: 6px;
+}
+
+.alliance-war-declare__targets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+
+.alliance-target-btn {
+  padding: 4px 8px;
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(239,68,68,0.12);
+  border-radius: 4px;
+  color: rgba(226,232,240,0.5);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.alliance-target-btn:hover { background: rgba(239,68,68,0.08); color: #fca5a5; }
+.alliance-target-btn--active { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #ef4444; }
+
+.alliance-war-card {
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(239,68,68,0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.alliance-war-card--active { border-color: rgba(239,68,68,0.30); }
+.alliance-war-card--voting { border-color: rgba(251,191,36,0.30); }
+.alliance-war-card--victory { border-color: rgba(34,197,94,0.30); }
+.alliance-war-card--defeat { border-color: rgba(239,68,68,0.30); }
+
+.alliance-war-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.alliance-war-card__vs { font-family: var(--font-display); font-size: 12px; font-weight: 900; color: #e2e8f0; }
+.alliance-war-card__status { font-size: 8px; font-weight: 700; letter-spacing: 0.08em; padding: 2px 6px; border-radius: 3px; }
+.alliance-war-card__status--voting { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.alliance-war-card__status--active { background: rgba(239,68,68,0.15); color: #ef4444; }
+.alliance-war-card__status--victory { background: rgba(34,197,94,0.15); color: #22c55e; }
+.alliance-war-card__status--defeat { background: rgba(239,68,68,0.15); color: #ef4444; }
+.alliance-war-card__status--peace { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+.alliance-war-card__vote { font-size: 9px; color: rgba(226,232,240,0.5); }
+.alliance-war-card__vote-btns { display: flex; gap: 4px; margin-top: 4px; }
+
+.alliance-vote-btn {
+  flex: 1;
+  padding: 4px 0;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms;
+  border: 1px solid;
+}
+
+.alliance-vote-btn--for { background: rgba(34,197,94,0.10); border-color: #22c55e; color: #22c55e; }
+.alliance-vote-btn--for:hover { background: rgba(34,197,94,0.20); }
+.alliance-vote-btn--against { background: rgba(239,68,68,0.10); border-color: #ef4444; color: #ef4444; }
+.alliance-vote-btn--against:hover { background: rgba(239,68,68,0.20); }
+
+.alliance-war-card__result { font-size: 9px; color: rgba(226,232,240,0.5); font-weight: 700; }
+
+/* ── Empty state ── */
+.alliance-empty {
+  text-align: center;
+  padding: 24px 0;
+  color: rgba(148,163,184,0.3);
+  font-size: 10px;
+  font-style: italic;
+}

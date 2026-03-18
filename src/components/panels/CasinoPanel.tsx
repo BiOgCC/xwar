@@ -228,7 +228,7 @@ export default function CasinoPanel() {
         {(() => {
           const countries = useWorldStore.getState().countries
           const myCountry = countries.find(c => c.code === player.countryCode)
-          const treasury = myCountry?.treasury ?? 0
+          const treasury = myCountry?.fund.money ?? 0
           return (
             <>
               <span>{myCountry?.name ?? 'COUNTRY'} TREASURY: <span className="casino-balance__treasury">${treasury.toLocaleString()}</span></span>

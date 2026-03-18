@@ -231,7 +231,7 @@ export default function ForeignCountryPanel() {
           {stat('Population', country.population.toLocaleString())}
           {stat('Regions Controlled', country.regions)}
           {stat('Military Rating', country.military, '#ef4444')}
-          {stat('Treasury', `$${country.treasury.toLocaleString()}`, '#22d38a')}
+          {stat('Treasury', `$${country.fund.money.toLocaleString()}`, '#22d38a')}
           {stat('Alliance', country.empire || 'None', allianceColor)}
           {stat('Controller', country.controller)}
           {iso === playerIso && (() => {

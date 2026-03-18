@@ -1,34 +1,22 @@
 import { create } from 'zustand'
 import { type DivisionType, type StarQuality, type StatModifiers, DIVISION_TEMPLATES, rollStarQuality, getEffectiveManpower, getEffectiveHealth } from './armyStore'
-import { useWorldStore } from './worldStore'
+import { useWorldStore, type NationalFund, type NationalFundKey } from './worldStore'
 import { usePlayerStore } from './playerStore'
 import { useArmyStore } from './armyStore'
+
+// Re-export for backward compatibility
+export type { NationalFund, NationalFundKey }
 
 export type LawType = 'declare_war' | 'propose_peace' | 'impeach_president' | 'tax_change' | 'declare_sworn_enemy' | 'authorize_nuclear_action' | 'propose_alliance' | 'break_alliance'
 export type LawStatus = 'active' | 'passed' | 'failed'
 
-// ── National Fund ──
-export interface NationalFund {
-  money: number
-  oil: number
-  scraps: number
-  materialX: number
-  bitcoin: number
-  jets: number // T6 weapons
+// Helper: get country fund from worldStore (single source of truth)
+export function getCountryFund(countryCode: string): NationalFund {
+  const country = useWorldStore.getState().getCountry(countryCode)
+  return country?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
 }
 
-export type NationalFundKey = keyof NationalFund
-
-export const DEFAULT_NATIONAL_FUND: NationalFund = {
-  money: 50000000,
-  oil: 5000000,
-  scraps: 5000000,
-  materialX: 5000000,
-  bitcoin: 50000,
-  jets: 100,
-}
-
-// Keep NUKE_COST for backward compatibility
+// Keep NUKE_COST
 export const NUKE_COST: NationalFund = {
   money: 0,
   oil: 10000,
@@ -175,7 +163,6 @@ export interface Government {
   ideology: IdeologyType | null
   ideologyPoints: IdeologyPoints
   nuclearAuthorized: boolean
-  nationalFund: NationalFund
   citizens: Citizen[]
   divisionShop: DivisionListing[]
 }
@@ -251,7 +238,6 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     ideology: null,
     ideologyPoints: { ...DEFAULT_IDEOLOGY_POINTS },
     nuclearAuthorized: false,
-    nationalFund: { ...DEFAULT_NATIONAL_FUND },
     citizens: mockCitizens(code, president, congress),
     divisionShop: [],
   }
@@ -389,91 +375,52 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     const state = get()
     const gov = state.governments[countryId]
     if (!gov) return false
-    set({
-      governments: {
-        ...state.governments,
-        [countryId]: {
-          ...gov,
-          nationalFund: { ...gov.nationalFund, [resource]: gov.nationalFund[resource] + amount },
-        },
-      },
-    })
+    // Delegate to worldStore
+    useWorldStore.getState().addToFund(countryId, resource, amount)
     return true
   },
 
   spendFromFund: (countryId, costs) => {
-    const state = get()
-    const gov = state.governments[countryId]
-    if (!gov) return false
-
-    const fund = gov.nationalFund
-    // Check all costs
-    for (const [key, amount] of Object.entries(costs)) {
-      if (amount && fund[key as NationalFundKey] < amount) return false
-    }
-    // Deduct
-    const newFund = { ...fund }
-    for (const [key, amount] of Object.entries(costs)) {
-      if (amount) newFund[key as NationalFundKey] -= amount
-    }
-    set({
-      governments: {
-        ...state.governments,
-        [countryId]: { ...gov, nationalFund: newFund },
-      },
-    })
-    return true
+    // Delegate to worldStore
+    return useWorldStore.getState().spendFromFund(countryId, costs)
   },
 
-  launchNuke: (fromCountry, targetCountry) => set((state) => {
-    // Mostly handled outside, just deducting funds here if necessary
+  launchNuke: (fromCountry, _targetCountry) => set((state) => {
     const gov = state.governments[fromCountry]
     if (!gov || !gov.nuclearAuthorized) return state
-    const fund = gov.nationalFund
-    
+    // Deduct nuke costs via worldStore
+    useWorldStore.getState().spendFromFund(fromCountry, {
+      oil: NUKE_COST.oil,
+      scraps: NUKE_COST.scraps,
+      materialX: NUKE_COST.materialX,
+      bitcoin: NUKE_COST.bitcoin,
+      jets: NUKE_COST.jets,
+    })
     return {
       governments: {
         ...state.governments,
         [fromCountry]: {
           ...gov,
           nuclearAuthorized: false,
-          nationalFund: {
-            ...fund,
-            oil: fund.oil - NUKE_COST.oil,
-            scraps: fund.scraps - NUKE_COST.scraps,
-            materialX: fund.materialX - NUKE_COST.materialX,
-            bitcoin: fund.bitcoin - NUKE_COST.bitcoin,
-            jets: fund.jets - NUKE_COST.jets,
-          },
         },
       },
     }
   }),
 
-  stealNationalFund: (targetId, attackerId, percentage) => set((state) => {
-    const target = state.governments[targetId]
-    const attacker = state.governments[attackerId]
-    if (!target || !attacker) return state
-
-    const newTargetFund = { ...target.nationalFund }
-    const newAttackerFund = { ...attacker.nationalFund }
+  stealNationalFund: (targetId, attackerId, percentage) => {
     const pct = percentage / 100
-
+    const targetFund = getCountryFund(targetId)
     const keys: NationalFundKey[] = ['money', 'oil', 'scraps', 'materialX', 'bitcoin', 'jets']
+    const ws = useWorldStore.getState()
     keys.forEach(k => {
-      const amount = Math.floor(target.nationalFund[k] * pct)
-      newTargetFund[k] -= amount
-      newAttackerFund[k] += amount
-    })
-
-    return {
-      governments: {
-        ...state.governments,
-        [targetId]: { ...target, nationalFund: newTargetFund },
-        [attackerId]: { ...attacker, nationalFund: newAttackerFund }
+      const amount = Math.floor(targetFund[k] * pct)
+      if (amount > 0) {
+        // Deduct from target, add to attacker
+        ws.spendFromFund(targetId, { [k]: amount })
+        ws.addToFund(attackerId, k, amount)
       }
-    }
-  }),
+    })
+  },
 
   // ── Contribution Missions ──────────────────────────────────────────
 
@@ -532,17 +479,11 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
       if (curr < (req ?? 0)) { completed = false; break }
     }
 
-    // Also donate to country national fund
+    // Also donate to country national fund via worldStore
+    useWorldStore.getState().addToFund(mission.countryCode, resource, actual)
     const gov = state.governments[mission.countryCode]
     if (gov) {
       set({
-        governments: {
-          ...state.governments,
-          [mission.countryCode]: {
-            ...gov,
-            nationalFund: { ...gov.nationalFund, [resource]: gov.nationalFund[resource] + actual },
-          },
-        },
         contributionMissions: {
           ...state.contributionMissions,
           [missionId]: {
@@ -678,8 +619,8 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     // Deduct money from player
     player.spendMoney(listing.price)
 
-    // Add money to national fund
-    const newFund = { ...gov.nationalFund, money: gov.nationalFund.money + listing.price }
+    // Add money to national fund via worldStore
+    useWorldStore.getState().addTreasuryTax(countryCode, listing.price)
 
     // Remove listing from shop
     const newShop = [...gov.divisionShop]
@@ -688,7 +629,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     set({
       governments: {
         ...state.governments,
-        [countryCode]: { ...gov, divisionShop: newShop, nationalFund: newFund },
+        [countryCode]: { ...gov, divisionShop: newShop },
       },
     })
 
@@ -913,8 +854,8 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     // Deduct money from player
     player.spendMoney(amount)
 
-    // Add to national fund
-    const newFund = { ...gov.nationalFund, money: gov.nationalFund.money + amount }
+    // Add to national fund via worldStore
+    useWorldStore.getState().addTreasuryTax(countryCode, amount)
 
     const now = Date.now()
     const contract: MilitaryContract = {
@@ -929,10 +870,6 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     }
 
     set({
-      governments: {
-        ...state.governments,
-        [countryCode]: { ...gov, nationalFund: newFund },
-      },
       militaryContracts: [...state.militaryContracts, contract],
     })
 
@@ -955,17 +892,11 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
 
     const payout = Math.floor(contract.investedAmount * (1 + contract.profitRate))
 
-    // Try to deduct from national fund; if short, create the difference
-    const gov = state.governments[contract.countryCode]
-    if (gov) {
-      const fundDeduction = Math.min(gov.nationalFund.money, payout)
-      const newFund = { ...gov.nationalFund, money: gov.nationalFund.money - fundDeduction }
-      set({
-        governments: {
-          ...state.governments,
-          [contract.countryCode]: { ...gov, nationalFund: newFund },
-        },
-      })
+    // Try to deduct from national fund via worldStore
+    const fund = getCountryFund(contract.countryCode)
+    if (fund) {
+      const fundDeduction = Math.min(fund.money, payout)
+      useWorldStore.getState().spendFromFund(contract.countryCode, { money: fundDeduction })
     }
 
     // Credit player
