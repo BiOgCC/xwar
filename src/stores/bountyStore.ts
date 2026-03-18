@@ -19,6 +19,7 @@ export interface Bounty {
   claimed: boolean
   claimedBy?: string
   claimedAt?: number
+  hunters: string[]      // players publicly hunting this target
 }
 
 const BOUNTY_MIN = 10_000
@@ -38,11 +39,24 @@ const NPC_TARGETS = [
   { name: 'Hawk', country: 'MX' },
 ]
 
+/** Returns all known player names (NPC targets + current player) for search */
+export function getAllKnownPlayers(): { name: string; country: string }[] {
+  const player = usePlayerStore.getState()
+  const names = [...NPC_TARGETS]
+  // Add current player so they show in search (can't bounty self, but visible)
+  if (player.name && !names.find(n => n.name === player.name)) {
+    names.push({ name: player.name, country: player.countryCode || 'US' })
+  }
+  return names
+}
+
 export interface BountyState {
   bounties: Bounty[]
   claimedHistory: Bounty[]
   placeBounty: (targetPlayer: string, targetCountry: string, amount: number, reason: string) => { success: boolean; message: string }
   claimBounty: (bountyId: string, claimedBy: string) => { success: boolean; message: string }
+  subscribeToBounty: (bountyId: string) => { success: boolean; message: string }
+  unsubscribeFromBounty: (bountyId: string) => { success: boolean; message: string }
   expireBounties: () => void
   getActiveBounties: () => Bounty[]
 }
@@ -60,6 +74,7 @@ export const useBountyStore = create<BountyState>((set, get) => ({
       createdAt: Date.now() - 3600000,
       expiresAt: Date.now() + BOUNTY_EXPIRE_MS,
       claimed: false,
+      hunters: ['Viper', 'Raven'],
     },
     {
       id: 'seed_b2',
@@ -71,6 +86,7 @@ export const useBountyStore = create<BountyState>((set, get) => ({
       createdAt: Date.now() - 1800000,
       expiresAt: Date.now() + BOUNTY_EXPIRE_MS,
       claimed: false,
+      hunters: [],
     },
     {
       id: 'seed_b3',
@@ -82,6 +98,7 @@ export const useBountyStore = create<BountyState>((set, get) => ({
       createdAt: Date.now() - 900000,
       expiresAt: Date.now() + BOUNTY_EXPIRE_MS,
       claimed: false,
+      hunters: ['Scorpion'],
     },
   ],
   claimedHistory: [],
@@ -112,6 +129,7 @@ export const useBountyStore = create<BountyState>((set, get) => ({
       createdAt: Date.now(),
       expiresAt: Date.now() + BOUNTY_EXPIRE_MS,
       claimed: false,
+      hunters: [],
     }
 
     set(s => ({ bounties: [newBounty, ...s.bounties] }))
@@ -154,6 +172,31 @@ export const useBountyStore = create<BountyState>((set, get) => ({
     )
 
     return { success: true, message: `Bounty claimed! $${bounty.amount.toLocaleString()} collected.` }
+  },
+
+  subscribeToBounty: (bountyId) => {
+    const player = usePlayerStore.getState()
+    const state = get()
+    const bounty = state.bounties.find(b => b.id === bountyId && !b.claimed)
+    if (!bounty) return { success: false, message: 'Bounty not found' }
+    if (bounty.targetPlayer === player.name) return { success: false, message: "Can't hunt yourself" }
+    if (bounty.hunters.includes(player.name)) return { success: false, message: 'Already hunting this target' }
+    set(s => ({
+      bounties: s.bounties.map(b =>
+        b.id === bountyId ? { ...b, hunters: [...b.hunters, player.name] } : b
+      ),
+    }))
+    return { success: true, message: `You are now hunting ${bounty.targetPlayer}!` }
+  },
+
+  unsubscribeFromBounty: (bountyId) => {
+    const player = usePlayerStore.getState()
+    set(s => ({
+      bounties: s.bounties.map(b =>
+        b.id === bountyId ? { ...b, hunters: b.hunters.filter(h => h !== player.name) } : b
+      ),
+    }))
+    return { success: true, message: 'No longer hunting this target' }
   },
 
   expireBounties: () => {
