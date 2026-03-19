@@ -1,7 +1,7 @@
 import { useWorldStore } from '../../../stores/worldStore'
 import { useGovernmentStore } from '../../../stores/governmentStore'
 import { usePlayerStore } from '../../../stores/playerStore'
-import { useArmyStore } from '../../../stores/armyStore'
+import { useArmyStore } from '../../../stores/army'
 import { useMilitaryStore } from '../../../stores/militaryStore'
 import { useCyberStore } from '../../../stores/cyberStore'
 
@@ -11,7 +11,7 @@ export default function GovHomeTab() {
   const world = useWorldStore()
   const gov = useGovernmentStore().governments[player.countryCode || 'US']
   const iso = player.countryCode || 'US'
-  const fund = world.getCountry(iso)?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
+  const fund = world.getCountry(iso)?.fund ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
 
   const myCountry = world.countries.find(c => c.code === iso)
   const activeWars = world.wars.filter(w => w.status === 'active' && (w.attacker === (myCountry?.name || '') || w.defender === (myCountry?.name || '')))
@@ -35,7 +35,7 @@ export default function GovHomeTab() {
       <div style={ss}>
         <div style={ls}>🏦 NATIONAL FUND</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '3px' }}>
-          {([['💵','Money',fund.money],['🛢️','Oil',fund.oil],['🔩','Scraps',fund.scraps],['⚛️','MatX',fund.materialX],['₿','BTC',fund.bitcoin],['✈️','Jets',fund.jets]] as [string,string,number][]).map(([icon,label,val]) => (
+          {([['💵','Money',fund.money],['🛢️','Oil',fund.oil],['🔩','Scraps',fund.scrap],['⚛️','MatX',fund.materialX],['₿','BTC',fund.bitcoin],['✈️','Jets',fund.jets]] as [string,string,number][]).map(([icon,label,val]) => (
             <div key={label} style={{ textAlign: 'center', padding: '4px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <div style={{ fontSize: '12px' }}>{icon}</div>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: '11px' }}>{val.toLocaleString()}</div>

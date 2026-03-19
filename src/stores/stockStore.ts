@@ -58,9 +58,9 @@ export interface Bond {
 }
 
 const BOND_DURATIONS = [
-  { label: '1 MIN', ms: 60_000, multiplier: 1.8 },
-  { label: '5 MIN', ms: 300_000, multiplier: 1.6 },
-  { label: '15 MIN', ms: 900_000, multiplier: 1.4 },
+  { label: '5 MIN',  ms:  5 * 60_000, multiplier: 1.5 },
+  { label: '15 MIN', ms: 15 * 60_000, multiplier: 1.75 },
+  { label: '30 MIN', ms: 30 * 60_000, multiplier: 2.0 },
 ]
 
 export { BOND_DURATIONS }
@@ -288,6 +288,15 @@ export const useStockStore = create<StockState>((set, get) => {
       const bond = state.bonds.find(b => b.id === bondId && b.status === 'open')
       if (!bond) return { success: false, message: 'Bond not found or already closed' }
 
+      // Bonds cannot be closed early — must wait for expiry
+      const now = Date.now()
+      if (now < bond.expiresAt) {
+        const remaining = Math.ceil((bond.expiresAt - now) / 1000)
+        const min = Math.floor(remaining / 60)
+        const sec = remaining % 60
+        return { success: false, message: `Bond locked — ${min}:${sec.toString().padStart(2, '0')} remaining` }
+      }
+
       const stock = state.stocks.find(s => s.code === bond.countryCode)
       if (!stock) return { success: false, message: 'Stock not found' }
 
@@ -297,16 +306,18 @@ export const useStockStore = create<StockState>((set, get) => {
       const won = (bond.direction === 'up' && priceWentUp) || (bond.direction === 'down' && priceWentDown)
 
       // Find matching duration multiplier
-      const elapsed = Date.now() - bond.openedAt
       const matchDuration = BOND_DURATIONS.find(d => bond.expiresAt - bond.openedAt === d.ms)
       const multiplier = matchDuration?.multiplier || 1.5
 
       let payout = 0
       if (won) {
-        payout = Math.floor(bond.betAmount * multiplier)
-        // Pay from pool
-        const actualPayout = Math.min(payout, state.marketPool)
+        const grossPayout = Math.floor(bond.betAmount * multiplier)
+        // 10% tax on winnings → country treasury
+        const tax = Math.floor(grossPayout * 0.10)
+        const netPayout = grossPayout - tax
+        const actualPayout = Math.min(netPayout, state.marketPool)
         usePlayerStore.getState().earnMoney(actualPayout)
+        useWorldStore.getState().addTreasuryTax(bond.countryCode, tax)
         payout = actualPayout
       }
 
@@ -336,7 +347,7 @@ export const useStockStore = create<StockState>((set, get) => {
       return {
         success: true,
         message: won
-          ? `WON! ${bond.direction.toUpperCase()} bond paid $${payout.toLocaleString()} (×${multiplier})`
+          ? `WON! ${bond.direction.toUpperCase()} bond paid $${payout.toLocaleString()} (×${multiplier} - 10% tax)`
           : `LOST! ${bond.direction.toUpperCase()} bond — price went ${priceWentUp ? 'UP' : priceWentDown ? 'DOWN' : 'FLAT'}`,
       }
     },

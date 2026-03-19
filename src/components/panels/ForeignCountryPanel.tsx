@@ -5,7 +5,7 @@ import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useBattleStore, getCountryName } from '../../stores/battleStore'
 import CountryFlag from '../shared/CountryFlag'
-import { useArmyStore } from '../../stores/armyStore'
+import { useArmyStore } from '../../stores/army'
 
 type Tab = 'overview' | 'intelligence' | 'diplomacy'
 

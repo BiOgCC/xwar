@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
-import { useArmyStore, DIVISION_TEMPLATES } from './armyStore'
+import { useArmyStore, DIVISION_TEMPLATES } from './army'
 
 // ====== REGION MODEL ======
 

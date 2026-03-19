@@ -390,6 +390,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const state = get()
     const item = state.items.find((i) => i.id === itemId)
     if (!item || item.equipped) return 0
+    if (item.location !== 'inventory') return 0 // Can only dismantle items in inventory
     const scrapGain = SCRAP_VALUES[item.tier]
     set((s) => ({
       items: s.items.filter((i) => i.id !== itemId),
@@ -415,6 +416,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set((s) => {
       const item = s.items.find((i) => i.id === itemId)
       if (!item) return s
+      if (item.location !== 'inventory') return s // Can only equip items in inventory
       // Unequip any item in the same slot
       const updated = s.items.map((i) => {
         if (i.id === itemId) return { ...i, equipped: true }

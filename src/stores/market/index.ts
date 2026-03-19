@@ -11,7 +11,7 @@ import { create } from 'zustand'
 import type { StoreApi } from 'zustand'
 import { usePlayerStore } from '../playerStore'
 import { useInventoryStore } from '../inventoryStore'
-import { useArmyStore } from '../armyStore'
+import { useArmyStore } from '../army'
 import { useWorldStore } from '../worldStore'
 import { useGovernmentStore } from '../governmentStore'
 import {

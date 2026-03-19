@@ -5,7 +5,7 @@ import { useInventoryStore, rollItemOfTier, TIER_ORDER, type EquipItem, type Equ
 
 /* ══════════════════════════════════════════════
    XWAR Blackjack — Player vs House
-   10% of bet → country fund, winnings from thin air
+   15% of bet → country fund, winnings from thin air
    ══════════════════════════════════════════════ */
 
 // ── Card types ──
@@ -145,9 +145,12 @@ export const useBlackjackStore = create<BlackjackState>((set, get) => ({
     // Deduct bet
     player.spendMoney(amount)
 
-    // 10% tax to country fund
+    // 15% tax to country fund
     const tax = Math.floor(amount * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
+
+    // Track casino spins
+    player.incrementCasinoSpins()
 
     // Create fresh deck and deal
     const deck = createDeck()
@@ -338,6 +341,7 @@ export const useBlackjackStore = create<BlackjackState>((set, get) => ({
         inv.removeItem(betItem.id)
         itemLost = true
         resultText = 'DEALER WINS — ITEM LOST!'
+        usePlayerStore.getState().incrementItemsDestroyed()
       }
       // Push — item stays
     }
@@ -358,12 +362,15 @@ export const useBlackjackStore = create<BlackjackState>((set, get) => ({
   doubleDown: () => {
     const s = get()
     if (s.phase !== 'playing' || s.playerHand.length !== 2) return
+    // Can't double-down on item bets (no money bet to double)
+    if (s.bet === 0) return
 
     const player = usePlayerStore.getState()
     if (player.money < s.bet) return
 
     // Pay additional bet
     player.spendMoney(s.bet)
+    // 15% tax on the doubled portion
     const tax = Math.floor(s.bet * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
 

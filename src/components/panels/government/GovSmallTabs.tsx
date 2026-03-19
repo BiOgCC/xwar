@@ -19,19 +19,19 @@ export function GovAccountTab() {
   const ui = useUIStore()
   const iso = player.countryCode || 'US'
   const gov = govStore.governments[iso]
-  const fund = world.getCountry(iso)?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
+  const fund = world.getCountry(iso)?.fund ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
   const [donateResource, setDonateResource] = useState<NationalFundKey>('oil')
   const [donateAmount, setDonateAmount] = useState(100)
   const [nukeTarget, setNukeTarget] = useState('')
 
   const handleDonate = () => {
     const p = usePlayerStore.getState()
-    const resourceMap: Record<NationalFundKey, number> = { money: p.money, oil: p.oil, scraps: p.scrap, materialX: p.materialX, bitcoin: p.bitcoin, jets: 0 }
+    const resourceMap: Record<NationalFundKey, number> = { money: p.money, oil: p.oil, scrap: p.scrap, materialX: p.materialX, bitcoin: p.bitcoin, jets: 0 }
     if (donateResource === 'jets') { const inv = useInventoryStore.getState(); resourceMap.jets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length }
     if (resourceMap[donateResource] < donateAmount) { ui.addFloatingText('NOT ENOUGH', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
     if (donateResource === 'money') p.spendMoney(donateAmount)
     else if (donateResource === 'oil') p.spendOil(donateAmount)
-    else if (donateResource === 'scraps') p.spendScraps(donateAmount)
+    else if (donateResource === 'scrap') p.spendScrap(donateAmount)
     else if (donateResource === 'materialX') p.spendMaterialX(donateAmount)
     else if (donateResource === 'bitcoin') p.spendBitcoin(donateAmount)
     else if (donateResource === 'jets') { const inv = useInventoryStore.getState(); const jets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped); for (let i = 0; i < Math.min(donateAmount, jets.length); i++) inv.removeItem(jets[i].id) }
@@ -59,7 +59,7 @@ export function GovAccountTab() {
       <div className="hud-card">
         <div className="hud-card__title">🏦 NATIONAL FUND</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', margin: '8px 0' }}>
-          {([['money','💵',fund.money],['oil','🛢️',fund.oil],['scraps','🔩',fund.scraps],['materialX','⚛️',fund.materialX],['bitcoin','₿',fund.bitcoin],['jets','✈️',fund.jets]] as [string,string,number][]).map(([key,icon,val]) => (
+          {([['money','💵',fund.money],['oil','🛢️',fund.oil],['scrap','🔩',fund.scrap],['materialX','⚛️',fund.materialX],['bitcoin','₿',fund.bitcoin],['jets','✈️',fund.jets]] as [string,string,number][]).map(([key,icon,val]) => (
             <div key={key} style={{ fontSize: '10px', padding: '6px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '3px', textAlign: 'center' }}>
               <div style={{ fontSize: '14px' }}>{icon}</div>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: '12px' }}>{val.toLocaleString()}</div>
@@ -69,7 +69,7 @@ export function GovAccountTab() {
         </div>
         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
           <select value={donateResource} onChange={e => setDonateResource(e.target.value as NationalFundKey)} style={{ ...ss, width: 'auto', flex: 1 }}>
-            <option value="money">Money</option><option value="oil">Oil</option><option value="scraps">Scraps</option>
+            <option value="money">Money</option><option value="oil">Oil</option><option value="scrap">Scraps</option>
             <option value="materialX">Material X</option><option value="bitcoin">Bitcoin</option><option value="jets">Jets (T6)</option>
           </select>
           <input type="number" value={donateAmount} onChange={e => setDonateAmount(Math.max(1, parseInt(e.target.value) || 1))} style={{ ...ss, width: '70px' }} />

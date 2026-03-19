@@ -171,7 +171,7 @@ export default function SlotsGame() {
           ))}
           <div className="slots-paytable__row slots-paytable__row--pair">
             <span className="slots-paytable__sym">ANY PAIR</span>
-            <span className="slots-paytable__mult">2×</span>
+            <span className="slots-paytable__mult">1.6×</span>
           </div>
         </div>
       </div>

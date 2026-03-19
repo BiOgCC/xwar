@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useArmyStore } from '../../stores/armyStore'
+import { useArmyStore } from '../../stores/army'
 import { useBattleStore } from '../../stores/battleStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useGovernmentStore } from '../../stores/governmentStore'

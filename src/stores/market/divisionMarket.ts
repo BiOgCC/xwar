@@ -4,7 +4,7 @@
 
 import type { StoreApi } from 'zustand'
 import { usePlayerStore } from '../playerStore'
-import { useArmyStore } from '../armyStore'
+import { useArmyStore } from '../army'
 import { useWorldStore } from '../worldStore'
 import type { MarketState, MarketOrder, TradeRecord } from './types'
 import { TAX_RATE, LISTING_FEE_RATE, ORDER_EXPIRY_MS } from './types'

@@ -1,4 +1,4 @@
-import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/armyStore'
+import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/army'
 import { useBattleStore, getCountryName } from '../../stores/battleStore'
 import { useUIStore } from '../../stores/uiStore'
 import CountryFlag from '../shared/CountryFlag'

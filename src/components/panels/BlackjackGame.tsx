@@ -108,9 +108,9 @@ export default function BlackjackGame() {
   const playerTotal = calculateHand(bj.playerHand)
   const dealerTotal = calculateHand(bj.dealerHand)
 
-  // Eligible items for betting: unequipped T2-T5 in inventory
+  // Eligible items for betting: unequipped T4-T5 in inventory (T4→T5, T5→T6 upgrades)
   const eligibleItems = inventory.items.filter(
-    i => i.location === 'inventory' && !i.equipped && TIER_ORDER.indexOf(i.tier) >= 1 && TIER_ORDER.indexOf(i.tier) <= 4
+    i => i.location === 'inventory' && !i.equipped && TIER_ORDER.indexOf(i.tier) >= 3 && TIER_ORDER.indexOf(i.tier) <= 4
   )
 
   // Trigger shake animation on item loss

@@ -4,7 +4,6 @@ import { usePlayerStore } from './stores/playerStore'
 import { useWorldStore } from './stores/worldStore'
 import { useBattleStore, getCountryName } from './stores/battleStore'
 import CountryFlag from './components/shared/CountryFlag'
-import { useArmyStore } from './stores/armyStore'
 import { useRegionStore } from './stores/regionStore'
 import type { Region } from './stores/regionStore'
 import GameMap from './components/map/GameMap'
@@ -19,6 +18,7 @@ import PanelRouter from './components/layout/PanelRouter'
 import { COUNTRY_ISO } from './data/countries'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useGameLoop } from './hooks/useGameLoop'
+import { useAttack } from './hooks/useAttack'
 import { initMockData } from './dev/mockData'
 import './styles/ticker.css'
 
@@ -45,6 +45,7 @@ function App() {
   // Hooks
   useKeyboardShortcuts()
   const { timeLeft, handleManualTick } = useGameLoop()
+  const attack = useAttack(mapRef)
   useEffect(() => { initMockData() }, [])
 
   const handleMouseMove = useCallback((lat: string, lng: string) => {
@@ -126,47 +127,7 @@ function App() {
           region={selectedRegion}
           onClose={() => setSelectedRegion(null)}
           onAttack={(e?: React.MouseEvent) => {
-            const defenderIso = COUNTRY_ISO[selectedRegion.name]
-            if (defenderIso) {
-              const attackerIso = player.countryCode || 'US'
-              const bs = useBattleStore.getState()
-              const as2 = useArmyStore.getState()
-              
-              if (world.canAttack(attackerIso, defenderIso)) {
-                const myArmies = Object.values(as2.armies).filter(a => a.countryCode === attackerIso)
-                const armyWithDivs = myArmies.find(a => 
-                  a.divisionIds.some(id => as2.divisions[id]?.status === 'ready')
-                )
-                
-                if (armyWithDivs) {
-                  const result = bs.launchHOIBattle(armyWithDivs.id, defenderIso, 'invasion')
-                  if (result.success) {
-                    const atkCoord = COUNTRY_CENTROIDS[selectedRegion.name] || COUNTRY_CENTROIDS['United States']
-                    if (atkCoord && mapRef.current) {
-                      mapRef.current.flyTo(atkCoord[0], atkCoord[1], 4)
-                    }
-                  }
-                  if (e) {
-                    useUIStore.getState().addFloatingText('⚔️ BATTLE LAUNCHED!', e.clientX, e.clientY, '#ef4444')
-                  }
-                } else {
-                  bs.launchAttack(attackerIso, defenderIso, selectedRegion.name)
-                  const { damage, isCrit, isDodged } = player.attack()
-                  const activeBattle = Object.values(bs.battles).find(
-                    b => b.regionName === selectedRegion.name && b.status === 'active'
-                  )
-                  if (activeBattle && (damage > 0 || isDodged)) {
-                    bs.addDamage(activeBattle.id, 'attacker', damage, isCrit, isDodged, player.name)
-                  }
-                  if (e) {
-                    useUIStore.getState().addFloatingText('ATTACK LAUNCHED', e.clientX, e.clientY, '#ef4444')
-                  }
-                }
-              } else {
-                world.declareWar(attackerIso, defenderIso)
-                useUIStore.getState().addFloatingText('⚠️ WAR DECLARED! Click again to attack.', window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
-              }
-            }
+            attack(selectedRegion.name, e)
             setSelectedRegion(null)
           }}
         />

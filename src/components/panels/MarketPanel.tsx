@@ -4,7 +4,7 @@ import { useInventoryStore, type EquipItem, TIER_COLORS, TIER_LABELS, TIER_ORDER
 import { useMarketStore, RESOURCE_DEFS, type ResourceId, type MarketOrder, type TradeRecord } from '../../stores/market'
 import { useUIStore } from '../../stores/uiStore'
 import type { EquipTier, EquipSlot, EquipCategory } from '../../stores/inventoryStore'
-import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/armyStore'
+import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/army'
 import { useWorldStore } from '../../stores/worldStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import '../../styles/market.css'

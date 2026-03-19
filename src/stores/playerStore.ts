@@ -119,7 +119,7 @@ export interface PlayerState {
   spendMoney: (amount: number) => boolean
   spendMaterialX: (amount: number) => boolean
   spendOil: (amount: number) => boolean
-  spendScraps: (amount: number) => boolean
+  spendScrap: (amount: number) => boolean
   spendBitcoin: (amount: number) => boolean
   regenerateBars: () => void
 
@@ -528,7 +528,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return true
   },
 
-  spendScraps: (amount) => {
+  spendScrap: (amount) => {
     const s = get()
     if (s.scrap < amount) return false
     set({ scrap: s.scrap - amount })

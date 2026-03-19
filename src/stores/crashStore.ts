@@ -264,6 +264,11 @@ export const useCrashStore = create<CrashState>((set, get) => ({
         chatLog: [...get().chatLog, crashMsg, ...botCrashMsgs],
       })
 
+      // Track casino loss if player crashed
+      if (playerCrashed) {
+        usePlayerStore.getState().addCasinoLoss(s.playerBet)
+      }
+
       // Push news for big crashes
       if (s.crashPoint >= 10) {
         useNewsStore.getState().pushEvent('casino', `🚀 CRASH missile survived to ×${s.crashPoint.toFixed(2)}!`)
@@ -393,6 +398,9 @@ export const useCrashStore = create<CrashState>((set, get) => ({
     player.spendMoney(amount)
     const tax = Math.floor(amount * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
+
+    // Track casino spins
+    player.incrementCasinoSpins()
 
     const playerEntry: CrashPlayer = {
       name: player.name,

@@ -1,5 +1,5 @@
 import React, { useState, Suspense } from 'react'
-import { useArmyStore, DIVISION_TEMPLATES, type DivisionType } from '../../stores/armyStore'
+import { useArmyStore, DIVISION_TEMPLATES, type DivisionType } from '../../stores/army'
 import { useBattleStore, getCountryName, TACTICAL_ORDERS } from '../../stores/battleStore'
 import type { TacticalOrder } from '../../stores/battleStore'
 import { usePlayerStore } from '../../stores/playerStore'

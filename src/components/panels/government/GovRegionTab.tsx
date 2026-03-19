@@ -10,7 +10,7 @@ export default function GovRegionTab() {
   const govStore = useGovernmentStore()
   const ui = useUIStore()
   const iso = player.countryCode || 'US'
-  const fund = world.getCountry(iso)?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
+  const fund = world.getCountry(iso)?.fund ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
   const myCountry = world.countries.find(c => c.code === iso)
 
   if (!myCountry) return <div className="hud-card"><p style={{ fontSize: '10px', color: '#555' }}>Country not found.</p></div>

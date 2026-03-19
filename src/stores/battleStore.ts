@@ -4,7 +4,7 @@ import { useGovernmentStore } from './governmentStore'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
-import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './armyStore'
+import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './army'
 import { useWarCardsStore } from './warCardsStore'
 
 // ====== PLAYER COMBAT STATS HELPER ======

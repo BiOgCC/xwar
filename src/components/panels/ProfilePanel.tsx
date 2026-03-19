@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
-import { useArmyStore } from '../../stores/armyStore'
+import { useArmyStore } from '../../stores/army'
 import { usePlayerStore as usePlayerStoreBase } from '../../stores/playerStore'
 import ProfileTab from './ProfileTab'
 import InventoryTab from './InventoryTab'

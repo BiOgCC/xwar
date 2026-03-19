@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/armyStore'
+import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/army'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { usePlayerStore } from '../../stores/playerStore'
 

@@ -67,7 +67,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
     if (player.scrap < cost.scrap || player.oil < cost.oil || player.money < cost.money) return
     player.spendMoney(cost.money)
     player.spendOil(cost.oil)
-    player.spendScraps(cost.scrap)
+    player.spendScrap(cost.scrap)
     const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
     const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][Math.floor(Math.random() * WEAPON_SUBTYPES[tier].length)] : undefined
     const result = generateStats(category, slot, tier, subtype)
@@ -87,7 +87,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
       id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
       slot, category, tier, equipped: false, durability: 100,
-      stats: result.stats, weaponSubtype: result.weaponSubtype,
+      location: 'inventory', stats: result.stats, weaponSubtype: result.weaponSubtype,
     }
     inventory.addItem(newItem)
     const entry = { item: newItem, superforged: isSuperforged }
@@ -181,7 +181,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                           if (player.scrap < cost.scrap || player.oil < cost.oil || player.money < cost.money) return
                           player.spendMoney(cost.money)
                           player.spendOil(cost.oil)
-                          player.spendScraps(cost.scrap)
+                          player.spendScrap(cost.scrap)
                           const result = generateStats('weapon', 'weapon', entry.tier, entry.subtype)
                           const indLevel = useSkillsStore.getState().economic.industrialist || 0
                           const superforgeChance = Math.min(0.50, indLevel * 0.05)
@@ -197,7 +197,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                             id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
                             name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
                             slot: 'weapon', category: 'weapon', tier: entry.tier, equipped: false, durability: 100,
-                            stats: result.stats, weaponSubtype: result.weaponSubtype,
+                            location: 'inventory', stats: result.stats, weaponSubtype: result.weaponSubtype,
                           }
                           inventory.addItem(newItem)
                           const histEntry = { item: newItem, superforged: isSuperforged }

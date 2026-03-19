@@ -4,7 +4,7 @@ import { useWorldStore } from './worldStore'
 
 /* ══════════════════════════════════════════════
    XWAR Slot Machine — 3 Reels, Military Themed
-   10% of bet → country fund, winnings from thin air
+   15% of bet → country fund, winnings from thin air
    ══════════════════════════════════════════════ */
 
 // Slot symbols — military themed (keyed by ID)
@@ -116,9 +116,12 @@ export const useSlotsStore = create<SlotsState>((set, get) => ({
     // Deduct bet
     player.spendMoney(betAmount)
 
-    // 10% tax to country fund
+    // 15% tax to country fund
     const tax = Math.floor(betAmount * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
+
+    // Track casino spins
+    player.incrementCasinoSpins()
 
     // Determine results
     const r1 = randomSymbol()
@@ -168,11 +171,13 @@ export const useSlotsStore = create<SlotsState>((set, get) => ({
       // 2-of-a-kind
       payout = s.bet * TWO_MATCH_MULTIPLIER
       const matched = r1 === r2 ? r1 : r2 === r3 ? r2 : r1
-      resultText = `PAIR ${SYMBOL_INFO[matched].label} — 2×`
+      resultText = `PAIR ${SYMBOL_INFO[matched].label} — ${TWO_MATCH_MULTIPLIER}×`
       resultType = 'win'
     } else {
       resultText = 'NO MATCH'
       resultType = 'lose'
+      // Track casino loss
+      player.addCasinoLoss(s.bet)
     }
 
     if (payout > 0) {

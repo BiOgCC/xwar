@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import { type DivisionType, type StarQuality, type StatModifiers, DIVISION_TEMPLATES, rollStarQuality, getEffectiveManpower, getEffectiveHealth } from './armyStore'
+import { type DivisionType, type StarQuality, type StatModifiers, DIVISION_TEMPLATES, rollStarQuality, getEffectiveManpower, getEffectiveHealth } from './army'
 import { useWorldStore, type NationalFund, type NationalFundKey } from './worldStore'
 import { usePlayerStore } from './playerStore'
-import { useArmyStore } from './armyStore'
+import { useArmyStore } from './army'
 
 // Re-export for backward compatibility
 export type { NationalFund, NationalFundKey }
@@ -13,14 +13,14 @@ export type LawStatus = 'active' | 'passed' | 'failed'
 // Helper: get country fund from worldStore (single source of truth)
 export function getCountryFund(countryCode: string): NationalFund {
   const country = useWorldStore.getState().getCountry(countryCode)
-  return country?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
+  return country?.fund ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
 }
 
 // Keep NUKE_COST
 export const NUKE_COST: NationalFund = {
   money: 0,
   oil: 10000,
-  scraps: 10000,
+  scrap: 10000,
   materialX: 10000,
   bitcoin: 100,
   jets: 1,
@@ -396,7 +396,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     // Deduct nuke costs via worldStore
     useWorldStore.getState().spendFromFund(fromCountry, {
       oil: NUKE_COST.oil,
-      scraps: NUKE_COST.scraps,
+      scrap: NUKE_COST.scrap,
       materialX: NUKE_COST.materialX,
       bitcoin: NUKE_COST.bitcoin,
       jets: NUKE_COST.jets,
@@ -415,7 +415,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   stealNationalFund: (targetId, attackerId, percentage) => {
     const pct = percentage / 100
     const targetFund = getCountryFund(targetId)
-    const keys: NationalFundKey[] = ['money', 'oil', 'scraps', 'materialX', 'bitcoin', 'jets']
+    const keys: NationalFundKey[] = ['money', 'oil', 'scrap', 'materialX', 'bitcoin', 'jets']
     const ws = useWorldStore.getState()
     keys.forEach(k => {
       const amount = Math.floor(targetFund[k] * pct)
@@ -758,7 +758,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     if (cost > 0 && player.scrap < cost) return { success: false, message: `Not enough scrap. Need ${cost.toLocaleString()}.` }
 
     // Deduct scrap (only if cost > 0)
-    if (cost > 0) player.spendScraps(cost)
+    if (cost > 0) player.spendScrap(cost)
 
     // Reroll star quality + price
     const { star, modifiers } = rollStarQuality()

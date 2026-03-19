@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useArmyStore, DIVISION_TEMPLATES, getDivisionEquipBonus, WEAPON_DIVISION_MAP, type DivisionType } from '../../stores/armyStore'
+import { useArmyStore, DIVISION_TEMPLATES, getDivisionEquipBonus, WEAPON_DIVISION_MAP, type DivisionType } from '../../stores/army'
 import { useBattleStore, getBaseSkillStats } from '../../stores/battleStore'
 import { usePlayerStore, getMilitaryRank } from '../../stores/playerStore'
 import { useWorldStore, ADJACENCY_MAP } from '../../stores/worldStore'
@@ -283,14 +283,60 @@ export default function ForcesTab({ iso }: { iso: string }) {
                           <span style={{ color: '#94a3b8' }}>⚡ SPD <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{finalSpeed}x</span></span>
                           <span style={{ color: '#94a3b8' }}>👥 Troops <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{div.manpower}</span></span>
                         </div>
+                        {/* === Equipped Items & Buffs === */}
+                        {(() => {
+                          const equippedItems = div.equipment.map(eqId => useInventoryStore.getState().items.find(i => i.id === eqId)).filter(Boolean) as EquipItem[]
+                          const bonus = getDivisionEquipBonus(div)
+                          const hasBonus = bonus.bonusAtk > 0 || bonus.bonusCritRate > 0 || bonus.bonusCritDmg > 0 || bonus.bonusArmor > 0 || bonus.bonusDodge > 0 || bonus.bonusHitRate > 0 || bonus.bonusSpeed > 0 || bonus.bonusHP > 0
+                          return equippedItems.length > 0 ? (
+                            <div style={{ marginTop: '2px', marginBottom: '2px', padding: '4px 6px', background: 'rgba(59,130,246,0.06)', borderRadius: '4px', border: '1px solid rgba(59,130,246,0.12)' }}>
+                              <div style={{ fontSize: '7px', fontWeight: 800, color: '#3b82f6', fontFamily: 'var(--font-display)', letterSpacing: '0.1em', marginBottom: '3px' }}>EQUIPPED ({equippedItems.length}/3)</div>
+                              {equippedItems.map(item => {
+                                const tierColor = TIER_COLORS[item.tier] || '#94a3b8'
+                                const durPct = Math.floor(item.durability)
+                                const durColor = durPct > 60 ? '#22d38a' : durPct > 30 ? '#f59e0b' : '#ef4444'
+                                return (
+                                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                    <span style={{ fontSize: '9px', fontWeight: 700, color: tierColor, minWidth: '60px' }}>{item.name}</span>
+                                    <span style={{ fontSize: '7px', color: '#64748b', background: `${tierColor}15`, padding: '0 3px', borderRadius: '2px', fontWeight: 700 }}>{item.tier.toUpperCase()}</span>
+                                    <span style={{ fontSize: '7px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>
+                                      {item.stats.damage ? `⚔️${item.stats.damage}` : ''}
+                                      {item.stats.critRate ? ` 💥${item.stats.critRate}%` : ''}
+                                      {item.stats.armor ? ` 🛡️${item.stats.armor}` : ''}
+                                    </span>
+                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '3px', justifyContent: 'flex-end' }}>
+                                      <div style={{ width: '40px', height: '4px', background: 'rgba(0,0,0,0.4)', borderRadius: '2px', overflow: 'hidden' }}>
+                                        <div style={{ width: `${durPct}%`, height: '100%', background: durColor, borderRadius: '2px', transition: 'width 0.3s' }} />
+                                      </div>
+                                      <span style={{ fontSize: '7px', color: durColor, fontWeight: 700, fontFamily: 'var(--font-mono)', minWidth: '22px', textAlign: 'right' }}>{durPct}%</span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                              {/* Buff summary */}
+                              {hasBonus && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '3px', paddingTop: '3px', borderTop: '1px solid rgba(59,130,246,0.1)' }}>
+                                  {bonus.bonusAtk > 0 && <span style={{ fontSize: '7px', color: '#f87171', background: 'rgba(248,113,113,0.1)', padding: '1px 4px', borderRadius: '2px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>+{bonus.bonusAtk} ATK</span>}
+                                  {bonus.bonusCritRate > 0 && <span style={{ fontSize: '7px', color: '#fb923c', background: 'rgba(251,146,60,0.1)', padding: '1px 4px', borderRadius: '2px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>+{bonus.bonusCritRate}% CRIT</span>}
+                                  {bonus.bonusCritDmg > 0 && <span style={{ fontSize: '7px', color: '#fb923c', background: 'rgba(251,146,60,0.1)', padding: '1px 4px', borderRadius: '2px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>+{bonus.bonusCritDmg}% CDMG</span>}
+                                  {bonus.bonusArmor > 0 && <span style={{ fontSize: '7px', color: '#94a3b8', background: 'rgba(148,163,184,0.1)', padding: '1px 4px', borderRadius: '2px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>+{bonus.bonusArmor} ARM</span>}
+                                  {bonus.bonusDodge > 0 && <span style={{ fontSize: '7px', color: '#34d399', background: 'rgba(52,211,153,0.1)', padding: '1px 4px', borderRadius: '2px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>+{bonus.bonusDodge}% DGE</span>}
+                                  {bonus.bonusHitRate > 0 && <span style={{ fontSize: '7px', color: '#38bdf8', background: 'rgba(56,189,248,0.1)', padding: '1px 4px', borderRadius: '2px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>+{(bonus.bonusHitRate * 100).toFixed(0)}% HIT</span>}
+                                  {bonus.bonusSpeed > 0 && <span style={{ fontSize: '7px', color: '#a78bfa', background: 'rgba(167,139,250,0.1)', padding: '1px 4px', borderRadius: '2px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>+{bonus.bonusSpeed.toFixed(1)} SPD</span>}
+                                  {bonus.bonusHP > 0 && <span style={{ fontSize: '7px', color: '#22d38a', background: 'rgba(34,211,138,0.1)', padding: '1px 4px', borderRadius: '2px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>+{bonus.bonusHP} HP</span>}
+                                </div>
+                              )}
+                            </div>
+                          ) : null
+                        })()}
                         {/* === Big Action Buttons === */}
                         <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                          {/* REINFORCE = equip weapon */}
+                          {/* EQUIP = equip weapon */}
                           <button
-                            style={{ flex: 1, padding: '6px 0', fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '1px', borderRadius: '4px', border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(239,68,68,0.15)', color: '#ef4444', cursor: 'pointer', transition: 'all 0.15s' }}
+                            style={{ flex: 1, padding: '6px 0', fontSize: '10px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '1px', borderRadius: '4px', border: `1px solid ${div.equipment.length > 0 ? 'rgba(59,130,246,0.5)' : 'rgba(239,68,68,0.5)'}`, background: div.equipment.length > 0 ? 'rgba(59,130,246,0.15)' : 'rgba(239,68,68,0.15)', color: div.equipment.length > 0 ? '#3b82f6' : '#ef4444', cursor: 'pointer', transition: 'all 0.15s' }}
                             onClick={() => setWeaponPickerDivId(div.id)}
                           >
-                            ⚔️ REINFORCE
+                            🔧 EQUIP ({div.equipment.length}/3)
                           </button>
                           {/* REBUILD or REVIVE based on status */}
                           {div.status === 'destroyed' ? (
@@ -463,7 +509,7 @@ export default function ForcesTab({ iso }: { iso: string }) {
               onClick={e => e.stopPropagation()}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div>
-                  <div style={{ fontSize: '14px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>⚔️ REINFORCE</div>
+                  <div style={{ fontSize: '14px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>🔧 EQUIP DIVISION</div>
                   <div style={{ fontSize: '10px', color: '#94a3b8' }}>{div.name} — needs: {matchingSub?.toUpperCase()}</div>
                 </div>
                 <button onClick={() => setWeaponPickerDivId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '18px' }}>✕</button>

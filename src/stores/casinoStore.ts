@@ -147,9 +147,12 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
     // Player pays the bet
     player.spendMoney(betAmount)
 
-    // 10% of bet goes to player's country treasury
+    // 15% of bet goes to player's country treasury
     const betTax = Math.floor(betAmount * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, betTax)
+
+    // Track casino spins
+    player.incrementCasinoSpins()
 
     const segments = getSegmentsForBet(betAmount)
     const winIndex = weightedRandomIndex(segments)
@@ -195,9 +198,13 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
       case 'item': {
         // Item created from thin air
         const tier = segment.itemTier || 't4'
-        const allSlots: EquipSlot[] = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots']
+        const allSlots: EquipSlot[] = tier === 't6'
+          ? ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots', 'vehicle']
+          : ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots']
         const slot = allSlots[Math.floor(Math.random() * allSlots.length)]
-        const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
+        const category = slot === 'weapon' ? 'weapon' as const
+          : slot === 'vehicle' ? 'vehicle' as const
+          : 'armor' as const
         const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][Math.floor(Math.random() * WEAPON_SUBTYPES[tier].length)] : undefined
         const result = generateStats(category, slot, tier, subtype)
 
@@ -219,10 +226,12 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
         break
       }
       case 'bankrupt': {
-        // Money already lost (deducted on bet), 10% bet tax already sent
+        // Money already lost (deducted on bet), 15% bet tax already sent
         winText = 'BANKRUPT!'
         winAmount = `LOST $${s.currentBet.toLocaleString()}`
         winType = 'lose'
+        // Track casino loss
+        player.addCasinoLoss(s.currentBet)
         break
       }
     }

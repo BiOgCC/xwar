@@ -39,7 +39,7 @@ export interface ResourceDef {
 export const RESOURCE_DEFS: ResourceDef[] = [
   // Construction
   { id: 'oil',       name: 'Oil',         icon: '🛢️', iconImage: '/assets/items/icon_oil.png',       category: 'Construction', playerKey: 'oil',       fundKey: 'oil',       basePrice: 0.16 },
-  { id: 'scrap',     name: 'Scrap',       icon: '🔩',  iconImage: '/assets/items/icon_scrap.png',     category: 'Construction', playerKey: 'scrap',     fundKey: 'scraps',    basePrice: 0.22 },
+  { id: 'scrap',     name: 'Scrap',       icon: '🔩',  iconImage: '/assets/items/icon_scrap.png',     category: 'Construction', playerKey: 'scrap',     fundKey: 'scrap',    basePrice: 0.22 },
   { id: 'materialX', name: 'Material X',  icon: '⚛️', iconImage: '/assets/items/icon_materialx.png', category: 'Construction', playerKey: 'materialX', fundKey: 'materialX', basePrice: 1.62 },
   { id: 'bitcoin',   name: 'Bitcoin',     icon: '₿',   iconImage: '/assets/items/icon_bitcoin.png',   category: 'Construction', playerKey: 'bitcoin',   fundKey: 'bitcoin',   basePrice: 85.00 },
   // Food

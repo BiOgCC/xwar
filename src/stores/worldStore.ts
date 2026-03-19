@@ -4,7 +4,7 @@ import { create } from 'zustand'
 export interface NationalFund {
   money: number
   oil: number
-  scraps: number
+  scrap: number
   materialX: number
   bitcoin: number
   jets: number
@@ -13,10 +13,10 @@ export interface NationalFund {
 export type NationalFundKey = keyof NationalFund
 
 // Tiered seed funds scaled by country economic size
-const FUND_LARGE: NationalFund  = { money: 50_000_000, oil: 5_000_000, scraps: 5_000_000, materialX: 5_000_000, bitcoin: 50_000, jets: 100 }
-const FUND_MEDIUM: NationalFund = { money: 20_000_000, oil: 2_000_000, scraps: 2_000_000, materialX: 2_000_000, bitcoin: 20_000, jets: 40 }
-const FUND_SMALL: NationalFund  = { money: 5_000_000,  oil: 500_000,  scraps: 500_000,  materialX: 500_000,  bitcoin: 5_000,  jets: 10 }
-const FUND_TINY: NationalFund   = { money: 1_000_000,  oil: 100_000,  scraps: 100_000,  materialX: 100_000,  bitcoin: 1_000,  jets: 2 }
+const FUND_LARGE: NationalFund  = { money: 50_000_000, oil: 5_000_000, scrap: 5_000_000, materialX: 5_000_000, bitcoin: 50_000, jets: 100 }
+const FUND_MEDIUM: NationalFund = { money: 20_000_000, oil: 2_000_000, scrap: 2_000_000, materialX: 2_000_000, bitcoin: 20_000, jets: 40 }
+const FUND_SMALL: NationalFund  = { money: 5_000_000,  oil: 500_000,  scrap: 500_000,  materialX: 500_000,  bitcoin: 5_000,  jets: 10 }
+const FUND_TINY: NationalFund   = { money: 1_000_000,  oil: 100_000,  scrap: 100_000,  materialX: 100_000,  bitcoin: 1_000,  jets: 2 }
 
 type FundTier = 'large' | 'medium' | 'small' | 'tiny'
 function getFundForTier(tier: FundTier): NationalFund {
