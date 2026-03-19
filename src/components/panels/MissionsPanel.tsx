@@ -86,7 +86,7 @@ function MissionCard({
 
   // Prerequisites: jets/tanks check (not consumed, just required to exist)
   const inv = useInventoryStore.getState()
-  const playerJets = inv.items.filter(i => i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
+  const playerJets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
   const hasJets = !requiredItems.jets || playerJets >= (requiredItems.jets || 0)
 
   const handleStartMission = () => {
@@ -105,7 +105,7 @@ function MissionCard({
       money: p.money, oil: p.oil, scraps: p.scrap, materialX: p.materialX, bitcoin: p.bitcoin, jets: 0,
     }
     if (donateRes === 'jets' && isNuclear) {
-      resourceMap.jets = inv.items.filter(i => i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
+      resourceMap.jets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
     }
     // Cap at what's still needed so nobody overpays
     const needed = (activeMission.requiredResources[donateRes] ?? 0) - (activeMission.contributedResources[donateRes] ?? 0)
@@ -122,7 +122,7 @@ function MissionCard({
     else if (donateRes === 'materialX') p.spendMaterialX(actual)
     else if (donateRes === 'bitcoin') p.spendBitcoin(actual)
     else if (donateRes === 'jets' && isNuclear) {
-      const jets = inv.items.filter(i => i.tier === 't6' && i.slot === 'weapon' && !i.equipped)
+      const jets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped)
       for (let i = 0; i < Math.min(actual, jets.length); i++) inv.removeItem(jets[i].id)
     }
     // Contribute to mission (which donates to national fund)
@@ -139,7 +139,7 @@ function MissionCard({
       money: p.money, oil: p.oil, scraps: p.scrap, materialX: p.materialX, bitcoin: p.bitcoin, jets: 0,
     }
     if (donateRes === 'jets' && isNuclear) {
-      resourceMap.jets = inv.items.filter(i => i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
+      resourceMap.jets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
     }
     const needed = (activeMission.requiredResources[donateRes] ?? 0) - (activeMission.contributedResources[donateRes] ?? 0)
     const maxDonate = Math.min(resourceMap[donateRes], Math.max(0, needed))

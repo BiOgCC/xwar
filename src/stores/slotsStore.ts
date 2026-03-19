@@ -35,10 +35,25 @@ export const PAYOUTS: Record<SlotSymbol, number> = {
   skull:   3,
 }
 
-// 2-of-a-kind pays 2× regardless of symbol
-const TWO_MATCH_MULTIPLIER = 2
+// 2-of-a-kind pays 1.6× regardless of symbol (raw EV ≈ 0.91)
+const TWO_MATCH_MULTIPLIER = 1.6
 
 export const SLOTS_BETS = [5_000, 25_000, 50_000, 100_000, 250_000]
+
+/* ── Weighted symbol distribution ──
+   Rare symbols appear less often → jackpots are earned, house edge ~5-10%
+   Total weight = 90 */
+const SYMBOL_WEIGHTS: [SlotSymbol, number][] = [
+  ['skull',   25],  // 27.8%
+  ['shield',  22],  // 24.4%
+  ['grenade', 16],  // 17.8%
+  ['rifle',   12],  // 13.3%
+  ['swords',   8],  //  8.9%
+  ['medal',    4],  //  4.4%
+  ['badge',    2],  //  2.2%
+  ['star',     1],  //  1.1%  — jackpot is ~1 in 700k
+]
+const TOTAL_WEIGHT = SYMBOL_WEIGHTS.reduce((s, [, w]) => s + w, 0) // 90
 
 export type SlotsPhase = 'idle' | 'spinning' | 'result'
 
@@ -63,7 +78,12 @@ export interface SlotsState {
 }
 
 function randomSymbol(): SlotSymbol {
-  return SLOT_SYMBOLS[Math.floor(Math.random() * SLOT_SYMBOLS.length)]
+  let roll = Math.random() * TOTAL_WEIGHT
+  for (const [sym, weight] of SYMBOL_WEIGHTS) {
+    roll -= weight
+    if (roll <= 0) return sym
+  }
+  return 'skull' // fallback
 }
 
 // Generate a strip of random symbols for animation, ending with the target
@@ -97,7 +117,7 @@ export const useSlotsStore = create<SlotsState>((set, get) => ({
     player.spendMoney(betAmount)
 
     // 10% tax to country fund
-    const tax = Math.floor(betAmount * 0.10)
+    const tax = Math.floor(betAmount * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
 
     // Determine results

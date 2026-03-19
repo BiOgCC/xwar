@@ -82,6 +82,15 @@ export type BjResult = 'win' | 'lose' | 'push' | 'blackjack' | null
 
 export const BJ_BETS = [10_000, 50_000, 100_000, 250_000, 500_000]
 
+/* ── Upgrade fees for item bets ──
+   Without fees, item bets have ~1.4× EV (hugely player-favorable).
+   These fees bring EV down to ~0.95 per tier upgrade attempt.
+   Fee is charged upfront and goes to the country treasury. */
+export const ITEM_BET_FEE: Record<string, number> = {
+  t4:  42_000,    // T4→T5: $90K→$280K (3.1× jump)
+  t5: 115_000,    // T5→T6: $280K→$830K (2.96× jump)
+}
+
 export interface BlackjackState {
   phase: BjPhase
   bet: number
@@ -137,7 +146,7 @@ export const useBlackjackStore = create<BlackjackState>((set, get) => ({
     player.spendMoney(amount)
 
     // 10% tax to country fund
-    const tax = Math.floor(amount * 0.10)
+    const tax = Math.floor(amount * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
 
     // Create fresh deck and deal
@@ -185,9 +194,16 @@ export const useBlackjackStore = create<BlackjackState>((set, get) => ({
     const inv = useInventoryStore.getState()
     const item = inv.items.find(i => i.id === itemId)
     if (!item || item.equipped || get().phase !== 'betting') return
-    // Only T2-T5 can be bet (T6 has no upgrade, T1 is too low)
+    // Only T4-T5 can be bet (T6 has no upgrade, T1-T3 too low value)
     const tierIdx = TIER_ORDER.indexOf(item.tier)
-    if (tierIdx < 1 || tierIdx >= 5) return // t2=1 through t5=4
+    if (tierIdx < 3 || tierIdx >= 5) return // t4=3, t5=4
+
+    // Charge upgrade fee (balances EV to ~0.95)
+    const player = usePlayerStore.getState()
+    const fee = ITEM_BET_FEE[item.tier] || 0
+    if (player.money < fee) return
+    player.spendMoney(fee)
+    useWorldStore.getState().addTreasuryTax(player.countryCode, fee)
 
     // Create fresh deck and deal
     const deck = createDeck()
@@ -205,7 +221,7 @@ export const useBlackjackStore = create<BlackjackState>((set, get) => ({
       dealerHand[1].faceUp = true
 
       if (isBlackjack(dealerHand)) {
-        // Push — item returned
+        // Push — item returned, fee lost
         set({
           phase: 'result', bet: 0, betItem: item, playerHand, dealerHand, deck,
           result: 'push', resultText: 'PUSH — ITEM SAFE', payout: 0,
@@ -348,7 +364,7 @@ export const useBlackjackStore = create<BlackjackState>((set, get) => ({
 
     // Pay additional bet
     player.spendMoney(s.bet)
-    const tax = Math.floor(s.bet * 0.10)
+    const tax = Math.floor(s.bet * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
 
     const newBet = s.bet * 2

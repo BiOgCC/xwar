@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
+import { useWarCardsStore } from './warCardsStore'
 
 export type EquipTier = 't1' | 't2' | 't3' | 't4' | 't5' | 't6'
 export type ArmorSlot = 'helmet' | 'chest' | 'legs' | 'gloves' | 'boots'
@@ -28,6 +29,8 @@ export interface EquipStats {
   precision?: number
 }
 
+export type ItemLocation = 'inventory' | 'vault' | 'division' | 'market'
+
 export interface EquipItem {
   id: string
   name: string
@@ -38,6 +41,9 @@ export interface EquipItem {
   durability: number
   stats: EquipStats
   weaponSubtype?: WeaponSubtype
+  location: ItemLocation              // Where the item currently lives
+  vaultArmyId?: string                // Army ID if location='vault'
+  assignedToDivision?: string         // Division ID if location='division'
 }
 
 export const TIER_ORDER: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
@@ -110,6 +116,9 @@ export interface LootBoxResult {
 
 export interface InventoryState {
   items: EquipItem[]
+  /** Lifetime tracking for War Cards */
+  totalCasesOpened: number
+  totalItemsDismantled: number
 
   openLootBox: () => LootBoxResult | null
   openMilitaryBox: () => LootBoxResult | null
@@ -121,6 +130,8 @@ export interface InventoryState {
   degradeEquippedItems: (amount: number) => void
   degradeItem: (itemId: string, amount: number) => void
   getEquipped: () => EquipItem[]
+  getPlayerItems: () => EquipItem[]       // Items with location='inventory' (usable by player)
+  getItemById: (itemId: string) => EquipItem | undefined  // Any item by ID regardless of location
 }
 
 let itemCounter = 0
@@ -253,6 +264,7 @@ export function rollItemOfTier(tier: EquipTier): EquipItem {
     durability: 100,
     stats: result.stats,
     weaponSubtype: result.weaponSubtype,
+    location: 'inventory',
   }
 }
 
@@ -276,19 +288,22 @@ function getStarterKit(): EquipItem[] {
         durability: 100,
         stats,
         weaponSubtype,
+        location: 'inventory',
       })
     })
   })
   // Add a second T5 weapon (rpg) and T6 weapon (warship) for subtype variety
   const rpg = generateStats('weapon', 'weapon', 't5', 'rpg')
-  kit.push({ id: `start-t5-rpg-${Math.random().toString(36).substring(2, 9)}`, name: rpg.name, slot: 'weapon', category: 'weapon', tier: 't5', equipped: false, durability: 100, stats: rpg.stats, weaponSubtype: rpg.weaponSubtype })
+  kit.push({ id: `start-t5-rpg-${Math.random().toString(36).substring(2, 9)}`, name: rpg.name, slot: 'weapon', category: 'weapon', tier: 't5', equipped: false, durability: 100, stats: rpg.stats, weaponSubtype: rpg.weaponSubtype, location: 'inventory' })
   const warship = generateStats('weapon', 'weapon', 't6', 'warship')
-  kit.push({ id: `start-t6-warship-${Math.random().toString(36).substring(2, 9)}`, name: warship.name, slot: 'weapon', category: 'weapon', tier: 't6', equipped: false, durability: 100, stats: warship.stats, weaponSubtype: warship.weaponSubtype })
+  kit.push({ id: `start-t6-warship-${Math.random().toString(36).substring(2, 9)}`, name: warship.name, slot: 'weapon', category: 'weapon', tier: 't6', equipped: false, durability: 100, stats: warship.stats, weaponSubtype: warship.weaponSubtype, location: 'inventory' })
   return kit
 }
 
 export const useInventoryStore = create<InventoryState>((set, get) => ({
   items: getStarterKit(),
+  totalCasesOpened: 0,
+  totalItemsDismantled: 0,
 
   openLootBox: () => {
     const playerStore = usePlayerStore.getState()
@@ -329,6 +344,19 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       oil: s.oil + oil,
     }))
 
+    // War Cards: track cases opened
+    set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
+    const inv = get()
+    const ps = usePlayerStore.getState()
+    useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+      totalDamageDone: ps.damageDone,
+      totalMoney: ps.money,
+      totalItemsProduced: ps.itemsProduced,
+      playerLevel: ps.level,
+      totalCasesOpened: inv.totalCasesOpened,
+      totalItemsDismantled: inv.totalItemsDismantled,
+    })
+
     return { rewardType, item, scrap, money, oil }
   },
 
@@ -342,6 +370,19 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const item = rollMilitaryBoxItem()
     set(s => ({ items: [...s.items, item] }))
 
+    // War Cards: track cases opened
+    set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
+    const inv = get()
+    const ps = usePlayerStore.getState()
+    useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+      totalDamageDone: ps.damageDone,
+      totalMoney: ps.money,
+      totalItemsProduced: ps.itemsProduced,
+      playerLevel: ps.level,
+      totalCasesOpened: inv.totalCasesOpened,
+      totalItemsDismantled: inv.totalItemsDismantled,
+    })
+
     return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0 }
   },
 
@@ -352,7 +393,21 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const scrapGain = SCRAP_VALUES[item.tier]
     set((s) => ({
       items: s.items.filter((i) => i.id !== itemId),
+      totalItemsDismantled: s.totalItemsDismantled + 1,
     }))
+
+    // War Cards: track dismantles
+    const inv = get()
+    const ps = usePlayerStore.getState()
+    useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+      totalDamageDone: ps.damageDone,
+      totalMoney: ps.money,
+      totalItemsProduced: ps.itemsProduced,
+      playerLevel: ps.level,
+      totalCasesOpened: inv.totalCasesOpened,
+      totalItemsDismantled: inv.totalItemsDismantled,
+    })
+
     return scrapGain
   },
 
@@ -401,4 +456,8 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     })),
 
   getEquipped: () => get().items.filter((i) => i.equipped),
+
+  getPlayerItems: () => get().items.filter((i) => i.location === 'inventory'),
+
+  getItemById: (itemId) => get().items.find((i) => i.id === itemId),
 }))

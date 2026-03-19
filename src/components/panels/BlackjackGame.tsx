@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { useBlackjackStore, calculateHand, BJ_BETS, type Card } from '../../stores/blackjackStore'
+import { useBlackjackStore, calculateHand, BJ_BETS, ITEM_BET_FEE, type Card } from '../../stores/blackjackStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useInventoryStore, TIER_COLORS, TIER_LABELS, TIER_ORDER, getItemImagePath, type EquipItem } from '../../stores/inventoryStore'
 
@@ -108,9 +108,9 @@ export default function BlackjackGame() {
   const playerTotal = calculateHand(bj.playerHand)
   const dealerTotal = calculateHand(bj.dealerHand)
 
-  // Eligible items for betting: unequipped T2-T5
+  // Eligible items for betting: unequipped T2-T5 in inventory
   const eligibleItems = inventory.items.filter(
-    i => !i.equipped && TIER_ORDER.indexOf(i.tier) >= 1 && TIER_ORDER.indexOf(i.tier) <= 4
+    i => i.location === 'inventory' && !i.equipped && TIER_ORDER.indexOf(i.tier) >= 1 && TIER_ORDER.indexOf(i.tier) <= 4
   )
 
   // Trigger shake animation on item loss
@@ -253,7 +253,7 @@ export default function BlackjackGame() {
                     padding: '16px', textAlign: 'center', fontSize: '10px', color: '#475569',
                     border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '8px',
                   }}>
-                    No eligible items (need unequipped T2–T5 gear)
+                    No eligible items (need unequipped T4–T5 gear)
                   </div>
                 ) : (
                   <div style={{
@@ -264,18 +264,22 @@ export default function BlackjackGame() {
                       const nextTier = TIER_ORDER[TIER_ORDER.indexOf(item.tier) + 1]
                       const tierColor = TIER_COLORS[item.tier]
                       const nextColor = nextTier ? TIER_COLORS[nextTier] : '#fff'
+                      const fee = ITEM_BET_FEE[item.tier] || 0
+                      const canAffordFee = player.money >= fee
                       return (
                         <button
                           key={item.id}
-                          onClick={() => handleItemBet(item.id)}
+                          onClick={() => canAffordFee && handleItemBet(item.id)}
+                          disabled={!canAffordFee}
                           style={{
                             display: 'flex', alignItems: 'center', gap: '8px',
                             padding: '8px 10px', background: `${tierColor}08`,
                             border: `1px solid ${tierColor}33`, borderRadius: '6px',
-                            cursor: 'pointer', transition: 'all 0.15s', textAlign: 'left',
+                            cursor: canAffordFee ? 'pointer' : 'not-allowed', transition: 'all 0.15s', textAlign: 'left',
                             color: '#e2e8f0', fontSize: '10px', width: '100%',
+                            opacity: canAffordFee ? 1 : 0.5,
                           }}
-                          title={`Bet ${item.name} — Win: upgrade to ${nextTier?.toUpperCase()} • Lose: item destroyed`}
+                          title={`Bet ${item.name} — Fee: $${fee.toLocaleString()} — Win: upgrade to ${nextTier?.toUpperCase()} • Lose: item destroyed`}
                         >
                           {(() => {
                             const imgPath = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
@@ -287,7 +291,13 @@ export default function BlackjackGame() {
                           })()}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: 800, color: tierColor, fontSize: '10px' }}>{item.name}</div>
-                            <div style={{ fontSize: '8px', color: '#64748b' }}>{item.tier.toUpperCase()} {item.slot}</div>
+                            <div style={{ fontSize: '8px', color: '#64748b' }}>
+                              {item.tier.toUpperCase()} {item.slot}
+                              <span style={{ color: '#f59e0b', marginLeft: '6px' }}>
+                                FEE: ${fee.toLocaleString()}
+                              </span>
+                              {!canAffordFee && <span style={{ color: '#ef4444', marginLeft: '4px' }}>NOT ENOUGH $</span>}
+                            </div>
                           </div>
                           <div style={{
                             display: 'flex', alignItems: 'center', gap: '4px',

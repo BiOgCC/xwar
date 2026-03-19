@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { usePlayerStore, getMilitaryRank } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore, type EquipItem } from './inventoryStore'
+import { useWorldStore } from './worldStore'
 import { useCompanyStore } from './companyStore'
 import { useGovernmentStore } from './governmentStore'
 
@@ -275,7 +276,7 @@ export interface Division {
   stance: 'unassigned' | 'force_pool' | 'reserve' | 'first_line_defense'
   autoTrainingEnabled: boolean  // Passive experience gain when ready
 
-  status: 'training' | 'ready' | 'in_combat' | 'recovering' | 'destroyed'
+  status: 'training' | 'ready' | 'in_combat' | 'recovering' | 'destroyed' | 'listed'
   trainingProgress: number  // Legacy: used for retreat/recover tick counter
   recoveryTicksNeeded: number  // How many ticks needed to finish recovering
   readyAt: number           // Timestamp: when training finishes (0 = not training)
@@ -300,6 +301,7 @@ export interface ArmyMember {
   role: MilitaryRankType
   joinedAt: number
   contributedPower: number
+  totalDamageThisPeriod: number  // Damage dealt since last salary distribution
 }
 
 export interface ArmyVault {
@@ -340,6 +342,15 @@ export interface BattleOrder {
   claimedBy: { playerId: string; damageContribution: number }[]
 }
 
+export type SalaryDistributionMode = 'equal' | 'by-rank' | 'by-damage'
+
+export const RANK_SALARY_WEIGHT: Record<MilitaryRankType, number> = {
+  private: 1, corporal: 2, sergeant: 3, lieutenant: 4, captain: 5, colonel: 6, general: 7,
+}
+
+const SALARY_CLAIM_COOLDOWN = 8 * 60 * 60 * 1000 // 8 hours
+const DEFAULT_DISTRIBUTION_INTERVAL = 8 * 60 * 60 * 1000 // 8 hours
+
 export interface Army {
   id: string
   name: string
@@ -359,6 +370,14 @@ export interface Army {
   totalManpower: number
   totalAttack: number
   totalDefense: number
+
+  // Salary distribution system
+  salaryPool: number                             // Money waiting to be distributed
+  splitMode: SalaryDistributionMode              // How salary is split among soldiers
+  soldierBalances: Record<string, number>         // playerId → claimable balance
+  distributionInterval: number                    // ms between distributions
+  lastDistribution: number                        // timestamp of last distribution
+  lastClaimed: Record<string, number>             // playerId → last claim timestamp
 }
 
 // ====== STORE ======
@@ -381,7 +400,7 @@ export interface ArmyState {
   createArmy: (name: string, province: string) => string
   assignDivisionToArmy: (divisionId: string, armyId: string) => boolean
   removeDivisionFromArmy: (divisionId: string) => boolean
-  disbandDivision: (divisionId: string) => void
+  disbandDivision: (divisionId: string) => { success: boolean; message: string }
   recalculateArmyTotals: (armyId: string) => void
 
   // Combat effects
@@ -421,6 +440,7 @@ export interface ArmyState {
 
   // Vault & Contributions
   donateToVault: (armyId: string, resource: keyof ArmyVault, amount: number) => { success: boolean; message: string }
+  donateEquipmentToVault: (armyId: string, itemId: string) => { success: boolean; message: string }
   sponsorDivision: (armyId: string, divisionType: DivisionType, targetPlayer: string) => { success: boolean; message: string }
   buyArmyBuff: (armyId: string, stat: ArmyBuff['stat'], percentage: number, durationMs: number, cost: number) => { success: boolean; message: string }
 
@@ -434,6 +454,15 @@ export interface ArmyState {
   // Battle Orders
   issueOrder: (armyId: string, orderType: BattleOrder['orderType'], targetRegion: string, bountyPool: number, durationMs: number, damageMultiplier: number) => { success: boolean; message: string }
   recordDamageContribution: (armyId: string, orderId: string, playerId: string, damage: number) => void
+
+  // Salary Distribution
+  setSplitMode: (armyId: string, mode: SalaryDistributionMode) => { success: boolean; message: string }
+  setDistributionInterval: (armyId: string, intervalMs: number) => { success: boolean; message: string }
+  distributeSalary: (armyId: string) => void
+  claimSalary: (armyId: string) => { success: boolean; message: string }
+  processSalaryTick: () => void
+  depositBattleReward: (armyId: string, playerId: string, amount: number) => void
+  recordMemberDamage: (armyId: string, playerId: string, damage: number) => void
 }
 
 let divCounter = 0
@@ -542,7 +571,7 @@ function createInitialArmies(divisions: Record<string, Division>): Record<string
     id: 'army_us_1', name: 'US Army Group Alpha',
     commanderId: playerName, countryCode: 'US',
     divisionIds: usDivIds, deployedProvince: 'US',
-    members: [{ playerId: playerName, role: 'general' as MilitaryRankType, joinedAt: Date.now(), contributedPower: 0 }],
+    members: [{ playerId: playerName, role: 'general' as MilitaryRankType, joinedAt: Date.now(), contributedPower: 0, totalDamageThisPeriod: 0 }],
     maxSquadSize: 12,
     vault: { ammo: 0, jets: 0, tanks: 0, oil: 0, money: 0, equipmentIds: [] },
     contributions: [], activeBuffs: [], activeOrders: [],
@@ -551,6 +580,7 @@ function createInitialArmies(divisions: Record<string, Division>): Record<string
     totalManpower: usDivIds.reduce((s, id) => s + divisions[id].manpower, 0),
     totalAttack: usDivIds.length * 100,
     totalDefense: usDivIds.length * 100,
+    salaryPool: 0, splitMode: 'equal', soldierBalances: {}, distributionInterval: DEFAULT_DISTRIBUTION_INTERVAL, lastDistribution: Date.now(), lastClaimed: {},
   }
 
   // RU Army Group
@@ -559,7 +589,7 @@ function createInitialArmies(divisions: Record<string, Division>): Record<string
     id: 'army_ru_1', name: 'Russian Western Front',
     commanderId: 'AI_Commander_Putin', countryCode: 'RU',
     divisionIds: ruDivIds, deployedProvince: 'RU',
-    members: [{ playerId: 'AI_Commander_Putin', role: 'general' as MilitaryRankType, joinedAt: Date.now(), contributedPower: 0 }],
+    members: [{ playerId: 'AI_Commander_Putin', role: 'general' as MilitaryRankType, joinedAt: Date.now(), contributedPower: 0, totalDamageThisPeriod: 0 }],
     maxSquadSize: 12,
     vault: { ammo: 500, jets: 2, tanks: 3, oil: 5000, money: 100000, equipmentIds: [] },
     contributions: [], activeBuffs: [], activeOrders: [],
@@ -568,6 +598,7 @@ function createInitialArmies(divisions: Record<string, Division>): Record<string
     totalManpower: ruDivIds.reduce((s, id) => s + divisions[id].manpower, 0),
     totalAttack: ruDivIds.length * 100,
     totalDefense: ruDivIds.length * 100,
+    salaryPool: 0, splitMode: 'equal', soldierBalances: {}, distributionInterval: DEFAULT_DISTRIBUTION_INTERVAL, lastDistribution: Date.now(), lastClaimed: {},
   }
 
   // CN Army Group
@@ -576,7 +607,7 @@ function createInitialArmies(divisions: Record<string, Division>): Record<string
     id: 'army_cn_1', name: 'PLA Northern Command',
     commanderId: 'AI_Commander_Xi', countryCode: 'CN',
     divisionIds: cnDivIds, deployedProvince: 'CN',
-    members: [{ playerId: 'AI_Commander_Xi', role: 'general' as MilitaryRankType, joinedAt: Date.now(), contributedPower: 0 }],
+    members: [{ playerId: 'AI_Commander_Xi', role: 'general' as MilitaryRankType, joinedAt: Date.now(), contributedPower: 0, totalDamageThisPeriod: 0 }],
     maxSquadSize: 12,
     vault: { ammo: 600, jets: 3, tanks: 5, oil: 8000, money: 200000, equipmentIds: [] },
     contributions: [], activeBuffs: [], activeOrders: [],
@@ -585,6 +616,7 @@ function createInitialArmies(divisions: Record<string, Division>): Record<string
     totalManpower: cnDivIds.reduce((s, id) => s + divisions[id].manpower, 0),
     totalAttack: cnDivIds.length * 100,
     totalDefense: cnDivIds.length * 100,
+    salaryPool: 0, splitMode: 'equal', soldierBalances: {}, distributionInterval: DEFAULT_DISTRIBUTION_INTERVAL, lastDistribution: Date.now(), lastClaimed: {},
   }
 
   armyCounter = Object.keys(armies).length
@@ -620,6 +652,38 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     player.spendOil(cost.oil)
     player.spendMaterialX(cost.materialX)
     player.spendScraps(cost.scrap)
+
+    // Route recruit costs: 33% to army vault, 64% to country treasury
+    const playerCountry = player.countryCode || 'US'
+    const moneyToVault = Math.floor(cost.money * 0.33)
+    const moneyToTreasury = Math.floor(cost.money * 0.64)
+
+    // If player is in an army + armyId provided, route to that vault
+    if (armyId) {
+      useArmyStore.setState(s => {
+        const army = s.armies[armyId]
+        if (!army) return s
+        return {
+          armies: {
+            ...s.armies,
+            [armyId]: { ...army, vault: { ...army.vault, money: army.vault.money + moneyToVault } },
+          },
+        }
+      })
+    } else {
+      // If no army, find the first army of the player's country
+      const armies = get().getArmiesForCountry(playerCountry)
+      if (armies.length > 0) {
+        const firstArmy = armies[0]
+        useArmyStore.setState(s => ({
+          armies: {
+            ...s.armies,
+            [firstArmy.id]: { ...s.armies[firstArmy.id], vault: { ...s.armies[firstArmy.id].vault, money: s.armies[firstArmy.id].vault.money + moneyToVault } },
+          },
+        }))
+      }
+    }
+    useWorldStore.getState().addTreasuryTax(playerCountry, moneyToTreasury)
 
     const id = `div_${++divCounter}_${Date.now()}`
     const { star, modifiers } = rollStarQuality()
@@ -739,7 +803,7 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
           commanderId: player.name,
           countryCode: player.countryCode || 'US',
           divisionIds: [],
-          members: [{ playerId: player.name, role: getMilitaryRank(player.level).rank, joinedAt: Date.now(), contributedPower: 0 }],
+          members: [{ playerId: player.name, role: getMilitaryRank(player.level).rank, joinedAt: Date.now(), contributedPower: 0, totalDamageThisPeriod: 0 }],
           maxSquadSize: 12,
           vault: { ammo: 0, jets: 0, tanks: 0, oil: 0, money: 0, equipmentIds: [] },
           contributions: [], activeBuffs: [], activeOrders: [],
@@ -749,6 +813,7 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
           totalManpower: 0,
           totalAttack: 0,
           totalDefense: 0,
+          salaryPool: 0, splitMode: 'equal', soldierBalances: {}, distributionInterval: DEFAULT_DISTRIBUTION_INTERVAL, lastDistribution: Date.now(), lastClaimed: {},
         },
       },
     }))
@@ -806,13 +871,33 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
   },
 
   disbandDivision: (divisionId) => {
+    const state = get()
+    const div = state.divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (div.status === 'in_combat') return { success: false, message: 'Cannot disband a division in combat.' }
+    const player = usePlayerStore.getState()
+    if (div.ownerId !== player.name) return { success: false, message: 'Not your division.' }
+
+    // Return division equipment to inventory
+    div.equipment.forEach(eqId => {
+      useInventoryStore.setState(s => ({
+        items: s.items.map(i => i.id === eqId ? {
+          ...i, location: 'inventory' as const, assignedToDivision: undefined, equipped: false,
+        } : i)
+      }))
+    })
+
+    // Remove from army
     get().removeDivisionFromArmy(divisionId)
 
-    set(state => {
-      const newDivisions = { ...state.divisions }
+    // Delete division
+    set(s => {
+      const newDivisions = { ...s.divisions }
       delete newDivisions[divisionId]
       return { divisions: newDivisions }
     })
+
+    return { success: true, message: `${div.name} has been disbanded.` }
   },
 
   recalculateArmyTotals: (armyId) => {
@@ -1070,6 +1155,7 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
       role: rank.rank,
       joinedAt: Date.now(),
       contributedPower: 0,
+      totalDamageThisPeriod: 0,
     }
 
     set(s => ({
@@ -1197,6 +1283,65 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     }))
 
     return { success: true, message: `Donated ${amount} ${resource} to ${army.name} vault!` }
+  },
+
+  donateEquipmentToVault: (armyId, itemId) => {
+    const player = usePlayerStore.getState()
+    const state = get()
+    const army = state.armies[armyId]
+    if (!army) return { success: false, message: 'Army not found.' }
+
+    // Must be a member
+    if (!army.members.some(m => m.playerId === player.name)) {
+      return { success: false, message: 'You must be enlisted to donate.' }
+    }
+
+    // Find item in inventory
+    const inv = useInventoryStore.getState()
+    const item = inv.items.find(i => i.id === itemId && i.location === 'inventory')
+    if (!item) return { success: false, message: 'Item not found in inventory.' }
+    if (item.equipped) return { success: false, message: 'Unequip the item first.' }
+
+    // Update item location to vault (item stays in inventoryStore)
+    useInventoryStore.setState(s => ({
+      items: s.items.map(i => i.id === itemId ? {
+        ...i, location: 'vault' as const, vaultArmyId: armyId, equipped: false,
+      } : i)
+    }))
+
+    // Add ID to vault's equipmentIds
+    set(s => ({
+      armies: {
+        ...s.armies,
+        [armyId]: {
+          ...army,
+          vault: { ...army.vault, equipmentIds: [...army.vault.equipmentIds, itemId] },
+        },
+      },
+    }))
+
+    // Track contribution
+    const contributions = [...army.contributions]
+    const existing = contributions.find(c => c.playerId === player.name)
+    if (existing) {
+      existing.totalEquipmentDonated += 1
+    } else {
+      contributions.push({
+        playerId: player.name,
+        totalMoneyDonated: 0,
+        totalEquipmentDonated: 1,
+        sponsoredSquadrons: [],
+      })
+    }
+
+    set(s => ({
+      armies: {
+        ...s.armies,
+        [armyId]: { ...s.armies[armyId], contributions },
+      },
+    }))
+
+    return { success: true, message: `Donated ${item.name} to ${army.name} vault!` }
   },
 
   sponsorDivision: (armyId, divisionType, targetPlayer) => {
@@ -1548,7 +1693,14 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     if (div.equipment.length >= 3) return { success: false, message: 'Division has max 3 equipment slots.' }
     if (div.equipment.includes(equipmentId)) return { success: false, message: 'Already equipped.' }
 
-    // Remove from vault, add to division
+    // Update item location: vault → division
+    useInventoryStore.setState(s => ({
+      items: s.items.map(i => i.id === equipmentId ? {
+        ...i, location: 'division' as const, assignedToDivision: divisionId, vaultArmyId: undefined,
+      } : i)
+    }))
+
+    // Move ID: vault.equipmentIds → division.equipment
     set(s => ({
       armies: {
         ...s.armies,
@@ -1562,6 +1714,7 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
         [divisionId]: { ...div, equipment: [...div.equipment, equipmentId] },
       },
     }))
+
     return { success: true, message: 'Equipment assigned to division.' }
   },
 
@@ -1573,7 +1726,14 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     if (!div) return { success: false, message: 'Division not found.' }
     if (!div.equipment.includes(equipmentId)) return { success: false, message: 'Not equipped.' }
 
-    // Remove from division, add to vault
+    // Update item location: division → vault
+    useInventoryStore.setState(s => ({
+      items: s.items.map(i => i.id === equipmentId ? {
+        ...i, location: 'vault' as const, assignedToDivision: undefined, vaultArmyId: armyId,
+      } : i)
+    }))
+
+    // Move ID: division.equipment → vault.equipmentIds
     set(s => ({
       armies: {
         ...s.armies,
@@ -1700,5 +1860,166 @@ export const useArmyStore = create<ArmyState>((set, get) => ({
     }))
 
     return { success: true, message: `Reinforced to full! Cost: ${reinforceCostMoney.toLocaleString()} + ${reinforceCostOil} oil.` }
+  },
+
+
+  // ====== SALARY DISTRIBUTION SYSTEM ======
+
+  setSplitMode: (armyId, mode) => {
+    const state = get()
+    const army = state.armies[armyId]
+    if (!army) return { success: false, message: 'Army not found.' }
+    const player = usePlayerStore.getState()
+    if (army.commanderId !== player.name) return { success: false, message: 'Only the commander can change split mode.' }
+    set(s => ({ armies: { ...s.armies, [armyId]: { ...s.armies[armyId], splitMode: mode } } }))
+    return { success: true, message: `Salary split mode set to: ${mode}` }
+  },
+
+  setDistributionInterval: (armyId, intervalMs) => {
+    const state = get()
+    const army = state.armies[armyId]
+    if (!army) return { success: false, message: 'Army not found.' }
+    const player = usePlayerStore.getState()
+    if (army.commanderId !== player.name) return { success: false, message: 'Only the commander can change distribution interval.' }
+    const clamped = Math.max(4 * 3600000, Math.min(24 * 3600000, intervalMs)) // 4h–24h
+    set(s => ({ armies: { ...s.armies, [armyId]: { ...s.armies[armyId], distributionInterval: clamped } } }))
+    return { success: true, message: `Distribution interval set to ${Math.round(clamped / 3600000)}h` }
+  },
+
+  distributeSalary: (armyId) => {
+    const state = get()
+    const army = state.armies[armyId]
+    if (!army || army.salaryPool <= 0 || army.members.length === 0) return
+
+    const pool = army.salaryPool
+    const newBalances = { ...army.soldierBalances }
+
+    switch (army.splitMode) {
+      case 'equal': {
+        const share = Math.floor(pool / army.members.length)
+        army.members.forEach(m => {
+          newBalances[m.playerId] = (newBalances[m.playerId] || 0) + share
+        })
+        break
+      }
+      case 'by-rank': {
+        const totalWeight = army.members.reduce((s, m) => s + (RANK_SALARY_WEIGHT[m.role] || 1), 0)
+        army.members.forEach(m => {
+          const weight = RANK_SALARY_WEIGHT[m.role] || 1
+          const share = Math.floor(pool * (weight / totalWeight))
+          newBalances[m.playerId] = (newBalances[m.playerId] || 0) + share
+        })
+        break
+      }
+      case 'by-damage': {
+        const totalDmg = army.members.reduce((s, m) => s + (m.totalDamageThisPeriod || 0), 0)
+        if (totalDmg <= 0) {
+          // Fallback to equal if no damage was dealt
+          const share = Math.floor(pool / army.members.length)
+          army.members.forEach(m => {
+            newBalances[m.playerId] = (newBalances[m.playerId] || 0) + share
+          })
+        } else {
+          army.members.forEach(m => {
+            const share = Math.floor(pool * ((m.totalDamageThisPeriod || 0) / totalDmg))
+            newBalances[m.playerId] = (newBalances[m.playerId] || 0) + share
+          })
+        }
+        break
+      }
+    }
+
+    // Reset damage counters and update state
+    const updatedMembers = army.members.map(m => ({ ...m, totalDamageThisPeriod: 0 }))
+    set(s => ({
+      armies: {
+        ...s.armies,
+        [armyId]: {
+          ...s.armies[armyId],
+          salaryPool: 0,
+          soldierBalances: newBalances,
+          lastDistribution: Date.now(),
+          members: updatedMembers,
+        },
+      },
+    }))
+  },
+
+  claimSalary: (armyId) => {
+    const state = get()
+    const army = state.armies[armyId]
+    if (!army) return { success: false, message: 'Army not found.' }
+    const player = usePlayerStore.getState()
+    const balance = army.soldierBalances[player.name] || 0
+    if (balance <= 0) return { success: false, message: 'No salary to claim.' }
+    const lastClaim = army.lastClaimed[player.name] || 0
+    if (Date.now() - lastClaim < SALARY_CLAIM_COOLDOWN) {
+      const remaining = Math.ceil((SALARY_CLAIM_COOLDOWN - (Date.now() - lastClaim)) / 3600000)
+      return { success: false, message: `Claim cooldown: ${remaining}h remaining.` }
+    }
+    // Transfer to player wallet
+    player.earnMoney(balance)
+    set(s => ({
+      armies: {
+        ...s.armies,
+        [armyId]: {
+          ...s.armies[armyId],
+          soldierBalances: { ...s.armies[armyId].soldierBalances, [player.name]: 0 },
+          lastClaimed: { ...s.armies[armyId].lastClaimed, [player.name]: Date.now() },
+        },
+      },
+    }))
+    return { success: true, message: `Claimed $${balance.toLocaleString()} salary!` }
+  },
+
+  processSalaryTick: () => {
+    const state = get()
+    const now = Date.now()
+    Object.values(state.armies).forEach(army => {
+      if (army.salaryPool > 0 && now >= army.lastDistribution + army.distributionInterval) {
+        get().distributeSalary(army.id)
+      }
+    })
+  },
+
+  depositBattleReward: (armyId, playerId, amount) => {
+    if (amount <= 0) return
+    set(s => {
+      const army = s.armies[armyId]
+      if (!army) return s
+      return {
+        armies: {
+          ...s.armies,
+          [armyId]: {
+            ...army,
+            soldierBalances: {
+              ...army.soldierBalances,
+              [playerId]: (army.soldierBalances[playerId] || 0) + amount,
+            },
+          },
+        },
+      }
+    })
+  },
+
+  recordMemberDamage: (armyId, playerId, damage) => {
+    if (damage <= 0) return
+    set(s => {
+      const army = s.armies[armyId]
+      if (!army) return s
+      return {
+        armies: {
+          ...s.armies,
+          [armyId]: {
+            ...army,
+            members: army.members.map(m =>
+              m.playerId === playerId
+                ? { ...m, totalDamageThisPeriod: (m.totalDamageThisPeriod || 0) + damage }
+                : m
+            ),
+          },
+        },
+      }
+    })
   },
 }))

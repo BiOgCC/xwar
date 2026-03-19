@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { usePlayerStore, type PlayerState } from '../../stores/playerStore'
 import { useInventoryStore, type EquipItem, TIER_COLORS, TIER_LABELS, TIER_ORDER, generateStats, ARMOR_SLOTS, SLOT_ICONS, getItemImagePath } from '../../stores/inventoryStore'
-import { useMarketStore, RESOURCE_DEFS, type ResourceId, type MarketOrder, type TradeRecord } from '../../stores/marketStore'
+import { useMarketStore, RESOURCE_DEFS, type ResourceId, type MarketOrder, type TradeRecord } from '../../stores/market'
 import { useUIStore } from '../../stores/uiStore'
 import type { EquipTier, EquipSlot, EquipCategory } from '../../stores/inventoryStore'
 import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/armyStore'
@@ -25,7 +25,7 @@ const TIER_RARITY: Record<EquipTier, string> = {
   t1: 'grey', t2: 'green', t3: 'blue', t4: 'purple', t5: 'yellow', t6: 'red'
 }
 const TIER_SELL_PRICE: Record<EquipTier, number> = {
-  t1: 120, t2: 360, t3: 1200, t4: 4500, t5: 18000, t6: 80000
+  t1: 1200, t2: 5000, t3: 25000, t4: 90000, t5: 280000, t6: 830000
 }
 
 const CATEGORY_RARITY: Record<string, string> = {
@@ -69,8 +69,8 @@ export default function MarketPanel() {
 
   const isError = feedback.includes('Need') || feedback.includes('Not') || feedback.includes('Cannot') || feedback.includes('Invalid')
 
-  const equippedCount = inventory.items.filter(i => i.equipped).length
-  const totalItems    = inventory.items.length
+  const equippedCount = inventory.items.filter(i => i.location === 'inventory' && i.equipped).length
+  const totalItems    = inventory.items.filter(i => i.location === 'inventory').length
 
   // President check for country trading
   const iso = player.countryCode || 'US'
@@ -310,10 +310,10 @@ export default function MarketPanel() {
         {tab === 'equipment' && <>
           {/* YOUR EQUIPMENT — click to list */}
           <div className="market-section-title">YOUR EQUIPMENT — CLICK TO LIST</div>
-          {inventory.items.length === 0
+          {inventory.items.filter(i => i.location === 'inventory').length === 0
             ? <div className="market-empty">No equipment in inventory.</div>
             : Object.entries(
-                inventory.items.reduce<Record<string, EquipItem[]>>((acc, item) => {
+                inventory.items.filter(i => i.location === 'inventory').reduce<Record<string, EquipItem[]>>((acc, item) => {
                   const key = item.slot; acc[key] = acc[key] || []; acc[key].push(item); return acc
                 }, {})
               ).map(([slot, items]) => (

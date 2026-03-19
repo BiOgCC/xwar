@@ -23,66 +23,66 @@ export interface WheelSegment {
   probability: number
 }
 
-// ─── $50K TABLE ─── Conservative: small multipliers, T4 items, ~88% return
-// EV ≈ (25%×1.5 + 15%×2 + 5%×3 + 13% items) = 0.375+0.30+0.15 = 0.825 + items
+// ─── $50K TABLE ─── Conservative: small multipliers, T4 items, ~90% return
+// EV ≈ (28%×1.5 + 18%×2 + 8%×3 + 14% items) ≈ 0.42+0.36+0.24 = ~0.90 + items
 const WHEEL_50K: WheelSegment[] = [
-  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C1, probability: 15 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 9 },
-  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C3, probability: 10 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 9 },
-  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C2, probability: 8,  itemTier: 't4' },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 8 },
-  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C1, probability: 5 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 9 },
-  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C3, probability: 5,  itemTier: 't4' },
-  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C1, probability: 10 },
+  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C1, probability: 18 },
   { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 7 },
-  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C3, probability: 5 },
-]
-
-// ─── $250K TABLE ─── Balanced: mid multipliers, T4+T5 items, ~85% return
-// EV ≈ (18%×1.5 + 12%×2 + 6%×3 + 3%×5 + 10% items) = 0.27+0.24+0.18+0.15 = 0.84 + items
-const WHEEL_250K: WheelSegment[] = [
-  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C1, probability: 8 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 10 },
-  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C3, probability: 6 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 11 },
-  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C2, probability: 6,  itemTier: 't4' },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 10 },
-  { label: '×5',       type: 'multiply', multiplier: 5,    color: '#fbbf24', bgColor: C1, probability: 3 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 10 },
-  { label: 'T5 ITEM',  type: 'item',     multiplier: 0,    color: '#c084fc', bgColor: C3, probability: 4,  itemTier: 't5' },
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C3, probability: 12 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 6 },
+  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C2, probability: 8,  itemTier: 't4' },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 6 },
+  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C1, probability: 8 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 7 },
+  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C3, probability: 6,  itemTier: 't4' },
   { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C1, probability: 10 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 10 },
-  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C3, probability: 8 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 6 },
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C3, probability: 6 },
 ]
 
-// ─── $500K TABLE ─── High risk: big multipliers, T5+T6 items, ~82% return
-// EV ≈ (12%×2 + 8%×3 + 4%×5 + 2%×10 + 6% items) = 0.24+0.24+0.20+0.20 = 0.88 + items (but more bust)
-const WHEEL_500K: WheelSegment[] = [
-  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C1, probability: 8 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 12 },
-  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C3, probability: 5 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 12 },
-  { label: 'T5 ITEM',  type: 'item',     multiplier: 0,    color: '#c084fc', bgColor: C2, probability: 4,  itemTier: 't5' },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 12 },
+// ─── $250K TABLE ─── Balanced: mid multipliers, T4+T5 items, ~88% return
+// EV ≈ (22%×1.5 + 10%×2 + 8%×3 + 4%×5 + 12% items) ≈ 0.33+0.20+0.24+0.20 = ~0.88 + items
+const WHEEL_250K: WheelSegment[] = [
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C1, probability: 10 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 8 },
+  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C3, probability: 8 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 8 },
+  { label: 'T4 ITEM',  type: 'item',     multiplier: 0,    color: '#a78bfa', bgColor: C2, probability: 7,  itemTier: 't4' },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 8 },
   { label: '×5',       type: 'multiply', multiplier: 5,    color: '#fbbf24', bgColor: C1, probability: 4 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 12 },
-  { label: 'T6 ITEM',  type: 'item',     multiplier: 0,    color: '#f0abfc', bgColor: C3, probability: 2,  itemTier: 't6' },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 7 },
+  { label: 'T5 ITEM',  type: 'item',     multiplier: 0,    color: '#c084fc', bgColor: C3, probability: 5,  itemTier: 't5' },
+  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C1, probability: 12 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 7 },
+  { label: '×1.5',     type: 'multiply', multiplier: 1.5,  color: '#fbbf24', bgColor: C3, probability: 10 },
+]
+
+// ─── $500K TABLE ─── High risk: big multipliers, T5+T6 items, ~88% return
+// EV ≈ (14%×2 + 8%×3 + 5%×5 + 3%×10 + 8% items) ≈ 0.28+0.24+0.25+0.30 = ~0.88 + items
+const WHEEL_500K: WheelSegment[] = [
+  { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C1, probability: 10 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 9 },
+  { label: '×3',       type: 'multiply', multiplier: 3,    color: '#fbbf24', bgColor: C3, probability: 8 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C1, probability: 9 },
+  { label: 'T5 ITEM',  type: 'item',     multiplier: 0,    color: '#c084fc', bgColor: C2, probability: 5,  itemTier: 't5' },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C3, probability: 9 },
+  { label: '×5',       type: 'multiply', multiplier: 5,    color: '#fbbf24', bgColor: C1, probability: 5 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 9 },
+  { label: 'T6 ITEM',  type: 'item',     multiplier: 0,    color: '#f0abfc', bgColor: C3, probability: 3,  itemTier: 't6' },
   { label: '×2',       type: 'multiply', multiplier: 2,    color: '#fbbf24', bgColor: C1, probability: 4 },
-  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 13 },
-  { label: '×10',      type: 'multiply', multiplier: 10,   color: '#f0abfc', bgColor: C3, probability: 2 },
+  { label: 'BUST',     type: 'bankrupt', multiplier: 0,    color: '#fca5a5', bgColor: C2, probability: 9 },
+  { label: '×10',      type: 'multiply', multiplier: 10,   color: '#f0abfc', bgColor: C3, probability: 3 },
 ]
 
 export const BET_TIERS = [
-  { amount: 50_000,    label: '$50K' },
+  { amount: 100_000,   label: '$100K' },
   { amount: 250_000,   label: '$250K' },
   { amount: 500_000,   label: '$500K' },
 ]
 
 // Map bet amount → its wheel segments
 export const TIER_WHEELS: Record<number, WheelSegment[]> = {
-  50_000:  WHEEL_50K,
+  100_000: WHEEL_50K,
   250_000: WHEEL_250K,
   500_000: WHEEL_500K,
 }
@@ -148,7 +148,7 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
     player.spendMoney(betAmount)
 
     // 10% of bet goes to player's country treasury
-    const betTax = Math.floor(betAmount * 0.10)
+    const betTax = Math.floor(betAmount * 0.15)
     useWorldStore.getState().addTreasuryTax(player.countryCode, betTax)
 
     const segments = getSegmentsForBet(betAmount)
@@ -184,13 +184,9 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
 
     switch (segment.type) {
       case 'multiply': {
-        // Payout created from thin air
+        // Payout created from thin air (bet tax already taken at spin time)
         const payout = Math.floor(s.currentBet * segment.multiplier)
         player.earnMoney(payout)
-
-        // 10% of winnings taxed to country treasury
-        const winTax = Math.floor(payout * 0.10)
-        useWorldStore.getState().addTreasuryTax(player.countryCode, winTax)
 
         winText = 'YOU WON!'
         winAmount = `$${payout.toLocaleString()}`
@@ -213,6 +209,7 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
           durability: 100,
           stats: result.stats,
           weaponSubtype: result.weaponSubtype,
+          location: 'inventory',
         }
         useInventoryStore.getState().addItem(newItem)
         winText = 'JACKPOT!'

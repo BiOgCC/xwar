@@ -623,6 +623,30 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const employerTax = totalTax - employeeTax
     const netPay = grossPay - employeeTax
 
+    // Salary comes from the employer (they get production/items in return)
+    const isNpcJob = job.companyId.startsWith('npc')
+    const employerCompany = state.companies.find(c => c.id === job.companyId)
+
+    if (isNpcJob) {
+      // NPC employer: country fund simulates NPC economy
+      const ws = useWorldStore.getState()
+      const country = ws.getCountry(job.location)
+      const fundAvailable = country?.fund.money ?? 0
+      const canPay = Math.min(grossPay, fundAvailable)
+      if (canPay <= 0) return { message: 'Employer cannot afford to pay wages', type: 'error' }
+      ws.spendFromFund(job.location, { money: canPay })
+    } else if (employerCompany) {
+      // Player-owned company: employer pays from their wallet
+      // In single-player this is the same player, but the mechanic is correct for multiplayer
+      // For now, treat it as employer paying — we deduct from whoever owns the company
+      // Since we're single-player, the player is both employer and employee for their own companies
+      // The salary self-regulates: employer sets payPerPP based on item value they receive
+      if (player.money < grossPay) return { message: 'Employer cannot afford to pay wages', type: 'error' }
+      player.spendMoney(grossPay)
+    } else {
+      return { message: 'Employer company not found', type: 'error' }
+    }
+
     // Consume work bar, give net pay to employee
     usePlayerStore.setState((s) => ({
       work: Math.max(0, s.work - 10),
@@ -634,7 +658,6 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     useWorldStore.getState().addTreasuryTax(job.location, totalTax)
 
     // Add contribution to the employer's company production (if it's a player company)
-    const employerCompany = state.companies.find(c => c.id === job.companyId)
     if (employerCompany) {
       set(s => ({
         companies: s.companies.map(c =>

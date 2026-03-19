@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import WarCardsTab from './WarCardsTab'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
 import {
@@ -9,7 +10,7 @@ import {
   type PrestigeCategory,
 } from '../../stores/prestigeStore'
 
-type PrestigeTab = 'rankings' | 'prestige' | 'market' | 'archive'
+type PrestigeTab = 'rankings' | 'prestige' | 'market' | 'archive' | 'warcards'
 
 export default function PrestigePanel() {
   const player = usePlayerStore()
@@ -28,6 +29,7 @@ export default function PrestigePanel() {
     { id: 'prestige', label: 'STATUS', icon: '⭐' },
     { id: 'market', label: 'MARKET', icon: '🛒' },
     { id: 'archive', label: 'ARCHIVE', icon: '📜' },
+    { id: 'warcards', label: 'WAR CARDS', icon: '🃏' },
   ]
 
   const milRankings = prestige.rankings.filter(r => r.category === 'military').sort((a, b) => a.rankPosition - b.rankPosition)
@@ -418,6 +420,9 @@ export default function PrestigePanel() {
           })()}
         </>
       )}
+
+      {/* ====== WAR CARDS TAB ====== */}
+      {tab === 'warcards' && <WarCardsTab />}
     </div>
   )
 }
