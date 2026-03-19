@@ -3,7 +3,8 @@ import { useUIStore } from './stores/uiStore'
 import { usePlayerStore } from './stores/playerStore'
 import { useWorldStore } from './stores/worldStore'
 import { useCompanyStore } from './stores/companyStore'
-import { useBattleStore, getCountryFlag, getCountryName } from './stores/battleStore'
+import { useBattleStore, getCountryName } from './stores/battleStore'
+import CountryFlag from './components/shared/CountryFlag'
 import { useInventoryStore } from './stores/inventoryStore'
 import { useSkillsStore } from './stores/skillsStore'
 import { useCyberStore } from './stores/cyberStore'
@@ -652,7 +653,7 @@ function App() {
                   : activePanel === 'missions'
                   ? 'MISSIONS: ENABLE OPERATIONS BY COMPLETING THEM'
                   : activePanel === 'foreign_country' && selectedForeignCountry
-                  ? `${getCountryFlag(selectedForeignCountry)} ${getCountryName(selectedForeignCountry).toUpperCase()}`
+                  ? <><CountryFlag iso={selectedForeignCountry} size={18} style={{ marginRight: '6px' }} />{getCountryName(selectedForeignCountry).toUpperCase()}</>
                   : activePanel?.toUpperCase()}
               </h3>
               <div className="hud-panel__actions">
@@ -854,7 +855,7 @@ function App() {
           <div className="region-attack-popup__card">
             <button className="region-attack-popup__close" onClick={() => setSelectedWarRegion(null)}>✕</button>
             <div className="region-attack-popup__header">
-              <span className="region-attack-popup__flag">{getCountryFlag(selectedWarRegion.countryCode)}</span>
+              <span className="region-attack-popup__flag"><CountryFlag iso={selectedWarRegion.countryCode} size={24} /></span>
               <div>
                 <div className="region-attack-popup__name">{selectedWarRegion.name}</div>
                 <div className="region-attack-popup__country">

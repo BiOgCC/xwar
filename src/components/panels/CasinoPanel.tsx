@@ -5,6 +5,8 @@ import { useCasinoStore, getSegmentsForBet, BET_TIERS } from '../../stores/casin
 import { useWorldStore } from '../../stores/worldStore'
 import { getItemImagePath, TIER_COLORS, TIER_LABELS, SLOT_ICONS } from '../../stores/inventoryStore'
 import { popVariants, SPRINGS, useScreenShake } from '../shared/AnimationSystem'
+import BlackjackGame from './BlackjackGame'
+import SlotsGame from './SlotsGame'
 import '../../styles/casino.css'
 
 /* ── SVG Wheel geometry helpers ── */
@@ -32,6 +34,7 @@ export default function CasinoPanel() {
   const [wonItemDismissed, setWonItemDismissed] = useState(false)
   const [showConfetti, setShowConfetti] = useState(false)
   const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [activeGame, setActiveGame] = useState<'roulette' | 'blackjack' | 'slots'>('roulette')
 
   // Confetti particles — generated once per burst
   const confettiParticles = useRef<Array<{ x: number; y: number; r: number; color: string; delay: number; size: number; spin: number }>>([]).current
@@ -113,10 +116,38 @@ export default function CasinoPanel() {
       {/* ═══ HEADER ═══ */}
       <div className="casino-header">
         <div className="casino-header__title">WARZONE CASINO</div>
-        <div className="casino-header__sub">
-          PROCEEDS FUND US TREASURY // PRIZES PAID AT 98% MARKET VALUE
-        </div>
       </div>
+
+      {/* ═══ GAME TABS ═══ */}
+      <div className="casino-tabs">
+        <button
+          className={`casino-tab ${activeGame === 'roulette' ? 'casino-tab--active' : ''}`}
+          onClick={() => setActiveGame('roulette')}
+        >
+          🎰 ROULETTE
+        </button>
+        <button
+          className={`casino-tab ${activeGame === 'blackjack' ? 'casino-tab--active' : ''}`}
+          onClick={() => setActiveGame('blackjack')}
+        >
+          🃏 BLACKJACK
+        </button>
+        <button
+          className={`casino-tab ${activeGame === 'slots' ? 'casino-tab--active' : ''}`}
+          onClick={() => setActiveGame('slots')}
+        >
+          🎰 SLOTS
+        </button>
+      </div>
+
+      {/* ═══ BLACKJACK ═══ */}
+      {activeGame === 'blackjack' && <BlackjackGame />}
+
+      {/* ═══ SLOTS ═══ */}
+      {activeGame === 'slots' && <SlotsGame />}
+
+      {/* ═══ ROULETTE ═══ */}
+      {activeGame === 'roulette' && (<>
 
       {/* ═══ STREAK / STATS (at top for visibility) ═══ */}
       {casino.totalSpins > 0 && (
@@ -247,21 +278,7 @@ export default function CasinoPanel() {
         )
       )}
 
-      {/* ═══ SPINNING INDICATOR ═══ */}
-      <AnimatePresence>
-        {casino.phase === 'spinning' && (
-          <motion.div
-            className="casino-spinning-text"
-            key="spinning"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.05, 0.95] }}
-            exit={{ opacity: 0, scale: 0.5 }}
-            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            SPINNING...
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       {/* ═══ RESULT ═══ */}
       <AnimatePresence>
@@ -489,6 +506,7 @@ export default function CasinoPanel() {
           </motion.div>
         )}
       </AnimatePresence>
+      </>)}
     </div>
   )
 }

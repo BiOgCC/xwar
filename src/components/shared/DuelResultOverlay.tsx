@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SPRINGS, useScreenShake } from './AnimationSystem'
+import { getCountryFlagUrl } from '../../stores/battleStore'
 import RewardReveal, { type RewardEntry } from './RewardReveal'
 
 /* ═══════════════════════════════════════════════════
@@ -89,7 +90,7 @@ export default function DuelResultOverlay({
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ ...SPRINGS.heavy, delay: 0.2 }}
               >
-                <div className="duel-fighter__flag">{attacker.flag}</div>
+                <div className="duel-fighter__flag"><img src={getCountryFlagUrl(attacker.flag, 80)} alt={attacker.flag} draggable={false} style={{ width: '48px', borderRadius: '4px' }} /></div>
                 <div className="duel-fighter__name">{attacker.name}</div>
               </motion.div>
 
@@ -110,7 +111,7 @@ export default function DuelResultOverlay({
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ ...SPRINGS.heavy, delay: 0.2 }}
               >
-                <div className="duel-fighter__flag">{defender.flag}</div>
+                <div className="duel-fighter__flag"><img src={getCountryFlagUrl(defender.flag, 80)} alt={defender.flag} draggable={false} style={{ width: '48px', borderRadius: '4px' }} /></div>
                 <div className="duel-fighter__name">{defender.name}</div>
               </motion.div>
             </div>

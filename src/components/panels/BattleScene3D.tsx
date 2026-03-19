@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import type { DivisionType } from '../../stores/armyStore'
 import { DIVISION_TEMPLATES } from '../../stores/armyStore'
 import { useBattleStore } from '../../stores/battleStore'
+import CountryFlag from '../shared/CountryFlag'
 
 // ====== TERRAIN CONFIGS ======
 
@@ -647,7 +648,7 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
       <div className="battle-scene-hud">
         <div className="battle-scene-hud__left">
           <div className="battle-scene-hud__flag battle-scene-hud__flag--atk">
-            {battle.attackerId}
+            <CountryFlag iso={battle.attackerId} size={24} />
           </div>
           <div className="battle-scene-hud__info">
             <div className="battle-scene-hud__label">ATTACKER</div>
@@ -673,7 +674,7 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
             <div className="battle-scene-hud__divs">{defenderDivisions.length} divisions</div>
           </div>
           <div className="battle-scene-hud__flag battle-scene-hud__flag--def">
-            {battle.defenderId}
+            <CountryFlag iso={battle.defenderId} size={24} />
           </div>
         </div>
 

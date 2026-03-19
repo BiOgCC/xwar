@@ -12,24 +12,13 @@ import SpriteAvatar from '../shared/SpriteAvatar'
 
 type SubTab = 'profile' | 'inventory' | 'skills' | 'companies' | 'account'
 
-/* ── Minimalist SVG tab icons ── */
-const TabIcon = ({ d, size = 18 }: { d: string; size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d={d} />
-  </svg>
-)
-
-const ICON_PATHS: Record<SubTab, string> = {
-  // Person silhouette (head + shoulders)
-  profile: 'M12 12c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm0 2c-3.33 0-10 1.67-10 5v2h20v-2c0-3.33-6.67-5-10-5z',
-  // Backpack / inventory bag
-  inventory: 'M17 4h-2V2h-2v2H11V2H9v2H7C5.9 4 5 4.9 5 6v13c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 15H7V6h10v13zm-5-8c1.66 0 3-1.34 3-3H9c0 1.66 1.34 3 3 3z',
-  // Star
-  skills: 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.27 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z',
-  // Factory / building
-  companies: 'M22 10v12H2V10l7-3v2l5-2v3h8zM4 12v8h4v-6h8v6h4v-8h-6v-2.5l-5 2V9.5L4 12zm6 8h4v-4h-4v4z',
-  // Gear cog
-  account: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.6 3.6 0 0112 15.6z',
+/* ── Tab icon image paths ── */
+const ICON_IMGS: Record<SubTab, string> = {
+  profile: '/assets/icons/profile.png',
+  inventory: '/assets/icons/inventory.png',
+  skills: '/assets/icons/skills.png',
+  companies: '/assets/icons/companies.png',
+  account: '/assets/icons/account.png',
 }
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
@@ -70,7 +59,7 @@ export default function ProfilePanel() {
             className={`profile-tabs__btn ${activeTab === tab.id ? 'profile-tabs__btn--active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
           >
-            <span><TabIcon d={ICON_PATHS[tab.id]} /></span>
+            <span><img src={ICON_IMGS[tab.id]} alt={tab.label} style={{ width: 18, height: 18, objectFit: 'contain' }} /></span>
             <span>{tab.label}</span>
           </button>
         ))}

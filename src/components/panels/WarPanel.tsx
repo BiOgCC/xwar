@@ -2,7 +2,7 @@ import React, { useState, Suspense, useMemo } from 'react'
 import { useAnimatedNumber } from '../../hooks/useAnimatedNumber'
 import { useArmyStore, DIVISION_TEMPLATES, getDivisionEquipBonus, WEAPON_DIVISION_MAP, type DivisionType, type MilitaryRankType } from '../../stores/armyStore'
 import { useGovernmentStore, type DivisionListing, type MilitaryContract } from '../../stores/governmentStore'
-import { useBattleStore, getCountryFlag, getCountryName, getBaseSkillStats, TACTICAL_ORDERS } from '../../stores/battleStore'
+import { useBattleStore, getCountryName, getBaseSkillStats, TACTICAL_ORDERS } from '../../stores/battleStore'
 import type { TacticalOrder } from '../../stores/battleStore'
 import { usePlayerStore, getMilitaryRank } from '../../stores/playerStore'
 import { useWorldStore, ADJACENCY_MAP } from '../../stores/worldStore'
@@ -10,8 +10,10 @@ import { useUIStore } from '../../stores/uiStore'
 import { useInventoryStore, type WeaponSubtype } from '../../stores/inventoryStore'
 import OccupationPanel from './OccupationPanel'
 import BattleAvatar from '../shared/BattleAvatar'
+import CountryFlag from '../shared/CountryFlag'
 import '../../styles/war.css'
-import { playHitSound, playCritSound } from '../../hooks/useCombatSounds'
+import { getCountryTerrain } from '../../data/terrainMap'
+
 
 // Animated number display component (usable in loops unlike hooks)
 function AnimatedNumber({ value, duration = 600 }: { value: number; duration?: number }) {
@@ -312,9 +314,9 @@ function OverviewTab({ iso }: { iso: string }) {
                 border: '1px solid rgba(239,68,68,0.15)',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 700, color: '#e2e8f0', marginBottom: '3px' }}>
-                  <span>{getCountryFlag(battle.attackerId)} {getCountryName(battle.attackerId)}</span>
+                  <span><CountryFlag iso={battle.attackerId} size={14} style={{ marginRight: '3px' }} /> {getCountryName(battle.attackerId)}</span>
                   <span style={{ color: '#64748b', fontSize: '8px' }}>{fmtElapsed(battle.startedAt)} • R{battle.rounds.length}/3</span>
-                  <span>{getCountryName(battle.defenderId)} {getCountryFlag(battle.defenderId)}</span>
+                  <span>{getCountryName(battle.defenderId)} <CountryFlag iso={battle.defenderId} size={14} style={{ marginLeft: '3px' }} /></span>
                 </div>
                 {/* Compact damage bar */}
                 <div style={{ position: 'relative', height: '14px', borderRadius: '3px', overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
@@ -1070,7 +1072,7 @@ function ForcesTab({ iso }: { iso: string }) {
                             onClick={() => handleLaunchAttack(army.id, code)}
                             title={atWar ? `Attack ${country.name}` : `Not at war with ${country.name}`}
                           >
-                            <span className="war-target-flag">{getCountryFlag(code)}</span>
+                            <span className="war-target-flag"><CountryFlag iso={code} size={16} /></span>
                             <span className="war-target-name">{country.name}</span>
                             {!atWar && <span className="war-target-peace">☮️</span>}
                           </button>
@@ -1209,6 +1211,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
 
   // Crit visual effect tracking
   const [critSide, setCritSide] = useState<'atk' | 'def' | null>(null)
+  const [hitSide, setHitSide] = useState<'atk' | 'def' | null>(null)
 
   // Determine dominant division type for tracer variation
   const getDominantType = (divIds: string[]): 'infantry' | 'tank' | 'jet' | 'warship' => {
@@ -1473,7 +1476,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
             <div className="war-battle-header" onClick={() => setExpandedBattles(prev => { const next = new Set(prev); if (next.has(battle.id)) next.delete(battle.id); else next.add(battle.id); return next })}>
               <div className="war-battle-sides">
                 <div className="war-battle-side war-battle-side--atk">
-                  <span className="war-battle-flag">{getCountryFlag(battle.attackerId)}</span>
+                  <span className="war-battle-flag"><CountryFlag iso={battle.attackerId} size={20} /></span>
                   <div>
                     {player.heroBuffTicksLeft > 0 && player.heroBuffBattleId === battle.id && iso === battle.attackerId && (
                       <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', fontFamily: 'var(--font-display)', animation: 'pulse 2s infinite' }}>HERO</div>
@@ -1510,7 +1513,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                     <div className="war-battle-country">{getCountryName(battle.defenderId)}</div>
                     <div className="war-battle-meta">{battle.defender.engagedDivisionIds.length} divs</div>
                   </div>
-                  <span className="war-battle-flag">{getCountryFlag(battle.defenderId)}</span>
+                  <span className="war-battle-flag"><CountryFlag iso={battle.defenderId} size={20} /></span>
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2px' }}>
@@ -1608,8 +1611,8 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
 
             {/* Battle Avatar Animation */}
             <BattleAvatar
-              attackerFlag={getCountryFlag(battle.attackerId)}
-              defenderFlag={getCountryFlag(battle.defenderId)}
+              attackerFlag={battle.attackerId}
+              defenderFlag={battle.defenderId}
               attackerName={getCountryName(battle.attackerId)}
               defenderName={getCountryName(battle.defenderId)}
               isActive={battle.status === 'active'}
@@ -1619,23 +1622,27 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               attackerColor={atkClr}
               defenderColor={defClr}
               critSide={critSide}
+              hitSide={hitSide}
               atkDominantType={getDominantType(battle.attacker.engagedDivisionIds)}
               defDominantType={getDominantType(battle.defender.engagedDivisionIds)}
               damageRatio={atkPct / 100}
+              battleStartedAt={battle.startedAt}
+              currentRound={battle.rounds.length}
+              terrain={getCountryTerrain(battle.defenderId)}
             />
 
             {/* Fight Buttons — always visible */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '4px' }}>
               <button disabled={player.stamina < 5}
                 style={{ padding: '8px 0', background: `${atkClr}15`, border: `2px solid ${atkClr}66`, borderRadius: '2px', color: atkClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); r.isCrit ? playCritSound() : playHitSound(); if (r.isCrit) { setCritSide('atk'); setTimeout(() => setCritSide(null), 500) }; ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); if (r.isCrit) { setCritSide('atk'); setTimeout(() => setCritSide(null), 500) }; setHitSide('def'); setTimeout(() => setHitSide(null), 300); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
               >
                 ATTACK
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
               </button>
               <button disabled={player.stamina < 5}
                 style={{ padding: '8px 0', background: `${defClr}15`, border: `2px solid ${defClr}66`, borderRadius: '2px', color: defClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); r.isCrit ? playCritSound() : playHitSound(); if (r.isCrit) { setCritSide('def'); setTimeout(() => setCritSide(null), 500) }; ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); if (r.isCrit) { setCritSide('def'); setTimeout(() => setCritSide(null), 500) }; setHitSide('atk'); setTimeout(() => setHitSide(null), 300); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
               >
                 DEFEND
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
@@ -2039,7 +2046,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
           <div className="war-card__title">📜 BATTLE HISTORY</div>
           {pastBattles.map(battle => (
             <div className={`war-history-row war-history-row--${battle.status}`} key={battle.id}>
-              <span>{getCountryFlag(battle.attackerId)} vs {getCountryFlag(battle.defenderId)}</span>
+              <span><CountryFlag iso={battle.attackerId} size={14} style={{ marginRight: '3px' }} /> vs <CountryFlag iso={battle.defenderId} size={14} style={{ marginLeft: '3px' }} /></span>
               <span>{battle.regionName}</span>
               <span className={`war-history-result war-history-result--${battle.status}`}>
                 {battle.status === 'attacker_won' ? '🏆 ATK WON' : '🛡️ DEF WON'}

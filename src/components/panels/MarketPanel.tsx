@@ -33,11 +33,11 @@ const CATEGORY_RARITY: Record<string, string> = {
 }
 
 const TAB_DEFS = [
-  { key: 'trading' as const, icon: '📈', label: 'Market' },
-  { key: 'equipment' as const, icon: '⚔️', label: 'Gear' },
-  { key: 'divisions' as const, icon: '🪖', label: 'Divs' },
-  { key: 'orders' as const, icon: '📋', label: 'Orders' },
-  { key: 'history' as const, icon: '📊', label: 'History' },
+  { key: 'trading' as const, icon: '/assets/icons/market.png', label: 'Market' },
+  { key: 'equipment' as const, icon: '/assets/icons/gear.png', label: 'Gear' },
+  { key: 'divisions' as const, icon: '/assets/icons/divs.png', label: 'Divs' },
+  { key: 'orders' as const, icon: '/assets/icons/orders.png', label: 'Orders' },
+  { key: 'history' as const, icon: '/assets/icons/history.png', label: 'History' },
 ]
 
 /* ══════════════════════════════════════════════════════════════ */
@@ -108,7 +108,7 @@ export default function MarketPanel() {
             onClick={() => setTab(t.key)}
             className={`market-tab ${tab === t.key ? 'market-tab--active' : ''}`}
           >
-            <span className="market-tab__icon">{t.icon}</span>
+            <span className="market-tab__icon"><img src={t.icon} alt={t.label} style={{ width: 18, height: 18, objectFit: 'contain' }} /></span>
             {t.label}
           </button>
         ))}

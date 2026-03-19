@@ -222,7 +222,7 @@ function rollMilitaryBoxItem(): EquipItem {
   return rollItemOfTier(tier)
 }
 
-function rollItemOfTier(tier: EquipTier): EquipItem {
+export function rollItemOfTier(tier: EquipTier): EquipItem {
   // Type chance (66% Armor, 34% Weapon, but if T6, 20% chance of Vehicle)
   let category: EquipCategory = Math.random() < 0.66 ? 'armor' : 'weapon'
   let slot: EquipSlot = 'weapon'

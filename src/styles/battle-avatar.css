@@ -80,6 +80,8 @@
   opacity: 0.85;
   pointer-events: none;
   filter: brightness(0.85) saturate(1.3);
+  transform: scale(1.25);
+  transform-origin: center center;
 }
 
 /* ====== AVATAR WRAPPER ====== */
@@ -226,4 +228,28 @@
 @keyframes vsPulse {
   0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
   50% { opacity: 0.85; transform: translate(-50%, -50%) scale(1.12); }
+}
+
+/* Recoil: attacker gets knocked backward (to the left) */
+.ba-soldier--recoil-atk {
+  animation: recoilLeft 0.3s ease-out !important;
+}
+
+/* Recoil: defender gets knocked backward (to the right) */
+.ba-soldier--recoil-def {
+  animation: recoilRight 0.3s ease-out !important;
+}
+
+@keyframes recoilLeft {
+  0%   { transform: translateX(0) rotate(0deg); }
+  20%  { transform: translateX(-12px) rotate(-4deg) scale(0.95); }
+  50%  { transform: translateX(-6px) rotate(-1deg); }
+  100% { transform: translateX(0) rotate(0deg); }
+}
+
+@keyframes recoilRight {
+  0%   { transform: translateX(0) rotate(0deg); }
+  20%  { transform: translateX(12px) rotate(4deg) scale(0.95); }
+  50%  { transform: translateX(6px) rotate(1deg); }
+  100% { transform: translateX(0) rotate(0deg); }
 }

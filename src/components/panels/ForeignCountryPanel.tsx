@@ -3,7 +3,8 @@ import { useWorldStore, ADJACENCY_MAP } from '../../stores/worldStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
-import { useBattleStore, getCountryFlag, getCountryName } from '../../stores/battleStore'
+import { useBattleStore, getCountryName } from '../../stores/battleStore'
+import CountryFlag from '../shared/CountryFlag'
 import { useArmyStore } from '../../stores/armyStore'
 
 type Tab = 'overview' | 'intelligence' | 'diplomacy'
@@ -53,7 +54,7 @@ export default function ForeignCountryPanel() {
   if (!country) return null
 
   const playerIso  = getPlayerIso()
-  const flag       = getCountryFlag(iso)
+  // flag rendered as <CountryFlag iso={iso} /> instead of emoji
   const allianceColor = country.empire ? (ALLIANCE_COLORS[country.empire] || '#94a3b8') : '#475569'
 
   // ── Wars involving this country ───────────────────────────────────────
@@ -81,7 +82,7 @@ export default function ForeignCountryPanel() {
   // ── Adjacency ─────────────────────────────────────────────────────────
   const neighbors = (ADJACENCY_MAP[iso] || []).map(code => ({
     code,
-    flag: getCountryFlag(code),
+    flagIso: code,
     name: getCountryName(code),
   }))
 
@@ -134,7 +135,7 @@ export default function ForeignCountryPanel() {
         alignItems: 'center',
         gap: '12px',
       }}>
-        <span style={{ fontSize: '40px', lineHeight: 1 }}>{flag}</span>
+        <CountryFlag iso={iso} size={40} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '16px', fontWeight: 900, color: '#fff', letterSpacing: '0.5px' }}>
             {country.name.toUpperCase()}
@@ -256,7 +257,7 @@ export default function ForeignCountryPanel() {
             <span style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {occupiedCountries.map(oc => (
                 <span key={oc.code} style={{ background: 'rgba(255,255,255,0.07)', borderRadius: '3px', padding: '1px 5px', fontSize: '9px' }}>
-                  {getCountryFlag(oc.code)} {oc.name}
+                  <CountryFlag iso={oc.code} size={14} style={{ marginRight: '3px' }} /> {oc.name}
                 </span>
               ))}
             </span>
@@ -280,7 +281,7 @@ export default function ForeignCountryPanel() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                     {occupiedCountries.map(oc => (
                       <div key={oc.code} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: 'rgba(239,68,68,0.07)', borderRadius: '4px', border: '1px solid rgba(239,68,68,0.2)' }}>
-                        <span style={{ fontSize: '16px' }}>{getCountryFlag(oc.code)}</span>
+                        <CountryFlag iso={oc.code} size={16} />
                         <div>
                           <div style={{ fontSize: '10px', fontWeight: 700, color: '#fca5a5' }}>{oc.name}</div>
                           <div style={{ fontSize: '8px', color: '#64748b' }}>{oc.taxExempt ? 'Tax Exempt' : 'Taxed'} • {oc.regions} regions</div>
@@ -325,7 +326,7 @@ export default function ForeignCountryPanel() {
               <div className="hud-card__title" style={{ color: '#ef4444' }}>⚔️ ACTIVE CONFLICTS ({activeBattles.length})</div>
               {activeBattles.map(b => (
                 <div key={b.id} style={{ fontSize: '10px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{getCountryFlag(b.attackerId)} vs {getCountryFlag(b.defenderId)} {b.regionName}</span>
+                  <span><CountryFlag iso={b.attackerId} size={14} style={{ marginRight: '3px' }} /> vs <CountryFlag iso={b.defenderId} size={14} style={{ marginRight: '3px' }} /> {b.regionName}</span>
                   <span style={{ color: '#f59e0b', fontSize: '9px' }}>RND {b.rounds.length}</span>
                 </div>
               ))}
@@ -342,7 +343,7 @@ export default function ForeignCountryPanel() {
           <div className="hud-card">
             <div className="hud-card__title">🤝 RELATION STATUS</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', background: `${warStatusBadge.bg}`, border: `1px solid ${warStatusBadge.color}44`, borderRadius: '6px', marginTop: '8px' }}>
-              <span style={{ fontSize: '24px' }}>{flag}</span>
+              <CountryFlag iso={iso} size={24} />
               <div>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: warStatusBadge.color }}>{warStatusBadge.label}</div>
                 <div style={{ fontSize: '9px', color: '#64748b' }}>
@@ -368,7 +369,7 @@ export default function ForeignCountryPanel() {
                       <span style={{ fontSize: '9px', color: isAttacker ? '#ef4444' : '#f59e0b', fontWeight: 700 }}>
                         {isAttacker ? '⚔️ ATK' : '🛡️ DEF'}
                       </span>
-                      <span style={{ fontSize: '14px' }}>{getCountryFlag(opponent)}</span>
+                      <CountryFlag iso={opponent} size={14} />
                       <span style={{ fontSize: '10px', color: '#e2e8f0' }}>{getCountryName(opponent)}</span>
                       <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#64748b' }}>{daysAgo}d ago</span>
                     </div>
@@ -389,7 +390,7 @@ export default function ForeignCountryPanel() {
                   style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', color: '#e2e8f0', cursor: 'pointer' }}
                   title={`View ${n.name}`}
                 >
-                  <span style={{ fontSize: '14px' }}>{n.flag}</span> {n.name}
+                  <CountryFlag iso={n.flagIso} size={14} style={{ marginRight: '3px' }} /> {n.name}
                 </button>
               ))}
             </div>

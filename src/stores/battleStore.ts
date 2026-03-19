@@ -209,6 +209,11 @@ export function getCountryFlag(iso: string): string {
   return FLAG_EMOJIS[iso] || '🏳️'
 }
 
+/** Returns a flag image URL from flagcdn.com for cross-platform rendering */
+export function getCountryFlagUrl(iso: string, width: number = 40): string {
+  return `https://flagcdn.com/w${width}/${iso.toLowerCase()}.png`
+}
+
 const COUNTRY_NAMES: Record<string, string> = {
   US: 'United States', RU: 'Russia', CN: 'China', DE: 'Germany', BR: 'Brazil', IN: 'India',
   NG: 'Nigeria', JP: 'Japan', GB: 'United Kingdom', TR: 'Turkey', CA: 'Canada', MX: 'Mexico',

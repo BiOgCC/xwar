@@ -1,4 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { checkAnnouncerThresholds, type AnnouncerPlayed } from '../../hooks/useAnnouncerSounds'
+import { type TerrainType } from '../../data/terrainMap'
+import { getCountryFlagUrl } from '../../stores/battleStore'
 import '../../styles/battle-avatar.css'
 
 type TracerStyle = 'infantry' | 'tank' | 'jet' | 'warship'
@@ -17,11 +20,19 @@ interface BattleAvatarProps {
   defenderColor?: string
   /** Trigger a one-shot golden crit burst on a side */
   critSide?: 'atk' | 'def' | null
+  /** Trigger a recoil animation on the hit side */
+  hitSide?: 'atk' | 'def' | null
   /** Dominant division type per side — changes tracer style */
   atkDominantType?: TracerStyle
   defDominantType?: TracerStyle
   /** Attacker share of total damage: 0 = defender dominating, 0.5 = even, 1 = attacker dominating */
   damageRatio?: number
+  /** Timestamp (ms) when the battle started */
+  battleStartedAt?: number
+  /** Current round number (1-based) */
+  currentRound?: number
+  /** Terrain type for stage background */
+  terrain?: TerrainType
 }
 
 export default function BattleAvatar({
@@ -36,9 +47,13 @@ export default function BattleAvatar({
   attackerColor = '#3b82f6',
   defenderColor = '#ef4444',
   critSide = null,
+  hitSide = null,
   atkDominantType = 'infantry',
   defDominantType = 'infantry',
   damageRatio = 0.5,
+  battleStartedAt,
+  currentRound = 1,
+  terrain = 'urban',
 }: BattleAvatarProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animRef = useRef<number>(0)
@@ -60,6 +75,7 @@ export default function BattleAvatar({
   const COOLDOWN_MS = 5000
   const FUSE_FRAMES = 180 // ~3 seconds at 60fps
   const GROUND_Y_RATIO = 0.78
+  const announcerPlayedRef = useRef<AnnouncerPlayed>(new Set())
 
   // Queue crit events from prop changes
   useEffect(() => {
@@ -144,6 +160,10 @@ export default function BattleAvatar({
     // clashX slides from W*0.20 (def dominating) to W*0.80 (atk dominating)
     const ratio = Math.max(0, Math.min(1, damageRatio))
     const clashX = W * (0.20 + 0.60 * ratio)
+
+    // Check announcer thresholds on each damageRatio change
+    const battleAgeMs = battleStartedAt ? Date.now() - battleStartedAt : 0
+    checkAnnouncerThresholds(ratio, announcerPlayedRef.current, battleAgeMs, currentRound)
 
     // Per-side fire intervals: 10 frames (idle) → 2 frames (max)
     const atkFireInterval = Math.max(2, Math.round(10 - 8 * atkI))
@@ -866,6 +886,7 @@ export default function BattleAvatar({
       grenadesRef.current = []
       throwCountRef.current = 0
       cooldownUntilRef.current = 0
+      announcerPlayedRef.current.clear()
     }
   }, [isActive])
 
@@ -893,8 +914,8 @@ export default function BattleAvatar({
 
       {/* ── ATTACKER ── */}
       <div className="ba-avatar ba-avatar--atk">
-        <div className="ba-badge" style={{ borderColor: `${attackerColor}88`, background: `radial-gradient(circle at 40% 30%, ${attackerColor}33, ${attackerColor}66)`, boxShadow: `0 0 10px ${attackerColor}33` }}>{attackerFlag}</div>
-        <div className={`ba-soldier ${isActive ? 'ba-soldier--shooting' : ''}`}>
+        <div className="ba-badge" style={{ borderColor: `${attackerColor}88`, background: `radial-gradient(circle at 40% 30%, ${attackerColor}33, ${attackerColor}66)`, boxShadow: `0 0 10px ${attackerColor}33`, overflow: 'hidden', padding: 0 }}><img src={getCountryFlagUrl(attackerFlag, 80)} alt={attackerFlag} draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>
+        <div className={`ba-soldier ${isActive ? 'ba-soldier--shooting' : ''} ${hitSide === 'atk' ? 'ba-soldier--recoil-atk' : ''}`}>
           <img
             src="/assets/soldier_blue.png"
             alt="Attacker"
@@ -908,8 +929,8 @@ export default function BattleAvatar({
 
       {/* ── DEFENDER ── */}
       <div className="ba-avatar ba-avatar--def">
-        <div className="ba-badge" style={{ borderColor: `${defenderColor}88`, background: `radial-gradient(circle at 40% 30%, ${defenderColor}33, ${defenderColor}66)`, boxShadow: `0 0 10px ${defenderColor}33` }}>{defenderFlag}</div>
-        <div className={`ba-soldier ${isActive ? 'ba-soldier--shooting' : ''}`}>
+        <div className="ba-badge" style={{ borderColor: `${defenderColor}88`, background: `radial-gradient(circle at 40% 30%, ${defenderColor}33, ${defenderColor}66)`, boxShadow: `0 0 10px ${defenderColor}33`, overflow: 'hidden', padding: 0 }}><img src={getCountryFlagUrl(defenderFlag, 80)} alt={defenderFlag} draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>
+        <div className={`ba-soldier ${isActive ? 'ba-soldier--shooting' : ''} ${hitSide === 'def' ? 'ba-soldier--recoil-def' : ''}`}>
           <img
             src="/assets/soldier_red.png"
             alt="Defender"
