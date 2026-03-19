@@ -15,10 +15,17 @@ export default function ProfileTab() {
   const prestigeStore = usePrestigeStore()
   const [pickerSlot, setPickerSlot] = useState<EquipSlot | null>(null)
   const [showAmmoPicker, setShowAmmoPicker] = useState(false)
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false)
+
+  // Available avatars
+  const AVATARS = [
+    { id: 'avatar_male', path: '/assets/avatars/avatar_male.png', label: 'Commander' },
+    { id: 'avatar_female', path: '/assets/avatars/avatar_female.png', label: 'Operative' },
+  ]
 
   // ESC closes any open modal
   useEffect(() => {
-    const onClose = () => { setPickerSlot(null); setShowAmmoPicker(false) }
+    const onClose = () => { setPickerSlot(null); setShowAmmoPicker(false); setShowAvatarPicker(false) }
     window.addEventListener('xwar-close-modal', onClose)
     return () => window.removeEventListener('xwar-close-modal', onClose)
   }, [])
@@ -87,6 +94,32 @@ export default function ProfileTab() {
 
       {/* ── HERO CARD ─────────────────────────────── */}
       <div className="ptab-hero">
+        {/* Avatar */}
+        <div
+          className="ptab-hero__avatar"
+          onClick={() => setShowAvatarPicker(true)}
+          title="Click to change avatar"
+          style={{
+            width: '52px', height: '52px', borderRadius: '50%', overflow: 'hidden',
+            border: '2px solid rgba(99, 102, 241, 0.5)',
+            boxShadow: '0 0 12px rgba(99, 102, 241, 0.25), 0 2px 8px rgba(0,0,0,0.5)',
+            cursor: 'pointer', flexShrink: 0, position: 'relative',
+            background: 'rgba(15, 23, 42, 0.8)',
+          }}
+        >
+          <img
+            src={player.avatar}
+            alt="Avatar"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+          />
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: '50%',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%)',
+            pointerEvents: 'none',
+          }} />
+        </div>
+
         {/* Level badge */}
         <div className="ptab-hero__badge">
           <span className="ptab-hero__lvl-num">{player.level}</span>
@@ -582,6 +615,78 @@ export default function ProfileTab() {
           </div>
         )
       })()}
+      {/* ── AVATAR PICKER MODAL ──────────────────── */}
+      {showAvatarPicker && (
+        <div className="inv-modal-overlay" onClick={() => setShowAvatarPicker(false)}>
+          <div className="inv-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '340px', width: '90%' }}>
+            <div className="inv-modal__title" style={{ color: '#8b5cf6' }}>
+              SELECT AVATAR
+            </div>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '12px', padding: '8px 4px',
+            }}>
+              {AVATARS.map(av => {
+                const isSelected = player.avatar === av.path
+                return (
+                  <div
+                    key={av.id}
+                    onClick={() => { player.setAvatar(av.path); setShowAvatarPicker(false) }}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+                      padding: '12px', borderRadius: '8px',
+                      background: isSelected ? 'rgba(132, 204, 22, 0.08)' : 'rgba(15, 23, 42, 0.6)',
+                      border: `2px solid ${isSelected ? 'rgba(132, 204, 22, 0.5)' : 'rgba(255,255,255,0.06)'}`,
+                      cursor: 'pointer',
+                      transition: 'all 200ms ease',
+                    }}
+                    onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.4)'; e.currentTarget.style.background = 'rgba(139, 92, 246, 0.06)' } }}
+                    onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.background = 'rgba(15, 23, 42, 0.6)' } }}
+                  >
+                    <div style={{
+                      width: '80px', height: '80px', borderRadius: '50%', overflow: 'hidden',
+                      border: `3px solid ${isSelected ? '#84cc16' : 'rgba(99, 102, 241, 0.3)'}`,
+                      boxShadow: isSelected ? '0 0 16px rgba(132, 204, 22, 0.3)' : '0 0 8px rgba(99, 102, 241, 0.15)',
+                    }}>
+                      <img
+                        src={av.path}
+                        alt={av.label}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e) => { e.currentTarget.style.display = 'none' }}
+                      />
+                    </div>
+                    <div style={{
+                      fontSize: '10px', fontFamily: 'var(--font-display)', fontWeight: 700,
+                      letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+                      color: isSelected ? '#84cc16' : '#94a3b8',
+                    }}>
+                      {av.label}
+                    </div>
+                    {isSelected && (
+                      <div style={{
+                        fontSize: '7px', fontFamily: 'var(--font-display)', fontWeight: 700,
+                        letterSpacing: '0.1em', color: '#84cc16', marginTop: '-4px',
+                      }}>
+                        SELECTED
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <button
+              onClick={() => setShowAvatarPicker(false)}
+              style={{
+                width: '100%', padding: '8px', marginTop: '12px',
+                fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)',
+                letterSpacing: '0.08em', background: 'transparent', color: '#475569',
+                border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >CLOSE</button>
+          </div>
+        </div>
+      )}
 
     </div>
   )

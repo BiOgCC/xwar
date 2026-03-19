@@ -87,8 +87,10 @@ export interface PlayerState {
   enlistedArmyId: string | null
   heroBuffTicksLeft: number  // HERO buff: +10% division damage, 120 ticks
   heroBuffBattleId: string | null  // Which battle the HERO buff is active on
+  avatar: string  // Path to selected avatar image
 
   // Actions
+  setAvatar: (path: string) => void
   attack: () => { damage: number, isCrit: boolean, isDodged: boolean }
   equipAmmo: (type: 'none' | 'green' | 'blue' | 'purple' | 'red') => void
   consumeFood: (type: 'bread' | 'sushi' | 'wagyu') => boolean
@@ -172,7 +174,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   equippedAmmo: 'none',
   heroBuffTicksLeft: 0,
   heroBuffBattleId: null,
+  avatar: '/assets/avatars/avatar_male.png',
 
+  setAvatar: (path) => set({ avatar: path }),
   equipAmmo: (type) => set({ equippedAmmo: type }),
 
   consumeFood: (type) => {

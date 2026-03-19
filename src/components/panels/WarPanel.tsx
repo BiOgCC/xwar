@@ -9,6 +9,7 @@ import { useWorldStore, ADJACENCY_MAP } from '../../stores/worldStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useInventoryStore, type WeaponSubtype } from '../../stores/inventoryStore'
 import OccupationPanel from './OccupationPanel'
+import BattleAvatar from '../shared/BattleAvatar'
 import '../../styles/war.css'
 import { playHitSound, playCritSound } from '../../hooks/useCombatSounds'
 
@@ -1206,6 +1207,22 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
     return unsub
   }, [])
 
+  // Crit visual effect tracking
+  const [critSide, setCritSide] = useState<'atk' | 'def' | null>(null)
+
+  // Determine dominant division type for tracer variation
+  const getDominantType = (divIds: string[]): 'infantry' | 'tank' | 'jet' | 'warship' => {
+    const counts = { infantry: 0, tank: 0, jet: 0, warship: 0 }
+    divIds.forEach(id => {
+      const d = armyStore.divisions[id]
+      if (!d) return
+      if (['recon', 'assault', 'sniper', 'rpg'].includes(d.type)) counts.infantry++
+      else if (['jeep', 'tank'].includes(d.type)) counts.tank++
+      else if (d.type === 'jet') counts.jet++
+      else if (d.type === 'warship') counts.warship++
+    })
+    return (Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'infantry') as 'infantry' | 'tank' | 'jet' | 'warship'
+  }
 
   const iso = player.countryCode || 'US'
   const activeBattles = Object.values(battleStore.battles).filter(b => b.status === 'active')
@@ -1432,6 +1449,22 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
           glowColor = tickWinnerClr
         }
 
+        // Per-side bullet animation intensity: 0 (idle) → 1.0 (max fire rate)
+        let atkIntensity = 0
+        if (tickAtkDmg > 500) atkIntensity = 1.0
+        else if (tickAtkDmg > 200) atkIntensity = 0.7
+        else if (tickAtkDmg > 50)  atkIntensity = 0.4
+        else if (tickAtkDmg > 0)   atkIntensity = 0.15
+        // Also boost for critical round state
+        if (maxPts >= 450) atkIntensity = Math.max(atkIntensity, 0.8)
+
+        let defIntensity = 0
+        if (tickDefDmg > 500) defIntensity = 1.0
+        else if (tickDefDmg > 200) defIntensity = 0.7
+        else if (tickDefDmg > 50)  defIntensity = 0.4
+        else if (tickDefDmg > 0)   defIntensity = 0.15
+        if (maxPts >= 450) defIntensity = Math.max(defIntensity, 0.8)
+
         return (
           <React.Fragment key={battle.id}>
             {centerPanel}
@@ -1573,18 +1606,35 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               <span className="war-damage-bar__label war-damage-bar__label--def"><AnimatedNumber value={defDmg} /></span>
             </div>
 
+            {/* Battle Avatar Animation */}
+            <BattleAvatar
+              attackerFlag={getCountryFlag(battle.attackerId)}
+              defenderFlag={getCountryFlag(battle.defenderId)}
+              attackerName={getCountryName(battle.attackerId)}
+              defenderName={getCountryName(battle.defenderId)}
+              isActive={battle.status === 'active'}
+              atkIntensity={atkIntensity}
+              defIntensity={defIntensity}
+              defenderCountry={battle.defenderId}
+              attackerColor={atkClr}
+              defenderColor={defClr}
+              critSide={critSide}
+              atkDominantType={getDominantType(battle.attacker.engagedDivisionIds)}
+              defDominantType={getDominantType(battle.defender.engagedDivisionIds)}
+            />
+
             {/* Fight Buttons — always visible */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '4px' }}>
               <button disabled={player.stamina < 5}
                 style={{ padding: '8px 0', background: `${atkClr}15`, border: `2px solid ${atkClr}66`, borderRadius: '2px', color: atkClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); r.isCrit ? playCritSound() : playHitSound(); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); r.isCrit ? playCritSound() : playHitSound(); if (r.isCrit) { setCritSide('atk'); setTimeout(() => setCritSide(null), 500) }; ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
               >
                 ATTACK
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
               </button>
               <button disabled={player.stamina < 5}
                 style={{ padding: '8px 0', background: `${defClr}15`, border: `2px solid ${defClr}66`, borderRadius: '2px', color: defClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); r.isCrit ? playCritSound() : playHitSound(); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); r.isCrit ? playCritSound() : playHitSound(); if (r.isCrit) { setCritSide('def'); setTimeout(() => setCritSide(null), 500) }; ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
               >
                 DEFEND
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
