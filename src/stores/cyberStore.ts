@@ -231,7 +231,7 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     if (player.bitcoin < cost.bitcoin) return { success: false, message: 'Not enough Bitcoin.' }
 
     // Deduct resources
-    player.spendScraps(cost.scrap)
+    player.spendScrap(cost.scrap)
     player.spendOil(cost.oil)
     player.spendMaterialX(cost.materialX)
     player.spendBitcoin(cost.bitcoin)
@@ -611,7 +611,7 @@ function generateEspionageReport(
     const country = world.countries.find(c => c.code === target.country)
     const govStore = useGovernmentStore.getState()
     const gov = govStore.governments[target.country]
-    const fund = useWorldStore.getState().getCountry(target.country)?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
+    const fund = useWorldStore.getState().getCountry(target.country)?.fund ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
     const citizens = gov?.citizens || []
 
     // Simulate citizen-owned supplies (food & bullets)
@@ -624,7 +624,7 @@ function generateEspionageReport(
       nationalFund: {
         money: fund.money,
         oil: fund.oil,
-        scraps: fund.scraps,
+        scrap: fund.scrap,
         materialX: fund.materialX,
         bitcoin: fund.bitcoin,
       },

@@ -1,8 +1,8 @@
 import { create } from 'zustand'
-import { type DivisionType, type StarQuality, type StatModifiers, DIVISION_TEMPLATES, rollStarQuality, getEffectiveManpower, getEffectiveHealth } from './armyStore'
+import { type DivisionType, type StarQuality, type StatModifiers, DIVISION_TEMPLATES, rollStarQuality, getEffectiveManpower, getEffectiveHealth } from './army'
 import { useWorldStore, type NationalFund, type NationalFundKey } from './worldStore'
 import { usePlayerStore } from './playerStore'
-import { useArmyStore } from './armyStore'
+import { useArmyStore } from './army'
 
 // Re-export for backward compatibility
 export type { NationalFund, NationalFundKey }
@@ -13,14 +13,14 @@ export type LawStatus = 'active' | 'passed' | 'failed'
 // Helper: get country fund from worldStore (single source of truth)
 export function getCountryFund(countryCode: string): NationalFund {
   const country = useWorldStore.getState().getCountry(countryCode)
-  return country?.fund ?? { money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }
+  return country?.fund ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
 }
 
 // Keep NUKE_COST
 export const NUKE_COST: NationalFund = {
   money: 0,
   oil: 10000,
-  scraps: 10000,
+  scrap: 10000,
   materialX: 10000,
   bitcoin: 100,
   jets: 1,
@@ -165,6 +165,7 @@ export interface Government {
   nuclearAuthorized: boolean
   citizens: Citizen[]
   divisionShop: DivisionListing[]
+  militaryBudgetPercent: number  // 0-50%, default 5% — % of treasury drained daily into army vaults
 }
 
 export interface GovernmentState {
@@ -207,6 +208,9 @@ export interface GovernmentState {
   claimContract: (contractId: string) => { success: boolean; message: string }
   processContractMaturity: () => void
   spawnInstantDivision: (countryCode: string, investmentAmount?: number) => void
+  // Military budget
+  setMilitaryBudget: (countryId: string, percent: number) => { success: boolean; message: string }
+  processBudgetDistribution: (ticksPerDay: number) => void
 }
 
 // Helper to create mock citizens
@@ -240,6 +244,7 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     nuclearAuthorized: false,
     citizens: mockCitizens(code, president, congress),
     divisionShop: [],
+    militaryBudgetPercent: 5,
   }
 }
 
@@ -391,7 +396,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     // Deduct nuke costs via worldStore
     useWorldStore.getState().spendFromFund(fromCountry, {
       oil: NUKE_COST.oil,
-      scraps: NUKE_COST.scraps,
+      scrap: NUKE_COST.scrap,
       materialX: NUKE_COST.materialX,
       bitcoin: NUKE_COST.bitcoin,
       jets: NUKE_COST.jets,
@@ -410,7 +415,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   stealNationalFund: (targetId, attackerId, percentage) => {
     const pct = percentage / 100
     const targetFund = getCountryFund(targetId)
-    const keys: NationalFundKey[] = ['money', 'oil', 'scraps', 'materialX', 'bitcoin', 'jets']
+    const keys: NationalFundKey[] = ['money', 'oil', 'scrap', 'materialX', 'bitcoin', 'jets']
     const ws = useWorldStore.getState()
     keys.forEach(k => {
       const amount = Math.floor(targetFund[k] * pct)
@@ -753,7 +758,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     if (cost > 0 && player.scrap < cost) return { success: false, message: `Not enough scrap. Need ${cost.toLocaleString()}.` }
 
     // Deduct scrap (only if cost > 0)
-    if (cost > 0) player.spendScraps(cost)
+    if (cost > 0) player.spendScrap(cost)
 
     // Reroll star quality + price
     const { star, modifiers } = rollStarQuality()
@@ -890,24 +895,31 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     if (contract.playerId !== player.name) return { success: false, message: 'Not your contract.' }
     if (contract.status !== 'claimable') return { success: false, message: 'Contract not yet matured.' }
 
-    const payout = Math.floor(contract.investedAmount * (1 + contract.profitRate))
+    const fullPayout = Math.floor(contract.investedAmount * (1 + contract.profitRate))
 
-    // Try to deduct from national fund via worldStore
+    // Country fund pays 0.33× of the total payout as profit
+    // Player always gets their capital back; profit comes from the fund
+    const maxFundContribution = Math.floor(fullPayout * 0.33)
     const fund = getCountryFund(contract.countryCode)
-    if (fund) {
-      const fundDeduction = Math.min(fund.money, payout)
-      useWorldStore.getState().spendFromFund(contract.countryCode, { money: fundDeduction })
+    const fundAvailable = fund?.money ?? 0
+    const fundContribution = Math.min(fundAvailable, maxFundContribution)
+
+    // Deduct the fund's contribution
+    if (fundContribution > 0) {
+      useWorldStore.getState().spendFromFund(contract.countryCode, { money: fundContribution })
     }
 
-    // Credit player
-    player.earnMoney(payout)
+    // Player gets: their original investment + whatever the fund contributed
+    const actualPayout = contract.investedAmount + fundContribution
+    player.earnMoney(actualPayout)
 
     // Mark as claimed
     const newContracts = [...state.militaryContracts]
     newContracts[idx] = { ...contract, status: 'claimed' }
     set({ militaryContracts: newContracts })
 
-    return { success: true, message: `Claimed $${payout.toLocaleString()}! ($${contract.investedAmount.toLocaleString()} + $${(payout - contract.investedAmount).toLocaleString()} profit)` }
+    const profit = actualPayout - contract.investedAmount
+    return { success: true, message: `Claimed $${actualPayout.toLocaleString()}! ($${contract.investedAmount.toLocaleString()} + $${profit.toLocaleString()} profit)` }
   },
 
   processContractMaturity: () => {
@@ -922,5 +934,65 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
       return c
     })
     if (changed) set({ militaryContracts: updated })
+  },
+
+  // ====== MILITARY BUDGET DISTRIBUTION ======
+
+  setMilitaryBudget: (countryId, percent) => {
+    const state = get()
+    const gov = state.governments[countryId]
+    if (!gov) return { success: false, message: 'Government not found.' }
+    const player = usePlayerStore.getState()
+    if (gov.president !== player.name) return { success: false, message: 'Only the president can set the military budget.' }
+    const clamped = Math.max(0, Math.min(50, percent))
+    set(s => ({
+      governments: {
+        ...s.governments,
+        [countryId]: { ...s.governments[countryId], militaryBudgetPercent: clamped },
+      },
+    }))
+    return { success: true, message: `Military budget set to ${clamped}% of daily treasury.` }
+  },
+
+  processBudgetDistribution: (ticksPerDay) => {
+    const state = get()
+    const ws = useWorldStore.getState()
+    const armyStore = useArmyStore.getState()
+
+    Object.values(state.governments).forEach(gov => {
+      if (gov.militaryBudgetPercent <= 0) return
+      const country = ws.getCountry(gov.countryId)
+      if (!country || country.fund.money <= 0) return
+
+      // Calculate per-tick budget: (fund × budgetPercent%) / ticksPerDay
+      const dailyBudget = country.fund.money * (gov.militaryBudgetPercent / 100)
+      const perTickBudget = Math.floor(dailyBudget / Math.max(1, ticksPerDay))
+      if (perTickBudget <= 0) return
+
+      // Find all armies for this country
+      const countryArmies = Object.values(armyStore.armies).filter(a => a.countryCode === gov.countryId)
+      if (countryArmies.length === 0) return
+
+      // Distribute equally among armies
+      const perArmy = Math.floor(perTickBudget / countryArmies.length)
+      if (perArmy <= 0) return
+
+      const totalDrain = perArmy * countryArmies.length
+      // Drain from country fund
+      ws.spendFromFund(gov.countryId, { money: totalDrain })
+
+      // Add to each army's salary pool
+      countryArmies.forEach(army => {
+        useArmyStore.setState(s => ({
+          armies: {
+            ...s.armies,
+            [army.id]: {
+              ...s.armies[army.id],
+              salaryPool: (s.armies[army.id].salaryPool || 0) + perArmy,
+            },
+          },
+        }))
+      })
+    })
   },
 }))

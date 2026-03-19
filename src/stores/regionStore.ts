@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
-import { useArmyStore, DIVISION_TEMPLATES } from './armyStore'
+import { useArmyStore, DIVISION_TEMPLATES } from './army'
 
 // ====== REGION MODEL ======
 
@@ -295,13 +295,39 @@ export interface RegionState {
   stopAttack: (regionId: string) => void
   tickCapture: () => void
   resetCountryRegions: (cc: string) => void
-  updateBoundsFromGeoJSON: (geojson: any) => void
+  updateBoundsFromGeoJSON: (geojson: any, isoKey?: string) => void
 }
 
 const ISO3_TO_ISO2: Record<string, string> = {
   'USA':'US','CAN':'CA','RUS':'RU','CHN':'CN','DEU':'DE',
   'JPN':'JP','GBR':'GB','BRA':'BR','IND':'IN','NGA':'NG',
-  'TUR':'TR','MEX':'MX','CUB':'CU','BHS':'BS',
+  'TUR':'TR','MEX':'MX','CUB':'CU','BHS':'BS','FRA':'FR',
+  'ESP':'ES','ITA':'IT','POL':'PL','UKR':'UA','ROU':'RO',
+  'NLD':'NL','BEL':'BE','SWE':'SE','NOR':'NO','FIN':'FI',
+  'DNK':'DK','AUT':'AT','CHE':'CH','CZE':'CZ','PRT':'PT',
+  'GRC':'GR','HUN':'HU','IRL':'IE','ISL':'IS','SRB':'RS',
+  'BLR':'BY','BGR':'BG','SVK':'SK','HRV':'HR','LTU':'LT',
+  'LVA':'LV','EST':'EE','SVN':'SI','BIH':'BA','ALB':'AL',
+  'MKD':'MK','MNE':'ME','MDA':'MD','ARG':'AR','COL':'CO',
+  'VEN':'VE','PER':'PE','CHL':'CL','ECU':'EC','BOL':'BO',
+  'PRY':'PY','URY':'UY','GUY':'GY','SUR':'SR','GTM':'GT',
+  'HND':'HN','SLV':'SV','NIC':'NI','CRI':'CR','PAN':'PA',
+  'DOM':'DO','HTI':'HT','JAM':'JM','KOR':'KR','PRK':'KP',
+  'TWN':'TW','THA':'TH','VNM':'VN','PHL':'PH','MYS':'MY',
+  'IDN':'ID','MMR':'MM','BGD':'BD','PAK':'PK','AFG':'AF',
+  'IRQ':'IQ','IRN':'IR','SAU':'SA','ARE':'AE','ISR':'IL',
+  'SYR':'SY','JOR':'JO','LBN':'LB','YEM':'YE','OMN':'OM',
+  'KWT':'KW','QAT':'QA','GEO':'GE','ARM':'AM','AZE':'AZ',
+  'KAZ':'KZ','UZB':'UZ','TKM':'TM','KGZ':'KG','TJK':'TJ',
+  'MNG':'MN','NPL':'NP','LKA':'LK','KHM':'KH','LAO':'LA',
+  'ZAF':'ZA','EGY':'EG','KEN':'KE','ETH':'ET','TZA':'TZ',
+  'GHA':'GH','CIV':'CI','CMR':'CM','AGO':'AO','MOZ':'MZ',
+  'MDG':'MG','MAR':'MA','DZA':'DZ','TUN':'TN','LBY':'LY',
+  'SDN':'SD','SSD':'SS','UGA':'UG','SEN':'SN','MLI':'ML',
+  'BFA':'BF','NER':'NE','TCD':'TD','COD':'CD','COG':'CG',
+  'CAF':'CF','GAB':'GA','GNQ':'GQ','MWI':'MW','ZMB':'ZM',
+  'ZWE':'ZW','BWA':'BW','NAM':'NA','SOM':'SO','ERI':'ER',
+  'MRT':'MR','AUS':'AU','NZL':'NZ','PNG':'PG',
 }
 
 export const useRegionStore = create<RegionState>((set, get) => ({
@@ -315,11 +341,17 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     const { regions } = get()
     const world = useWorldStore.getState()
     if (!world.canAttack(playerIso, targetIso)) return []
+    
     const owned = new Set(regions.filter(r => r.controlledBy === playerIso).map(r => r.id))
-    return regions.filter(r =>
-      r.countryCode === targetIso && r.controlledBy === targetIso &&
-      r.adjacent.some(a => owned.has(a))
-    )
+    const ownsInTarget = regions.some(r => r.countryCode === targetIso && r.controlledBy === playerIso)
+    
+    return regions.filter(r => {
+      if (r.countryCode !== targetIso || r.controlledBy !== targetIso) return false
+      // Beachhead Landing: if you own 0 regions in the target country, ANY region is a valid beachhead
+      if (!ownsInTarget) return true
+      // Otherwise, you must expand via adjacency
+      return r.adjacent.some(a => owned.has(a))
+    })
   },
 
   canAttackRegion: (regionId, playerIso) => {
@@ -328,7 +360,11 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     if (!t || t.controlledBy === playerIso) return false
     const world = useWorldStore.getState()
     if (!world.canAttack(playerIso, t.countryCode)) return false
+    
     const owned = new Set(regions.filter(r => r.controlledBy === playerIso).map(r => r.id))
+    const ownsInTarget = regions.some(r => r.countryCode === t.countryCode && r.controlledBy === playerIso)
+    
+    if (!ownsInTarget) return true
     return t.adjacent.some(a => owned.has(a))
   },
 
@@ -383,13 +419,18 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     regions: s.regions.map(r => r.countryCode === cc ? { ...r, controlledBy: cc, captureProgress: 0, attackedBy: null, assignedArmyId: null } : r)
   })),
 
-  // Refine positions from real GeoJSON bounds
-  updateBoundsFromGeoJSON: (geojson) => {
+  updateBoundsFromGeoJSON: (geojson: any, isoKey = 'ISO3166-1-Alpha-3') => {
     const updated = new Map<string, [number, number, number, number]>()
+    const featuresByCountry = new Map<string, any[]>()
+    
     for (const feat of geojson.features || []) {
-      const iso3 = feat.properties?.['ISO3166-1-Alpha-3']
+      const iso3 = feat.properties?.[isoKey]
       const cc = ISO3_TO_ISO2[iso3]
       if (!cc) continue
+      
+      if (!featuresByCountry.has(cc)) featuresByCountry.set(cc, [])
+      featuresByCountry.get(cc)!.push(feat)
+      
       let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90
       const walk = (coords: any) => {
         if (typeof coords[0] === 'number') {
@@ -402,19 +443,91 @@ export const useRegionStore = create<RegionState>((set, get) => ({
       }
       walk(feat.geometry.coordinates)
       if (minLng < maxLng && minLat < maxLat) {
-        updated.set(cc, [minLng, minLat, maxLng, maxLat])
-        COUNTRY_BOUNDS[cc] = [minLng, minLat, maxLng, maxLat]
+        const existing = updated.get(cc)
+        if (existing) {
+          updated.set(cc, [
+            Math.min(existing[0], minLng), Math.min(existing[1], minLat),
+            Math.max(existing[2], maxLng), Math.max(existing[3], maxLat)
+          ])
+        } else {
+          updated.set(cc, [minLng, minLat, maxLng, maxLat])
+        }
+        COUNTRY_BOUNDS[cc] = updated.get(cc)!
       }
     }
-    // Recompute positions
+    
+    const { regions } = get()
     const defs = REGION_DEFS
-    set(s => ({
-      regions: s.regions.map(r => {
+    const hardcodedIso2s = new Set(defs.map(d => d.countryCode))
+    const nextRegions: Region[] = []
+    
+    // 1. Recompute hardcoded regions
+    regions.forEach(r => {
+      if (hardcodedIso2s.has(r.countryCode)) {
         const b = COUNTRY_BOUNDS[r.countryCode]
         const d = defs.find(x => x.id === r.id)
-        if (!b || !d) return r
-        return { ...r, position: [b[0] + d.offsetX * (b[2] - b[0]), b[1] + d.offsetY * (b[3] - b[1])] as [number, number] }
+        if (b && d) {
+          nextRegions.push({ ...r, position: [b[0] + d.offsetX * (b[2] - b[0]), b[1] + d.offsetY * (b[3] - b[1])] as [number, number] })
+        } else {
+          nextRegions.push(r)
+        }
+      }
+    })
+    
+    // 2. Generate missing regions procedurally
+    const world = useWorldStore.getState()
+    const allGeneratedIds = new Set<string>()
+
+    world.countries.forEach(country => {
+      const cc = country.code
+      if (hardcodedIso2s.has(cc)) return // Skip hardcoded
+      
+      const feats = featuresByCountry.get(cc)
+      if (!feats || feats.length === 0) return
+       
+      const countryGeneratedIds: string[] = []
+      const generatedRegionObjs: Region[] = []
+       
+      feats.forEach(feat => {
+        const stateName = feat.properties?.name || 'Unknown'
+        const id = `${cc}-${stateName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase()}`
+        if (allGeneratedIds.has(id)) return
+        allGeneratedIds.add(id)
+        countryGeneratedIds.push(id)
+          
+        let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90
+        const walk = (coords: any) => {
+          if (typeof coords[0] === 'number') {
+            const [lng, lat] = coords
+            if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng
+            if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat
+          } else coords.forEach(walk)
+        }
+        walk(feat.geometry.coordinates)
+          
+        const cLng = minLng < maxLng ? (minLng + maxLng) / 2 : 0
+        const cLat = minLat < maxLat ? (minLat + maxLat) / 2 : 0
+          
+        const defense = Math.max(15, Math.floor(country.military / 3))
+        
+        let controlledBy = cc
+        if (country.empire && country.controller !== 'Player Alliance') {
+          controlledBy = country.empire
+        }
+          
+        generatedRegionObjs.push({
+          id, name: stateName, countryCode: cc, controlledBy, captureProgress: 0,
+          attackedBy: null, assignedArmyId: null, position: [cLng, cLat], adjacent: [], defense
+        })
       })
-    }))
+       
+      // Full internal adjacency for procedurally generated regions
+      generatedRegionObjs.forEach(r => {
+        r.adjacent = countryGeneratedIds.filter(id => id !== r.id)
+        nextRegions.push(r)
+      })
+    })
+    
+    set({ regions: nextRegions })
   },
 }))

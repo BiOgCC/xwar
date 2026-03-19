@@ -71,7 +71,19 @@ export default function BattleMapOverlay({ mapRef, onRegionClick }: BattleMapOve
 
     const reach: Region[] = []
     const unreach: Region[] = []
+    
+    // Group by country to check for beachheads
+    const ownsByCountry = new Set<string>()
+    currentRegions.forEach(r => {
+      if (r.controlledBy === playerIso) ownsByCountry.add(r.countryCode)
+    })
+
     enemyRegions.forEach(r => {
+      // Beachhead logic: If we own 0 regions in target country, ANY region is reachable
+      if (!ownsByCountry.has(r.countryCode)) {
+        reach.push(r)
+        return
+      }
       const canReach = r.adjacent.some(adjId => playerRegionIds.has(adjId))
       if (canReach) reach.push(r)
       else unreach.push(r)

@@ -45,11 +45,22 @@ export default function StockMarketPanel() {
   const [bondAmount, setBondAmount] = useState(50000)
   const [bondDuration, setBondDuration] = useState(0)
 
-  // Auto-tick every 10s
+  // Auto-tick market every 10s
   useEffect(() => {
     const interval = setInterval(() => { useStockStore.getState().tickMarket() }, 10000)
     return () => clearInterval(interval)
   }, [])
+
+  // Per-second refresh for bond countdowns + resolve expired
+  const [, forceUpdate] = useState(0)
+  useEffect(() => {
+    if (tab !== 'bonds') return
+    const interval = setInterval(() => {
+      useStockStore.getState().resolveExpiredBonds()
+      forceUpdate(n => n + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [tab])
 
   const selected: CountryStock | undefined = selectedStock ? stockStore.getStock(selectedStock) : undefined
   const holding = selectedStock ? stockStore.getHolding(selectedStock) : undefined
@@ -240,7 +251,8 @@ export default function StockMarketPanel() {
             </div>
 
             <div className="bond-form__payout">
-              Win payout: <strong className="bond-form__payout-val">${Math.floor(bondAmount * (BOND_DURATIONS[bondDuration]?.multiplier || 1)).toLocaleString()}</strong>
+              Win payout: <strong className="bond-form__payout-val">${Math.floor(bondAmount * (BOND_DURATIONS[bondDuration]?.multiplier || 1) * 0.9).toLocaleString()}</strong>
+              <span style={{ fontSize: '8px', color: '#64748b', marginLeft: '6px' }}>(×{BOND_DURATIONS[bondDuration]?.multiplier} - 10% tax)</span>
             </div>
 
             <button className="bond-form__submit"
@@ -283,10 +295,9 @@ export default function StockMarketPanel() {
                     </div>
                     <div className="bond-card__footer">
                       <span>Bet: ${b.betAmount.toLocaleString()}</span>
-                      <button className="bond-card__close"
-                        onClick={() => { const r = stockStore.closeBond(b.id); showMsg(r.message, r.success ? 'success' : 'error') }}>
-                        CLOSE NOW
-                      </button>
+                      <span className="bond-card__locked">
+                        🔒 {mins}:{secs.toString().padStart(2, '0')}
+                      </span>
                     </div>
                   </div>
                 )

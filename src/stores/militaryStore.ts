@@ -208,7 +208,7 @@ export const useMilitaryStore = create<MilitaryState>((set, get) => ({
     if (player.bitcoin < opDef.cost.bitcoin) return { success: false, message: 'Not enough Bitcoin.' }
 
     // Deduct costs
-    player.spendScraps(opDef.cost.scrap)
+    player.spendScrap(opDef.cost.scrap)
     player.spendOil(opDef.cost.oil)
     player.spendMaterialX(opDef.cost.materialX)
     if (opDef.cost.bitcoin > 0) player.spendBitcoin(opDef.cost.bitcoin)

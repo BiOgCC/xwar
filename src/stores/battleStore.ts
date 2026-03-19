@@ -4,7 +4,8 @@ import { useGovernmentStore } from './governmentStore'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
-import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './armyStore'
+import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './army'
+import { useWarCardsStore } from './warCardsStore'
 
 // ====== PLAYER COMBAT STATS HELPER ======
 export function getPlayerCombatStats() {
@@ -207,6 +208,11 @@ const FLAG_EMOJIS: Record<string, string> = {
 
 export function getCountryFlag(iso: string): string {
   return FLAG_EMOJIS[iso] || '🏳️'
+}
+
+/** Returns a flag image URL from flagcdn.com for cross-platform rendering */
+export function getCountryFlagUrl(iso: string, width: number = 40): string {
+  return `https://flagcdn.com/w${width}/${iso.toLowerCase()}.png`
 }
 
 const COUNTRY_NAMES: Record<string, string> = {
@@ -971,7 +977,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         combatLog: newCombatLog.slice(-100),
       }
 
-      // If battle resolved, reset division states
+      // If battle resolved, reset division states and check War Cards
       if (newStatus !== 'active') {
         const finalArmyStore = useArmyStore.getState()
         ;[...battle.attacker.divisionIds, ...battle.defender.divisionIds].forEach(id => {
@@ -990,6 +996,114 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             }))
           }
         })
+
+        // ── War Cards: evaluate combat achievements at battle end ──
+        try {
+          const ps = usePlayerStore.getState()
+          const finalBattle = newBattles[battle.id]
+          const totalBattleDmg = (finalBattle.attacker.damageDealt || 0) + (finalBattle.defender.damageDealt || 0)
+          const playerDmg = (finalBattle.attackerDamageDealers[ps.name] || 0) + (finalBattle.defenderDamageDealers[ps.name] || 0)
+
+          // Detect comeback: player's side won after being 50%+ behind with enemy at 599
+          let isComeback = false
+          for (const round of finalBattle.rounds) {
+            if (round.status === 'attacker_won' && round.defenderPoints >= 599) {
+              const deficit = round.defenderPoints - round.attackerPoints
+              if (deficit >= 300) isComeback = true // was 50%+ behind at some point
+            } else if (round.status === 'defender_won' && round.attackerPoints >= 599) {
+              const deficit = round.attackerPoints - round.defenderPoints
+              if (deficit >= 300) isComeback = true
+            }
+          }
+
+          // Check if this is the largest battle on the server (by total damage)
+          const allBattles = Object.values(newBattles)
+          const largestDmg = Math.max(...allBattles.map(b => (b.attacker.damageDealt || 0) + (b.defender.damageDealt || 0)))
+          const isBiggest = totalBattleDmg >= largestDmg && totalBattleDmg > 0
+
+          if (playerDmg > 0) {
+            useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+              totalDamageDone: ps.damageDone,
+              totalMoney: ps.money,
+              totalItemsProduced: ps.itemsProduced,
+              playerLevel: ps.level,
+              battleDamageDealt: playerDmg,
+              battleTotalDamage: totalBattleDmg,
+              battleTicksElapsed: finalBattle.ticksElapsed,
+              battleIsLargest: isBiggest,
+              battleIsComeback: isComeback,
+            }, finalBattle.id)
+          }
+        } catch (e) {
+          console.warn('[WarCards] Error checking combat cards:', e)
+        }
+
+        // ── Battle Reward Distribution (C+D Hybrid) ──
+        try {
+          const finalBattle = newBattles[battle.id]
+          const winnerSide = newStatus === 'attacker_won' ? 'attacker' : 'defender'
+          const loserSide = newStatus === 'attacker_won' ? 'defender' : 'attacker'
+          const winnerCountry = winnerSide === 'attacker' ? finalBattle.attackerId : finalBattle.defenderId
+
+          // Reward pool: 5% of winning country's treasury, capped at $500K
+          const worldState = useWorldStore.getState()
+          const winnerTreasury = worldState.getCountry(winnerCountry)?.fund.money ?? 0
+          const rewardPool = Math.min(500_000, Math.floor(winnerTreasury * 0.05))
+
+          if (rewardPool > 0) {
+            // Drain from winner's treasury
+            worldState.spendFromFund(winnerCountry, { money: rewardPool })
+
+            const winnerDealers = winnerSide === 'attacker' ? finalBattle.attackerDamageDealers : finalBattle.defenderDamageDealers
+            const loserDealers = loserSide === 'attacker' ? finalBattle.attackerDamageDealers : finalBattle.defenderDamageDealers
+
+            const winnerTotalDmg = Object.values(winnerDealers).reduce((s, d) => s + d, 0)
+            const loserTotalDmg = Object.values(loserDealers).reduce((s, d) => s + d, 0)
+
+            const armyStoreRef = useArmyStore.getState()
+
+            // Helper: find the army a player belongs to
+            const findPlayerArmy = (playerId: string) => {
+              return Object.values(armyStoreRef.armies).find(a => a.members.some(m => m.playerId === playerId))
+            }
+
+            // Distribute to winners by damage %
+            if (winnerTotalDmg > 0) {
+              Object.entries(winnerDealers).forEach(([playerId, dmg]) => {
+                const share = Math.floor(rewardPool * (dmg / winnerTotalDmg))
+                if (share > 0) {
+                  const army = findPlayerArmy(playerId)
+                  if (army) {
+                    armyStoreRef.depositBattleReward(army.id, playerId, share)
+                  } else {
+                    // Player not in an army — pay directly
+                    usePlayerStore.getState().earnMoney(share)
+                  }
+                }
+              })
+            }
+
+            // Losers get 33% of what winners got, by damage %
+            const loserPool = Math.floor(rewardPool * 0.33)
+            if (loserPool > 0 && loserTotalDmg > 0) {
+              // Drain loser pool from winner's treasury too
+              worldState.spendFromFund(winnerCountry, { money: loserPool })
+              Object.entries(loserDealers).forEach(([playerId, dmg]) => {
+                const share = Math.floor(loserPool * (dmg / loserTotalDmg))
+                if (share > 0) {
+                  const army = findPlayerArmy(playerId)
+                  if (army) {
+                    armyStoreRef.depositBattleReward(army.id, playerId, share)
+                  } else {
+                    usePlayerStore.getState().earnMoney(share)
+                  }
+                }
+              })
+            }
+          }
+        } catch (e) {
+          console.warn('[BattleRewards] Error distributing battle rewards:', e)
+        }
       }
     })
 

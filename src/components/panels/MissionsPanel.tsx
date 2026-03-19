@@ -31,7 +31,7 @@ function getMilitaryRequiredItems(opId: string): { jets?: number; tanks?: number
 const RESOURCE_LABELS: Record<string, { label: string; icon: string }> = {
   money: { label: 'Money', icon: '💰' },
   oil: { label: 'Oil', icon: '🛢️' },
-  scraps: { label: 'Scraps', icon: '🔩' },
+  scrap: { label: 'Scraps', icon: '🔩' },
   materialX: { label: 'MatX', icon: '⚛️' },
   bitcoin: { label: 'BTC', icon: '₿' },
   jets: { label: 'Jets', icon: '✈️' },
@@ -86,7 +86,7 @@ function MissionCard({
 
   // Prerequisites: jets/tanks check (not consumed, just required to exist)
   const inv = useInventoryStore.getState()
-  const playerJets = inv.items.filter(i => i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
+  const playerJets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
   const hasJets = !requiredItems.jets || playerJets >= (requiredItems.jets || 0)
 
   const handleStartMission = () => {
@@ -102,10 +102,10 @@ function MissionCard({
     if (!activeMission) return
     const p = usePlayerStore.getState()
     const resourceMap: Record<NationalFundKey, number> = {
-      money: p.money, oil: p.oil, scraps: p.scrap, materialX: p.materialX, bitcoin: p.bitcoin, jets: 0,
+      money: p.money, oil: p.oil, scrap: p.scrap, materialX: p.materialX, bitcoin: p.bitcoin, jets: 0,
     }
     if (donateRes === 'jets' && isNuclear) {
-      resourceMap.jets = inv.items.filter(i => i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
+      resourceMap.jets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
     }
     // Cap at what's still needed so nobody overpays
     const needed = (activeMission.requiredResources[donateRes] ?? 0) - (activeMission.contributedResources[donateRes] ?? 0)
@@ -118,11 +118,11 @@ function MissionCard({
     // Deduct ONLY the capped amount from player
     if (donateRes === 'money') p.spendMoney(actual)
     else if (donateRes === 'oil') p.spendOil(actual)
-    else if (donateRes === 'scraps') p.spendScraps(actual)
+    else if (donateRes === 'scrap') p.spendScrap(actual)
     else if (donateRes === 'materialX') p.spendMaterialX(actual)
     else if (donateRes === 'bitcoin') p.spendBitcoin(actual)
     else if (donateRes === 'jets' && isNuclear) {
-      const jets = inv.items.filter(i => i.tier === 't6' && i.slot === 'weapon' && !i.equipped)
+      const jets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped)
       for (let i = 0; i < Math.min(actual, jets.length); i++) inv.removeItem(jets[i].id)
     }
     // Contribute to mission (which donates to national fund)
@@ -136,10 +136,10 @@ function MissionCard({
     if (!activeMission) return
     const p = usePlayerStore.getState()
     const resourceMap: Record<NationalFundKey, number> = {
-      money: p.money, oil: p.oil, scraps: p.scrap, materialX: p.materialX, bitcoin: p.bitcoin, jets: 0,
+      money: p.money, oil: p.oil, scrap: p.scrap, materialX: p.materialX, bitcoin: p.bitcoin, jets: 0,
     }
     if (donateRes === 'jets' && isNuclear) {
-      resourceMap.jets = inv.items.filter(i => i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
+      resourceMap.jets = inv.items.filter(i => i.location === 'inventory' && i.tier === 't6' && i.slot === 'weapon' && !i.equipped).length
     }
     const needed = (activeMission.requiredResources[donateRes] ?? 0) - (activeMission.contributedResources[donateRes] ?? 0)
     const maxDonate = Math.min(resourceMap[donateRes], Math.max(0, needed))
@@ -446,7 +446,7 @@ export default function MissionsPanel() {
           opIcon="☢️"
           opDesc="Collect resources to build a nuclear weapon. Jets CAN be contributed."
           opType="nuclear"
-          costs={{ oil: NUKE_COST.oil, scraps: NUKE_COST.scraps, materialX: NUKE_COST.materialX, bitcoin: NUKE_COST.bitcoin, jets: NUKE_COST.jets }}
+          costs={{ oil: NUKE_COST.oil, scrap: NUKE_COST.scrap, materialX: NUKE_COST.materialX, bitcoin: NUKE_COST.bitcoin, jets: NUKE_COST.jets }}
           requiredItems={{ jets: 1 }}
           isNuclear
         />

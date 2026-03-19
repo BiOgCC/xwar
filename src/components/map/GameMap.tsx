@@ -2,22 +2,12 @@ import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHand
 import maplibregl from 'maplibre-gl'
 import type { Country } from '../../stores/worldStore'
 import { useWorldStore } from '../../stores/worldStore'
+import type { Region } from '../../stores/regionStore'
 import { useRegionStore } from '../../stores/regionStore'
-
-interface RegionInfo {
-  name: string
-  controller: string
-  empire: string | null
-  military: number
-  treasury: number
-  regions: number
-  color: string
-  lngLat: [number, number]
-}
 
 interface GameMapProps {
   countries: Country[]
-  onRegionClick?: (info: RegionInfo) => void
+  onRegionClick?: (region: Region) => void
   onMouseMove?: (lat: string, lng: string) => void
 }
 
@@ -108,19 +98,22 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
   const countriesRef = useRef(countries)
   countriesRef.current = countries
 
-  const handleRegionClick = useCallback((name: string, lngLat: [number, number]) => {
-    const country = countriesRef.current.find(c => c.name === name)
-    if (country && onRegionClickRef.current) {
-      onRegionClickRef.current({
-        name: country.name,
-        controller: country.controller,
-        empire: country.empire,
-        military: country.military,
-        treasury: country.fund.money,
-        regions: country.regions,
-        color: country.color,
-        lngLat,
+  const handleRegionClick = useCallback((countryIso2: string, lngLat: [number, number]) => {
+    const { regions } = useRegionStore.getState()
+    const countryRegions = regions.filter(r => r.countryCode === countryIso2)
+    
+    if (countryRegions.length > 0) {
+      let closestRegion = countryRegions[0]
+      let minDst = Infinity
+      countryRegions.forEach(r => {
+        const dx = r.position[0] - lngLat[0]
+        const dy = r.position[1] - lngLat[1]
+        const dst = dx*dx + dy*dy
+        if (dst < minDst) { minDst = dst; closestRegion = r; }
       })
+      if (onRegionClickRef.current) {
+        onRegionClickRef.current(closestRegion)
+      }
     }
   }, [])
 
@@ -192,14 +185,14 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
         }
       })
 
-      // ── 3. ADD COUNTRIES GEOJSON & COLOR ALL COUNTRIES ──
-      const GEOJSON_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+      // ── 3. ADD STATES GEOJSON & COLOR ALL STATES ──
+      const GEOJSON_URL = '/data/world_states.geojson'
 
-      // Fetch GeoJSON to build complete color map for ALL countries
+      // Fetch GeoJSON to build complete color map for ALL states
       fetch(GEOJSON_URL)
         .then(r => r.json())
         .then((geojson: any) => {
-          m.addSource('xwar-countries', { type: 'geojson', data: geojson })
+          m.addSource('xwar-states', { type: 'geojson', data: geojson })
 
           // Build game country color map
           const gameColors: Record<string, string> = {}
@@ -221,14 +214,14 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             return `#${f(0)}${f(8)}${f(4)}`
           }
 
-          // Generate unique hex color for every country
-          const colorExpr: any[] = ['match', ['get', 'ISO3166-1-Alpha-3']]
+          // Generate unique hex color for every country/state
+          const colorExpr: any[] = ['match', ['get', 'adm0_a3']]
           const seenISOs = new Set<string>()
           let hueIndex = 0
           const goldenAngle = 137.508
 
           ;(geojson.features || []).forEach((feat: any) => {
-            const iso3 = feat.properties?.['ISO3166-1-Alpha-3']
+            const iso3 = feat.properties?.['adm0_a3']
             if (!iso3 || iso3 === '-99' || seenISOs.has(iso3)) return
             seenISOs.add(iso3)
 
@@ -244,30 +237,30 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           })
           colorExpr.push('#384860') // fallback
 
-          // ── 4. TERRITORY FILL — ALL COUNTRIES COLORED ──
+          // ── 4. TERRITORY FILL — ALL STATES COLORED ──
           m.addLayer({
-            id: 'xwar-country-fill',
+            id: 'xwar-state-fill',
             type: 'fill',
-            source: 'xwar-countries',
+            source: 'xwar-states',
             paint: {
               'fill-color': seenISOs.size > 0 ? (colorExpr as any) : '#384860',
               'fill-opacity': [
                 'case',
-                ['in', ['get', 'ISO3166-1-Alpha-3'], ['literal', controlledISOs]],
+                ['in', ['get', 'adm0_a3'], ['literal', controlledISOs]],
                 0.9,
                 0.7
               ],
             },
           })
 
-          // ── 5. COUNTRY BORDERS — ALL countries get black borders ──
+          // ── 5. STATE BORDERS — ALL states get black borders ──
           m.addLayer({
-            id: 'xwar-country-border',
+            id: 'xwar-state-border',
             type: 'line',
-            source: 'xwar-countries',
+            source: 'xwar-states',
             paint: {
               'line-color': '#000000',
-              'line-width': ['interpolate', ['linear'], ['zoom'], 1, 1, 3, 2.5, 6, 3.5],
+              'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.5, 3, 1, 6, 2],
             },
           })
 
@@ -381,11 +374,19 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
           // ── 7. HOVER HIGHLIGHT ──
           m.addLayer({
-            id: 'xwar-country-hover',
+            id: 'xwar-state-hover',
             type: 'fill',
-            source: 'xwar-countries',
+            source: 'xwar-states',
             paint: { 'fill-color': '#ffffff', 'fill-opacity': 0 },
-            filter: ['==', ['get', 'ISO3166-1-Alpha-3'], ''],
+            filter: ['==', ['get', 'name'], ''],
+          })
+          
+          m.addLayer({
+            id: 'xwar-state-hover-border',
+            type: 'line',
+            source: 'xwar-states',
+            paint: { 'line-color': '#eab308', 'line-width': 2, 'line-opacity': 0 },
+            filter: ['==', ['get', 'name'], ''],
           })
 
           // ── 8. PLAYER & ALLY TERRITORY GLOW ──
@@ -405,21 +406,21 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             m.addLayer({
               id: 'xwar-player-glow',
               type: 'line',
-              source: 'xwar-countries',
-              filter: ['==', ['get', 'ISO3166-1-Alpha-3'], playerISO],
+              source: 'xwar-states',
+              filter: ['==', ['get', 'adm0_a3'], playerISO],
               paint: {
                 'line-color': '#22d38a',
-                'line-width': 4,
+                'line-width': 3,
                 'line-opacity': 0.6,
-                'line-blur': 6,
+                'line-blur': 4,
               },
             })
             // Player territory bright tint overlay
             m.addLayer({
               id: 'xwar-player-tint',
               type: 'fill',
-              source: 'xwar-countries',
-              filter: ['==', ['get', 'ISO3166-1-Alpha-3'], playerISO],
+              source: 'xwar-states',
+              filter: ['==', ['get', 'adm0_a3'], playerISO],
               paint: {
                 'fill-color': '#22d38a',
                 'fill-opacity': 0.08,
@@ -432,8 +433,8 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             m.addLayer({
               id: 'xwar-ally-glow',
               type: 'line',
-              source: 'xwar-countries',
-              filter: ['in', ['get', 'ISO3166-1-Alpha-3'], ['literal', allyISOs]],
+              source: 'xwar-states',
+              filter: ['in', ['get', 'adm0_a3'], ['literal', allyISOs]],
               paint: {
                 'line-color': '#60a5fa',
                 'line-width': 2.5,
@@ -465,8 +466,8 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             m.addLayer({
               id: 'xwar-enemy-tint',
               type: 'fill',
-              source: 'xwar-countries',
-              filter: ['in', ['get', 'ISO3166-1-Alpha-3'], ['literal', enemyISO3s]],
+              source: 'xwar-states',
+              filter: ['in', ['get', 'adm0_a3'], ['literal', enemyISO3s]],
               paint: {
                 'fill-color': '#ef4444',
                 'fill-opacity': 0.12,
@@ -476,11 +477,11 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             m.addLayer({
               id: 'xwar-enemy-border',
               type: 'line',
-              source: 'xwar-countries',
-              filter: ['in', ['get', 'ISO3166-1-Alpha-3'], ['literal', enemyISO3s]],
+              source: 'xwar-states',
+              filter: ['in', ['get', 'adm0_a3'], ['literal', enemyISO3s]],
               paint: {
                 'line-color': '#ef4444',
-                'line-width': 3,
+                'line-width': 2,
                 'line-opacity': 0.7,
                 'line-dasharray': [3, 2],
               },
@@ -488,40 +489,47 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           }
 
           // ── Hover interactions ──
-          let hoveredISO: string | null = null
-          m.on('mousemove', 'xwar-country-fill', (e) => {
+          let hoveredStateName: string | null = null
+          m.on('mousemove', 'xwar-state-fill', (e) => {
             if (e.features && e.features.length > 0) {
-              const iso = e.features[0].properties?.['ISO3166-1-Alpha-3']
-              if (iso && iso !== hoveredISO) {
-                hoveredISO = iso
-                m.setFilter('xwar-country-hover', ['==', ['get', 'ISO3166-1-Alpha-3'], iso])
-                m.setPaintProperty('xwar-country-hover', 'fill-opacity', 0.08)
+              const stateName = e.features[0].properties?.['name']
+              if (stateName && stateName !== hoveredStateName) {
+                hoveredStateName = stateName
+                m.setFilter('xwar-state-hover', ['==', ['get', 'name'], stateName])
+                m.setPaintProperty('xwar-state-hover', 'fill-opacity', 0.15)
+                m.setFilter('xwar-state-hover-border', ['==', ['get', 'name'], stateName])
+                m.setPaintProperty('xwar-state-hover-border', 'line-opacity', 1)
                 m.getCanvas().style.cursor = 'pointer'
               }
             }
           })
-          m.on('mouseleave', 'xwar-country-fill', () => {
-            hoveredISO = null
-            m.setFilter('xwar-country-hover', ['==', ['get', 'ISO3166-1-Alpha-3'], ''])
-            m.setPaintProperty('xwar-country-hover', 'fill-opacity', 0)
+          m.on('mouseleave', 'xwar-state-fill', () => {
+            hoveredStateName = null
+            m.setFilter('xwar-state-hover', ['==', ['get', 'name'], ''])
+            m.setPaintProperty('xwar-state-hover', 'fill-opacity', 0)
+            m.setFilter('xwar-state-hover-border', ['==', ['get', 'name'], ''])
+            m.setPaintProperty('xwar-state-hover-border', 'line-opacity', 0)
             m.getCanvas().style.cursor = 'crosshair'
           })
 
 
-          // ── 10. GEOJSON CLICK → OPEN COUNTRY PANEL ──
-          m.on('click', 'xwar-country-fill', (e) => {
+          // ── 10. GEOJSON CLICK → OPEN STATE PANEL ──
+          m.on('click', 'xwar-state-fill', (e) => {
             if (e.features && e.features.length > 0) {
-              const iso3 = e.features[0].properties?.['ISO3166-1-Alpha-3']
+              const iso3 = e.features[0].properties?.['adm0_a3']
               const countryName = iso3 ? ISO3_TO_NAME[iso3] : null
               if (countryName) {
-                const lngLat = e.lngLat
-                handleRegionClick(countryName, [lngLat.lng, lngLat.lat])
+                const country = countriesRef.current.find(c => c.name === countryName)
+                if (country) {
+                   const lngLat = e.lngLat
+                   handleRegionClick(country.code, [lngLat.lng, lngLat.lat])
+                }
               }
             }
           })
 
           // Refine region positions
-          useRegionStore.getState().updateBoundsFromGeoJSON(geojson)
+          useRegionStore.getState().updateBoundsFromGeoJSON(geojson, 'adm0_a3')
 
           setMapLoaded(true)
         })

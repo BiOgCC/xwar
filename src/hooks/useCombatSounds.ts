@@ -1,6 +1,6 @@
 /**
  * Combat Sound Effects — Web Audio API
- * No external assets needed, all sounds are synthesized.
+ * Synthesized gunshot-style audio for hit and critical attacks.
  */
 
 let audioCtx: AudioContext | null = null
@@ -9,7 +9,6 @@ function getCtx(): AudioContext {
   if (!audioCtx) {
     audioCtx = new AudioContext()
   }
-  // Resume if suspended (browsers require user gesture)
   if (audioCtx.state === 'suspended') {
     audioCtx.resume()
   }
@@ -17,102 +16,165 @@ function getCtx(): AudioContext {
 }
 
 /**
- * Player attack hit — quick percussive noise burst
- * Short white-noise envelope (50ms) with a low-pass filter for a "thud" feel
+ * Player attack hit — single gunshot
+ * Short noise burst through a high-pass filter → fast decay → feels like a pistol/rifle crack
  */
 export function playHitSound() {
   try {
     const ctx = getCtx()
-    const duration = 0.06
     const now = ctx.currentTime
+    const duration = 0.12
 
-    // White noise source
-    const bufferSize = Math.ceil(ctx.sampleRate * duration)
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
-    const data = buffer.getChannelData(0)
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * 0.3
+    // Noise burst (the "bang")
+    const bufSize = Math.ceil(ctx.sampleRate * duration)
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < bufSize; i++) {
+      // Sharp exponential attack + fast decay
+      const t = i / ctx.sampleRate
+      const env = Math.exp(-t * 40)
+      data[i] = (Math.random() * 2 - 1) * 0.5 * env
     }
+    const src = ctx.createBufferSource()
+    src.buffer = buf
 
-    const source = ctx.createBufferSource()
-    source.buffer = buffer
+    // High-pass filter — makes it feel like a sharp crack, not a thud
+    const hp = ctx.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.setValueAtTime(1200, now)
+    hp.frequency.exponentialRampToValueAtTime(400, now + duration)
 
-    // Low-pass filter for a meatier "thud"
-    const filter = ctx.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.setValueAtTime(800, now)
-    filter.frequency.exponentialRampToValueAtTime(200, now + duration)
+    // Slight resonant peak for "metallic" quality
+    const peak = ctx.createBiquadFilter()
+    peak.type = 'peaking'
+    peak.frequency.setValueAtTime(2500, now)
+    peak.Q.setValueAtTime(2, now)
+    peak.gain.setValueAtTime(6, now)
 
-    // Gain envelope
+    // Master gain envelope
     const gain = ctx.createGain()
-    gain.gain.setValueAtTime(0.15, now)
+    gain.gain.setValueAtTime(0.18, now)
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration)
 
-    source.connect(filter)
-    filter.connect(gain)
+    src.connect(hp)
+    hp.connect(peak)
+    peak.connect(gain)
     gain.connect(ctx.destination)
 
-    source.start(now)
-    source.stop(now + duration)
+    src.start(now)
+    src.stop(now + duration)
   } catch {
-    // Audio not available, fail silently
+    // Audio not available
   }
 }
 
 /**
- * Critical hit — gunshot / burst / lightning crack
- * Layered: sharp noise crack (bandpass filtered) + low-frequency boom punch
+ * Critical hit — heavy gunshot / sniper rifle crack
+ * Layered: sharp high-freq crack + mid-range punch + low boom tail
+ * Louder and longer than normal hit, with more bass
  */
 export function playCritSound() {
   try {
     const ctx = getCtx()
     const now = ctx.currentTime
 
-    // 1. Sharp crack — loud white noise through a bandpass filter, very fast decay
-    const crackDuration = 0.08
-    const crackBufSize = Math.ceil(ctx.sampleRate * crackDuration)
+    // ── Layer 1: Sharp crack (the initial snap) ──
+    const crackDur = 0.06
+    const crackBufSize = Math.ceil(ctx.sampleRate * crackDur)
     const crackBuf = ctx.createBuffer(1, crackBufSize, ctx.sampleRate)
     const crackData = crackBuf.getChannelData(0)
     for (let i = 0; i < crackBufSize; i++) {
-      // Exponential decay baked into the noise for extra sharpness
-      const env = Math.exp(-i / (crackBufSize * 0.15))
-      crackData[i] = (Math.random() * 2 - 1) * 0.6 * env
+      const env = Math.exp(-i / (crackBufSize * 0.08))
+      crackData[i] = (Math.random() * 2 - 1) * 0.8 * env
     }
-    const crackSource = ctx.createBufferSource()
-    crackSource.buffer = crackBuf
+    const crackSrc = ctx.createBufferSource()
+    crackSrc.buffer = crackBuf
 
-    // Bandpass filter — emphasizes the "crack" frequencies (1.5kHz-4kHz)
-    const bandpass = ctx.createBiquadFilter()
-    bandpass.type = 'bandpass'
-    bandpass.frequency.setValueAtTime(3000, now)
-    bandpass.Q.setValueAtTime(0.8, now)
+    const crackHP = ctx.createBiquadFilter()
+    crackHP.type = 'highpass'
+    crackHP.frequency.setValueAtTime(2000, now)
 
     const crackGain = ctx.createGain()
-    crackGain.gain.setValueAtTime(0.3, now)
-    crackGain.gain.exponentialRampToValueAtTime(0.001, now + crackDuration)
+    crackGain.gain.setValueAtTime(0.35, now)
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + crackDur)
 
-    crackSource.connect(bandpass)
-    bandpass.connect(crackGain)
+    crackSrc.connect(crackHP)
+    crackHP.connect(crackGain)
     crackGain.connect(ctx.destination)
-    crackSource.start(now)
-    crackSource.stop(now + crackDuration)
+    crackSrc.start(now)
+    crackSrc.stop(now + crackDur)
 
-    // 2. Low-frequency boom — 60Hz sine punch for impact
-    const boomDuration = 0.1
+    // ── Layer 2: Mid-range punch (the body of the shot) ──
+    const punchDur = 0.15
+    const punchBufSize = Math.ceil(ctx.sampleRate * punchDur)
+    const punchBuf = ctx.createBuffer(1, punchBufSize, ctx.sampleRate)
+    const punchData = punchBuf.getChannelData(0)
+    for (let i = 0; i < punchBufSize; i++) {
+      const t = i / ctx.sampleRate
+      const env = Math.exp(-t * 20)
+      punchData[i] = (Math.random() * 2 - 1) * 0.45 * env
+    }
+    const punchSrc = ctx.createBufferSource()
+    punchSrc.buffer = punchBuf
+
+    const punchBP = ctx.createBiquadFilter()
+    punchBP.type = 'bandpass'
+    punchBP.frequency.setValueAtTime(800, now)
+    punchBP.Q.setValueAtTime(1.5, now)
+
+    const punchGain = ctx.createGain()
+    punchGain.gain.setValueAtTime(0.25, now)
+    punchGain.gain.exponentialRampToValueAtTime(0.001, now + punchDur)
+
+    punchSrc.connect(punchBP)
+    punchBP.connect(punchGain)
+    punchGain.connect(ctx.destination)
+    punchSrc.start(now + 0.005)  // slight delay for layering
+    punchSrc.stop(now + punchDur)
+
+    // ── Layer 3: Low boom tail (heavy bass impact) ──
+    const boomDur = 0.18
     const boomOsc = ctx.createOscillator()
     boomOsc.type = 'sine'
-    boomOsc.frequency.setValueAtTime(60, now)
-    boomOsc.frequency.exponentialRampToValueAtTime(30, now + boomDuration)
+    boomOsc.frequency.setValueAtTime(80, now)
+    boomOsc.frequency.exponentialRampToValueAtTime(25, now + boomDur)
 
     const boomGain = ctx.createGain()
-    boomGain.gain.setValueAtTime(0.2, now)
-    boomGain.gain.exponentialRampToValueAtTime(0.001, now + boomDuration)
+    boomGain.gain.setValueAtTime(0.25, now)
+    boomGain.gain.exponentialRampToValueAtTime(0.001, now + boomDur)
 
-    boomOsc.connect(boomGain)
+    // Distortion for extra grittiness
+    const distortion = ctx.createWaveShaper()
+    const curve = new Float32Array(256)
+    for (let i = 0; i < 256; i++) {
+      const x = (i / 128) - 1
+      curve[i] = (Math.PI + 4) * x / (Math.PI + 4 * Math.abs(x))
+    }
+    distortion.curve = curve
+
+    boomOsc.connect(distortion)
+    distortion.connect(boomGain)
     boomGain.connect(ctx.destination)
-    boomOsc.start(now)
-    boomOsc.stop(now + boomDuration)
+    boomOsc.start(now + 0.01)
+    boomOsc.stop(now + boomDur)
+
+    // ── Layer 4: High-freq "zing" ricochet tail ──
+    const zingDur = 0.25
+    const zingOsc = ctx.createOscillator()
+    zingOsc.type = 'sine'
+    zingOsc.frequency.setValueAtTime(4000, now + 0.03)
+    zingOsc.frequency.exponentialRampToValueAtTime(1200, now + zingDur)
+
+    const zingGain = ctx.createGain()
+    zingGain.gain.setValueAtTime(0, now)
+    zingGain.gain.linearRampToValueAtTime(0.06, now + 0.035)
+    zingGain.gain.exponentialRampToValueAtTime(0.001, now + zingDur)
+
+    zingOsc.connect(zingGain)
+    zingGain.connect(ctx.destination)
+    zingOsc.start(now + 0.03)
+    zingOsc.stop(now + zingDur)
   } catch {
-    // Audio not available, fail silently
+    // Audio not available
   }
 }

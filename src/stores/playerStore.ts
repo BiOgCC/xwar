@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { useInventoryStore } from './inventoryStore'
 import { useSkillsStore } from './skillsStore'
+import { useSpecializationStore } from './specializationStore'
+import { useWarCardsStore } from './warCardsStore'
 
 export type PlayerRole = 'military' | 'business' | 'politics'
 
@@ -87,8 +89,20 @@ export interface PlayerState {
   enlistedArmyId: string | null
   heroBuffTicksLeft: number  // HERO buff: +10% division damage, 120 ticks
   heroBuffBattleId: string | null  // Which battle the HERO buff is active on
+  avatar: string  // Path to selected avatar image
+
+  // Shame counters (auto-tracked for War Cards)
+  muteCount: number
+  deathCount: number
+  battlesLost: number
+  totalCasinoLosses: number
+  bankruptcyCount: number
+  countrySwitches: number
+  casinoSpins: number
+  itemsDestroyed: number
 
   // Actions
+  setAvatar: (path: string) => void
   attack: () => { damage: number, isCrit: boolean, isDodged: boolean }
   equipAmmo: (type: 'none' | 'green' | 'blue' | 'purple' | 'red') => void
   consumeFood: (type: 'bread' | 'sushi' | 'wagyu') => boolean
@@ -105,9 +119,21 @@ export interface PlayerState {
   spendMoney: (amount: number) => boolean
   spendMaterialX: (amount: number) => boolean
   spendOil: (amount: number) => boolean
-  spendScraps: (amount: number) => boolean
+  spendScrap: (amount: number) => boolean
   spendBitcoin: (amount: number) => boolean
   regenerateBars: () => void
+
+  // Shame counter increments
+  incrementMuteCount: () => void
+  incrementDeathCount: (amount?: number) => void
+  incrementBattlesLost: () => void
+  addCasinoLoss: (amount: number) => void
+  incrementBankruptcy: () => void
+  incrementCountrySwitch: () => void
+  incrementCasinoSpins: (amount?: number) => void
+  incrementItemsDestroyed: (amount?: number) => void
+  /** Check shame cards and award any that are newly earned */
+  checkShameCards: () => void
 }
 
 function xpForLevel(level: number): number {
@@ -125,6 +151,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   country: 'United States',
   countryCode: 'US',
   enlistedArmyId: null,
+
+  // Shame counters
+  muteCount: 0,
+  deathCount: 0,
+  battlesLost: 0,
+  totalCasinoLosses: 0,
+  bankruptcyCount: 0,
+  countrySwitches: 0,
+  casinoSpins: 0,
+  itemsDestroyed: 0,
 
   money: 5000000,
   food: 10000,
@@ -172,7 +208,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   equippedAmmo: 'none',
   heroBuffTicksLeft: 0,
   heroBuffBattleId: null,
+  avatar: '/assets/avatars/avatar_male.png',
 
+  setAvatar: (path) => set({ avatar: path }),
   equipAmmo: (type) => set({ equippedAmmo: type }),
 
   consumeFood: (type) => {
@@ -237,6 +275,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     totalDodge += milSkills.dodge * 5
     totalPrecision += milSkills.precision * 5
 
+    // Specialization bonuses
+    const specBonus = useSpecializationStore.getState().getMilitaryBonuses()
+    totalDmg = Math.floor(totalDmg * (1 + specBonus.damagePercent / 100))
+    totalCritRate += specBonus.critRatePercent
+
     // Hit Rate Check: base 50% + equipment + skills
     const totalHitRate = Math.min(100, 50 + totalPrecision)
     const didHit = Math.random() * 100 < totalHitRate
@@ -285,7 +328,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       skillPoints: newSP,
       experienceToNext: nextXP,
       damageDone: s.damageDone + finalDamage,
-      specialization: { ...s.specialization, military: s.specialization.military + 1 },
       equippedAmmo: usedAmmo
     }
 
@@ -309,14 +351,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     updates.lootChancePool = newPool
 
     set(updates)
+    // Record damage for specialization XP
+    useSpecializationStore.getState().recordDamage(finalDamage)
+    // War Cards: check damage milestones + single-hit record + weekly tracking
+    const newState = get()
+    const wc = useWarCardsStore.getState()
+    wc.addWeeklyDamage(newState.name, finalDamage)
+    wc.checkSingleHitRecord(newState.name, newState.name, finalDamage)
+    wc.checkAndAwardCards(newState.name, newState.name, {
+      totalDamageDone: newState.damageDone,
+      totalMoney: newState.money,
+      totalItemsProduced: newState.itemsProduced,
+      playerLevel: newState.level,
+      singleHitDamage: finalDamage,
+    })
     return { damage: finalDamage, isCrit, isDodged }
   },
 
-  buyResource: (resource, amount, cost) =>
-    set((s) => ({
-      money: Math.max(0, s.money - cost),
-      [resource]: (s as any)[resource] + amount,
-    })),
+  buyResource: (resource, amount, cost) => {
+    set((s) => {
+      if (s.money < cost) return {}
+      return {
+        money: s.money - cost,
+        [resource]: (s as any)[resource] + amount,
+      }
+    })
+  },
 
   buyItem: (itemKey, amount, cost) => {
     let success = false
@@ -345,8 +405,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return success
   },
 
-  earnMoney: (amount) =>
-    set((s) => ({ money: s.money + amount })),
+  earnMoney: (amount) => {
+    set((s) => ({ money: s.money + amount }))
+    // War Cards: check money milestones
+    const s = get()
+    const wc = useWarCardsStore.getState()
+    wc.addWeeklyMoney(s.name, amount)
+    wc.checkAndAwardCards(s.name, s.name, {
+      totalDamageDone: s.damageDone,
+      totalMoney: s.money,
+      totalItemsProduced: s.itemsProduced,
+      playerLevel: s.level,
+    })
+  },
 
   gainXP: (amount) =>
     set((s) => {
@@ -373,25 +444,27 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       [bar]: Math.max(0, s[bar] - amount),
     })),
 
-  doWork: () =>
+  doWork: () => {
     set((s) => {
       const fill = 20
       return {
         work: Math.max(0, s.work - 10),
         productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
-        specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
       }
-    }),
+    })
+    useSpecializationStore.getState().recordWork()
+  },
 
-  doEntrepreneurship: () =>
+  doEntrepreneurship: () => {
     set((s) => {
       const fill = 25
       return {
         entrepreneurship: Math.max(0, s.entrepreneurship - 10),
         productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
-        specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
       }
-    }),
+    })
+    useSpecializationStore.getState().recordWork()
+  },
 
   produce: (industrialistLevel: number) =>
     set((s) => {
@@ -409,6 +482,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         newSP += 4
         nextXP = xpForLevel(newLevel)
       }
+      useSpecializationStore.getState().recordProduce()
+      // War Cards: check items produced milestone
+      setTimeout(() => {
+        const ps = usePlayerStore.getState()
+        useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+          totalDamageDone: ps.damageDone,
+          totalMoney: ps.money,
+          totalItemsProduced: ps.itemsProduced + 1,
+          playerLevel: ps.level,
+        })
+      }, 0)
       return {
         productionBar: 0,
         itemsProduced: s.itemsProduced + 1,
@@ -444,7 +528,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     return true
   },
 
-  spendScraps: (amount) => {
+  spendScrap: (amount) => {
     const s = get()
     if (s.scrap < amount) return false
     set({ scrap: s.scrap - amount })
@@ -467,4 +551,58 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       work: Math.min(state.maxWork, state.work + (state.maxWork * p)),
     }
   }),
+
+  // ── Shame counter increments ──
+
+  incrementMuteCount: () => {
+    set(s => ({ muteCount: s.muteCount + 1 }))
+    get().checkShameCards()
+  },
+  incrementDeathCount: (amount = 1) => {
+    set(s => ({ deathCount: s.deathCount + amount }))
+    get().checkShameCards()
+  },
+  incrementBattlesLost: () => {
+    set(s => ({ battlesLost: s.battlesLost + 1 }))
+    get().checkShameCards()
+  },
+  addCasinoLoss: (amount) => {
+    set(s => ({ totalCasinoLosses: s.totalCasinoLosses + amount }))
+    get().checkShameCards()
+  },
+  incrementBankruptcy: () => {
+    set(s => ({ bankruptcyCount: s.bankruptcyCount + 1 }))
+    get().checkShameCards()
+  },
+  incrementCountrySwitch: () => {
+    set(s => ({ countrySwitches: s.countrySwitches + 1 }))
+    get().checkShameCards()
+  },
+  incrementCasinoSpins: (amount = 1) => {
+    set(s => ({ casinoSpins: s.casinoSpins + amount }))
+    // Don't check every spin — batch check every 100
+    if (get().casinoSpins % 100 === 0) get().checkShameCards()
+  },
+  incrementItemsDestroyed: (amount = 1) => {
+    set(s => ({ itemsDestroyed: s.itemsDestroyed + amount }))
+    get().checkShameCards()
+  },
+
+  checkShameCards: () => {
+    const s = get()
+    useWarCardsStore.getState().checkAndAwardCards(s.name, s.name, {
+      totalDamageDone: s.damageDone,
+      totalMoney: s.money,
+      totalItemsProduced: s.itemsProduced,
+      playerLevel: s.level,
+      muteCount: s.muteCount,
+      deathCount: s.deathCount,
+      battlesLost: s.battlesLost,
+      totalCasinoLosses: s.totalCasinoLosses,
+      bankruptcyCount: s.bankruptcyCount,
+      countrySwitches: s.countrySwitches,
+      casinoSpins: s.casinoSpins,
+      itemsDestroyed: s.itemsDestroyed,
+    })
+  },
 }))

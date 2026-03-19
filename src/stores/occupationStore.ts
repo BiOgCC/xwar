@@ -190,7 +190,7 @@ export const useOccupationStore = create<OccupationState>((set, get) => ({
 
     // Give scraps to occupier
     const govStore = useGovernmentStore.getState()
-    govStore.donateToFund(occ.occupierId, 'scraps' as any, scrapsGained)
+    govStore.donateToFund(occ.occupierId, 'scrap', scrapsGained)
 
     set(s => ({
       occupations: {
