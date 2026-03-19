@@ -38,7 +38,7 @@ export default function SpriteAvatar({ width = 120, height = 160 }: SpriteAvatar
 
     img.onload = () => {
       // Scale image to fit canvas, bottom-aligned
-      const scale = Math.min(cW / img.width, cH / img.height) * 1.6
+      const scale = Math.min(cW / img.width, cH / img.height) * 1.48
       const drawW = img.width * scale
       const drawH = img.height * scale
       const baseX = (cW - drawW) / 2

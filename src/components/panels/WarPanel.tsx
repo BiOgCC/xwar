@@ -1621,6 +1621,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               critSide={critSide}
               atkDominantType={getDominantType(battle.attacker.engagedDivisionIds)}
               defDominantType={getDominantType(battle.defender.engagedDivisionIds)}
+              damageRatio={atkPct / 100}
             />
 
             {/* Fight Buttons — always visible */}

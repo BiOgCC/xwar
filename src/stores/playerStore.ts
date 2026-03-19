@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useInventoryStore } from './inventoryStore'
 import { useSkillsStore } from './skillsStore'
+import { useSpecializationStore } from './specializationStore'
 
 export type PlayerRole = 'military' | 'business' | 'politics'
 
@@ -241,6 +242,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     totalDodge += milSkills.dodge * 5
     totalPrecision += milSkills.precision * 5
 
+    // Specialization bonuses
+    const specBonus = useSpecializationStore.getState().getMilitaryBonuses()
+    totalDmg = Math.floor(totalDmg * (1 + specBonus.damagePercent / 100))
+    totalCritRate += specBonus.critRatePercent
+
     // Hit Rate Check: base 50% + equipment + skills
     const totalHitRate = Math.min(100, 50 + totalPrecision)
     const didHit = Math.random() * 100 < totalHitRate
@@ -289,7 +295,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       skillPoints: newSP,
       experienceToNext: nextXP,
       damageDone: s.damageDone + finalDamage,
-      specialization: { ...s.specialization, military: s.specialization.military + 1 },
       equippedAmmo: usedAmmo
     }
 
@@ -313,6 +318,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     updates.lootChancePool = newPool
 
     set(updates)
+    // Record damage for specialization XP
+    useSpecializationStore.getState().recordDamage(finalDamage)
     return { damage: finalDamage, isCrit, isDodged }
   },
 
@@ -377,25 +384,27 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       [bar]: Math.max(0, s[bar] - amount),
     })),
 
-  doWork: () =>
+  doWork: () => {
     set((s) => {
       const fill = 20
       return {
         work: Math.max(0, s.work - 10),
         productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
-        specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
       }
-    }),
+    })
+    useSpecializationStore.getState().recordWork()
+  },
 
-  doEntrepreneurship: () =>
+  doEntrepreneurship: () => {
     set((s) => {
       const fill = 25
       return {
         entrepreneurship: Math.max(0, s.entrepreneurship - 10),
         productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
-        specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
       }
-    }),
+    })
+    useSpecializationStore.getState().recordWork()
+  },
 
   produce: (industrialistLevel: number) =>
     set((s) => {
@@ -413,6 +422,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         newSP += 4
         nextXP = xpForLevel(newLevel)
       }
+      useSpecializationStore.getState().recordProduce()
       return {
         productionBar: 0,
         itemsProduced: s.itemsProduced + 1,

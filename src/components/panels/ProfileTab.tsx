@@ -5,6 +5,7 @@ import { useSkillsStore } from '../../stores/skillsStore'
 import { useArmyStore } from '../../stores/armyStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePrestigeStore, getPrestigeItemImage } from '../../stores/prestigeStore'
+import { useSpecializationStore } from '../../stores/specializationStore'
 import ResourceIcon from '../shared/ResourceIcon'
 
 export default function ProfileTab() {
@@ -92,29 +93,39 @@ export default function ProfileTab() {
   return (
     <div className="ptab">
 
-      {/* ── HERO CARD ─────────────────────────────── */}
-      <div className="ptab-hero">
+      {/* ── HERO CARD (moved to ProfilePanel) ── */}
+      {false && <div className="ptab-hero">
         {/* Avatar */}
         <div
           className="ptab-hero__avatar"
           onClick={() => setShowAvatarPicker(true)}
           title="Click to change avatar"
           style={{
-            width: '52px', height: '52px', borderRadius: '50%', overflow: 'hidden',
+            width: '47px', height: '47px', borderRadius: '50%', overflow: 'hidden',
             border: '2px solid rgba(99, 102, 241, 0.5)',
             boxShadow: '0 0 12px rgba(99, 102, 241, 0.25), 0 2px 8px rgba(0,0,0,0.5)',
             cursor: 'pointer', flexShrink: 0, position: 'relative',
             background: 'rgba(15, 23, 42, 0.8)',
           }}
         >
+          {/* Country flag background */}
+          <img
+            src={`https://flagcdn.com/w160/${player.countryCode.toLowerCase()}.png`}
+            alt=""
+            style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              objectFit: 'cover', opacity: 1,
+              pointerEvents: 'none',
+            }}
+          />
           <img
             src={player.avatar}
             alt="Avatar"
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'relative', zIndex: 1 }}
             onError={(e) => { e.currentTarget.style.display = 'none' }}
           />
           <div style={{
-            position: 'absolute', inset: 0, borderRadius: '50%',
+            position: 'absolute', inset: 0, borderRadius: '50%', zIndex: 2,
             background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%)',
             pointerEvents: 'none',
           }} />
@@ -149,22 +160,88 @@ export default function ProfileTab() {
           <span className="ptab-hero__sp-num">{player.skillPoints}</span>
           <span className="ptab-hero__sp-lbl">SP</span>
         </div>
+      </div>}
+
+      {/* ── SPECIALIZATION BARS (4 specs) ────────── */}
+      {(() => {
+        const ss = useSpecializationStore.getState()
+        const mil = ss.getMilitaryTier()
+        const eco = ss.getEconomicTier()
+        const pol = ss.getPoliticianTier()
+        const mer = ss.getMercenaryTier()
+        const milB = ss.getMilitaryBonuses()
+        const ecoB = ss.getEconomicBonuses()
+        const polB = ss.getPoliticianBonuses()
+        const merB = ss.getMercenaryBonuses()
+
+        const bars = [
+          { key: 'mil', icon: '⚔️', name: 'Military', tier: mil, color: '#f87171', trackClass: 'ptab-spec-card__mil', border: 'rgba(239,68,68,0.2)',
+            bonus: milB.damagePercent > 0 ? `+${milB.damagePercent}% DMG${milB.critRatePercent > 0 ? `, +${milB.critRatePercent}% CRIT` : ''}` : '' },
+          { key: 'eco', icon: '💼', name: 'Economic', tier: eco, color: '#38bdf8', trackClass: 'ptab-spec-card__eco', border: 'rgba(56,189,248,0.2)',
+            bonus: ecoB.extraCompanySlots > 0 ? `+${ecoB.extraCompanySlots} Companies${ecoB.productionPercent > 0 ? `, +${ecoB.productionPercent}% Prod` : ''}` : '' },
+          { key: 'pol', icon: '🏛️', name: 'Politician', tier: pol, color: '#a855f7', trackClass: 'ptab-spec-card__mil', border: 'rgba(168,85,247,0.2)',
+            bonus: polB.countryDamage > 0 ? `Country: +${polB.countryDamage}% DMG/Prod/Prosp/Ind${polB.countryDodge > 0 ? '/Dodge' : ''} (as Pres.)` : '' },
+          { key: 'mer', icon: '🪖', name: 'Mercenary', tier: mer, color: '#22d38a', trackClass: 'ptab-spec-card__eco', border: 'rgba(34,211,138,0.2)',
+            bonus: merB.abroadDamagePercent > 0 ? `+${merB.abroadDamagePercent}% Abroad DMG${merB.lootChancePercent > 0 ? `, +${merB.lootChancePercent}% Loot` : ''}` : '' },
+        ]
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            {bars.map(b => (
+              <div key={b.key} className="ptab-spec-card" style={{ borderColor: b.border, padding: '8px 10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                  <span style={{ fontSize: '9px', fontWeight: 700, color: b.color }}>{b.icon} {b.name} — T{b.tier.tier} {b.tier.label}</span>
+                  <span style={{ fontSize: '7px', color: '#94a3b8' }}>{b.tier.xp} / {b.tier.nextXP} XP</span>
+                </div>
+                <div className="ptab-spec-card__track" style={{ height: '5px' }}>
+                  <div className={b.trackClass} style={{ width: `${b.tier.percent}%` }} />
+                </div>
+                {b.bonus && (
+                  <div style={{ fontSize: '7px', color: b.color, marginTop: '2px', opacity: 0.85 }}>{b.bonus}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      })()}
+
+      {/* ── DONATE ────────────────────────────────── */}
+      <div className="ptab-section">
+        <div className="ptab-section__title">🎁 DONATE FOR SPECIALIZATION</div>
+        <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '6px' }}>
+          10 XP per $100,000 donated. 1 donate/day per type.
+        </div>
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          {[
+            { label: '💼 Economy', color: '#38bdf8', border: 'rgba(56,189,248,0.3)', bg: 'rgba(56,189,248,0.08)', fn: 'recordDonate' as const },
+            { label: '⚔️ Military', color: '#f87171', border: 'rgba(239,68,68,0.3)', bg: 'rgba(239,68,68,0.08)', fn: 'recordMilitaryDonate' as const },
+          ].map(d => (
+            <button
+              key={d.fn}
+              style={{
+                flex: 1, minWidth: '90px', padding: '8px 6px', fontSize: '9px', fontWeight: 700,
+                fontFamily: 'var(--font-display)', letterSpacing: '0.04em',
+                color: d.color, background: d.bg, border: `1px solid ${d.border}`,
+                borderRadius: '6px', cursor: player.money >= 100000 ? 'pointer' : 'not-allowed',
+                opacity: player.money >= 100000 ? 1 : 0.4,
+                transition: 'all 150ms ease',
+              }}
+              disabled={player.money < 100000}
+              onClick={() => {
+                const amt = 100000
+                if (player.money < amt) return
+                player.spendMoney(amt)
+                useSpecializationStore.getState()[d.fn](amt)
+              }}
+            >
+              {d.label}
+              <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 500, marginTop: '1px' }}>$100k</div>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ── SPECIALIZATION BAR ────────────────────── */}
-      <div className="ptab-spec-card">
-        <div className="ptab-spec-card__labels">
-          <span style={{ color: '#f87171' }}>⚔️ Military {Math.round(milPercent)}%</span>
-          <span style={{ color: '#94a3b8', fontSize: '8px' }}>SPECIALIZATION</span>
-          <span style={{ color: '#38bdf8' }}>💼 Economic {Math.round(100 - milPercent)}%</span>
-        </div>
-        <div className="ptab-spec-card__track">
-          <div className="ptab-spec-card__mil" style={{ width: `${milPercent}%` }} />
-          <div className="ptab-spec-card__eco" style={{ width: `${100 - milPercent}%` }} />
-        </div>
-      </div>
-
-      {/* ── STATS GRID ────────────────────────────── */}
+      {/* ── STATS GRID ──────────────────────────── */}
       <div className="ptab-stats-duo">
 
         {/* MILITARY */}
@@ -216,7 +293,64 @@ export default function ProfileTab() {
 
       {/* EQUIPPED GEAR */}
       <div className="ptab-section">
-        <div className="ptab-section__title">ARMOR & PRESTIGE</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+          <div className="ptab-section__title" style={{ margin: 0 }}>ARMOR & PRESTIGE</div>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              style={{
+                padding: '3px 10px', fontSize: '8px', fontWeight: 800, letterSpacing: '0.08em',
+                fontFamily: 'var(--font-display)',
+                color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)',
+                borderRadius: '4px', cursor: 'pointer', transition: 'all 150ms ease',
+              }}
+              onClick={() => {
+                const inv = useInventoryStore.getState()
+                const allItems = inv.items
+                // Best armor per slot
+                const armorSlots = ['helmet', 'chest', 'legs', 'gloves', 'boots'] as const
+                armorSlots.forEach(slot => {
+                  const candidates = allItems.filter(i => i.slot === slot && i.durability > 0)
+                  if (candidates.length === 0) return
+                  const best = candidates.reduce((a, b) => {
+                    const aT = (a.stats.damage || 0) + (a.stats.armor || 0) + (a.stats.critRate || 0) + (a.stats.critDamage || 0) + (a.stats.dodge || 0) + (a.stats.precision || 0)
+                    const bT = (b.stats.damage || 0) + (b.stats.armor || 0) + (b.stats.critRate || 0) + (b.stats.critDamage || 0) + (b.stats.dodge || 0) + (b.stats.precision || 0)
+                    return bT > aT ? b : a
+                  })
+                  inv.equipItem(best.id)
+                })
+                // Best weapon
+                const weapons = allItems.filter(i => i.slot === 'weapon' && i.durability > 0)
+                if (weapons.length > 0) {
+                  const bestWep = weapons.reduce((a, b) => {
+                    const aT = (a.stats.damage || 0) + (a.stats.critRate || 0) + (a.stats.critDamage || 0)
+                    const bT = (b.stats.damage || 0) + (b.stats.critRate || 0) + (b.stats.critDamage || 0)
+                    return bT > aT ? b : a
+                  })
+                  inv.equipItem(bestWep.id)
+                }
+                // Best bullet (highest tier available)
+                const p = usePlayerStore.getState()
+                if (p.redBullets > 0) p.equipAmmo('red')
+                else if (p.purpleBullets > 0) p.equipAmmo('purple')
+                else if (p.blueBullets > 0) p.equipAmmo('blue')
+                else if (p.greenBullets > 0) p.equipAmmo('green')
+              }}
+            >BEST</button>
+            <button
+              style={{
+                padding: '3px 10px', fontSize: '8px', fontWeight: 800, letterSpacing: '0.08em',
+                fontFamily: 'var(--font-display)',
+                color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: '4px', cursor: 'pointer', transition: 'all 150ms ease',
+              }}
+              onClick={() => {
+                const inv = useInventoryStore.getState()
+                inv.items.filter(i => i.equipped).forEach(i => inv.unequipItem(i.id))
+                usePlayerStore.getState().equipAmmo('none')
+              }}
+            >REMOVE</button>
+          </div>
+        </div>
         <div className="ptab-gear-grid">
           {['helmet', 'chest', 'legs', 'gloves', 'boots'].map(slotStr => {
             const item = equipped.find((i: any) => i.slot === slotStr);
@@ -225,9 +359,7 @@ export default function ProfileTab() {
                 <div key={slotStr} className="ptab-gear-card" style={{ borderColor: 'rgba(255,255,255,0.05)', opacity: 0.5 }}>
                   <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">{slotStr.toUpperCase()}</span></div>
                   <div className="ptab-gear-card__img-wrap">
-                    <div style={{ fontSize: '28px', opacity: 0.2 }}>
-                      {slotStr === 'helmet' ? '\u2302' : slotStr === 'chest' ? '\u2666' : slotStr === 'legs' ? '\u2225' : slotStr === 'gloves' ? '\u270B' : '\u25B2'}
-                    </div>
+                    <img src={getItemImagePath('t1', slotStr as any, 'armor') || ''} alt={slotStr} style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.25, filter: 'grayscale(100%)' }} />
                   </div>
                 </div>
               )
@@ -323,7 +455,7 @@ export default function ProfileTab() {
               return (
                 <div key="weapon" className="ptab-gear-card" style={{ borderColor: 'rgba(255,255,255,0.05)', opacity: 0.5 }}>
                   <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">WEAPON</span></div>
-                  <div className="ptab-gear-card__img-wrap"><div style={{ fontSize: '28px', opacity: 0.2 }}>{'\u2694'}</div></div>
+                  <div className="ptab-gear-card__img-wrap"><img src={getItemImagePath('t1', 'weapon', 'weapon') || ''} alt="Weapon" style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.25, filter: 'grayscale(100%)' }} /></div>
                 </div>
               )
             }
@@ -339,7 +471,7 @@ export default function ProfileTab() {
                   <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
                 </div>
                 <div className="ptab-gear-card__img-wrap">
-                  {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} /> : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>{'\u2694'}</div>}
+                  {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} /> : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>⚔️</div>}
                 </div>
                 <div className="ptab-gear-card__stats">
                   {item.stats.damage && <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">DMG</span><span className="ptab-gear-stat__val" style={{ color: '#f87171' }}>{item.stats.damage}</span></div>}
@@ -391,7 +523,6 @@ export default function ProfileTab() {
           })()}
         </div>
       </div>
-
 
       {/* ── CONSUME FOOD ──────────────────────────── */}
       <div className="ptab-section">

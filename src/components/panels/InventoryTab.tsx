@@ -181,7 +181,7 @@ export default function InventoryTab() {
  <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} />
  ) : (
  <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>
- {item.slot === 'helmet' ? '\u2302' : item.slot === 'chest' ? '\u2666' : item.slot === 'legs' ? '\u2225' : item.slot === 'gloves' ? '\u270B' : item.slot === 'boots' ? '\u25B2' : '\u2694'}
+ <img src={getItemImagePath('t1', item.slot, item.category) || ''} alt={item.slot} style={{ width: '28px', height: '28px', objectFit: 'contain', opacity: 0.5, filter: 'grayscale(100%)' }} />
  </div>
  )}
  </div>
@@ -317,7 +317,61 @@ export default function InventoryTab() {
    const ammoBonus = ammoMultipliers[player.equippedAmmo] || ammoMultipliers.none
    return (
      <div className="inv-section">
-       <div className="inv-section__title" style={{ color: '#ffffff' }}>ARMOR & PRESTIGE</div>
+       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+          <div className="inv-section__title" style={{ color: '#ffffff', margin: 0 }}>ARMOR & PRESTIGE</div>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              style={{
+                padding: '3px 10px', fontSize: '8px', fontWeight: 800, letterSpacing: '0.08em',
+                fontFamily: 'var(--font-display)',
+                color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)',
+                borderRadius: '4px', cursor: 'pointer', transition: 'all 150ms ease',
+              }}
+              onClick={() => {
+                const inv = useInventoryStore.getState()
+                const allItems = inv.items
+                const armorSlots = ['helmet', 'chest', 'legs', 'gloves', 'boots']
+                armorSlots.forEach(slot => {
+                  const candidates = allItems.filter(i => i.slot === slot && i.durability > 0)
+                  if (candidates.length === 0) return
+                  const best = candidates.reduce((a, b) => {
+                    const aT = (a.stats.damage || 0) + (a.stats.armor || 0) + (a.stats.critRate || 0) + (a.stats.critDamage || 0) + (a.stats.dodge || 0) + (a.stats.precision || 0)
+                    const bT = (b.stats.damage || 0) + (b.stats.armor || 0) + (b.stats.critRate || 0) + (b.stats.critDamage || 0) + (b.stats.dodge || 0) + (b.stats.precision || 0)
+                    return bT > aT ? b : a
+                  })
+                  inv.equipItem(best.id)
+                })
+                const weapons = allItems.filter(i => i.slot === 'weapon' && i.durability > 0)
+                if (weapons.length > 0) {
+                  const bestWep = weapons.reduce((a, b) => {
+                    const aT = (a.stats.damage || 0) + (a.stats.critRate || 0) + (a.stats.critDamage || 0)
+                    const bT = (b.stats.damage || 0) + (b.stats.critRate || 0) + (b.stats.critDamage || 0)
+                    return bT > aT ? b : a
+                  })
+                  inv.equipItem(bestWep.id)
+                }
+                const p = usePlayerStore.getState()
+                if (p.redBullets > 0) p.equipAmmo('red')
+                else if (p.purpleBullets > 0) p.equipAmmo('purple')
+                else if (p.blueBullets > 0) p.equipAmmo('blue')
+                else if (p.greenBullets > 0) p.equipAmmo('green')
+              }}
+            >BEST</button>
+            <button
+              style={{
+                padding: '3px 10px', fontSize: '8px', fontWeight: 800, letterSpacing: '0.08em',
+                fontFamily: 'var(--font-display)',
+                color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                borderRadius: '4px', cursor: 'pointer', transition: 'all 150ms ease',
+              }}
+              onClick={() => {
+                const inv = useInventoryStore.getState()
+                inv.items.filter(i => i.equipped).forEach(i => inv.unequipItem(i.id))
+                usePlayerStore.getState().equipAmmo('none')
+              }}
+            >REMOVE</button>
+          </div>
+        </div>
        <div className="ptab-gear-grid">
          {['helmet', 'chest', 'legs', 'gloves', 'boots'].map(slotStr => {
            const item = equipped.find((i: any) => i.slot === slotStr);
@@ -327,7 +381,7 @@ export default function InventoryTab() {
                  <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">{slotStr.toUpperCase()}</span></div>
                  <div className="ptab-gear-card__img-wrap">
                    <div style={{ fontSize: '28px', opacity: 0.2 }}>
-                     {slotStr === 'helmet' ? '\u2302' : slotStr === 'chest' ? '\u2666' : slotStr === 'legs' ? '\u2225' : slotStr === 'gloves' ? '\u270B' : '\u25B2'}
+                     <img src={getItemImagePath('t1', slotStr, 'armor') || ''} alt={slotStr} style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.25, filter: 'grayscale(100%)' }} />
                    </div>
                  </div>
                </div>
@@ -422,7 +476,7 @@ export default function InventoryTab() {
              return (
                <div key="weapon" className="ptab-gear-card" style={{ borderColor: 'rgba(255,255,255,0.05)', opacity: 0.5 }}>
                  <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">WEAPON</span></div>
-                 <div className="ptab-gear-card__img-wrap"><div style={{ fontSize: '28px', opacity: 0.2 }}>\u2694</div></div>
+                 <div className="ptab-gear-card__img-wrap"><img src={getItemImagePath('t1', 'weapon', 'weapon') || ''} alt="Weapon" style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.25, filter: 'grayscale(100%)' }} /></div>
                </div>
              )
            }
@@ -438,7 +492,7 @@ export default function InventoryTab() {
                  <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
                </div>
                <div className="ptab-gear-card__img-wrap">
-                 {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} /> : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>\u2694</div>}
+                 {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} /> : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>⚔️</div>}
                </div>
                <div className="ptab-gear-card__stats">
                  {item.stats.damage && <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">DMG</span><span className="ptab-gear-stat__val" style={{ color: '#f87171' }}>{item.stats.damage}</span></div>}
@@ -459,7 +513,7 @@ export default function InventoryTab() {
              return (
                <div key="ammo_empty" className="ptab-gear-card" style={{ borderColor: 'rgba(255,255,255,0.1)', opacity: 0.6, cursor: 'pointer' }} onClick={() => setShowAmmoPicker(true)}>
                  <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">AMMO</span></div>
-                 <div className="ptab-gear-card__img-wrap"><div style={{ fontSize: '28px', opacity: 0.3 }}>\u25cf</div></div>
+                 <div className="ptab-gear-card__img-wrap"><img src="/assets/items/ammo_green.png" alt="Ammo" style={{ width: '36px', height: '36px', objectFit: 'contain', opacity: 0.25, filter: 'grayscale(100%)' }} /></div>
                  <div className="ptab-gear-card__footer" style={{ justifyContent: 'center' }}>
                    <div className="ptab-gear-card__dur-lbl" style={{ color: '#64748b', fontSize: '7px' }}>CLICK TO EQUIP</div>
                  </div>
@@ -480,7 +534,7 @@ export default function InventoryTab() {
                </div>
                <div className="ptab-gear-card__stats">
                  <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">AMNT</span><span className="ptab-gear-stat__val" style={{ color: aColor }}>{aCount?.toLocaleString()}</span></div>
-                 <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">MULT</span><span className="ptab-gear-stat__val" style={{ color: aColor }}>\u00d7{ammoBonus.dmg}</span></div>
+                 <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">MULT</span><span className="ptab-gear-stat__val" style={{ color: aColor }}>×{ammoBonus.dmg}</span></div>
                </div>
                <div className="ptab-gear-card__footer" style={{ justifyContent: 'center' }}>
                  <div className="ptab-gear-card__dur-lbl" style={{ color: aColor }}>EQUIPPED</div>
