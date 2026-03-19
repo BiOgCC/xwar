@@ -23,7 +23,6 @@ import { initMockData } from './dev/mockData'
 import './styles/ticker.css'
 
 
-
 function App() {
   const player = usePlayerStore()
   const world = useWorldStore()
