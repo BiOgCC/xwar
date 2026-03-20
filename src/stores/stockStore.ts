@@ -2,60 +2,19 @@ import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
 import { useNewsStore } from './newsStore'
+import { useCompanyStore } from './companyStore'
+import { useArmyStore } from './army'
+import { useBattleStore } from './battleStore'
+import { useInventoryStore } from './inventoryStore'
+import { useRegionStore } from './regionStore'
+import { rateLimiter } from '../engine/AntiExploit'
 
-/* ══════════════════════════════════════════════
-   XWAR — Stock Market Store
-   Country shares, market pool, bonds, transaction log
-   ══════════════════════════════════════════════ */
+import type { StockTick, CountryStock, Holding, StockTransaction, BondDirection, Bond } from '../types/stock.types'
+export type { StockTick, CountryStock, Holding, BondDirection, Bond }
 
-export interface StockTick {
-  price: number
-  timestamp: number
-}
-
-export interface CountryStock {
-  code: string
-  name: string
-  price: number
-  prevPrice: number
-  history: StockTick[]
-  volume: number
-}
-
-export interface Holding {
-  code: string
-  shares: number
-  avgBuyPrice: number
-}
-
-// ── Transaction Log ──
-export interface Transaction {
-  id: string
-  type: 'buy' | 'sell' | 'bond_open' | 'bond_close'
-  code: string           // stock/bond country code
-  qty: number
-  price: number
-  total: number
-  pnl?: number           // profit/loss for sells and bond closes
-  timestamp: number
-  playerName: string
-}
-
-// ── Binary Options Bonds ──
-export type BondDirection = 'up' | 'down'
-
-export interface Bond {
-  id: string
-  countryCode: string
-  direction: BondDirection  // player bets UP or DOWN
-  entryPrice: number        // price at open
-  betAmount: number         // how much player wagered
-  openedAt: number
-  expiresAt: number         // auto-close window
-  status: 'open' | 'won' | 'lost'
-  closePrice?: number
-  payout?: number
-}
+// Re-export Transaction with original name for backward compat
+export type Transaction = StockTransaction
+export type { StockTransaction }
 
 const BOND_DURATIONS = [
   { label: '5 MIN',  ms:  5 * 60_000, multiplier: 1.5 },
@@ -65,37 +24,71 @@ const BOND_DURATIONS = [
 
 export { BOND_DURATIONS }
 
-// Major economies
-const STOCK_COUNTRIES = [
-  { code: 'US', name: 'United States', basePrice: 850 },
-  { code: 'CN', name: 'China', basePrice: 620 },
-  { code: 'RU', name: 'Russia', basePrice: 380 },
-  { code: 'GB', name: 'United Kingdom', basePrice: 720 },
-  { code: 'DE', name: 'Germany', basePrice: 680 },
-  { code: 'FR', name: 'France', basePrice: 640 },
-  { code: 'JP', name: 'Japan', basePrice: 710 },
-  { code: 'BR', name: 'Brazil', basePrice: 340 },
-  { code: 'IN', name: 'India', basePrice: 420 },
-  { code: 'KR', name: 'South Korea', basePrice: 560 },
-]
+// ══════════════════════════════════════════════
+// FUNDAMENTALS-BASED PRICE CALCULATION
+// Price = f(companies, regions, divisions, equipment, fire, treasury) / population
+// ══════════════════════════════════════════════
 
-function initPrice(base: number): number {
-  return Math.floor(base * (0.9 + Math.random() * 0.2))
+const WEIGHTS = {
+  companies:    15,      // economic engine — slow growth
+  regions:      8,       // territorial expansion — war reward
+  divisions:    5,       // military power — depletes in war
+  equipment:    0.5,     // military resources — consumed in combat
+  combatDamage: 0.002,   // fire/aggression — grows during war
+  treasury:     0.00005, // national wealth — taxes/spending
+  popDivisor:   0.0008,  // population normalization
+} as const
+
+export function calculateFundamentals(countryCode: string): number {
+  // 1. Companies in this country
+  const companies = useCompanyStore.getState().companies.filter(c => c.location === countryCode)
+  const companyScore = companies.reduce((sum, c) => sum + c.level, 0)
+
+  // 2. Regions controlled by this country
+  const regions = useRegionStore.getState().regions.filter(r => r.controlledBy === countryCode)
+  const regionScore = regions.length
+
+  // 3. Military divisions belonging to this country (alive only)
+  const allDivisions = Object.values(useArmyStore.getState().divisions)
+  const countryDivs = allDivisions.filter(d => d.countryCode === countryCode && d.status !== 'destroyed')
+  const divisionScore = countryDivs.reduce((sum, d) => sum + (d.manpower / Math.max(1, d.maxManpower)), 0)
+
+  // 4. Equipment value — items assigned to country's divisions
+  const items = useInventoryStore.getState().items
+  const divIds = new Set(countryDivs.map(d => d.id))
+  const equipmentScore = items
+    .filter(i => i.location === 'division' && i.assignedToDivision && divIds.has(i.assignedToDivision))
+    .reduce((sum, i) => {
+      const tierValue = { t1: 10, t2: 25, t3: 50, t4: 100, t5: 200 }[i.tier as string] || 10
+      return sum + tierValue * (i.durability / 100)
+    }, 0)
+
+  // 5. Combat damage dealt by this country (across all active battles)
+  const battles = Object.values(useBattleStore.getState().battles)
+  let combatDamage = 0
+  battles.forEach(b => {
+    if (b.status !== 'active') return
+    if (b.attackerId === countryCode) combatDamage += (b.attacker.damageDealt || 0)
+    if (b.defenderId === countryCode) combatDamage += (b.defender.damageDealt || 0)
+  })
+
+  // 6. Treasury (money in national fund)
+  const country = useWorldStore.getState().getCountry(countryCode)
+  const treasury = country?.fund.money || 0
+  const population = country?.population || 1000
+
+  // Composite value
+  const rawValue = (
+    companyScore   * WEIGHTS.companies +
+    regionScore    * WEIGHTS.regions +
+    divisionScore  * WEIGHTS.divisions +
+    equipmentScore * WEIGHTS.equipment +
+    combatDamage   * WEIGHTS.combatDamage +
+    treasury       * WEIGHTS.treasury
+  ) / (population * WEIGHTS.popDivisor)
+
+  return Math.max(5, Math.floor(rawValue))
 }
-
-function initHistory(basePrice: number): StockTick[] {
-  const ticks: StockTick[] = []
-  let p = basePrice
-  const now = Date.now()
-  for (let i = 29; i >= 0; i--) {
-    const change = (Math.random() - 0.48) * basePrice * 0.03
-    p = Math.max(10, Math.floor(p + change))
-    ticks.push({ price: p, timestamp: now - i * 60000 })
-  }
-  return ticks
-}
-
-const INITIAL_POOL = 10_000_000
 
 export interface StockState {
   stocks: CountryStock[]
@@ -105,6 +98,8 @@ export interface StockState {
   marketPool: number           // shared liquidity pool
   transactions: Transaction[]  // global transaction log
   bonds: Bond[]                // player's active/closed bonds
+  lastSessionBoundaryAt: number // timestamp of last 12h session boundary
+  lastResetBandAt: number       // timestamp of last 24h price correction
 
   buyShares: (code: string, qty: number) => { success: boolean; message: string }
   sellShares: (code: string, qty: number) => { success: boolean; message: string }
@@ -112,27 +107,27 @@ export interface StockState {
   closeBond: (bondId: string) => { success: boolean; message: string }
   resolveExpiredBonds: () => void
   tickMarket: () => void
+  processSessionBoundary: () => void
+  processResetBand: () => void
   getStock: (code: string) => CountryStock | undefined
   getHolding: (code: string) => Holding | undefined
   getPortfolioValue: () => number
 }
 
 export const useStockStore = create<StockState>((set, get) => {
-  const initialStocks: CountryStock[] = STOCK_COUNTRIES.map(sc => {
-    const price = initPrice(sc.basePrice)
-    return { code: sc.code, name: sc.name, price, prevPrice: price, history: initHistory(price), volume: 0 }
-  })
-
   return {
-    stocks: initialStocks,
+    stocks: [],
     portfolio: [],
     totalInvested: 0,
     totalRealized: 0,
-    marketPool: INITIAL_POOL,
+    marketPool: 0,
     transactions: [],
     bonds: [],
+    lastSessionBoundaryAt: Date.now(),
+    lastResetBandAt: Date.now(),
 
     buyShares: (code, qty) => {
+      if (!rateLimiter.check('stock.buy')) return { success: false, message: 'Too fast! Wait a moment.' }
       if (qty <= 0) return { success: false, message: 'Invalid quantity' }
 
       const stock = get().stocks.find(s => s.code === code)
@@ -172,7 +167,9 @@ export const useStockStore = create<StockState>((set, get) => {
 
         return {
           portfolio: newPortfolio,
-          stocks: s.stocks.map(st => st.code === code ? { ...st, volume: st.volume + qty } : st),
+          stocks: s.stocks.map(st => st.code === code
+            ? { ...st, volume: st.volume + qty, netBuyVolume: st.netBuyVolume + qty }
+            : st),
           totalInvested: s.totalInvested + totalCost,
           marketPool: s.marketPool + toPool,
           transactions: [tx, ...s.transactions].slice(0, 50),
@@ -187,6 +184,7 @@ export const useStockStore = create<StockState>((set, get) => {
     },
 
     sellShares: (code, qty) => {
+      if (!rateLimiter.check('stock.sell')) return { success: false, message: 'Too fast! Wait a moment.' }
       if (qty <= 0) return { success: false, message: 'Invalid quantity' }
 
       const holding = get().portfolio.find(h => h.code === code)
@@ -228,7 +226,9 @@ export const useStockStore = create<StockState>((set, get) => {
 
         return {
           portfolio: newPortfolio,
-          stocks: s.stocks.map(st => st.code === code ? { ...st, volume: st.volume + qty } : st),
+          stocks: s.stocks.map(st => st.code === code
+            ? { ...st, volume: st.volume + qty, netBuyVolume: st.netBuyVolume - qty }
+            : st),
           totalRealized: s.totalRealized + totalRevenue,
           marketPool: s.marketPool - totalRevenue,
           transactions: [tx, ...s.transactions].slice(0, 50),
@@ -245,6 +245,7 @@ export const useStockStore = create<StockState>((set, get) => {
     // ── Binary Options Bonds ──
 
     openBond: (code, direction, betAmount, durationIdx) => {
+      if (!rateLimiter.check('stock.bond')) return { success: false, message: 'Too fast! Wait a moment.' }
       const player = usePlayerStore.getState()
       const stock = get().stocks.find(s => s.code === code)
       if (!stock) return { success: false, message: 'Stock not found' }
@@ -366,18 +367,60 @@ export const useStockStore = create<StockState>((set, get) => {
       // First resolve expired bonds
       get().resolveExpiredBonds()
 
+      // Auto-seed: if stocks array is empty, populate from world countries
+      if (get().stocks.length === 0) {
+        const world = useWorldStore.getState()
+        const countries = world.countries
+        if (countries.length > 0) {
+          const now = Date.now()
+          const newStocks: CountryStock[] = countries.map(c => {
+            const fundamental = calculateFundamentals(c.code)
+            const price = Math.max(5, fundamental)
+            // Seed 5 ticks of history with small variance
+            const history: StockTick[] = Array.from({ length: 5 }, (_, i) => ({
+              price: Math.max(5, Math.floor(price * (1 + (Math.random() - 0.5) * 0.06))),
+              timestamp: now - (5 - i) * 60000,
+            }))
+            history.push({ price, timestamp: now })
+            return {
+              code: c.code,
+              name: c.name,
+              price,
+              prevPrice: price,
+              history,
+              volume: 0,
+              netBuyVolume: 0,
+            }
+          })
+          set({ stocks: newStocks })
+        }
+        return // skip the normal tick this round — stocks were just seeded
+      }
+
       set(s => ({
         stocks: s.stocks.map(stock => {
-          const volatility = 0.05
-          const drift = 0.001
-          const change = (Math.random() - 0.48 + drift) * stock.price * volatility
-          const newPrice = Math.max(10, Math.floor(stock.price + change))
+          // 1. Fundamentals-driven base price
+          const fundamental = calculateFundamentals(stock.code)
+
+          // 2. Volume pressure: net buy volume shifts price
+          const volumePressure = (stock.netBuyVolume / 1000) * 0.5
+
+          // 3. Small noise (±1.5% with slight upward drift)
+          const noise = (Math.random() - 0.48) * stock.price * 0.03
+
+          // 4. Blend: 70% fundamentals, 30% previous price (smooth transitions)
+          const blended = fundamental * 0.7 + stock.price * 0.3
+          const newPrice = Math.max(5, Math.floor(blended + volumePressure + noise))
           const newTick: StockTick = { price: newPrice, timestamp: Date.now() }
+
+          // Decay volume pressure 10% per tick (mean-reversion)
+          const decayedVolume = Math.floor(stock.netBuyVolume * 0.9)
 
           return {
             ...stock,
             prevPrice: stock.price,
             price: newPrice,
+            netBuyVolume: decayedVolume,
             history: [...stock.history.slice(-29), newTick],
           }
         }),
@@ -393,6 +436,98 @@ export const useStockStore = create<StockState>((set, get) => {
         const stock = stocks.find(s => s.code === h.code)
         return total + (stock ? stock.price * h.shares : 0)
       }, 0)
+    },
+
+    processSessionBoundary: () => {
+      const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000
+      const now = Date.now()
+      const state = get()
+      if (now - state.lastSessionBoundaryAt < TWELVE_HOURS_MS) return
+
+      // Auto-resolve all open bonds at session boundary
+      const openBonds = state.bonds.filter(b => b.status === 'open')
+      openBonds.forEach(bond => get().closeBond(bond.id))
+
+      // Apply macro health shifts to each stock
+      const world = useWorldStore.getState()
+      const activeWars = world.wars.filter(w => w.status === 'active')
+      const warCountries = new Set<string>()
+      activeWars.forEach(w => {
+        warCountries.add(w.attacker)
+        warCountries.add(w.defender)
+      })
+
+      set(s => ({
+        stocks: s.stocks.map(stock => {
+          const country = world.getCountry(stock.code)
+          if (!country) return stock
+
+          let shift = 0
+          if (warCountries.has(stock.code)) {
+            // At war: 5-15% drop
+            shift = -(0.05 + Math.random() * 0.10)
+          } else {
+            // Peace: 2-8% gain (weighted by treasury health)
+            const treasuryHealth = Math.min(1, country.fund.money / 20_000_000)
+            shift = (0.02 + Math.random() * 0.06) * (0.5 + treasuryHealth * 0.5)
+          }
+
+          const newPrice = Math.max(5, Math.floor(stock.price * (1 + shift)))
+          const newTick: StockTick = { price: newPrice, timestamp: now }
+
+          return {
+            ...stock,
+            prevPrice: stock.price,
+            price: newPrice,
+            history: [...stock.history.slice(-29), newTick],
+          }
+        }),
+        lastSessionBoundaryAt: now,
+      }))
+
+      useNewsStore.getState().pushEvent('economy', '📊 Stock market session boundary — prices adjusted based on country health')
+    },
+
+    processResetBand: () => {
+      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const state = get()
+      if (now - state.lastResetBandAt < TWENTY_FOUR_HOURS_MS) return
+
+      // 50% chance of triggering
+      if (Math.random() > 0.5) {
+        set({ lastResetBandAt: now })
+        return
+      }
+
+      set(s => ({
+        lastResetBandAt: now,
+        stocks: s.stocks.map(stock => {
+          // Calculate 7-day moving average from history
+          const recentPrices = stock.history.slice(-30) // ~30 ticks ≈ several days
+          if (recentPrices.length < 5) return stock
+
+          const avg = recentPrices.reduce((sum, t) => sum + t.price, 0) / recentPrices.length
+          const deviation = (stock.price - avg) / avg
+
+          // Only correct if deviation exceeds 30%
+          if (Math.abs(deviation) < 0.30) return stock
+
+          // Pull 10% toward the mean
+          const correction = (avg - stock.price) * 0.10
+          const newPrice = Math.max(5, Math.floor(stock.price + correction))
+          const newTick: StockTick = { price: newPrice, timestamp: now }
+
+          return {
+            ...stock,
+            prevPrice: stock.price,
+            price: newPrice,
+            history: [...stock.history.slice(-29), newTick],
+          }
+        }),
+      }))
+
+      useNewsStore.getState().pushEvent('economy', '📉 Market stabilization: extreme price deviations corrected')
     },
   }
 })

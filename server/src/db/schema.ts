@@ -11,7 +11,7 @@ export const countries = pgTable('countries', {
   code:              varchar('code', { length: 4 }).primaryKey(),
   name:              varchar('name', { length: 64 }).notNull(),
   controller:        varchar('controller', { length: 64 }),
-  empire:            varchar('empire', { length: 4 }),
+  empire:            varchar('empire', { length: 32 }),
   population:        integer('population').default(0),
   regions:           integer('regions').default(0),
   military:          integer('military').default(0),
@@ -394,6 +394,20 @@ export const casinoResults = pgTable('casino_results', {
   payout:      bigint('payout', { mode: 'number' }),
   resultData:  jsonb('result_data'),
   createdAt:   timestamp('created_at').defaultNow(),
+})
+
+// ═══════════════════════════════════════════════
+//  CASINO SESSIONS (active game state for BJ/Crash)
+// ═══════════════════════════════════════════════
+
+export const casinoSessions = pgTable('casino_sessions', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  playerId:     uuid('player_id').references(() => players.id).notNull(),
+  gameType:     varchar('game_type', { length: 16 }).notNull(),
+  betAmount:    bigint('bet_amount', { mode: 'number' }).notNull(),
+  gameState:    jsonb('game_state').notNull(),
+  status:       varchar('status', { length: 16 }).default('active'),
+  createdAt:    timestamp('created_at').defaultNow(),
 })
 
 // ═══════════════════════════════════════════════

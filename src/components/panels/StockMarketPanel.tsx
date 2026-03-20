@@ -45,18 +45,14 @@ export default function StockMarketPanel() {
   const [bondAmount, setBondAmount] = useState(50000)
   const [bondDuration, setBondDuration] = useState(0)
 
-  // Auto-tick market every 10s
-  useEffect(() => {
-    const interval = setInterval(() => { useStockStore.getState().tickMarket() }, 10000)
-    return () => clearInterval(interval)
-  }, [])
+  // Stock market tick and bond resolution are handled by the GameClock globally.
+  // No component-scoped setInterval needed — prices update even when this panel is closed.
 
-  // Per-second refresh for bond countdowns + resolve expired
+  // Per-second refresh for bond countdown display only (no logic, just re-render)
   const [, forceUpdate] = useState(0)
   useEffect(() => {
     if (tab !== 'bonds') return
     const interval = setInterval(() => {
-      useStockStore.getState().resolveExpiredBonds()
       forceUpdate(n => n + 1)
     }, 1000)
     return () => clearInterval(interval)

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { rateLimiter } from '../engine/AntiExploit'
 import { useWorldStore } from './worldStore'
 import { useGovernmentStore } from './governmentStore'
 import { usePlayerStore } from './playerStore'
@@ -6,6 +7,10 @@ import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
 import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './army'
 import { useWarCardsStore } from './warCardsStore'
+import { getCountryName, getCountryFlag, getCountryFlagUrl } from '../data/countries'
+
+// Re-export for backwards compatibility — consumers importing from battleStore still work
+export { getCountryName, getCountryFlag, getCountryFlagUrl }
 
 // ====== PLAYER COMBAT STATS HELPER ======
 export function getPlayerCombatStats() {
@@ -46,118 +51,16 @@ export function getBaseSkillStats() {
 }
 
 // ====== TYPES ======
-
-export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike'
-
-// ====== COMBAT LOG ======
-
-export interface CombatLogEntry {
-  tick: number
-  timestamp: number
-  type: 'damage' | 'critical' | 'retreat' | 'destroyed' | 'air_strike' | 'artillery_barrage' | 'breakthrough' | 'phase_shift' | 'phase_change' | 'reinforcement'
-  side: 'attacker' | 'defender'
-  divisionName?: string
-  targetDivisionName?: string
-  damage?: number
-  manpowerLost?: number
-  message: string
-}
-
-// ====== BATTLE SIDE ======
-
-export interface BattleSide {
-  countryCode: string
-  divisionIds: string[]
-  engagedDivisionIds: string[]
-
-  // Report summaries (accumulated)
-  damageDealt: number
-  manpowerLost: number
-  divisionsDestroyed: number
-  divisionsRetreated: number
-}
-
-// ====== BATTLE TICK ======
-
-export interface BattleTick {
-  attackerDamage: number
-  defenderDamage: number
-}
-
-export interface DamageEvent {
-  playerName: string
-  side: 'attacker' | 'defender'
-  amount: number
-  isCrit: boolean
-  isDodged: boolean
-  time: number
-}
-
-export interface BattleRound {
-  attackerPoints: number
-  defenderPoints: number
-  status: 'active' | 'attacker_won' | 'defender_won'
-  startedAt: number
-  endedAt?: number
-  ticksElapsed?: number
-  attackerDmgTotal?: number
-  defenderDmgTotal?: number
-}
-
-// ====== BATTLE ======
+import type { BattleType, CombatLogEntry, BattleSide, BattleTick, DamageEvent, BattleRound, TacticalOrder, OrderEffects, Battle } from '../types/battle.types'
+export type { BattleType, CombatLogEntry, BattleSide, BattleTick, DamageEvent, BattleRound, TacticalOrder, OrderEffects, Battle }
 
 // ====== TACTICAL ORDERS ======
-export type TacticalOrder = 'none' | 'charge' | 'fortify' | 'precision' | 'blitz'
-
-export interface OrderEffects {
-  atkMult: number
-  armorMult: number
-  dodgeMult: number
-  hitBonus: number
-  critBonus: number
-  speedMult: number
-}
-
 export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; desc: string; effects: OrderEffects; color: string }> = {
   none: { label: 'NONE', desc: 'No active order', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#64748b' },
   charge: { label: 'CHARGE', desc: '+20% ATK, -15% dodge, -10% armor', effects: { atkMult: 1.20, armorMult: 0.90, dodgeMult: 0.85, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#ef4444' },
   fortify: { label: 'FORTIFY', desc: '+25% armor, +10% dodge, -15% ATK', effects: { atkMult: 0.85, armorMult: 1.25, dodgeMult: 1.10, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#3b82f6' },
   precision: { label: 'PRECISION', desc: '+15% hit, +15% crit, -10% speed', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0.15, critBonus: 15, speedMult: 1.10 }, color: '#f59e0b' },
   blitz: { label: 'BLITZ', desc: '+25% speed, -10% hit, -10% armor', effects: { atkMult: 1, armorMult: 0.90, dodgeMult: 1, hitBonus: -0.10, critBonus: 0, speedMult: 0.75 }, color: '#22d38a' },
-}
-
-export interface Battle {
-  id: string
-  type: BattleType
-  attackerId: string
-  defenderId: string
-  regionName: string
-  startedAt: number
-
-  ticksElapsed: number
-  status: 'active' | 'attacker_won' | 'defender_won'
-
-  attacker: BattleSide
-  defender: BattleSide
-
-  attackerRoundsWon: number
-  defenderRoundsWon: number
-  rounds: BattleRound[]
-  currentTick: BattleTick
-
-  combatLog: CombatLogEntry[]
-  attackerDamageDealers: Record<string, number>
-  defenderDamageDealers: Record<string, number>
-  damageFeed: DamageEvent[]
-
-  // Attack speed accumulators: divisionId → accumulated time (fires when >= attackSpeed)
-  divisionCooldowns: Record<string, number>
-
-  // Tactical Orders per side
-  attackerOrder: TacticalOrder
-  defenderOrder: TacticalOrder
-  orderMessage: string
-  motd: string
 }
 
 // ====== HELPERS ======
@@ -173,83 +76,8 @@ function getPointIncrement(totalGroundPoints: number): number {
   return 5
 }
 
-// Country flag emojis from ISO codes
-const FLAG_EMOJIS: Record<string, string> = {
-  US: '🇺🇸', RU: '🇷🇺', CN: '🇨🇳', DE: '🇩🇪', BR: '🇧🇷', IN: '🇮🇳',
-  NG: '🇳🇬', JP: '🇯🇵', GB: '🇬🇧', TR: '🇹🇷', CA: '🇨🇦', MX: '🇲🇽',
-  CU: '🇨🇺', BS: '🇧🇸',
-  FR: '🇫🇷', ES: '🇪🇸', IT: '🇮🇹', PL: '🇵🇱', UA: '🇺🇦', RO: '🇷🇴',
-  NL: '🇳🇱', BE: '🇧🇪', SE: '🇸🇪', NO: '🇳🇴', FI: '🇫🇮', DK: '🇩🇰',
-  AT: '🇦🇹', CH: '🇨🇭', CZ: '🇨🇿', PT: '🇵🇹', GR: '🇬🇷', HU: '🇭🇺',
-  IE: '🇮🇪', IS: '🇮🇸', RS: '🇷🇸', BY: '🇧🇾', BG: '🇧🇬', SK: '🇸🇰',
-  HR: '🇭🇷', LT: '🇱🇹', LV: '🇱🇻', EE: '🇪🇪', SI: '🇸🇮', BA: '🇧🇦',
-  AL: '🇦🇱', MK: '🇲🇰', ME: '🇲🇪', MD: '🇲🇩', XK: '🇽🇰',
-  AR: '🇦🇷', CO: '🇨🇴', VE: '🇻🇪', PE: '🇵🇪', CL: '🇨🇱', EC: '🇪🇨',
-  BO: '🇧🇴', PY: '🇵🇾', UY: '🇺🇾', GY: '🇬🇾', SR: '🇸🇷',
-  GT: '🇬🇹', HN: '🇭🇳', SV: '🇸🇻', NI: '🇳🇮', CR: '🇨🇷', PA: '🇵🇦',
-  DO: '🇩🇴', HT: '🇭🇹', JM: '🇯🇲', TT: '🇹🇹',
-  KR: '🇰🇷', KP: '🇰🇵', TW: '🇹🇼', TH: '🇹🇭', VN: '🇻🇳', PH: '🇵🇭',
-  MY: '🇲🇾', ID: '🇮🇩', MM: '🇲🇲', BD: '🇧🇩', PK: '🇵🇰', AF: '🇦🇫',
-  IQ: '🇮🇶', IR: '🇮🇷', SA: '🇸🇦', AE: '🇦🇪', IL: '🇮🇱', SY: '🇸🇾',
-  JO: '🇯🇴', LB: '🇱🇧', YE: '🇾🇪', OM: '🇴🇲', KW: '🇰🇼', QA: '🇶🇦',
-  GE: '🇬🇪', AM: '🇦🇲', AZ: '🇦🇿', KZ: '🇰🇿', UZ: '🇺🇿', TM: '🇹🇲',
-  KG: '🇰🇬', TJ: '🇹🇯', MN: '🇲🇳', NP: '🇳🇵', LK: '🇱🇰', LA: '🇱🇦',
-  KH: '🇰🇭', BN: '🇧🇳', SG: '🇸🇬',
-  ZA: '🇿🇦', EG: '🇪🇬', KE: '🇰🇪', ET: '🇪🇹', TZ: '🇹🇿', GH: '🇬🇭',
-  CI: '🇨🇮', CM: '🇨🇲', AO: '🇦🇴', MZ: '🇲🇿', MG: '🇲🇬', MA: '🇲🇦',
-  DZ: '🇩🇿', TN: '🇹🇳', LY: '🇱🇾', SD: '🇸🇩', SS: '🇸🇸', UG: '🇺🇬',
-  SN: '🇸🇳', ML: '🇲🇱', BF: '🇧🇫', NE: '🇳🇪', TD: '🇹🇩', CD: '🇨🇩',
-  CG: '🇨🇬', CF: '🇨🇫', GA: '🇬🇦', GQ: '🇬🇶', MW: '🇲🇼', ZM: '🇿🇲',
-  ZW: '🇿🇼', BW: '🇧🇼', NA: '🇳🇦', SO: '🇸🇴', ER: '🇪🇷', DJ: '🇩🇯',
-  RW: '🇷🇼', BI: '🇧🇮', SL: '🇸🇱', LR: '🇱🇷', GM: '🇬🇲', GW: '🇬🇼',
-  MR: '🇲🇷', LS: '🇱🇸', SZ: '🇸🇿', TG: '🇹🇬', BJ: '🇧🇯',
-  AU: '🇦🇺', NZ: '🇳🇿', PG: '🇵🇬', FJ: '🇫🇯',
-}
-
-export function getCountryFlag(iso: string): string {
-  return FLAG_EMOJIS[iso] || '🏳️'
-}
-
-/** Returns a flag image URL from flagcdn.com for cross-platform rendering */
-export function getCountryFlagUrl(iso: string, width: number = 40): string {
-  return `https://flagcdn.com/w${width}/${iso.toLowerCase()}.png`
-}
-
-const COUNTRY_NAMES: Record<string, string> = {
-  US: 'United States', RU: 'Russia', CN: 'China', DE: 'Germany', BR: 'Brazil', IN: 'India',
-  NG: 'Nigeria', JP: 'Japan', GB: 'United Kingdom', TR: 'Turkey', CA: 'Canada', MX: 'Mexico',
-  CU: 'Cuba', BS: 'Bahamas',
-  FR: 'France', ES: 'Spain', IT: 'Italy', PL: 'Poland', UA: 'Ukraine', RO: 'Romania',
-  NL: 'Netherlands', BE: 'Belgium', SE: 'Sweden', NO: 'Norway', FI: 'Finland', DK: 'Denmark',
-  AT: 'Austria', CH: 'Switzerland', CZ: 'Czech Republic', PT: 'Portugal', GR: 'Greece', HU: 'Hungary',
-  IE: 'Ireland', IS: 'Iceland', RS: 'Serbia', BY: 'Belarus', BG: 'Bulgaria', SK: 'Slovakia',
-  HR: 'Croatia', LT: 'Lithuania', LV: 'Latvia', EE: 'Estonia', SI: 'Slovenia', BA: 'Bosnia and Herzegovina',
-  AL: 'Albania', MK: 'North Macedonia', ME: 'Montenegro', MD: 'Moldova', XK: 'Kosovo',
-  AR: 'Argentina', CO: 'Colombia', VE: 'Venezuela', PE: 'Peru', CL: 'Chile', EC: 'Ecuador',
-  BO: 'Bolivia', PY: 'Paraguay', UY: 'Uruguay', GY: 'Guyana', SR: 'Suriname',
-  GT: 'Guatemala', HN: 'Honduras', SV: 'El Salvador', NI: 'Nicaragua', CR: 'Costa Rica', PA: 'Panama',
-  DO: 'Dominican Republic', HT: 'Haiti', JM: 'Jamaica', TT: 'Trinidad and Tobago',
-  KR: 'South Korea', KP: 'North Korea', TW: 'Taiwan', TH: 'Thailand', VN: 'Vietnam', PH: 'Philippines',
-  MY: 'Malaysia', ID: 'Indonesia', MM: 'Myanmar', BD: 'Bangladesh', PK: 'Pakistan', AF: 'Afghanistan',
-  IQ: 'Iraq', IR: 'Iran', SA: 'Saudi Arabia', AE: 'United Arab Emirates', IL: 'Israel', SY: 'Syria',
-  JO: 'Jordan', LB: 'Lebanon', YE: 'Yemen', OM: 'Oman', KW: 'Kuwait', QA: 'Qatar',
-  GE: 'Georgia', AM: 'Armenia', AZ: 'Azerbaijan', KZ: 'Kazakhstan', UZ: 'Uzbekistan', TM: 'Turkmenistan',
-  KG: 'Kyrgyzstan', TJ: 'Tajikistan', MN: 'Mongolia', NP: 'Nepal', LK: 'Sri Lanka', LA: 'Laos',
-  KH: 'Cambodia', BN: 'Brunei', SG: 'Singapore',
-  ZA: 'South Africa', EG: 'Egypt', KE: 'Kenya', ET: 'Ethiopia', TZ: 'Tanzania', GH: 'Ghana',
-  CI: 'Ivory Coast', CM: 'Cameroon', AO: 'Angola', MZ: 'Mozambique', MG: 'Madagascar', MA: 'Morocco',
-  DZ: 'Algeria', TN: 'Tunisia', LY: 'Libya', SD: 'Sudan', SS: 'South Sudan', UG: 'Uganda',
-  SN: 'Senegal', ML: 'Mali', BF: 'Burkina Faso', NE: 'Niger', TD: 'Chad', CD: 'DR Congo',
-  CG: 'Congo', CF: 'Central African Republic', GA: 'Gabon', GQ: 'Equatorial Guinea', MW: 'Malawi', ZM: 'Zambia',
-  ZW: 'Zimbabwe', BW: 'Botswana', NA: 'Namibia', SO: 'Somalia', ER: 'Eritrea', DJ: 'Djibouti',
-  RW: 'Rwanda', BI: 'Burundi', SL: 'Sierra Leone', LR: 'Liberia', GM: 'Gambia', GW: 'Guinea-Bissau',
-  MR: 'Mauritania', LS: 'Lesotho', SZ: 'Eswatini', TG: 'Togo', BJ: 'Benin',
-  AU: 'Australia', NZ: 'New Zealand', PG: 'Papua New Guinea', FJ: 'Fiji',
-}
-
-export function getCountryName(iso: string): string {
-  return COUNTRY_NAMES[iso] || iso
-}
+// Country data (names, flags, flag URLs) now lives in src/data/countries.ts
+// and is re-exported at the top of this file for backwards compatibility.
 
 // ====== FACTORY FUNCTIONS ======
 
@@ -443,15 +271,25 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     let finalAmount = amount
 
+    // ── Anti-exploit: cap max damage per addDamage call ──
+    const MAX_DAMAGE_PER_CALL = 50000
+    if (finalAmount > MAX_DAMAGE_PER_CALL) {
+      console.warn(`[AntiExploit] addDamage capped: ${finalAmount} → ${MAX_DAMAGE_PER_CALL} for ${playerName}`)
+      finalAmount = MAX_DAMAGE_PER_CALL
+    }
+    if (finalAmount <= 0 || !Number.isFinite(finalAmount)) return state
+
     // Apply battle order buff
     // Apply tactical order buff for the side
     const sideOrder = side === 'attacker' ? battle.attackerOrder : battle.defenderOrder
     const orderFx = TACTICAL_ORDERS[sideOrder || 'none'].effects
     finalAmount = Math.round(finalAmount * orderFx.atkMult)
 
+    // ── #8 FIX: Symmetric infra bonus — both sides get military base bonus ──
     const world = useWorldStore.getState()
-    const attackerCountry = world.countries.find(c => c.code === battle.attackerId)
-    if (side === 'attacker' && attackerCountry && attackerCountry.militaryBaseLevel > 0) {
+    const sideCountryCode = side === 'attacker' ? battle.attackerId : battle.defenderId
+    const sideCountry = world.countries.find(c => c.code === sideCountryCode)
+    if (sideCountry && sideCountry.militaryBaseLevel > 0) {
       finalAmount = Math.round(finalAmount * (1 + 0.05 + Math.random() * 0.15))
     }
 
@@ -542,17 +380,23 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       const autoDeploySide = (side: 'attacker' | 'defender') => {
         const sideData = side === 'attacker' ? battle.attacker : battle.defender
         if (sideData.engagedDivisionIds.length > 0) return  // already has engaged divisions
+
+        // ── #10 FIX: Cross-validate country code matches battle side ──
+        const expectedCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
+        if (sideData.countryCode !== expectedCountry) return  // defensive: side data corrupted
+
         const govStore = useGovernmentStore.getState()
         const countryDivs = Object.values(armyStore.divisions).filter(
-          d => d.countryCode === sideData.countryCode && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
+          d => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
             && (side === 'attacker' || (govStore.autoDefenseEnabled && (d.stance === 'first_line_defense' || d.stance === 'unassigned')))
         )
         if (countryDivs.length === 0) return
         const ids = countryDivs.map(d => d.id)
-        // Mark as in_combat
+        // Mark as in_combat with deployedAtTick for recall cooldown
+        const currentTick = battle.ticksElapsed || 0
         ids.forEach(id => {
           useArmyStore.setState(s => ({
-            divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat' } }
+            divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat', deployedAtTick: currentTick } }
           }))
         })
         sideData.divisionIds = [...new Set([...sideData.divisionIds, ...ids])]
@@ -1038,71 +882,29 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           console.warn('[WarCards] Error checking combat cards:', e)
         }
 
-        // ── Battle Reward Distribution (C+D Hybrid) ──
+        // ── #9 FIX: Feed Global War Fund instead of per-battle treasury drain ──
         try {
           const finalBattle = newBattles[battle.id]
           const winnerSide = newStatus === 'attacker_won' ? 'attacker' : 'defender'
           const loserSide = newStatus === 'attacker_won' ? 'defender' : 'attacker'
           const winnerCountry = winnerSide === 'attacker' ? finalBattle.attackerId : finalBattle.defenderId
+          const loserCountry = loserSide === 'attacker' ? finalBattle.attackerId : finalBattle.defenderId
 
-          // Reward pool: 5% of winning country's treasury, capped at $500K
           const worldState = useWorldStore.getState()
-          const winnerTreasury = worldState.getCountry(winnerCountry)?.fund.money ?? 0
-          const rewardPool = Math.min(500_000, Math.floor(winnerTreasury * 0.05))
 
-          if (rewardPool > 0) {
-            // Drain from winner's treasury
-            worldState.spendFromFund(winnerCountry, { money: rewardPool })
+          // Contribute 2% from both treasuries to global war fund
+          worldState.contributeToWarFund(finalBattle.attackerId, finalBattle.defenderId)
 
-            const winnerDealers = winnerSide === 'attacker' ? finalBattle.attackerDamageDealers : finalBattle.defenderDamageDealers
-            const loserDealers = loserSide === 'attacker' ? finalBattle.attackerDamageDealers : finalBattle.defenderDamageDealers
+          // Record damage dealt by each side's country for daily distribution
+          const atkTotalDmg = Object.values(finalBattle.attackerDamageDealers || {}).reduce((s, d) => s + d, 0)
+          const defTotalDmg = Object.values(finalBattle.defenderDamageDealers || {}).reduce((s, d) => s + d, 0)
+          if (atkTotalDmg > 0) worldState.recordWarFundDamage(finalBattle.attackerId, atkTotalDmg)
+          if (defTotalDmg > 0) worldState.recordWarFundDamage(finalBattle.defenderId, defTotalDmg)
 
-            const winnerTotalDmg = Object.values(winnerDealers).reduce((s, d) => s + d, 0)
-            const loserTotalDmg = Object.values(loserDealers).reduce((s, d) => s + d, 0)
-
-            const armyStoreRef = useArmyStore.getState()
-
-            // Helper: find the army a player belongs to
-            const findPlayerArmy = (playerId: string) => {
-              return Object.values(armyStoreRef.armies).find(a => a.members.some(m => m.playerId === playerId))
-            }
-
-            // Distribute to winners by damage %
-            if (winnerTotalDmg > 0) {
-              Object.entries(winnerDealers).forEach(([playerId, dmg]) => {
-                const share = Math.floor(rewardPool * (dmg / winnerTotalDmg))
-                if (share > 0) {
-                  const army = findPlayerArmy(playerId)
-                  if (army) {
-                    armyStoreRef.depositBattleReward(army.id, playerId, share)
-                  } else {
-                    // Player not in an army — pay directly
-                    usePlayerStore.getState().earnMoney(share)
-                  }
-                }
-              })
-            }
-
-            // Losers get 33% of what winners got, by damage %
-            const loserPool = Math.floor(rewardPool * 0.33)
-            if (loserPool > 0 && loserTotalDmg > 0) {
-              // Drain loser pool from winner's treasury too
-              worldState.spendFromFund(winnerCountry, { money: loserPool })
-              Object.entries(loserDealers).forEach(([playerId, dmg]) => {
-                const share = Math.floor(loserPool * (dmg / loserTotalDmg))
-                if (share > 0) {
-                  const army = findPlayerArmy(playerId)
-                  if (army) {
-                    armyStoreRef.depositBattleReward(army.id, playerId, share)
-                  } else {
-                    usePlayerStore.getState().earnMoney(share)
-                  }
-                }
-              })
-            }
-          }
+          // Record battle outcome for win/loss multiplier
+          worldState.recordWarFundBattleOutcome(winnerCountry, loserCountry)
         } catch (e) {
-          console.warn('[BattleRewards] Error distributing battle rewards:', e)
+          console.warn('[WarFund] Error recording battle to war fund:', e)
         }
       }
     })
@@ -1120,25 +922,31 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   },
 
   // ====== PLAYER COMBAT ACTIONS ======
-  playerAttack: (battleId, forceSide) => {
+  playerAttack: (battleId, _forceSide) => {
+    if (!rateLimiter.check('playerAttack')) return { damage: 0, isCrit: false, message: 'Too fast! Wait a moment.' }
     const state = get()
     const battle = state.battles[battleId]
     if (!battle || battle.status !== 'active') return { damage: 0, isCrit: false, message: 'No active battle.' }
 
     const player = usePlayerStore.getState()
     if (player.stamina < 5) return { damage: 0, isCrit: false, message: 'Not enough stamina (5 required).' }
+
+    // ── #1 FIX: Auto-detect side from player's country — no forceSide exploit ──
+    const playerCountry = player.countryCode || 'US'
+    let side: 'attacker' | 'defender'
+    if (playerCountry === battle.attackerId) side = 'attacker'
+    else if (playerCountry === battle.defenderId) side = 'defender'
+    else return { damage: 0, isCrit: false, message: 'Your country is not in this battle.' }
+
     player.consumeBar('stamina', 5)
 
     const cs = getPlayerCombatStats()
     const isCrit = Math.random() * 100 < cs.critRate
     const damage = isCrit ? Math.floor(cs.attackDamage * cs.critMultiplier) : cs.attackDamage
 
-    const playerCountry = player.countryCode || 'US'
-    const side: 'attacker' | 'defender' = forceSide || (playerCountry === battle.attackerId ? 'attacker' : 'defender')
-
     get().addDamage(battleId, side, damage, isCrit, false, player.name)
 
-    // Activate HERO buff: +10% division damage for 120 ticks, scoped to THIS battle
+    // ── #4 FIX: Hero buff only for YOUR side in YOUR battle ──
     usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
 
     // Degrade equipped items durability
@@ -1151,23 +959,30 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
   },
 
-  playerDefend: (battleId, forceSide) => {
+  playerDefend: (battleId, _forceSide) => {
+    if (!rateLimiter.check('playerDefend')) return { blocked: 0, message: 'Too fast! Wait a moment.' }
     const state = get()
     const battle = state.battles[battleId]
     if (!battle || battle.status !== 'active') return { blocked: 0, message: 'No active battle.' }
 
     const player = usePlayerStore.getState()
     if (player.stamina < 3) return { blocked: 0, message: 'Not enough stamina (3 required).' }
+
+    // ── #1 FIX: Auto-detect side from player's country ──
+    const playerCountry = player.countryCode || 'US'
+    let isAttacker: boolean
+    if (playerCountry === battle.attackerId) isAttacker = true
+    else if (playerCountry === battle.defenderId) isAttacker = false
+    else return { blocked: 0, message: 'Your country is not in this battle.' }
+
     player.consumeBar('stamina', 3)
 
     const cs = getPlayerCombatStats()
     const blocked = cs.armorBlock + Math.floor(cs.dodgeChance * 0.5)
 
-    const playerCountry = player.countryCode || 'US'
-    const isAttacker = forceSide ? forceSide === 'attacker' : playerCountry === battle.attackerId
     const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
 
-    // Activate HERO buff: +10% division damage for 120 ticks, scoped to THIS battle
+    // ── #4 FIX: Hero buff only for YOUR side in YOUR battle ──
     usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
 
     // Degrade equipped items durability
@@ -1204,16 +1019,24 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
 
     const armyStore = useArmyStore.getState()
+
+    // ── #2 FIX: Validate that divisions belong to the correct side's country ──
+    const sideCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
     const validIds = divisionIds.filter(id => {
       const d = armyStore.divisions[id]
-      return d && (d.status === 'ready' || d.status === 'training') && d.health > 0
+      if (!d) return false
+      if (d.countryCode !== sideCountry) return false // Division must belong to this side's country
+      if (d.status !== 'ready' && d.status !== 'training') return false
+      if (d.health <= 0) return false
+      return true
     })
     if (validIds.length === 0) return { success: false, message: 'No valid divisions to deploy.' }
 
-    // Mark divisions as in_combat
+    // Mark divisions as in_combat with deployment timestamp
+    const deployedAtTick = get().battles[battleId]?.ticksElapsed || 0
     validIds.forEach(id => {
       useArmyStore.setState(s => ({
-        divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat' } }
+        divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat', deployedAtTick } }
       }))
     })
 
@@ -1297,6 +1120,18 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const sideData = side === 'attacker' ? battle.attacker : battle.defender
     if (!sideData.engagedDivisionIds.includes(divisionId)) return { success: false, message: 'Division not in battle.' }
 
+    // ── #5 FIX: 120-tick (30 min) minimum deployment before recall ──
+    const div = useArmyStore.getState().divisions[divisionId]
+    if (div && typeof div.deployedAtTick === 'number') {
+      const currentTick = battle.ticksElapsed || 0
+      const ticksDeployed = currentTick - div.deployedAtTick
+      if (ticksDeployed < 120) {
+        const ticksRemaining = 120 - ticksDeployed
+        const minsRemaining = Math.ceil((ticksRemaining * 15) / 60)
+        return { success: false, message: `Division must stay deployed for 30 min. ${minsRemaining} min remaining.` }
+      }
+    }
+
     // Set division to 'recovering'
     useArmyStore.setState(s => {
       const d = s.divisions[divisionId]
@@ -1326,3 +1161,6 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     return { success: true, message: `${divName} recalled.` }
   },
 }))
+
+// Register on window for anti-bot circular dependency workaround
+;(window as any).__xwar_battleStore = useBattleStore

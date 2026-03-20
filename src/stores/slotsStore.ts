@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
+import { rateLimiter } from '../engine/AntiExploit'
 
 /* ══════════════════════════════════════════════
    XWAR Slot Machine — 3 Reels, Military Themed
@@ -110,6 +111,7 @@ export const useSlotsStore = create<SlotsState>((set, get) => ({
   jackpots: 0,
 
   spin: (betAmount: number) => {
+    if (!rateLimiter.check('casino.spin')) return
     const player = usePlayerStore.getState()
     if (player.money < betAmount || get().phase === 'spinning') return
 

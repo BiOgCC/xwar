@@ -47,7 +47,8 @@ const ACTION_CAPS = {
 
 function todayKey(): string {
   const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // Fix 6: Use UTC to prevent timezone manipulation resetting daily caps
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
 const DAILY_XP_CAP = 200

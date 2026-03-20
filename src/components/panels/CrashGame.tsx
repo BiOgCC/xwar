@@ -1,392 +1,490 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useCrashStore, CRASH_BETS } from '../../stores/crashStore'
+import { useCrashStore } from '../../stores/crashStore'
 import { usePlayerStore } from '../../stores/playerStore'
 
 /* ═══════════════════════════════════════════
-   XWAR Crash — "Missile Launch" — MULTIPLAYER
-   Timed rounds, bot players, chat log
-   ANIMATIONS: wobble, speed lines, GTA crash, debris, money shower
+   XWAR Crash — "Missile Launch" — INSTANT
+   Metal Slug–style pixel art assets on canvas
    ═══════════════════════════════════════════ */
 
-// ── Debris / particle system ──
+// ── Particle ──
 interface Particle {
   x: number; y: number; vx: number; vy: number
   size: number; color: string; rotation: number; rotationSpeed: number
   life: number; maxLife: number; emoji?: string
+  type: 'debris' | 'flame' | 'smoke' | 'spark'
 }
 
 function createExplosionParticles(cx: number, cy: number): Particle[] {
-  const particles: Particle[] = []
-  const emojis = ['💀', '🪦', '😭', '🔥', '💥', '☠️']
-  // Debris chunks
-  for (let i = 0; i < 25; i++) {
-    const angle = Math.random() * Math.PI * 2
-    const speed = 2 + Math.random() * 5
-    particles.push({
-      x: cx, y: cy,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 2,
-      size: 2 + Math.random() * 4,
-      color: ['#ef4444', '#f97316', '#fbbf24', '#dc2626', '#7c2d12'][Math.floor(Math.random() * 5)],
-      rotation: Math.random() * 360,
-      rotationSpeed: (Math.random() - 0.5) * 15,
-      life: 60 + Math.random() * 40,
-      maxLife: 100,
-    })
+  const p: Particle[] = []
+  for (let i = 0; i < 30; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 6
+    p.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1,
+      size: 3 + Math.random() * 6,
+      color: ['#ef4444', '#f97316', '#fbbf24', '#dc2626', '#ff6b35'][Math.floor(Math.random() * 5)],
+      rotation: Math.random() * 360, rotationSpeed: (Math.random() - 0.5) * 20,
+      life: 40 + Math.random() * 30, maxLife: 70, type: 'debris' })
   }
-  // Emoji rain
-  for (let i = 0; i < 8; i++) {
-    particles.push({
-      x: cx - 80 + Math.random() * 160,
-      y: -10 - Math.random() * 40,
-      vx: (Math.random() - 0.5) * 1.5,
-      vy: 1.5 + Math.random() * 2,
-      size: 14 + Math.random() * 8,
-      color: '',
-      rotation: 0,
-      rotationSpeed: (Math.random() - 0.5) * 5,
-      life: 80 + Math.random() * 40,
-      maxLife: 120,
-      emoji: emojis[Math.floor(Math.random() * emojis.length)],
-    })
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 0.5 + Math.random() * 2
+    p.push({ x: cx + (Math.random() - 0.5) * 20, y: cy + (Math.random() - 0.5) * 20,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.5,
+      size: 8 + Math.random() * 12, color: '#475569',
+      rotation: 0, rotationSpeed: 0, life: 50 + Math.random() * 30, maxLife: 80, type: 'smoke' })
   }
-  return particles
-}
-
-function createMoneyParticles(cx: number, cy: number): Particle[] {
-  const particles: Particle[] = []
-  const cashEmojis = ['💰', '💵', '💸', '🤑', '💎']
   for (let i = 0; i < 15; i++) {
-    particles.push({
-      x: cx - 60 + Math.random() * 120,
-      y: cy - 20 - Math.random() * 30,
-      vx: (Math.random() - 0.5) * 2,
-      vy: -2 - Math.random() * 3,
-      size: 14 + Math.random() * 6,
-      color: '#22d38a',
-      rotation: 0,
-      rotationSpeed: (Math.random() - 0.5) * 3,
-      life: 60 + Math.random() * 30,
-      maxLife: 90,
-      emoji: cashEmojis[Math.floor(Math.random() * cashEmojis.length)],
-    })
+    const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * 8
+    p.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 3,
+      size: 1 + Math.random() * 2, color: '#fbbf24',
+      rotation: 0, rotationSpeed: 0, life: 15 + Math.random() * 20, maxLife: 35, type: 'spark' })
   }
-  return particles
+  const emojis = ['💀', '🔥', '💥', '☠️', '🪦']
+  for (let i = 0; i < 5; i++) {
+    p.push({ x: cx - 40 + Math.random() * 80, y: cy - 20,
+      vx: (Math.random() - 0.5) * 3, vy: -2 - Math.random() * 4,
+      size: 12 + Math.random() * 8, color: '',
+      rotation: 0, rotationSpeed: (Math.random() - 0.5) * 8,
+      life: 50 + Math.random() * 30, maxLife: 80, emoji: emojis[Math.floor(Math.random() * emojis.length)], type: 'debris' })
+  }
+  return p
 }
 
+function createWinParticles(cx: number, cy: number): Particle[] {
+  const p: Particle[] = []
+  const e = ['💰', '💵', '💸', '🤑', '💎']
+  for (let i = 0; i < 12; i++) {
+    p.push({ x: cx - 60 + Math.random() * 120, y: cy - 10 - Math.random() * 30,
+      vx: (Math.random() - 0.5) * 3, vy: -1.5 - Math.random() * 3,
+      size: 12 + Math.random() * 8, color: '#22d38a',
+      rotation: 0, rotationSpeed: (Math.random() - 0.5) * 3,
+      life: 50 + Math.random() * 30, maxLife: 80, emoji: e[Math.floor(Math.random() * e.length)], type: 'debris' })
+  }
+  return p
+}
+
+function spawnExhaust(x: number, y: number, angle: number, out: Particle[]) {
+  for (let i = 0; i < 3; i++) {
+    const spread = (Math.random() - 0.5) * 8
+    const bx = x - Math.cos(angle) * 18, by = y - Math.sin(angle) * 18
+    const isSmoke = Math.random() < 0.3
+    out.push({
+      x: bx + spread * Math.sin(angle), y: by + spread * Math.cos(angle),
+      vx: -Math.cos(angle) * (1 + Math.random() * 2) + (Math.random() - 0.5) * 0.5,
+      vy: -Math.sin(angle) * (1 + Math.random() * 2) + (Math.random() - 0.5) * 0.5 + 0.3,
+      size: isSmoke ? 4 + Math.random() * 6 : 2 + Math.random() * 3,
+      color: isSmoke ? '#64748b' : ['#fbbf24', '#f97316', '#ff6b35'][Math.floor(Math.random() * 3)],
+      rotation: 0, rotationSpeed: 0,
+      life: isSmoke ? 25 + Math.random() * 20 : 8 + Math.random() * 10,
+      maxLife: isSmoke ? 45 : 18, type: isSmoke ? 'smoke' : 'flame',
+    })
+  }
+}
+
+function spawnLaunchSmoke(tx: number, ty: number, out: Particle[]) {
+  for (let i = 0; i < 20; i++) {
+    out.push({
+      x: tx + Math.random() * 40, y: ty - Math.random() * 10,
+      vx: -0.5 + Math.random() * 2, vy: -0.5 - Math.random() * 1.5,
+      size: 6 + Math.random() * 10, color: '#475569',
+      rotation: 0, rotationSpeed: 0,
+      life: 40 + Math.random() * 30, maxLife: 70, type: 'smoke',
+    })
+  }
+}
+
+// ── Image loader (singleton) ──
+let truckImg: HTMLImageElement | null = null
+let missileImg: HTMLImageElement | null = null
+let imagesReady = false
+
+function loadAssets() {
+  if (truckImg) return
+  truckImg = new Image()
+  truckImg.src = '/assets/crash-truck.png'
+  missileImg = new Image()
+  missileImg.src = '/assets/crash-missile.png'
+
+  let count = 0
+  const onLoad = () => { if (++count >= 2) imagesReady = true }
+  truckImg.onload = onLoad
+  missileImg.onload = onLoad
+}
+
+// ── Component ──
 export default function CrashGame() {
-  const crash = useCrashStore()
-  const player = usePlayerStore()
-  const [selectedBet, setSelectedBet] = useState(CRASH_BETS[0])
+  // ── Selective store subscriptions (only re-render for UI-relevant changes) ──
+  const phase = useCrashStore(s => s.phase)
+  const currentMultiplier = useCrashStore(s => s.currentMultiplier)
+  const crashPoint = useCrashStore(s => s.crashPoint)
+  const playerBet = useCrashStore(s => s.playerBet)
+  const playerCashedOut = useCrashStore(s => s.playerCashedOut)
+  const playerPayout = useCrashStore(s => s.playerPayout)
+  const history = useCrashStore(s => s.history)
+  const totalRounds = useCrashStore(s => s.totalRounds)
+  const wins = useCrashStore(s => s.wins)
+  const losses = useCrashStore(s => s.losses)
+  const money = usePlayerStore(s => s.money)
+
+  const [selectedBet, setSelectedBet] = useState(10_000)
   const [autoCashout, setAutoCashout] = useState<number | null>(null)
   const [autoCashoutInput, setAutoCashoutInput] = useState('')
-  const [chatInput, setChatInput] = useState('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const trailRef = useRef<{ x: number; y: number }[]>([])
   const particlesRef = useRef<Particle[]>([])
-  const crashTimeRef = useRef(0)
-  const cashoutTimeRef = useRef(0)
+  const effectsDoneRef = useRef(false)
+  const frameRef = useRef(0)
   const animFrameRef = useRef(0)
-  const chatEndRef = useRef<HTMLDivElement>(null)
+  const smoothedAngleRef = useRef(-Math.PI / 4)  // start angle: 45° up-right
   const [shaking, setShaking] = useState(false)
 
-  // Auto cash-out
+  // Refs for canvas — updated via zustand subscribe, NOT React effects
+  const phaseRef = useRef(phase)
+  const multRef = useRef(currentMultiplier)
+  const prevPhaseRef = useRef(phase)
+
+  // Load assets once
+  useEffect(() => { loadAssets() }, [])
+
+  // Auto cash-out (only needs phase + multiplier changes)
   useEffect(() => {
-    if (crash.phase === 'flying' && autoCashout && crash.currentMultiplier >= autoCashout && crash.playerBet > 0 && !crash.playerCashedOut) {
-      crash.cashOut()
+    if (phase === 'flying' && autoCashout && currentMultiplier >= autoCashout && !playerCashedOut) {
+      useCrashStore.getState().cashOut()
     }
-  }, [crash.currentMultiplier, crash.phase, autoCashout, crash.playerBet, crash.playerCashedOut])
+  }, [currentMultiplier, phase, autoCashout, playerCashedOut])
 
-  // Auto-scroll chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [crash.chatLog.length])
+  // Cleanup
+  useEffect(() => () => { useCrashStore.getState()._cleanup() }, [])
 
-  // Reset trail on new round
-  useEffect(() => {
-    if (crash.phase === 'betting') {
-      trailRef.current = []
-      particlesRef.current = []
-      crashTimeRef.current = 0
-      cashoutTimeRef.current = 0
-    }
-  }, [crash.phase])
-
-  // Trigger explosion on crash
-  useEffect(() => {
-    if (crash.phase === 'crashed') {
-      const lastPt = trailRef.current[trailRef.current.length - 1]
-      if (lastPt) {
-        particlesRef.current = createExplosionParticles(lastPt.x, lastPt.y)
-      }
-      crashTimeRef.current = performance.now()
-      // Screen shake if player lost
-      if (crash.playerBet > 0 && !crash.playerCashedOut) {
-        setShaking(true)
-        setTimeout(() => setShaking(false), 800)
-      }
-    }
-  }, [crash.phase])
-
-  // Trigger money shower on cash-out
-  useEffect(() => {
-    if (crash.playerCashedOut && crash.playerPayout > 0) {
-      const canvas = canvasRef.current
-      if (canvas) {
-        particlesRef.current = [
-          ...particlesRef.current,
-          ...createMoneyParticles(canvas.width / 2, canvas.height / 2),
-        ]
-      }
-      cashoutTimeRef.current = performance.now()
-    }
-  }, [crash.playerCashedOut])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      crash._cleanup()
-      cancelAnimationFrame(animFrameRef.current)
-    }
-  }, [])
-
-  // ── Main render loop ──
+  // ──────── CANVAS ANIMATION (runs once, never recreated) ────────
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    const ctxRaw = canvas.getContext('2d')
+    if (!ctxRaw) return
+    const ctx = ctxRaw!
 
-    let running = true
-    const W = canvas.width
-    const H = canvas.height
+    // Subscribe to store INSIDE the effect — updates refs without React re-renders
+    const unsub = useCrashStore.subscribe((state) => {
+      // Phase change → reset one-shot effects
+      if (state.phase !== prevPhaseRef.current) {
+        prevPhaseRef.current = state.phase
+        effectsDoneRef.current = false
+        frameRef.current = 0
+        if (state.phase === 'idle') {
+          trailRef.current = []
+          particlesRef.current = []
+        }
+      }
+      phaseRef.current = state.phase
+      multRef.current = state.currentMultiplier
+    })
 
-    function render() {
-      if (!running || !ctx) return
+    const W = canvas.width   // 400
+    const H = canvas.height  // 280
+
+    // Layout constants
+    const TRUCK_W = 100
+    const TRUCK_H = 60
+    const TRUCK_X = 10
+    const TRUCK_Y = H - TRUCK_H - 6
+
+    const GRAPH_LEFT = 55
+    const GRAPH_BOTTOM = H - 40
+    const GRAPH_RIGHT = W - 15
+    const GRAPH_TOP = 20
+
+    // ── Bold canvas-drawn missile (no image rotation jitter) ──
+    function drawBoldMissile(cx: number, cy: number, angle: number, mult: number) {
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.rotate(angle)
+
+      // Exhaust flame (behind missile, flickering)
+      const flameLen = 12 + Math.random() * 8 + Math.min(mult * 3, 30)
+      const flameW = 5 + Math.min(mult, 4)
+      ctx.fillStyle = '#fbbf24'
+      ctx.beginPath()
+      ctx.moveTo(-10, -flameW)
+      ctx.lineTo(-10 - flameLen, 0)
+      ctx.lineTo(-10, flameW)
+      ctx.fill()
+      // Inner flame core
+      ctx.fillStyle = '#fff8e1'
+      ctx.beginPath()
+      ctx.moveTo(-10, -flameW * 0.4)
+      ctx.lineTo(-10 - flameLen * 0.5, 0)
+      ctx.lineTo(-10, flameW * 0.4)
+      ctx.fill()
+      // Outer glow
+      ctx.shadowColor = '#f97316'
+      ctx.shadowBlur = 10
+      ctx.fillStyle = 'rgba(249,115,22,0.3)'
+      ctx.beginPath()
+      ctx.arc(-10 - flameLen * 0.3, 0, flameW * 1.2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.shadowBlur = 0
+
+      // Missile body (bold, solid)
+      ctx.fillStyle = '#94a3b8'
+      ctx.strokeStyle = '#1e293b'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(-10, -4)
+      ctx.lineTo(12, -3)
+      ctx.lineTo(12, 3)
+      ctx.lineTo(-10, 4)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+
+      // Nose cone (red warhead)
+      ctx.fillStyle = '#dc2626'
+      ctx.strokeStyle = '#1e293b'
+      ctx.beginPath()
+      ctx.moveTo(12, -3)
+      ctx.lineTo(20, 0)
+      ctx.lineTo(12, 3)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+
+      // Fins
+      ctx.fillStyle = '#475569'
+      ctx.strokeStyle = '#1e293b'
+      ctx.lineWidth = 1
+      // Top fin
+      ctx.beginPath()
+      ctx.moveTo(-8, -4)
+      ctx.lineTo(-12, -9)
+      ctx.lineTo(-4, -4)
+      ctx.closePath()
+      ctx.fill(); ctx.stroke()
+      // Bottom fin
+      ctx.beginPath()
+      ctx.moveTo(-8, 4)
+      ctx.lineTo(-12, 9)
+      ctx.lineTo(-4, 4)
+      ctx.closePath()
+      ctx.fill(); ctx.stroke()
+
+      // Body stripe
+      ctx.fillStyle = '#3d5a3a'
+      ctx.fillRect(0, -3, 4, 6)
+
+      // Glow around missile
+      ctx.shadowColor = '#fbbf24'
+      ctx.shadowBlur = 4 + Math.min(mult, 6)
+      ctx.fillStyle = 'rgba(0,0,0,0)'
+      ctx.fillRect(-10, -4, 30, 8)
+      ctx.shadowBlur = 0
+
+      ctx.restore()
+    }
+
+    function draw() {
+      if (!ctx) return
+      const phase = phaseRef.current
+      const mult = multRef.current
+
       ctx.clearRect(0, 0, W, H)
 
-      const mult = crash.currentMultiplier
-      const phase = crash.phase
+      // ── Background gradient ──
+      const bg = ctx.createLinearGradient(0, 0, 0, H)
+      bg.addColorStop(0, 'rgba(8,12,22,0.95)')
+      bg.addColorStop(1, 'rgba(15,23,42,0.95)')
+      ctx.fillStyle = bg
+      ctx.fillRect(0, 0, W, H)
 
-      // ── Background tint shift based on multiplier ──
-      if (phase === 'flying' || phase === 'crashed') {
-        const danger = Math.min(1, (mult - 1) / 9) // 0 at 1×, 1 at 10×
-        const r = Math.floor(8 + danger * 40)
-        const g = Math.floor(12 + danger * 5)
-        const b = Math.floor(18 - danger * 10)
-        ctx.fillStyle = `rgba(${r},${g},${b},0.3)`
-        ctx.fillRect(0, 0, W, H)
+      // ── Grid ──
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)'
+      ctx.lineWidth = 1
+      for (let x = GRAPH_LEFT; x <= GRAPH_RIGHT; x += 50) {
+        ctx.beginPath(); ctx.moveTo(x, GRAPH_TOP); ctx.lineTo(x, GRAPH_BOTTOM); ctx.stroke()
+      }
+      for (let y = GRAPH_TOP; y <= GRAPH_BOTTOM; y += 35) {
+        ctx.beginPath(); ctx.moveTo(GRAPH_LEFT, y); ctx.lineTo(GRAPH_RIGHT, y); ctx.stroke()
+      }
+      // Axes
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(GRAPH_LEFT, GRAPH_BOTTOM); ctx.lineTo(GRAPH_RIGHT, GRAPH_BOTTOM)
+      ctx.moveTo(GRAPH_LEFT, GRAPH_BOTTOM); ctx.lineTo(GRAPH_LEFT, GRAPH_TOP)
+      ctx.stroke()
+
+      // Axis labels
+      const maxMult = Math.max(5, (phase === 'flying' || phase === 'won') ? Math.ceil(mult + 1) : 5)
+      ctx.fillStyle = 'rgba(100,116,139,0.35)'
+      ctx.font = '8px sans-serif'
+      ctx.textAlign = 'right'
+      for (let m = 1; m <= maxMult; m += Math.max(1, Math.floor(maxMult / 5))) {
+        const yp = GRAPH_BOTTOM - ((m - 1) / (maxMult - 1)) * (GRAPH_BOTTOM - GRAPH_TOP)
+        ctx.fillText(`${m}×`, GRAPH_LEFT - 4, yp + 3)
+      }
+      ctx.textAlign = 'start'
+
+      // ── Ground line ──
+      ctx.strokeStyle = 'rgba(100,116,139,0.15)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(0, H - 8); ctx.lineTo(W, H - 8)
+      ctx.stroke()
+
+      // ── TRUCK (image) ──
+      if (imagesReady && truckImg) {
+        ctx.drawImage(truckImg, TRUCK_X, TRUCK_Y, TRUCK_W, TRUCK_H)
       }
 
-      drawGrid(ctx, W, H)
+      // ── FLIGHT / RESULT ──
+      if (phase === 'flying' || phase === 'won' || phase === 'crashed') {
+        const xRatio = Math.min((mult - 1) / (maxMult - 1), 1)
+        const yRatio = Math.min((mult - 1) / (maxMult - 1), 1)
+        const mx = GRAPH_LEFT + xRatio * (GRAPH_RIGHT - GRAPH_LEFT)
+        const my = GRAPH_BOTTOM - yRatio * (GRAPH_BOTTOM - GRAPH_TOP)
 
-      // ── Idle states ──
-      if (phase === 'betting' || phase === 'cooldown') {
-        ctx.font = '900 16px monospace'
-        ctx.fillStyle = 'rgba(255,255,255,0.08)'
+        // Trail + smoothed angle
+        if (phase === 'flying') {
+          trailRef.current.push({ x: mx, y: my })
+          if (trailRef.current.length > 500) trailRef.current.shift()
+
+          // Compute angle from 30+ points back (avoids sub-pixel jitter)
+          const trail = trailRef.current
+          const lookback = Math.min(30, trail.length - 1)
+          const refPt = trail[trail.length - 1 - lookback]
+          const rawAngle = lookback > 0
+            ? Math.atan2(my - refPt.y, mx - refPt.x)
+            : -Math.PI / 4
+          // Smooth with exponential moving average
+          smoothedAngleRef.current += (rawAngle - smoothedAngleRef.current) * 0.08
+          const angle = smoothedAngleRef.current
+
+          // Exhaust particles every other frame
+          if (frameRef.current % 2 === 0) spawnExhaust(mx, my, angle, particlesRef.current)
+
+          // Launch smoke (once)
+          if (!effectsDoneRef.current) {
+            spawnLaunchSmoke(TRUCK_X + 40, TRUCK_Y, particlesRef.current)
+            effectsDoneRef.current = true
+          }
+        }
+
+        // Draw trail gradient
+        if (trailRef.current.length > 1) {
+          for (let i = 1; i < trailRef.current.length; i++) {
+            const alpha = (i / trailRef.current.length) * 0.8
+            ctx.strokeStyle = phase === 'crashed'
+              ? `rgba(239,68,68,${alpha * 0.5})`
+              : phase === 'won'
+                ? `rgba(34,211,138,${alpha * 0.7})`
+                : `rgba(251,191,36,${alpha})`
+            ctx.lineWidth = 1.5 + (i / trailRef.current.length)
+            ctx.beginPath()
+            ctx.moveTo(trailRef.current[i - 1].x, trailRef.current[i - 1].y)
+            ctx.lineTo(trailRef.current[i].x, trailRef.current[i].y)
+            ctx.stroke()
+          }
+          // Glow
+          if (phase === 'flying') {
+            ctx.save()
+            ctx.shadowColor = '#fbbf24'
+            ctx.shadowBlur = 4
+            ctx.strokeStyle = 'rgba(251,191,36,0.12)'
+            ctx.lineWidth = 4
+            ctx.beginPath()
+            ctx.moveTo(trailRef.current[0].x, trailRef.current[0].y)
+            for (let i = 1; i < trailRef.current.length; i++) ctx.lineTo(trailRef.current[i].x, trailRef.current[i].y)
+            ctx.stroke()
+            ctx.restore()
+          }
+        }
+
+        // Draw MISSILE (bold canvas shape) — only while flying
+        if (phase === 'flying') {
+          drawBoldMissile(mx, my, smoothedAngleRef.current, mult)
+        }
+
+        // Crash explosion (one-shot)
+        if (phase === 'crashed' && !effectsDoneRef.current) {
+          const lt = trailRef.current[trailRef.current.length - 1]
+          particlesRef.current.push(...createExplosionParticles(lt ? lt.x : mx, lt ? lt.y : my))
+          effectsDoneRef.current = true
+          setShaking(true)
+          setTimeout(() => setShaking(false), 600)
+        }
+
+        // Win particles (one-shot)
+        if (phase === 'won' && !effectsDoneRef.current) {
+          const lt = trailRef.current[trailRef.current.length - 1]
+          particlesRef.current.push(...createWinParticles(lt ? lt.x : mx, lt ? lt.y : my))
+          effectsDoneRef.current = true
+        }
+      }
+
+      // ── IDLE ──
+      if (phase === 'idle') {
+        ctx.fillStyle = 'rgba(100,116,139,0.22)'
+        ctx.font = 'bold 11px sans-serif'
         ctx.textAlign = 'center'
-        ctx.fillText(phase === 'betting' ? 'WAITING FOR LAUNCH...' : 'NEXT ROUND SOON...', W / 2, H / 2)
-        animFrameRef.current = requestAnimationFrame(render)
-        return
+        ctx.fillText('PICK YOUR BET & LAUNCH', W / 2 + 20, H / 2 - 20)
+        ctx.textAlign = 'start'
       }
 
-      // ── Calculate missile position ──
-      const maxMult = Math.max(mult, 2)
-      const ratio = Math.min(1, (mult - 1) / (maxMult - 1))
-      const mx = 40 + ratio * (W - 80)
-      const my = H - 40 - ratio * (H - 80)
-
-      if (phase === 'flying') {
-        trailRef.current.push({ x: mx, y: my })
-        if (trailRef.current.length > 200) trailRef.current.shift()
-      }
-
-      // ── Speed lines (anime-style) ──
-      if (phase === 'flying' && mult > 1.5) {
-        const intensity = Math.min(1, (mult - 1.5) / 5)
-        const lineCount = Math.floor(3 + intensity * 12)
-        for (let i = 0; i < lineCount; i++) {
-          const lx = Math.random() * W
-          const ly = Math.random() * H
-          const len = 15 + intensity * 35
-          ctx.strokeStyle = `rgba(255,255,255,${0.03 + intensity * 0.08})`
-          ctx.lineWidth = 1
-          ctx.beginPath()
-          ctx.moveTo(lx, ly)
-          ctx.lineTo(lx - len * 0.7, ly + len * 0.7) // diagonal, matching missile angle
-          ctx.stroke()
-        }
-      }
-
-      // ── Trail with danger color ──
-      if (trailRef.current.length > 1) {
-        ctx.beginPath()
-        ctx.moveTo(trailRef.current[0].x, trailRef.current[0].y)
-        for (let i = 1; i < trailRef.current.length; i++) {
-          ctx.lineTo(trailRef.current[i].x, trailRef.current[i].y)
-        }
-        const danger = Math.min(1, (mult - 1) / 8)
-        const trailColor = phase === 'crashed' ? '#ef4444'
-          : `hsl(${45 - danger * 45}, 90%, ${55 - danger * 10}%)`
-        ctx.strokeStyle = trailColor
-        ctx.lineWidth = 2 + danger * 3
-        ctx.shadowColor = trailColor
-        ctx.shadowBlur = 8 + danger * 12
-        ctx.stroke()
-        ctx.shadowBlur = 0
-      }
-
-      // ── Missile with wobble ──
-      const lastPt = trailRef.current[trailRef.current.length - 1] || { x: mx, y: my }
-      if (phase === 'flying') {
-        const wobbleIntensity = Math.min(1, (mult - 1) / 6)
-        const wobble = wobbleIntensity * 0.15 * Math.sin(performance.now() * 0.015)
-        const shakeX = wobbleIntensity * (Math.random() - 0.5) * 4
-        const shakeY = wobbleIntensity * (Math.random() - 0.5) * 4
-
-        ctx.font = '24px serif'
-        ctx.textAlign = 'center'
-        ctx.save()
-        ctx.translate(lastPt.x + shakeX, lastPt.y + shakeY)
-        ctx.rotate(-Math.PI / 4 + wobble)
-        ctx.fillText('🚀', 0, 0)
-        ctx.restore()
-
-        // Enhanced exhaust with danger
-        const exhaustCount = 3 + Math.floor(wobbleIntensity * 6)
-        for (let i = 0; i < exhaustCount; i++) {
-          const spread = 6 + wobbleIntensity * 12
-          const ex = lastPt.x - spread / 2 + Math.random() * spread
-          const ey = lastPt.y + 5 + Math.random() * (8 + wobbleIntensity * 10)
-          const eSize = 1.5 + Math.random() * (2 + wobbleIntensity * 3)
-          const hue = 45 - wobbleIntensity * 30 // yellow → orange
-          ctx.fillStyle = `hsla(${hue}, 90%, 55%, ${0.3 + Math.random() * 0.4})`
-          ctx.beginPath()
-          ctx.arc(ex, ey, eSize, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      }
-
-      // ── GTA-style "DESTROYED" crash overlay ──
-      if (phase === 'crashed') {
-        const elapsed = (performance.now() - crashTimeRef.current) / 1000
-
-        // Flash red overlay
-        if (elapsed < 0.3) {
-          ctx.fillStyle = `rgba(239,68,68,${0.3 * (1 - elapsed / 0.3)})`
-          ctx.fillRect(0, 0, W, H)
-        }
-
-        // "DESTROYED" text slam
-        if (elapsed < 3) {
-          const scale = elapsed < 0.15 ? 1 + (0.15 - elapsed) * 8 : 1 // zoom in then settle
-          const alpha = elapsed < 2.5 ? 1 : 1 - (elapsed - 2.5) / 0.5
-
-          ctx.save()
-          ctx.translate(W / 2, H / 2 - 10)
-          ctx.scale(scale, scale)
-          ctx.font = '900 28px monospace'
-          ctx.textAlign = 'center'
-          ctx.fillStyle = `rgba(239,68,68,${alpha})`
-          ctx.shadowColor = '#ef4444'
-          ctx.shadowBlur = 20
-          ctx.fillText('D E S T R O Y E D', 0, 0)
-          ctx.shadowBlur = 0
-
-          // Crash point subtitle
-          ctx.font = '700 14px monospace'
-          ctx.fillStyle = `rgba(255,255,255,${alpha * 0.6})`
-          ctx.fillText(`×${crash.crashPoint.toFixed(2)}`, 0, 24)
-          ctx.restore()
-        }
-      }
-
-      // ── Particles (debris / money) ──
-      for (let i = particlesRef.current.length - 1; i >= 0; i--) {
-        const p = particlesRef.current[i]
-        p.x += p.vx
-        p.y += p.vy
-        p.vy += 0.08 // gravity
+      // ── PARTICLES ──
+      particlesRef.current = particlesRef.current.filter(p => {
+        p.x += p.vx; p.y += p.vy
+        if (p.type === 'debris') p.vy += 0.06
+        if (p.type === 'spark') p.vy += 0.12
+        if (p.type === 'smoke') { p.size *= 1.01; p.vx *= 0.98; p.vy *= 0.98 }
+        if (p.type === 'flame') p.size *= 0.95
         p.rotation += p.rotationSpeed
         p.life--
-
-        if (p.life <= 0) {
-          particlesRef.current.splice(i, 1)
-          continue
-        }
-
-        const alpha = Math.min(1, p.life / (p.maxLife * 0.3))
-        ctx.save()
-        ctx.translate(p.x, p.y)
-        ctx.rotate((p.rotation * Math.PI) / 180)
-        ctx.globalAlpha = alpha
-
+        const alpha = Math.max(0, p.life / p.maxLife)
         if (p.emoji) {
-          ctx.font = `${p.size}px serif`
-          ctx.textAlign = 'center'
-          ctx.fillText(p.emoji, 0, 0)
+          ctx.save(); ctx.globalAlpha = alpha; ctx.font = `${p.size}px serif`
+          ctx.translate(p.x, p.y); ctx.rotate((p.rotation * Math.PI) / 180)
+          ctx.fillText(p.emoji, -p.size / 2, p.size / 2); ctx.restore()
+        } else if (p.type === 'smoke') {
+          ctx.save(); ctx.globalAlpha = alpha * 0.4; ctx.fillStyle = p.color
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); ctx.restore()
+        } else if (p.type === 'spark') {
+          ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = p.color
+          ctx.shadowColor = p.color; ctx.shadowBlur = 3
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill()
+          ctx.shadowBlur = 0; ctx.restore()
         } else {
-          ctx.fillStyle = p.color
-          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size)
+          ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = p.color
+          ctx.translate(p.x, p.y); ctx.rotate((p.rotation * Math.PI) / 180)
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size); ctx.restore()
         }
+        return p.life > 0
+      })
 
-        ctx.globalAlpha = 1
-        ctx.restore()
-      }
-
-      animFrameRef.current = requestAnimationFrame(render)
+      frameRef.current++
+      animFrameRef.current = requestAnimationFrame(draw)
     }
 
-    render()
+    animFrameRef.current = requestAnimationFrame(draw)
     return () => {
-      running = false
       cancelAnimationFrame(animFrameRef.current)
+      unsub()
     }
-  }, [crash.phase, crash.currentMultiplier, crash.crashPoint])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSendChat = useCallback(() => {
-    if (!chatInput.trim()) return
-    crash.sendChat(chatInput)
-    setChatInput('')
-  }, [chatInput])
-
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60)
-    const s = secs % 60
-    return `${m}:${s.toString().padStart(2, '0')}`
-  }
+  const handleBet = useCallback(() => { useCrashStore.getState().placeBet(selectedBet) }, [selectedBet])
+  const handleCashOut = useCallback(() => { useCrashStore.getState().cashOut() }, [])
 
   const multColor =
-    crash.phase === 'crashed' ? '#ef4444' :
-    crash.playerCashedOut ? '#22d38a' :
-    crash.currentMultiplier >= 5 ? '#f59e0b' :
-    crash.currentMultiplier >= 2 ? '#fbbf24' : '#e2e8f0'
-
-  const phaseLabel =
-    crash.phase === 'betting' ? '🟢 BETTING OPEN' :
-    crash.phase === 'flying' ? '🚀 MISSILE LIVE' :
-    crash.phase === 'crashed' ? '💥 CRASHED' :
-    '⏳ NEXT ROUND'
+    phase === 'crashed' ? '#ef4444' :
+    phase === 'won' ? '#22d38a' :
+    currentMultiplier >= 5 ? '#f59e0b' :
+    currentMultiplier >= 2 ? '#fbbf24' : '#e2e8f0'
 
   return (
     <div className={`crash-game ${shaking ? 'crash-game--shake' : ''}`}>
-
-      {/* Phase + Timer bar */}
-      <div className="crash-phase-bar">
-        <span className="crash-phase-label" style={{
-          color: crash.phase === 'betting' ? '#22d38a' : crash.phase === 'flying' ? '#fbbf24' : crash.phase === 'crashed' ? '#ef4444' : '#64748b'
-        }}>{phaseLabel}</span>
-        <span className="crash-timer">
-          {crash.phase === 'betting' && `Closes in ${formatTime(crash.timeRemaining)}`}
-          {crash.phase === 'cooldown' && `Next round in ${formatTime(crash.timeRemaining)}`}
-          {crash.phase === 'flying' && `${crash.players.filter(p => !p.cashedOutAt).length} players flying`}
-        </span>
-      </div>
-
-      {/* History strip */}
-      {crash.history.length > 0 && (
+      {/* History */}
+      {history.length > 0 && (
         <div className="crash-history">
-          {crash.history.map((h, i) => (
+          {history.map((h, i) => (
             <span key={i} className="crash-history__dot"
               style={{ color: h < 2 ? '#ef4444' : h >= 5 ? '#22d38a' : '#fbbf24' }}
             >{h.toFixed(2)}×</span>
@@ -394,155 +492,101 @@ export default function CrashGame() {
         </div>
       )}
 
-      {/* Multiplier display */}
-      {(crash.phase === 'flying' || crash.phase === 'crashed') && (
-        <div className={`crash-multiplier ${crash.phase === 'crashed' ? 'crash-multiplier--destroyed' : ''}`}
+      {/* Multiplier */}
+      {(phase === 'flying' || phase === 'crashed' || phase === 'won') && (
+        <div className={`crash-multiplier ${phase === 'crashed' ? 'crash-multiplier--destroyed' : ''}`}
           style={{ color: multColor }}>
-          {crash.phase === 'crashed'
-            ? `💥 ${crash.crashPoint.toFixed(2)}×`
-            : `${crash.currentMultiplier.toFixed(2)}×`
-          }
+          {phase === 'crashed' ? `💥 ${crashPoint.toFixed(2)}×`
+            : phase === 'won' ? `✅ ${currentMultiplier.toFixed(2)}×`
+            : `${currentMultiplier.toFixed(2)}×`}
         </div>
       )}
 
       {/* Canvas */}
       <div className="crash-canvas-wrap">
-        <canvas ref={canvasRef} width={400} height={200} className="crash-canvas" />
+        <canvas ref={canvasRef} width={400} height={280} className="crash-canvas" />
       </div>
 
-      {/* Player result */}
-      {crash.playerCashedOut && crash.playerPayout > 0 && (
+      {/* Result */}
+      {phase === 'won' && playerPayout > 0 && (
         <div className="crash-result crash-result--win" style={{ color: '#22d38a' }}>
-          CASHED OUT AT ×{crash.players.find(p => p.isPlayer)?.cashedOutAt?.toFixed(2)}
-          <div className="crash-result__payout">+${crash.playerPayout.toLocaleString()}</div>
+          CASHED OUT AT ×{currentMultiplier.toFixed(2)}
+          <div className="crash-result__payout">+${playerPayout.toLocaleString()}</div>
         </div>
       )}
-      {crash.phase === 'crashed' && crash.playerBet > 0 && !crash.playerCashedOut && (
+      {phase === 'crashed' && (
         <div className="crash-result crash-result--lose" style={{ color: '#ef4444' }}>
-          MISSILE DESTROYED — LOST ${crash.playerBet.toLocaleString()}
+          MISSILE DESTROYED — LOST ${playerBet.toLocaleString()}
         </div>
       )}
-
-      {/* Players List */}
-      <div className="crash-players">
-        <div className="crash-players__header">
-          PLAYERS ({crash.players.length})
-        </div>
-        <div className="crash-players__list">
-          {crash.players.map((p, i) => (
-            <div key={i} className="crash-player-row" style={{
-              borderColor: p.isPlayer ? 'rgba(251,191,36,0.3)' : 'transparent',
-              background: p.isPlayer ? 'rgba(251,191,36,0.05)' : undefined,
-            }}>
-              <span className="crash-player-name" style={{
-                color: p.isPlayer ? '#fbbf24' : '#94a3b8',
-              }}>{p.name}</span>
-              <span className="crash-player-bet">${(p.bet / 1000).toFixed(0)}K</span>
-              <span className="crash-player-status" style={{
-                color: p.cashedOutAt ? '#22d38a' : crash.phase === 'crashed' ? '#ef4444' : '#64748b',
-              }}>
-                {p.cashedOutAt
-                  ? `×${p.cashedOutAt.toFixed(2)} ✓`
-                  : crash.phase === 'crashed' ? '💥' : '...'
-                }
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Controls */}
       <div className="crash-controls">
-        {crash.phase === 'betting' && crash.playerBet === 0 && (
+        {phase === 'idle' && (
           <>
-            <div className="crash-bets">
-              {CRASH_BETS.map(bet => (
-                <button key={bet}
-                  className={`crash-bet-chip ${selectedBet === bet ? 'crash-bet-chip--active' : ''}`}
-                  onClick={() => setSelectedBet(bet)}
-                  disabled={player.money < bet}
-                  style={{ opacity: player.money < bet ? 0.4 : 1 }}
-                >${(bet / 1000).toFixed(0)}K</button>
-              ))}
+            <div className="crash-slider-wrap">
+              <div className="crash-slider-label">
+                BET: <span className="crash-slider-amount">
+                  ${selectedBet >= 1_000_000 ? (selectedBet / 1_000_000).toFixed(selectedBet % 1_000_000 === 0 ? 0 : 1) + 'M' : (selectedBet / 1000) + 'K'}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={(() => {
+                  const steps = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 750_000, 1_000_000, 1_500_000, 2_000_000]
+                  const idx = steps.indexOf(selectedBet)
+                  return idx >= 0 ? idx * (100 / (steps.length - 1)) : 0
+                })()}
+                onChange={e => {
+                  const steps = [10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 750_000, 1_000_000, 1_500_000, 2_000_000]
+                  const pct = Number(e.target.value)
+                  const idx = Math.round(pct / (100 / (steps.length - 1)))
+                  const bet = steps[Math.min(idx, steps.length - 1)]
+                  setSelectedBet(Math.min(bet, money))
+                }}
+                className="crash-slider"
+              />
+              <div className="crash-slider-ticks">
+                <span>$10K</span>
+                <span>$250K</span>
+                <span>$1M</span>
+                <span>$2M</span>
+              </div>
             </div>
             <div className="crash-auto">
               <label>AUTO CASH-OUT:</label>
               <input type="text" placeholder="e.g. 2.5" value={autoCashoutInput}
-                onChange={e => {
-                  setAutoCashoutInput(e.target.value)
-                  const val = parseFloat(e.target.value)
-                  setAutoCashout(val >= 1.1 ? val : null)
-                }}
+                onChange={e => { setAutoCashoutInput(e.target.value); const v = parseFloat(e.target.value); setAutoCashout(v >= 1.1 ? v : null) }}
                 className="crash-auto__input"
               />
               {autoCashout && <span className="crash-auto__badge">@{autoCashout.toFixed(2)}×</span>}
             </div>
-            <button className="crash-launch-btn" onClick={() => crash.placeBet(selectedBet)}
-              disabled={player.money < selectedBet}
-            >🚀 BET ${(selectedBet / 1000).toFixed(0)}K ON MISSILE</button>
+            <button className="crash-launch-btn" onClick={handleBet} disabled={money < selectedBet}>
+              🚀 BET ${selectedBet >= 1_000_000 ? (selectedBet / 1_000_000).toFixed(selectedBet % 1_000_000 === 0 ? 0 : 1) + 'M' : (selectedBet / 1000) + 'K'} — LAUNCH MISSILE
+            </button>
           </>
         )}
-
-        {crash.phase === 'betting' && crash.playerBet > 0 && (
-          <div className="crash-result" style={{ color: '#fbbf24' }}>
-            ✅ BET PLACED: ${crash.playerBet.toLocaleString()} — waiting for launch...
-          </div>
-        )}
-
-        {crash.phase === 'flying' && crash.playerBet > 0 && !crash.playerCashedOut && (
-          <button className="crash-cashout-btn" onClick={() => crash.cashOut()}>
-            💰 CASH OUT — ${Math.floor(crash.playerBet * crash.currentMultiplier).toLocaleString()}
+        {phase === 'flying' && !playerCashedOut && (
+          <button className="crash-cashout-btn" onClick={handleCashOut}>
+            💰 CASH OUT — ${Math.floor(playerBet * currentMultiplier).toLocaleString()}
           </button>
-        )}
-
-        {crash.phase === 'cooldown' && (
-          <div style={{ textAlign: 'center', color: '#475569', fontSize: '11px', fontWeight: 700 }}>
-            ⏳ Next missile in {formatTime(crash.timeRemaining)}
-          </div>
         )}
       </div>
 
-      {/* Chat / Mock Log */}
-      <div className="crash-chat">
-        <div className="crash-chat__header">💬 CRASH LOG</div>
-        <div className="crash-chat__messages">
-          {crash.chatLog.slice(-30).map((msg, i) => (
-            <div key={i} className={`crash-chat__msg crash-chat__msg--${msg.type}`}>
-              <span className="crash-chat__name" style={{
-                color: msg.type === 'system' ? '#fbbf24' : msg.type === 'cashout' ? '#22d38a' : msg.type === 'crash' ? '#ef4444' : '#94a3b8',
-              }}>{msg.name}</span>
-              <span className="crash-chat__text">{msg.text}</span>
-            </div>
-          ))}
-          <div ref={chatEndRef} />
-        </div>
-        <div className="crash-chat__input-row">
-          <input type="text" placeholder="Type to chat..." value={chatInput}
-            onChange={e => setChatInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSendChat()}
-            className="crash-chat__input" maxLength={100}
-          />
-          <button onClick={handleSendChat} className="crash-chat__send">SEND</button>
-        </div>
+      {/* Footer */}
+      <div className="crash-footer">
+        <span>BALANCE: <span style={{ color: '#22d38a', fontWeight: 800 }}>${money.toLocaleString()}</span></span>
+        {totalRounds > 0 && (
+          <>
+            <span className="crash-footer__sep">|</span>
+            <span>W: <span style={{ color: '#22d38a' }}>{wins}</span></span>
+            <span className="crash-footer__sep">|</span>
+            <span>L: <span style={{ color: '#ef4444' }}>{losses}</span></span>
+          </>
+        )}
       </div>
     </div>
   )
-}
-
-/* ── Grid helper ── */
-function drawGrid(ctx: CanvasRenderingContext2D, W: number, H: number) {
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)'
-  ctx.lineWidth = 1
-  for (let x = 40; x <= W - 40; x += 60) {
-    ctx.beginPath(); ctx.moveTo(x, 30); ctx.lineTo(x, H - 30); ctx.stroke()
-  }
-  for (let y = 30; y <= H - 30; y += 40) {
-    ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(W - 30, y); ctx.stroke()
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)'
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(40, H - 40); ctx.lineTo(W - 40, H - 40)
-  ctx.moveTo(40, H - 40); ctx.lineTo(40, 30)
-  ctx.stroke()
 }

@@ -3,11 +3,16 @@ import { useInventoryStore } from './inventoryStore'
 import { useSkillsStore } from './skillsStore'
 import { useSpecializationStore } from './specializationStore'
 import { useWarCardsStore } from './warCardsStore'
+import { rateLimiter, validateEarn, validateSpend, logSuspicion } from '../engine/AntiExploit'
 
-export type PlayerRole = 'military' | 'business' | 'politics'
+import type { PlayerRole, MilitaryRank } from '../types/player.types'
+export type { PlayerRole, MilitaryRank }
 
-// ── Military Rank System ──
-export type MilitaryRank = 'private' | 'corporal' | 'sergeant' | 'lieutenant' | 'captain' | 'colonel' | 'general'
+// Economy ledger hook — registered by worldStore to avoid circular deps
+let _econFlowHook: ((source: string, amount: number, type: 'created' | 'destroyed') => void) | null = null
+export function registerEconFlowHook(hook: (source: string, amount: number, type: 'created' | 'destroyed') => void) {
+  _econFlowHook = hook
+}
 
 const RANK_TABLE: { minLevel: number; rank: MilitaryRank; label: string }[] = [
   { minLevel: 30, rank: 'general',    label: 'General' },
@@ -76,6 +81,7 @@ export interface PlayerState {
   maxEntrepreneurship: number
   work: number
   maxWork: number
+  lastFullRecoveryAt: number  // timestamp of last 12h full bar refill
 
   // Production
   productionBar: number
@@ -198,6 +204,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   maxEntrepreneurship: 100,
   work: 100,
   maxWork: 100,
+  lastFullRecoveryAt: Date.now(),
 
   productionBar: 0,
   productionBarMax: 100,
@@ -214,6 +221,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   equipAmmo: (type) => set({ equippedAmmo: type }),
 
   consumeFood: (type) => {
+    if (!rateLimiter.check('consumeFood')) return false
     let consumed = false
     set((s) => {
       if (s[type] <= 0 || s.hunger <= 0) return {}
@@ -406,7 +414,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   earnMoney: (amount) => {
+    if (!validateEarn(amount, 'earnMoney')) return
     set((s) => ({ money: s.money + amount }))
+    // Track in economy ledger
+    if (_econFlowHook) _econFlowHook('player_earn', amount, 'created')
     // War Cards: check money milestones
     const s = get()
     const wc = useWarCardsStore.getState()
@@ -508,9 +519,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set((s) => ({ scrap: s.scrap + amount })),
 
   spendMoney: (amount) => {
+    if (!validateSpend(amount, 'spendMoney')) return false
     const s = get()
     if (s.money < amount) return false
     set({ money: s.money - amount })
+    // Track in economy ledger
+    if (_econFlowHook) _econFlowHook('player_spend', amount, 'destroyed')
     return true
   },
 
@@ -543,6 +557,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   regenerateBars: () => set((state) => {
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000
+    const now = Date.now()
+
+    // Full refill every 12 hours
+    if (now - state.lastFullRecoveryAt >= TWELVE_HOURS_MS) {
+      return {
+        stamina: state.maxStamina,
+        hunger: state.maxHunger,
+        entrepreneurship: state.maxEntrepreneurship,
+        work: state.maxWork,
+        lastFullRecoveryAt: now,
+      }
+    }
+
+    // Normal tick regen (5% per 30min economy tick)
     const p = 0.05
     return {
       stamina: Math.min(state.maxStamina, state.stamina + (state.maxStamina * p)),

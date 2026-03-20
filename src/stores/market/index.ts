@@ -23,9 +23,9 @@ import { mkTicker, mkId } from './helpers'
 // Slice functions
 import { placeResourceOrder, matchResourceOrders } from './resourceMarket'
 import { placeEquipmentSellOrder, buyEquipment } from './equipmentMarket'
-import { placeDivisionSellOrder, buyDivision } from './divisionMarket'
+import { placeDivisionSellOrder, placeVaultDivisionSellOrder, placeCountryDivisionSellOrder, buyDivision } from './divisionMarket'
 import { tickPrices } from './priceTicker'
-import { placeCountryOrder } from './countryTrading'
+import { placeCountryOrder, placeForceVaultOrder } from './countryTrading'
 
 type Set = StoreApi<MarketState>['setState']
 type Get = () => MarketState
@@ -46,6 +46,14 @@ function cancelOrderFn(
       const gov = useGovernmentStore.getState().governments[order.countryCode]
       if (!gov || gov.president !== player.name)
         return { success: false, message: 'Only the president can cancel country orders' }
+    } else if (order.source === 'force_vault' && order.armyId) {
+      // Only commander/colonel of the army can cancel vault orders
+      const army = useArmyStore.getState().armies[order.armyId]
+      if (!army) return { success: false, message: 'Army not found' }
+      const member = army.members.find(m => m.playerId === player.name)
+      const isCommander = army.commanderId === player.name
+      const hasControl = isCommander || (member && ['colonel', 'general'].includes(member.role))
+      if (!hasControl) return { success: false, message: 'Only Commander/Colonel can cancel vault orders' }
     } else if (order.playerId !== player.name) {
       return { success: false, message: 'Not your order' }
     }
@@ -60,12 +68,31 @@ function cancelOrderFn(
         const refund = remaining * order.pricePerUnit
         if (order.source === 'country') {
           useWorldStore.getState().addTreasuryTax(order.countryCode, refund)
+        } else if (order.source === 'force_vault' && order.armyId) {
+          useArmyStore.setState(s => {
+            const army = s.armies[order.armyId!]
+            if (!army) return s
+            return { armies: { ...s.armies, [order.armyId!]: {
+              ...army, vault: { ...army.vault, money: army.vault.money + refund },
+            }}}
+          })
         } else {
-          usePlayerStore.setState(s => ({ money: s.money + refund }))
+          usePlayerStore.getState().earnMoney(refund)
         }
       } else {
         if (order.source === 'country' && def.fundKey) {
           useWorldStore.getState().addToFund(order.countryCode, def.fundKey, remaining)
+        } else if (order.source === 'force_vault' && order.armyId) {
+          const vaultKey = order.resourceId === 'oil' ? 'oil' : null
+          if (vaultKey) {
+            useArmyStore.setState(s => {
+              const army = s.armies[order.armyId!]
+              if (!army) return s
+              return { armies: { ...s.armies, [order.armyId!]: {
+                ...army, vault: { ...army.vault, [vaultKey]: (army.vault as any)[vaultKey] + remaining },
+              }}}
+            })
+          }
         } else {
           usePlayerStore.setState(s => ({
             [def.playerKey]: ((s as unknown as Record<string, number>)[def.playerKey] ?? 0) + remaining,
@@ -153,8 +180,16 @@ export const useMarketStore = create<MarketState>((set, get) => {
     // Divisions
     placeDivisionSellOrder: (divisionId, price) =>
       placeDivisionSellOrder(set, get, divisionId, price),
+    placeVaultDivisionSellOrder: (armyId, divisionId, price) =>
+      placeVaultDivisionSellOrder(set, get, armyId, divisionId, price),
+    placeCountryDivisionSellOrder: (countryCode, divisionId, price) =>
+      placeCountryDivisionSellOrder(set, get, countryCode, divisionId, price),
     buyDivision: (orderId) =>
       buyDivision(set, get, orderId),
+
+    // Force vault fund
+    placeForceVaultOrder: (armyId, type, resourceId, amount, pricePerUnit) =>
+      placeForceVaultOrder(set, get, armyId, type, resourceId, amount, pricePerUnit),
 
     // Country fund
     placeCountryOrder: (type, resourceId, amount, pricePerUnit) =>

@@ -2,6 +2,7 @@ import { useUIStore } from '../../stores/uiStore'
 
 const SIDEBAR_CIVILIAN = [
   { id: 'profile' as const, icon: '👤', label: 'PROFILE' },
+  { id: 'inventory' as const, icon: '🎒', label: 'INVENTORY' },
   { id: 'market' as const, icon: '📊', label: 'MARKET' },
   { id: 'companies' as const, icon: '🏭', label: 'COMPANIES' },
   { id: 'resources' as const, icon: '💰', label: 'RESOURCES' },
@@ -34,9 +35,12 @@ export default function Sidebar() {
         {SIDEBAR_CIVILIAN.map((item) => (
           <button
             key={item.id}
-            className={`hud-sidebar__item ${(item.id === 'companies' ? activePanel === 'profile' : activePanel === item.id) ? 'hud-sidebar__item--active' : ''}`}
+            className={`hud-sidebar__item ${((item.id === 'companies' || item.id === 'inventory') ? activePanel === 'profile' : activePanel === item.id) ? 'hud-sidebar__item--active' : ''}`}
             onClick={() => {
-              if (item.id === 'companies') {
+              if (item.id === 'inventory') {
+                setProfileDefaultTab('inventory')
+                setActivePanel('profile')
+              } else if (item.id === 'companies') {
                 setProfileDefaultTab('companies')
                 setActivePanel('profile')
               } else if (item.id === 'resources') {

@@ -4,11 +4,11 @@ import { useWorldStore, type NationalFund, type NationalFundKey } from './worldS
 import { usePlayerStore } from './playerStore'
 import { useArmyStore } from './army'
 
+import type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government } from '../types/government.types'
+export type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government }
+
 // Re-export for backward compatibility
 export type { NationalFund, NationalFundKey }
-
-export type LawType = 'declare_war' | 'propose_peace' | 'impeach_president' | 'tax_change' | 'declare_sworn_enemy' | 'authorize_nuclear_action' | 'propose_alliance' | 'break_alliance'
-export type LawStatus = 'active' | 'passed' | 'failed'
 
 // Helper: get country fund from worldStore (single source of truth)
 export function getCountryFund(countryCode: string): NationalFund {
@@ -29,45 +29,6 @@ export const NUKE_COST: NationalFund = {
 // ── NuclearFund type alias for backward compat ──
 export type NuclearFund = NationalFund
 
-// ── Citizen ──
-export interface Citizen {
-  id: string
-  name: string
-  level: number
-  role: 'president' | 'congress' | 'citizen'
-  joinedAt: number
-}
-
-export interface Law {
-  id: string
-  countryId: string
-  proposerId: string
-  type: LawType
-  targetCountryId?: string
-  newValue?: number
-  votesFor: string[]
-  votesAgainst: string[]
-  proposedAt: number
-  expiresAt: number
-  status: LawStatus
-}
-
-export interface Candidate {
-  id: string
-  name: string
-  votes: number
-}
-
-export type IdeologyType = 'militarist' | 'capitalist' | 'technocrat' | 'expansionist'
-
-export interface IdeologyPoints {
-  warBonus: number       // +2% attack per point
-  economyBonus: number   // +2% company production per point
-  techBonus: number      // +2% cyber success per point
-  defenseBonus: number   // +2% bunker/infra strength per point
-  diplomacyBonus: number // +1 alliance slot per point
-}
-
 export const DEFAULT_IDEOLOGY_POINTS: IdeologyPoints = {
   warBonus: 0,
   economyBonus: 0,
@@ -76,34 +37,7 @@ export const DEFAULT_IDEOLOGY_POINTS: IdeologyPoints = {
   diplomacyBonus: 0,
 }
 
-// ── Contribution Missions ──
-export interface ContributionMission {
-  id: string
-  operationId: string           // e.g. 'resource_intel', 'assault', 'nuclear'
-  operationType: 'cyber' | 'military' | 'nuclear'
-  countryCode: string
-  status: 'active' | 'completed' | 'expired'
-  requiredResources: Partial<NationalFund>   // target amounts
-  contributedResources: Partial<NationalFund> // current progress
-  requiredItems: { jets?: number; tanks?: number }  // checked, not consumed (except nuclear)
-  contributors: Record<string, number>  // playerName → total $ value contributed
-  startedAt: number
-  expiresAt: number             // startedAt + 7 days
-  startedBy: string
-}
-
 const MISSION_DURATION = 7 * 24 * 60 * 60 * 1000 // 1 week
-
-export interface DivisionListing {
-  id: string
-  divisionType: DivisionType
-  starQuality: StarQuality
-  statModifiers: StatModifiers
-  price: number           // sale price with ±5% variation
-  listedAt: number
-  expiresAt: number       // listedAt + random 10-15h
-  rerollCount: number     // how many times this listing has been rerolled
-}
 
 // Random expiry between 10 and 15 hours
 function randomListingDuration(): number {
@@ -113,18 +47,6 @@ function randomListingDuration(): number {
 const MAX_DISMISSALS_PER_DAY = 3
 const REROLL_BASE_COST = 500  // scrap
 const REROLL_MULTIPLIER = 3   // 500 → 1500 → 4500 → ...
-
-// ── Military Contracts ──
-export interface MilitaryContract {
-  id: string
-  playerId: string
-  countryCode: string
-  investedAmount: number
-  profitRate: number         // 0.11 = 11%
-  lockedAt: number
-  unlocksAt: number          // lockedAt + 24h
-  status: 'locked' | 'claimable' | 'claimed'
-}
 
 const CONTRACT_PROFIT_RATE = 0.11
 const CONTRACT_MIN = 100_000
@@ -149,23 +71,6 @@ const INFRA_DIVISION_MAP: Record<string, { types: DivisionType[]; getLevel: (c: 
     types: ['warship'],
     getLevel: (c) => c.portLevel,
   },
-}
-
-export interface Government {
-  countryId: string
-  president: string | null
-  congress: string[]
-  candidates: Candidate[]
-  taxRate: number
-  swornEnemy: string | null
-  alliances: string[] // ISO codes of allied countries
-  empireName: string | null
-  ideology: IdeologyType | null
-  ideologyPoints: IdeologyPoints
-  nuclearAuthorized: boolean
-  citizens: Citizen[]
-  divisionShop: DivisionListing[]
-  militaryBudgetPercent: number  // 0-50%, default 5% — % of treasury drained daily into army vaults
 }
 
 export interface GovernmentState {
@@ -285,16 +190,19 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     }
   }),
 
-  voteForCandidate: (countryId, _voterId, candidateId) => set((state) => {
+  voteForCandidate: (countryId, voterId, candidateId) => set((state) => {
     const gov = state.governments[countryId]
     if (!gov) return state
+    // Prevent duplicate votes: check if this voter already voted for ANY candidate
+    const alreadyVoted = gov.candidates.some(c => (c as any).voters?.includes(voterId))
+    if (alreadyVoted) return state
     return {
       governments: {
         ...state.governments,
         [countryId]: {
           ...gov,
           candidates: gov.candidates.map(c =>
-            c.id === candidateId ? { ...c, votes: c.votes + 1 } : c
+            c.id === candidateId ? { ...c, votes: c.votes + 1, voters: [...((c as any).voters || []), voterId] } : c
           )
         }
       }
@@ -337,7 +245,8 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     if (vote === 'against') votesAgainst.push(voterId)
 
     const updatedLaw = { ...law, votesFor, votesAgainst }
-    if (votesFor.length >= 1) updatedLaw.status = 'passed'
+    // Require majority + at least 2 votes to pass; 3 against to fail
+    if (votesFor.length >= 2 && votesFor.length > votesAgainst.length) updatedLaw.status = 'passed'
     else if (votesAgainst.length >= 3) updatedLaw.status = 'failed'
 
     return { laws: { ...state.laws, [lawId]: updatedLaw } }
@@ -379,8 +288,24 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   donateToFund: (countryId, resource, amount) => {
     const state = get()
     const gov = state.governments[countryId]
-    if (!gov) return false
-    // Delegate to worldStore
+    if (!gov || amount <= 0) return false
+
+    // Deduct from player first (enforced at store level)
+    const player = usePlayerStore.getState()
+    const balanceMap: Record<NationalFundKey, number> = {
+      money: player.money, oil: player.oil, scrap: player.scrap,
+      materialX: player.materialX, bitcoin: player.bitcoin, jets: 0,
+    }
+    if (balanceMap[resource] < amount) return false
+
+    if (resource === 'money') player.spendMoney(amount)
+    else if (resource === 'oil') player.spendOil(amount)
+    else if (resource === 'scrap') player.spendScrap(amount)
+    else if (resource === 'materialX') player.spendMaterialX(amount)
+    else if (resource === 'bitcoin') player.spendBitcoin(amount)
+    else return false  // jets handled separately via inventory
+
+    // Add to country fund
     useWorldStore.getState().addToFund(countryId, resource, amount)
     return true
   },
@@ -484,8 +409,9 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
       if (curr < (req ?? 0)) { completed = false; break }
     }
 
-    // Also donate to country national fund via worldStore
-    useWorldStore.getState().addToFund(mission.countryCode, resource, actual)
+    // NOTE: Do NOT add to national fund here — resources were already deducted from
+    // the player by the UI caller. The mission tracks contributions separately.
+    // Adding to fund here would double-count resources.
     const gov = state.governments[mission.countryCode]
     if (gov) {
       set({

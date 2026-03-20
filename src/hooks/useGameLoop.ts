@@ -1,93 +1,181 @@
 import { useState, useEffect } from 'react'
+import { gameClock } from '../engine/GameClock'
 import { useBattleStore } from '../stores/battleStore'
 import { useCompanyStore } from '../stores/companyStore'
-import { usePlayerStore } from '../stores/playerStore'
+import { usePlayerStore, registerEconFlowHook } from '../stores/playerStore'
 import { useCyberStore } from '../stores/cyberStore'
 import { useArmyStore } from '../stores/army'
 import { useGovernmentStore } from '../stores/governmentStore'
 import { useRegionStore } from '../stores/regionStore'
 import { useMarketStore } from '../stores/market'
+import { useStockStore } from '../stores/stockStore'
+import { useWorldStore } from '../stores/worldStore'
+import { checkTimeSanity } from '../engine/AntiExploit'
+import { wrapStoreWithIntegrityCheck } from '../engine/storeFreeze'
+
+// Register economy flow hook: playerStore -> worldStore
+registerEconFlowHook((source, amount, type) => {
+  useWorldStore.getState().recordEconFlow(source, amount, type)
+})
+
+// Wrap playerStore with integrity checks (production only)
+wrapStoreWithIntegrityCheck(usePlayerStore, 'player')
 
 /**
- * Game loop hook — handles:
- * - 15s combat tick (battle resolution, operations, training, shop)
- * - 30min economy tick (companies, market prices)
- * - 10s region capture tick
+ * Game loop hook — subscribes all simulation systems to the unified GameClock.
+ * 
+ * Phase cadences:
+ * - 15s: combat, military, cyber, training, government
+ * - 10s: region capture, stock market
+ * - 30min: economy (companies, market prices)
  *
- * Returns { timeLeft, handleManualTick } for the economy timer display.
+ * Returns { combatCountdown, economyCountdown, handleManualTick }
  */
 export function useGameLoop() {
-  const [timeLeft, setTimeLeft] = useState(1800)
+  const [combatCountdown, setCombatCountdown] = useState(() => gameClock.getCountdown('combat'))
+  const [economyCountdown, setEconomyCountdown] = useState(() => gameClock.getCountdown('economy'))
 
-  // Main 1-second interval: combat + economy ticks
   useEffect(() => {
-    const interval = setInterval(() => {
-      // ---- Combat Tick (every 15 seconds) ----
-      const bs = useBattleStore.getState()
-      const nextTick = bs.combatTickLeft - 1
-      if (nextTick <= 0) {
-        // FIRE: process all battle & operation ticks (wrapped in try-catch to never kill the timer)
-        try {
-          bs.resolveTicksAndRounds()
-        } catch (e) { console.warn('[CombatTick] resolveTicksAndRounds error:', e) }
-        try {
-          bs.processHOICombatTick()
-        } catch (e) { console.warn('[CombatTick] processHOICombatTick error:', e) }
-        try {
-          import('../stores/militaryStore').then(m => {
-            m.useMilitaryStore.getState().processDetectionWindows()
-            m.useMilitaryStore.getState().resolveContests()
+    // ── Start the clock (idempotent — safe to call multiple times) ──
+    gameClock.start()
+
+    // ── Subscribe phase handlers ──
+    const unsubs: (() => void)[] = []
+
+    // COMBAT (15s) — battle resolution
+    unsubs.push(gameClock.subscribe('combat', () => {
+      try { useBattleStore.getState().resolveTicksAndRounds() } catch (e) { console.warn('[Combat] resolveTicksAndRounds:', e) }
+      try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
+    }))
+
+    // MILITARY (15s) — detection windows, contests
+    unsubs.push(gameClock.subscribe('military', () => {
+      try {
+        import('../stores/militaryStore').then(m => {
+          m.useMilitaryStore.getState().processDetectionWindows()
+          m.useMilitaryStore.getState().resolveContests()
+        })
+      } catch (e) { console.warn('[Military]:', e) }
+    }))
+
+    // CYBER (15s) — cyber detection, stamina contests
+    unsubs.push(gameClock.subscribe('cyber', () => {
+      try {
+        useCyberStore.getState().processDetectionTicks()
+        useCyberStore.getState().resolveStaminaContests()
+      } catch (e) { console.warn('[Cyber]:', e) }
+    }))
+
+    // TRAINING (15s) — army training progress
+    unsubs.push(gameClock.subscribe('training', () => {
+      try { useArmyStore.getState().processTrainingTick() } catch (e) { console.warn('[Training]:', e) }
+    }))
+
+    // GOVERNMENT (15s) — shop spawn, contract maturity
+    unsubs.push(gameClock.subscribe('government', () => {
+      try {
+        const playerCountry = usePlayerStore.getState().countryCode || 'US'
+        const govStore = useGovernmentStore.getState()
+        govStore.cleanExpiredListings(playerCountry)
+        govStore.spawnShopDivisions(playerCountry)
+        govStore.processContractMaturity()
+      } catch (e) { console.warn('[Government]:', e) }
+    }))
+
+    // REGION (10s) — region capture progress
+    unsubs.push(gameClock.subscribe('region', () => {
+      try { useRegionStore.getState().tickCapture() } catch (e) { console.warn('[Region]:', e) }
+    }))
+
+    // STOCK (10s) — stock market price tick + bond resolution + 12h sessions
+    unsubs.push(gameClock.subscribe('stock', () => {
+      try { useStockStore.getState().tickMarket() } catch (e) { console.warn('[Stock]:', e) }
+      try { useStockStore.getState().resolveExpiredBonds() } catch (e) { console.warn('[Bonds]:', e) }
+      try { useStockStore.getState().processSessionBoundary() } catch (e) { console.warn('[Sessions]:', e) }
+      try { useStockStore.getState().processResetBand() } catch (e) { console.warn('[ResetBand]:', e) }
+    }))
+
+    // ECONOMY (30min) — company production, market prices, world timers
+    unsubs.push(gameClock.subscribe('economy', () => {
+      try { useCompanyStore.getState().processTick() } catch (e) { console.warn('[Economy] company:', e) }
+      try {
+        const mkt = useMarketStore.getState()
+        mkt.tickPrices()
+        mkt.expireOldOrders()
+        mkt.cleanupStaleOrders()
+      } catch (e) { console.warn('[Economy] market:', e) }
+      // World timers: auto-income (8h), daily reset (24h), alliance treaty (12h)
+      try {
+        checkTimeSanity() // Fix 5: detect clock manipulation
+        useWorldStore.getState().processAutoIncome()
+        useWorldStore.getState().processDailyReset()
+      } catch (e) { console.warn('[Economy] world timers:', e) }
+      try {
+        import('../stores/allianceStore').then(m => {
+          m.useAllianceStore.getState().processTreatySnapshot()
+        })
+      } catch (e) { console.warn('[Economy] alliance treaty:', e) }
+      try {
+        import('../stores/bountyStore').then(m => {
+          m.useBountyStore.getState().rotateNPCBounties()
+          m.useBountyStore.getState().expireBounties()
+        })
+      } catch (e) { console.warn('[Economy] bounty rotation:', e) }
+      // Daily checks: war cards, company maintenance, fund snapshot
+      try {
+        const player = usePlayerStore.getState()
+        import('../stores/warCardsStore').then(m => {
+          m.useWarCardsStore.getState().checkAndAwardCards(player.name, player.name, {
+            totalDamageDone: player.damageDone,
+            totalMoney: player.money,
+            totalItemsProduced: player.itemsProduced,
+            playerLevel: player.level,
+            muteCount: player.muteCount,
+            deathCount: player.deathCount,
+            battlesLost: player.battlesLost,
+            totalCasinoLosses: player.totalCasinoLosses,
+            bankruptcyCount: player.bankruptcyCount,
+            countrySwitches: player.countrySwitches,
+            casinoSpins: player.casinoSpins,
+            itemsDestroyed: player.itemsDestroyed,
           })
-        } catch (e) { console.warn('[CombatTick] military error:', e) }
-        try {
-          useCyberStore.getState().processDetectionTicks()
-          useCyberStore.getState().resolveStaminaContests()
-        } catch (e) { console.warn('[CombatTick] cyber error:', e) }
-        try {
-          useArmyStore.getState().processTrainingTick()
-        } catch (e) { console.warn('[CombatTick] training error:', e) }
-        // Division shop: spawn + cleanup for player's country
-        try {
-          const playerCountry = usePlayerStore.getState().countryCode || 'US'
-          const govStore = useGovernmentStore.getState()
-          govStore.cleanExpiredListings(playerCountry)
-          govStore.spawnShopDivisions(playerCountry)
-          govStore.processContractMaturity()
-        } catch (e) { console.warn('[CombatTick] shop spawn error:', e) }
+        })
+      } catch (e) { console.warn('[Economy] war cards:', e) }
+      try { useCompanyStore.getState().processMaintenanceTick() } catch (e) { console.warn('[Economy] maintenance:', e) }
+      try { useWorldStore.getState().snapshotFundHistory() } catch (e) { console.warn('[Economy] fund snapshot:', e) }
+      // Prestige hourly snapshot + weekly jackpot
+      try {
+        import('../stores/prestigeStore').then(m => {
+          m.usePrestigeStore.getState().processHourlySnapshot()
+        })
+      } catch (e) { console.warn('[Economy] prestige:', e) }
+      try {
+        import('../stores/raffleStore').then(m => {
+          m.useRaffleStore.getState().processWeeklyJackpot()
+        })
+      } catch (e) { console.warn('[Economy] weekly jackpot:', e) }
+    }))
 
-        bs.setCombatTickLeft(15) // Always reset
-      } else {
-        bs.setCombatTickLeft(nextTick)
-      }
+    // ── Subscribe to countdown updates for UI ──
+    unsubs.push(gameClock.onCountdownUpdate(() => {
+      setCombatCountdown(gameClock.getCountdown('combat'))
+      setEconomyCountdown(gameClock.getCountdown('economy'))
+    }))
 
-      // ---- Economy Tick (every 30 min) ----
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          useCompanyStore.getState().processTick()
-          const mkt = useMarketStore.getState()
-          mkt.tickPrices()
-          mkt.expireOldOrders()
-          mkt.cleanupStaleOrders()
-          return 1800
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
+    // Also sync the old combatTickLeft in battleStore for backward compat
+    unsubs.push(gameClock.onCountdownUpdate(() => {
+      useBattleStore.getState().setCombatTickLeft(gameClock.getCountdown('combat'))
+    }))
 
-  // Region capture tick — every 10 seconds, advance captures
-  useEffect(() => {
-    const ticker = setInterval(() => {
-      useRegionStore.getState().tickCapture()
-    }, 10000)
-    return () => clearInterval(ticker)
+    return () => {
+      unsubs.forEach(fn => fn())
+    }
   }, [])
 
   const handleManualTick = () => {
-    useCompanyStore.getState().processTick()
-    setTimeLeft(1800)
+    gameClock.forceEconomy()
   }
 
-  return { timeLeft, handleManualTick }
+  // Return economyCountdown as timeLeft for backward compat with TopBar
+  return { timeLeft: economyCountdown, combatCountdown, handleManualTick }
 }

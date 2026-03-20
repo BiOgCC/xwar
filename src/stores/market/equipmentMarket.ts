@@ -35,10 +35,8 @@ export function placeEquipmentSellOrder(
 
   // 2% listing fee (non-refundable) → goes to country fund
   const listingFee = Math.ceil(price * LISTING_FEE_RATE)
-  if (player.money < listingFee)
+  if (!usePlayerStore.getState().spendMoney(listingFee))
     return { success: false, message: `Listing fee: $${listingFee.toLocaleString()} (2%) — insufficient funds` }
-
-  usePlayerStore.setState(s => ({ money: s.money - listingFee }))
   const countryCode = player.countryCode || 'US'
   useWorldStore.getState().addTreasuryTax(countryCode, listingFee)
 
@@ -79,14 +77,15 @@ export function buyEquipment(
   if (player.money < order.totalPrice) return { success: false, message: 'Not enough money' }
 
   // Deduct buyer money
-  usePlayerStore.setState(s => ({ money: s.money - order.totalPrice }))
+  if (!usePlayerStore.getState().spendMoney(order.totalPrice))
+    return { success: false, message: 'Not enough money' }
 
   // Tax (1% of sale price to buyer's country)
   const tax = Math.round(order.totalPrice * TAX_RATE)
   const sellerGets = order.totalPrice - tax
 
   // Credit seller
-  usePlayerStore.setState(s => ({ money: s.money + sellerGets }))
+  usePlayerStore.getState().earnMoney(sellerGets)
 
   // Give item to buyer (update location back to inventory)
   if (order.equipItemId) {

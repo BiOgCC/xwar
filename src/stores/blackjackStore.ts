@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
 import { useInventoryStore, rollItemOfTier, TIER_ORDER, type EquipItem, type EquipTier } from './inventoryStore'
+import { rateLimiter } from '../engine/AntiExploit'
 
 /* ══════════════════════════════════════════════
    XWAR Blackjack — Player vs House
@@ -139,6 +140,7 @@ export const useBlackjackStore = create<BlackjackState>((set, get) => ({
   itemLost: false,
 
   placeBet: (amount: number) => {
+    if (!rateLimiter.check('casino.deal')) return
     const player = usePlayerStore.getState()
     if (player.money < amount || get().phase !== 'betting') return
 

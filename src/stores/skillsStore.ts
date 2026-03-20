@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
+import { rateLimiter } from '../engine/AntiExploit'
 
 export type MilitarySkill = 'attack' | 'critRate' | 'critDamage' | 'precision' | 'stamina' | 'hunger' | 'armor' | 'dodge'
 export type EconomicSkill = 'work' | 'entrepreneurship' | 'production' | 'prospection' | 'industrialist'
@@ -59,6 +60,9 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   },
 
   assignSkillPoint: (tree, skill) => {
+    // Rate limit: 500ms between skill assignments
+    if (!rateLimiter.check('assignSkill')) return false
+
     const state = get()
     const currentLevel = tree === 'military'
       ? state.military[skill as MilitarySkill]
@@ -71,8 +75,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
     if (player.skillPoints < cost) return false
 
-    // Spend skill points
-    usePlayerStore.setState({ skillPoints: player.skillPoints - cost })
+    // Spend skill points (use updater to avoid race condition)
+    usePlayerStore.setState(s => ({ skillPoints: s.skillPoints - cost }))
 
     if (tree === 'military') {
       set((s) => ({

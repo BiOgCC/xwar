@@ -498,7 +498,8 @@
    GAME TABS (Roulette / Blackjack)
    ════════════════════════════════════════ */
 .casino-tabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   background: rgba(15,23,42,0.5);
   border-radius: 6px;
@@ -507,13 +508,13 @@
 }
 
 .casino-tab {
-  flex: 1;
   padding: 7px 6px;
   font-family: var(--font-display);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-align: center;
   border: none;
   border-radius: 4px;
   background: transparent;
@@ -1180,33 +1181,69 @@
   gap: 8px;
 }
 
-.crash-bets {
+/* ── Crash Bet Slider ── */
+.crash-slider-wrap {
   display: flex;
-  gap: 4px;
-  justify-content: center;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 4px;
 }
-.crash-bet-chip {
-  padding: 8px 12px;
+.crash-slider-label {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   font-family: var(--font-display);
-  letter-spacing: 0.08em;
-  border: 2px solid rgba(251,191,36,0.2);
-  border-radius: 6px;
-  background: rgba(251,191,36,0.04);
-  color: #b89a3a;
+  letter-spacing: 0.1em;
+  color: #64748b;
+  text-align: center;
+}
+.crash-slider-amount {
+  color: #fbbf24;
+  font-size: 14px;
+  font-weight: 900;
+  text-shadow: 0 0 8px rgba(251,191,36,0.3);
+}
+.crash-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(251,191,36,0.15), rgba(251,191,36,0.3));
+  outline: none;
   cursor: pointer;
-  transition: all 0.15s;
 }
-.crash-bet-chip--active {
-  border-color: #fbbf24;
-  background: rgba(251,191,36,0.15);
-  color: #fbbf24;
-  box-shadow: 0 0 12px rgba(251,191,36,0.2);
+.crash-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fbbf24;
+  border: 2px solid #1e293b;
+  box-shadow: 0 0 10px rgba(251,191,36,0.5);
+  cursor: pointer;
+  transition: box-shadow 0.15s;
 }
-.crash-bet-chip:hover:not(:disabled) {
-  border-color: rgba(251,191,36,0.5);
-  color: #fbbf24;
+.crash-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 16px rgba(251,191,36,0.7);
+}
+.crash-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fbbf24;
+  border: 2px solid #1e293b;
+  box-shadow: 0 0 10px rgba(251,191,36,0.5);
+  cursor: pointer;
+}
+.crash-slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 7px;
+  font-weight: 600;
+  color: rgba(100,116,139,0.4);
+  letter-spacing: 0.05em;
+  padding: 0 2px;
 }
 
 .crash-auto {
@@ -1293,6 +1330,23 @@
 @keyframes crash-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.02); }
+}
+
+/* ── Footer Stats ── */
+.crash-footer {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-size: 8px;
+  color: rgba(148,163,184,0.5);
+  letter-spacing: 0.06em;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+.crash-footer__sep {
+  color: rgba(100,116,139,0.3);
+  margin: 0 4px;
 }
 
 /* ── Phase / Timer bar ── */
@@ -1438,4 +1492,577 @@
 }
 .crash-chat__send:hover {
   background: rgba(251,191,36,0.2);
+}
+
+/* ════════════════════════════════════════
+   RAFFLE — Daily Event (12-Hour Draw)
+   ════════════════════════════════════════ */
+
+.raffle-game {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+/* ── Event Banner ── */
+.raffle-event-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(251,191,36,0.12) 0%, rgba(168,85,247,0.08) 100%);
+  border: 1px solid rgba(251,191,36,0.25);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.raffle-event-banner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #fbbf24, #a855f7, #fbbf24);
+  background-size: 200% 100%;
+  animation: raffle-banner-shimmer 3s linear infinite;
+}
+
+@keyframes raffle-banner-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.raffle-event-banner__icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.raffle-event-banner__title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: #fbbf24;
+  text-shadow: 0 0 16px rgba(251,191,36,0.4);
+}
+
+.raffle-event-banner__sub {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: rgba(168,163,184,0.7);
+  margin-top: 1px;
+}
+
+/* ── Countdown Timer ── */
+.raffle-countdown {
+  text-align: center;
+  padding: 12px;
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  transition: all 300ms ease;
+}
+
+.raffle-countdown--urgent {
+  border-color: rgba(245,158,11,0.35);
+  background: rgba(245,158,11,0.06);
+}
+
+.raffle-countdown--critical {
+  border-color: rgba(239,68,68,0.40);
+  background: rgba(239,68,68,0.08);
+  animation: raffle-critical-pulse 1s ease-in-out infinite;
+}
+
+@keyframes raffle-critical-pulse {
+  0%, 100% { border-color: rgba(239,68,68,0.40); }
+  50% { border-color: rgba(239,68,68,0.70); box-shadow: 0 0 20px rgba(239,68,68,0.15); }
+}
+
+.raffle-countdown__label {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: rgba(148,163,184,0.5);
+  margin-bottom: 4px;
+}
+
+.raffle-countdown__time {
+  font-family: var(--font-mono, monospace);
+  font-size: 28px;
+  font-weight: 900;
+  color: #e2e8f0;
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  line-height: 1.2;
+}
+
+.raffle-countdown--urgent .raffle-countdown__time {
+  color: #f59e0b;
+  text-shadow: 0 0 16px rgba(245,158,11,0.4);
+}
+
+.raffle-countdown--critical .raffle-countdown__time {
+  color: #ef4444;
+  text-shadow: 0 0 20px rgba(239,68,68,0.5);
+  animation: raffle-urgent-pulse 0.8s ease-in-out infinite;
+}
+
+/* ── Timer Bar ── */
+.raffle-timer-bar {
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.raffle-timer-bar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  border-radius: 2px;
+  transition: width 1s linear;
+}
+
+.raffle-timer-bar__fill--urgent {
+  background: linear-gradient(90deg, #ef4444, #f97316);
+  animation: raffle-urgent-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes raffle-urgent-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Pot Display ── */
+.raffle-pot {
+  text-align: center;
+  padding: 16px 12px;
+  background: linear-gradient(180deg, rgba(251,191,36,0.08) 0%, rgba(251,191,36,0.02) 100%);
+  border: 1px solid rgba(251,191,36,0.15);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.raffle-pot::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #fbbf24 50%, transparent 100%);
+}
+
+.raffle-pot__label {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: rgba(251,191,36,0.6);
+  margin-bottom: 4px;
+}
+
+.raffle-pot__amount {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 900;
+  color: #fbbf24;
+  text-shadow: 0 0 30px rgba(251,191,36,0.5), 0 2px 8px rgba(0,0,0,0.5);
+  line-height: 1.2;
+}
+
+.raffle-pot__amount--drawing {
+  animation: raffle-pot-glow 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes raffle-pot-glow {
+  0% { text-shadow: 0 0 20px rgba(251,191,36,0.3), 0 2px 8px rgba(0,0,0,0.5); }
+  100% { text-shadow: 0 0 50px rgba(251,191,36,0.8), 0 0 80px rgba(251,191,36,0.3), 0 2px 8px rgba(0,0,0,0.5); }
+}
+
+.raffle-pot__info {
+  font-family: var(--font-display);
+  font-size: 8px;
+  color: rgba(148,163,184,0.5);
+  letter-spacing: 0.08em;
+  margin-top: 6px;
+}
+
+.raffle-pot__sep {
+  margin: 0 6px;
+  color: rgba(100,116,139,0.3);
+}
+
+/* ── Draw Drum ── */
+.raffle-drum {
+  text-align: center;
+  padding: 16px;
+  background: rgba(15,23,42,0.7);
+  border: 1px solid rgba(251,191,36,0.20);
+  border-radius: 8px;
+  animation: raffle-drum-shake 0.25s ease-in-out infinite alternate;
+}
+
+@keyframes raffle-drum-shake {
+  0% { transform: translateX(-1px) rotate(-0.3deg); }
+  100% { transform: translateX(1px) rotate(0.3deg); }
+}
+
+.raffle-drum__label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  color: #fbbf24;
+  margin-bottom: 8px;
+  animation: casino-pulse 1s ease infinite;
+}
+
+.raffle-drum__name-flash {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 900;
+  color: #e2e8f0;
+  text-shadow: 0 0 20px rgba(251,191,36,0.5);
+  padding: 8px 0;
+  letter-spacing: 0.04em;
+  animation: raffle-name-cycle 0.15s ease infinite;
+}
+
+@keyframes raffle-name-cycle {
+  0% { opacity: 0.6; transform: scale(0.98); }
+  50% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 0.6; transform: scale(0.98); }
+}
+
+.raffle-drum__tickets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: center;
+  padding: 8px 0 0;
+}
+
+.raffle-drum__ticket {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all 100ms ease;
+}
+
+.raffle-drum__ticket--active {
+  background: rgba(251,191,36,0.25);
+  border-color: #fbbf24;
+  box-shadow: 0 0 12px rgba(251,191,36,0.4);
+  transform: scale(1.25);
+}
+
+.raffle-drum__ticket--player {
+  border-color: rgba(34,211,138,0.3);
+}
+
+.raffle-drum__ticket--more {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 800;
+  color: #64748b;
+  background: transparent;
+  border: none;
+}
+
+/* ── Winner Display ── */
+.raffle-winner {
+  text-align: center;
+  padding: 20px 12px;
+  border-radius: 8px;
+  animation: casino-result-pop 400ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.raffle-winner--you {
+  background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(34,197,94,0.04));
+  border: 1px solid rgba(34,197,94,0.30);
+}
+
+.raffle-winner--other {
+  background: linear-gradient(135deg, rgba(251,191,36,0.10), rgba(251,191,36,0.03));
+  border: 1px solid rgba(251,191,36,0.25);
+}
+
+.raffle-winner__crown {
+  font-size: 36px;
+  margin-bottom: 4px;
+  animation: raffle-crown-bounce 0.6s ease;
+}
+
+@keyframes raffle-crown-bounce {
+  0% { transform: scale(0) rotate(-20deg); }
+  50% { transform: scale(1.3) rotate(5deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+.raffle-winner__label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  margin-bottom: 4px;
+}
+
+.raffle-winner--you .raffle-winner__label { color: #22c55e; }
+.raffle-winner--other .raffle-winner__label { color: #fbbf24; }
+
+.raffle-winner__name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 900;
+  color: #e2e8f0;
+  text-shadow: 0 0 16px rgba(255,255,255,0.15);
+  margin-bottom: 6px;
+}
+
+.raffle-winner__payout {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.raffle-winner--you .raffle-winner__payout {
+  color: #22c55e;
+  text-shadow: 0 0 24px rgba(34,197,94,0.5);
+}
+
+.raffle-winner--other .raffle-winner__payout {
+  color: #fbbf24;
+  text-shadow: 0 0 24px rgba(251,191,36,0.5);
+}
+
+.raffle-winner__sub {
+  font-family: var(--font-display);
+  font-size: 8px;
+  color: rgba(148,163,184,0.5);
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+}
+
+/* ── Buy Tickets ── */
+.raffle-buy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.raffle-buy__btn {
+  width: 100%;
+  padding: 14px 16px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 2px solid #fbbf24;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #0a0e17;
+  cursor: pointer;
+  transition: all 200ms ease;
+  box-shadow:
+    0 4px 24px rgba(245,158,11,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.raffle-buy__btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 200%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  transition: left 600ms ease;
+}
+
+.raffle-buy__btn:hover:not(:disabled)::before {
+  left: 100%;
+}
+
+.raffle-buy__btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  box-shadow: 0 6px 32px rgba(251,191,36,0.5);
+  transform: translateY(-2px);
+}
+
+.raffle-buy__btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.raffle-buy__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.raffle-buy__info {
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 8px;
+  color: rgba(148,163,184,0.6);
+  letter-spacing: 0.06em;
+}
+
+.raffle-buy__count {
+  color: #22d38a;
+  font-weight: 800;
+}
+
+.raffle-buy__max {
+  color: rgba(148,163,184,0.4);
+  margin-left: 2px;
+}
+
+.raffle-buy__sep {
+  margin: 0 6px;
+  color: rgba(100,116,139,0.3);
+}
+
+.raffle-buy__chance {
+  color: #fbbf24;
+  font-weight: 800;
+}
+
+/* ── Last Winner ── */
+.raffle-last-winner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(251,191,36,0.05);
+  border: 1px solid rgba(251,191,36,0.12);
+  border-radius: 6px;
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+
+.raffle-last-winner__label {
+  color: rgba(148,163,184,0.5);
+  font-weight: 700;
+}
+
+.raffle-last-winner__name {
+  color: #fbbf24;
+  font-weight: 800;
+}
+
+.raffle-last-winner__payout {
+  color: #22c55e;
+  font-weight: 800;
+}
+
+/* ── Participants List ── */
+.raffle-participants {
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.raffle-participants__header {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  color: #64748b;
+  letter-spacing: 0.1em;
+  padding: 6px 10px;
+  background: rgba(0,0,0,0.3);
+}
+
+.raffle-participants__list {
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.raffle-participant {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 10px;
+  font-size: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  border-left: 2px solid transparent;
+  transition: all 150ms ease;
+}
+
+.raffle-participant--you {
+  border-left-color: rgba(34,211,138,0.4);
+  background: rgba(34,211,138,0.04);
+}
+
+.raffle-participant--winner {
+  border-left-color: #fbbf24;
+  background: rgba(251,191,36,0.08);
+}
+
+.raffle-participant__name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.raffle-participant--you .raffle-participant__name {
+  color: #22d38a;
+}
+
+.raffle-participant--winner .raffle-participant__name {
+  color: #fbbf24;
+}
+
+.raffle-participant__tickets {
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: #fbbf24;
+  font-size: 9px;
+}
+
+/* ── Footer ── */
+.raffle-footer {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-size: 8px;
+  color: rgba(148,163,184,0.5);
+  letter-spacing: 0.06em;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+
+.raffle-footer b { font-weight: 800; color: #e2e8f0; }
+
+.raffle-footer__balance {
+  color: #22d38a;
+  font-weight: 800;
+}
+
+.raffle-footer__spent {
+  color: #f59e0b;
+  font-weight: 800;
+}
+
+.raffle-footer__sep {
+  color: rgba(100,116,139,0.3);
+  margin: 0 4px;
 }

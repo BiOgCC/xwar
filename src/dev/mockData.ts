@@ -3,7 +3,7 @@ import { useCyberStore } from '../stores/cyberStore'
 import { useArmyStore, rollStarQuality } from '../stores/army'
 import { useCompanyStore } from '../stores/companyStore'
 import { useMarketStore } from '../stores/market'
-import { useStockStore } from '../stores/stockStore'
+import { useStockStore, calculateFundamentals } from '../stores/stockStore'
 import { useGovernmentStore } from '../stores/governmentStore'
 import { useNewsStore } from '../stores/newsStore'
 import { useBountyStore } from '../stores/bountyStore'
@@ -227,14 +227,48 @@ export function initMockData() {
   }
 
   // ═══════════════════════════════════════════
-  //  6. STOCK EXCHANGE — initial portfolio
+  //  6. STOCK EXCHANGE — 12 nations with fundamentals-based prices
   // ═══════════════════════════════════════════
   const stockState = useStockStore.getState()
-  if (stockState.portfolio.length === 0) {
+  if (stockState.stocks.length === 0) {
+    const STOCK_NATIONS: { code: string; name: string }[] = [
+      { code: 'US', name: 'United States' },
+      { code: 'RU', name: 'Russia' },
+      { code: 'CN', name: 'China' },
+      { code: 'DE', name: 'Germany' },
+      { code: 'BR', name: 'Brazil' },
+      { code: 'IN', name: 'India' },
+      { code: 'JP', name: 'Japan' },
+      { code: 'GB', name: 'United Kingdom' },
+      { code: 'TR', name: 'Turkey' },
+      { code: 'KR', name: 'South Korea' },
+      { code: 'SA', name: 'Saudi Arabia' },
+      { code: 'AU', name: 'Australia' },
+    ]
+
+    const stocks = STOCK_NATIONS.map(({ code, name }) => {
+      const basePrice = Math.max(5, calculateFundamentals(code))
+      // Generate 10 initial history ticks with slight variance
+      const history = Array.from({ length: 10 }, (_, i) => {
+        const variance = Math.floor((Math.random() - 0.45) * basePrice * 0.08)
+        return { price: Math.max(5, basePrice + variance), timestamp: Date.now() - (10 - i) * 10000 }
+      })
+      return {
+        code, name,
+        price: basePrice,
+        prevPrice: basePrice,
+        history,
+        volume: 0,
+        netBuyVolume: 0,
+      }
+    })
+
     useStockStore.setState({
+      stocks,
+      marketPool: 500_000,
       portfolio: [
-        { code: 'US', shares: 10, avgBuyPrice: 96 },
-        { code: 'JP', shares: 5, avgBuyPrice: 88 },
+        { code: 'US', shares: 10, avgBuyPrice: stocks.find(s => s.code === 'US')?.price || 96 },
+        { code: 'JP', shares: 5, avgBuyPrice: stocks.find(s => s.code === 'JP')?.price || 88 },
       ],
     })
   }
@@ -252,11 +286,7 @@ export function initMockData() {
           president: playerName,
           taxRate: 15,
           swornEnemy: 'RU',
-          congress: [
-            { name: playerName, party: 'Patriot Front', votes: 1200 },
-            { name: 'Senator_Smith', party: 'Liberty Coalition', votes: 800 },
-            { name: 'Rep_Jones', party: 'Patriot Front', votes: 650 },
-          ],
+          congress: [playerName, 'Senator_Smith', 'Rep_Jones'],
         },
       },
     }))
@@ -270,11 +300,11 @@ export function initMockData() {
     const now = Date.now()
     useNewsStore.setState({
       events: [
-        { id: 'news_1', type: 'war', headline: '🔥 US declares war on Russia!', body: 'Tensions escalated after border incidents.', countryCode: 'US', data: {}, createdAt: now - 7200000 },
-        { id: 'news_2', type: 'battle', headline: '⚔️ Battle rages in Eastern Europe', body: 'Both sides commit armored divisions.', countryCode: 'RU', data: {}, createdAt: now - 3600000 },
-        { id: 'news_3', type: 'economy', headline: '📈 US wheat exports surge 40%', body: 'Farm subsidies drive record production.', countryCode: 'US', data: {}, createdAt: now - 1800000 },
-        { id: 'news_4', type: 'election', headline: `🏛️ ${playerName} elected President of USA`, body: 'Landslide victory with 60% of congress.', countryCode: 'US', data: {}, createdAt: now - 900000 },
-        { id: 'news_5', type: 'cyber', headline: '🖥️ Cyber attack targets German grid', body: 'Intelligence agencies investigating origin.', countryCode: 'DE', data: {}, createdAt: now - 300000 },
+        { id: 'news_1', category: 'war', message: '🔥 US declares war on Russia — tensions escalated after border incidents', timestamp: now - 7200000, icon: '⚔️', color: '#ef4444' },
+        { id: 'news_2', category: 'combat', message: '⚔️ Battle rages in Eastern Europe — both sides commit armored divisions', timestamp: now - 3600000, icon: '💥', color: '#f97316' },
+        { id: 'news_3', category: 'economy', message: '📈 US wheat exports surge 40% — farm subsidies drive record production', timestamp: now - 1800000, icon: '💰', color: '#22c55e' },
+        { id: 'news_4', category: 'system', message: `🏛️ ${playerName} elected President of USA — landslide victory`, timestamp: now - 900000, icon: '📡', color: '#64748b' },
+        { id: 'news_5', category: 'war', message: '🖥️ Cyber attack targets German power grid — investigation ongoing', timestamp: now - 300000, icon: '⚔️', color: '#ef4444' },
       ],
     })
   }

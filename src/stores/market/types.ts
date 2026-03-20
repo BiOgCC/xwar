@@ -84,7 +84,7 @@ export interface MarketTicker {
 
 // ── Order Book ──
 export type OrderItemType = 'resource' | 'equipment' | 'division'
-export type OrderSource = 'player' | 'country'
+export type OrderSource = 'player' | 'country' | 'force_vault'
 
 export interface MarketOrder {
   id: string
@@ -99,6 +99,8 @@ export interface MarketOrder {
   playerId: string
   countryCode: string
   source: OrderSource
+  armyId?: string            // for force_vault orders — which army's vault
+  divisionSource?: 'player' | 'force_vault' | 'country'  // who owns the listed division
   createdAt: number
   expiresAt: number          // auto-expiry timestamp
   status: 'open' | 'filled' | 'partial' | 'cancelled' | 'expired'
@@ -161,7 +163,12 @@ export interface MarketState {
 
   // Divisions
   placeDivisionSellOrder: (divisionId: string, price: number) => { success: boolean; message: string }
+  placeVaultDivisionSellOrder: (armyId: string, divisionId: string, price: number) => { success: boolean; message: string }
+  placeCountryDivisionSellOrder: (countryCode: string, divisionId: string, price: number) => { success: boolean; message: string }
   buyDivision: (orderId: string) => { success: boolean; message: string }
+
+  // Force vault fund
+  placeForceVaultOrder: (armyId: string, type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => { success: boolean; message: string }
 
   // Country fund
   placeCountryOrder: (type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => { success: boolean; message: string }

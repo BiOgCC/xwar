@@ -208,9 +208,25 @@ export default function CompaniesTab() {
                 💼 Ent: {Math.round(player.entrepreneurship)}/{player.maxEntrepreneurship}
               </span>
             </div>
-            <button className="ctab-build-btn" onClick={() => setShowBuild(true)}>
-              + Build
-            </button>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                className="ctab-build-btn"
+                style={{ background: 'rgba(34,211,138,0.12)', color: '#22d38a', border: '1px solid rgba(34,211,138,0.3)' }}
+                onClick={() => {
+                  const result = companyStore.collectAll()
+                  if (result.collected > 0) {
+                    flash(`📦 Collected from ${result.collected} companies!`)
+                  } else {
+                    flash('Nothing to collect')
+                  }
+                }}
+              >
+                📦 Collect All
+              </button>
+              <button className="ctab-build-btn" onClick={() => setShowBuild(true)}>
+                + Build
+              </button>
+            </div>
           </div>
 
           <div className="ctab-company-list">

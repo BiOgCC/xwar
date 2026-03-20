@@ -1182,3 +1182,356 @@
   color: #475569;
   cursor: not-allowed;
 }
+
+/* ═══════════════════════════════════════════════════════
+   REDESIGNED TRADING TAB — Compact Strip + Chart + Book
+   ═══════════════════════════════════════════════════════ */
+
+/* ── RESOURCE SELECTOR STRIP ── */
+.mkt-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 3px;
+  padding: 6px 0;
+}
+
+.mkt-strip__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 40px;
+  padding: 4px 4px 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: rgba(255,255,255,0.02);
+  transition: all 0.15s;
+}
+.mkt-strip__item:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.08);
+}
+.mkt-strip__item--active {
+  background: rgba(59,130,246,0.12);
+  border-color: rgba(59,130,246,0.4);
+  box-shadow: 0 0 8px rgba(59,130,246,0.2);
+}
+.mkt-strip__icon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mkt-strip__price {
+  font-size: 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: #cbd5e1;
+  line-height: 1;
+}
+.mkt-strip__change {
+  font-size: 7px;
+  line-height: 1;
+}
+.mkt-strip__change--up { color: #22d38a; }
+.mkt-strip__change--down { color: #ef4444; }
+
+/* ── DETAIL HEADER ── */
+.mkt-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.04);
+  margin-bottom: 6px;
+}
+.mkt-detail-header__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mkt-detail-header__name {
+  font-size: 13px;
+  font-weight: 900;
+  font-family: var(--font-display);
+  color: #e2e8f0;
+  letter-spacing: 0.5px;
+}
+.mkt-detail-header__sub {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: #fbbf24;
+}
+.mkt-detail-header__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mkt-detail-header__change {
+  font-size: 11px;
+  font-weight: 800;
+  font-family: var(--font-display);
+}
+.mkt-detail-header__change--up { color: #22d38a; }
+.mkt-detail-header__change--down { color: #ef4444; }
+.mkt-detail-header__close {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.mkt-detail-header__close:hover {
+  color: #ef4444;
+  background: rgba(239,68,68,0.1);
+}
+
+/* ── PRICE CHART ── */
+.mkt-chart {
+  height: 110px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.04);
+  margin-bottom: 6px;
+  position: relative;
+  overflow: hidden;
+}
+.mkt-chart canvas {
+  display: block;
+}
+.mkt-chart__legend {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  font-size: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+/* ── BUY/SELL FORM ── */
+.mkt-form {
+  background: rgba(8,12,18,0.7);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.mkt-form__toggle {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.mkt-form__toggle-btn {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: var(--font-display);
+  letter-spacing: 1px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: transparent;
+  color: #64748b;
+}
+.mkt-form__toggle-btn--buy {
+  border-color: rgba(34,211,138,0.5);
+  background: rgba(34,211,138,0.12);
+  color: #22d38a;
+}
+.mkt-form__toggle-btn--sell {
+  border-color: rgba(239,68,68,0.5);
+  background: rgba(239,68,68,0.12);
+  color: #ef4444;
+}
+.mkt-form__inputs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.mkt-form__field { flex: 1; }
+.mkt-form__label {
+  font-size: 7px;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 2px;
+}
+.mkt-form__input {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 11px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 3px;
+  color: #fbbf24;
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 700;
+  outline: none;
+  box-sizing: border-box;
+}
+.mkt-form__input:focus {
+  border-color: rgba(34,211,138,0.4);
+}
+.mkt-form__input--qty { color: #e2e8f0; }
+.mkt-form__quick {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.mkt-form__qbtn {
+  padding: 2px 5px;
+  font-size: 8px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 2px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mkt-form__qbtn:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.mkt-form__qbtn--active { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.15); }
+.mkt-form__qbtn--max { background: rgba(34,211,138,0.08); border-color: rgba(34,211,138,0.2); color: #22d38a; }
+.mkt-form__total {
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: center;
+  margin-bottom: 6px;
+  font-family: var(--font-display);
+}
+.mkt-form__total-val { color: #fbbf24; font-weight: 900; font-size: 12px; }
+.mkt-form__tax { font-size: 7px; color: #475569; }
+.mkt-form__submit {
+  width: 100%;
+  padding: 7px 0;
+  font-size: 10px;
+  font-weight: 900;
+  font-family: var(--font-display);
+  letter-spacing: 1px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+.mkt-form__submit--buy {
+  border: 1px solid rgba(34,211,138,0.5);
+  background: rgba(34,211,138,0.12);
+  color: #22d38a;
+}
+.mkt-form__submit--buy:hover {
+  background: rgba(34,211,138,0.2);
+  box-shadow: 0 0 12px rgba(34,211,138,0.25);
+}
+.mkt-form__submit--sell {
+  border: 1px solid rgba(239,68,68,0.5);
+  background: rgba(239,68,68,0.12);
+  color: #ef4444;
+}
+.mkt-form__submit--sell:hover {
+  background: rgba(239,68,68,0.2);
+  box-shadow: 0 0 12px rgba(239,68,68,0.25);
+}
+
+/* ── ORDERBOOK WITH NAMES ── */
+.mkt-book {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.mkt-book__side { flex: 1; }
+.mkt-book__title {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.mkt-book__title--bids { color: #22d38a; }
+.mkt-book__title--asks { color: #ef4444; }
+.mkt-book__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 2px;
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+  transition: background 0.1s;
+  border-radius: 2px;
+}
+.mkt-book__row:hover {
+  background: rgba(255,255,255,0.03);
+}
+.mkt-book__rank {
+  font-size: 8px;
+  color: #475569;
+  font-weight: 700;
+  font-family: var(--font-display);
+  min-width: 14px;
+}
+.mkt-book__avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.mkt-book__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mkt-book__name {
+  font-size: 8px;
+  font-weight: 700;
+  color: #cbd5e1;
+  font-family: var(--font-display);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mkt-book__details {
+  display: flex;
+  gap: 6px;
+  font-size: 8px;
+}
+.mkt-book__price {
+  font-weight: 700;
+  font-family: var(--font-display);
+}
+.mkt-book__price--bid { color: #22d38a; }
+.mkt-book__price--ask { color: #ef4444; }
+.mkt-book__qty {
+  color: #64748b;
+  font-family: var(--font-display);
+}
+.mkt-book__empty {
+  font-size: 8px;
+  color: #334155;
+  font-style: italic;
+  padding: 8px 0;
+  text-align: center;
+}

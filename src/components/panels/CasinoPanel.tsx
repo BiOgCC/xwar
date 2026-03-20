@@ -3,10 +3,11 @@ import BlackjackGame from './BlackjackGame'
 import SlotsGame from './SlotsGame'
 import CrashGame from './CrashGame'
 import RouletteGame from './casino/RouletteGame'
+import RaffleGame from './casino/RaffleGame'
 import '../../styles/casino.css'
 
 export default function CasinoPanel() {
-  const [activeGame, setActiveGame] = useState<'roulette' | 'blackjack' | 'slots' | 'crash'>('roulette')
+  const [activeGame, setActiveGame] = useState<'roulette' | 'blackjack' | 'slots' | 'crash' | 'raffle'>('roulette')
 
   return (
     <div className="casino-panel">
@@ -42,6 +43,12 @@ export default function CasinoPanel() {
         >
           🚀 CRASH
         </button>
+        <button
+          className={`casino-tab ${activeGame === 'raffle' ? 'casino-tab--active' : ''}`}
+          onClick={() => setActiveGame('raffle')}
+        >
+          🎟️ RAFFLE
+        </button>
       </div>
 
       {/* ═══ GAME CONTENT ═══ */}
@@ -49,6 +56,7 @@ export default function CasinoPanel() {
       {activeGame === 'blackjack' && <BlackjackGame />}
       {activeGame === 'slots' && <SlotsGame />}
       {activeGame === 'crash' && <CrashGame />}
+      {activeGame === 'raffle' && <RaffleGame />}
     </div>
   )
 }

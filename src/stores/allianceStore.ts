@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useNewsStore } from './newsStore'
+import { useWorldStore } from './worldStore'
 
 /* ══════════════════════════════════════════════
    XWAR — Alliance Wars Store
@@ -98,9 +99,24 @@ const SEED_ALLIANCES: Alliance[] = [
   },
 ]
 
+export interface AllianceFundProposal {
+  id: string
+  proposerId: string
+  targetCountryCode: string
+  amount: number
+  direction: 'to_country' | 'to_alliance'  // to_country = alliance→fund, to_alliance = fund→alliance
+  votesFor: string[]
+  votesAgainst: string[]
+  status: 'voting' | 'passed' | 'rejected' | 'expired'
+  proposedAt: number
+  expiresAt: number
+}
+
 export interface AllianceState {
   alliances: Alliance[]
   playerAllianceId: string | null
+  lastTreatySnapshotAt: number  // timestamp of last 12h snapshot
+  fundProposals: AllianceFundProposal[]
 
   createAlliance: (name: string, tag: string) => { success: boolean; message: string }
   joinAlliance: (allianceId: string) => { success: boolean; message: string }
@@ -109,13 +125,21 @@ export interface AllianceState {
   declareWar: (targetAllianceId: string) => { success: boolean; message: string }
   voteWar: (warId: string, vote: 'for' | 'against') => { success: boolean; message: string }
   resolveWars: () => void
+  processTreatySnapshot: () => void
   getPlayerAlliance: () => Alliance | null
+
+  // Alliance Congress — fund transfers require vote
+  proposeFundTransfer: (targetCountryCode: string, amount: number, direction: 'to_country' | 'to_alliance') => { success: boolean; message: string }
+  voteOnFundTransfer: (proposalId: string, vote: 'for' | 'against') => { success: boolean; message: string }
+  resolveFundProposals: () => void
 }
 
 export const useAllianceStore = create<AllianceState>((set, get) => ({
   alliances: SEED_ALLIANCES,
   // Player starts in NATO (same as Commander_X)
   playerAllianceId: 'alliance_nato',
+  lastTreatySnapshotAt: Date.now(),
+  fundProposals: [],
 
   createAlliance: (name, tag) => {
     const player = usePlayerStore.getState()
@@ -396,4 +420,236 @@ export const useAllianceStore = create<AllianceState>((set, get) => ({
     const state = get()
     return state.alliances.find(a => a.id === state.playerAllianceId) || null
   },
+
+  processTreatySnapshot: () => {
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000
+    const now = Date.now()
+    const state = get()
+    if (now - state.lastTreatySnapshotAt < TWELVE_HOURS_MS) return
+
+    set(s => ({
+      lastTreatySnapshotAt: now,
+      alliances: s.alliances.map(alliance => {
+        // 1. Treasury interest: +1% per 12h cycle
+        const interest = Math.floor(alliance.treasury * 0.01)
+        const newTreasury = alliance.treasury + interest
+
+        // 2. Auto-resolve stale war votes (open > 12h)
+        const updatedWars = alliance.wars.map(war => {
+          if (war.status !== 'voting') return war
+          if (now - war.declaredAt < TWELVE_HOURS_MS) return war
+
+          // Majority wins, ties = peace
+          const forCount = war.votesFor.length
+          const againstCount = war.votesAgainst.length
+          const newStatus = forCount > againstCount ? 'active' as const : 'peace' as const
+
+          if (newStatus === 'active') {
+            useNewsStore.getState().pushEvent('war',
+              `[${alliance.tag}] WAR vote auto-resolved → ACTIVE against ${war.targetAllianceName}!`
+            )
+          }
+
+          return { ...war, status: newStatus }
+        })
+
+        return {
+          ...alliance,
+          treasury: newTreasury,
+          wars: updatedWars,
+        }
+      }),
+    }))
+
+    useNewsStore.getState().pushEvent('economy', '🤝 Alliance treaty snapshot: treasury interest applied, stale votes resolved')
+  },
+
+  // ══════════════════════════════════════════════════════════════
+  // ALLIANCE CONGRESS — Fund Transfer Proposals (require vote)
+  // ══════════════════════════════════════════════════════════════
+
+  proposeFundTransfer: (targetCountryCode, amount, direction) => {
+    const player = usePlayerStore.getState()
+    const state = get()
+
+    if (!state.playerAllianceId) return { success: false, message: 'Not in an alliance' }
+
+    const alliance = state.alliances.find(a => a.id === state.playerAllianceId)
+    if (!alliance) return { success: false, message: 'Alliance not found' }
+
+    // Only leader/officer can propose
+    const member = alliance.members.find(m => m.name === player.name)
+    if (!member || member.role === 'member')
+      return { success: false, message: 'Only leaders and officers can propose fund transfers' }
+
+    // Target country must belong to an alliance member
+    if (!alliance.members.some(m => m.countryCode === targetCountryCode))
+      return { success: false, message: 'Target country must belong to an alliance member' }
+
+    if (amount < 10_000) return { success: false, message: 'Minimum transfer: $10,000' }
+
+    // Check source balance
+    if (direction === 'to_country') {
+      if (alliance.treasury < amount)
+        return { success: false, message: `Alliance treasury has $${alliance.treasury.toLocaleString()}, need $${amount.toLocaleString()}` }
+    }
+    // For to_alliance, we check the national fund balance at execution time (after vote passes)
+
+    const proposal: AllianceFundProposal = {
+      id: `fp_${Date.now()}`,
+      proposerId: player.name,
+      targetCountryCode,
+      amount,
+      direction,
+      votesFor: [player.name],  // proposer auto-votes yes
+      votesAgainst: [],
+      status: alliance.members.length === 1 ? 'passed' : 'voting',
+      proposedAt: Date.now(),
+      expiresAt: Date.now() + 12 * 60 * 60 * 1000, // 12h expiry
+    }
+
+    // If solo alliance, execute immediately
+    if (alliance.members.length === 1) {
+      const result = executeFundTransfer(alliance, proposal)
+      if (!result.success) return result
+      set(s => ({ fundProposals: [...s.fundProposals, { ...proposal, status: 'passed' }] }))
+      return { success: true, message: `Transfer executed: $${amount.toLocaleString()} ${direction === 'to_country' ? 'to national fund' : 'to alliance treasury'}` }
+    }
+
+    set(s => ({ fundProposals: [...s.fundProposals, proposal] }))
+    useNewsStore.getState().pushEvent('alliance',
+      `📋 [${alliance.tag}] Fund transfer proposal: $${amount.toLocaleString()} ${direction === 'to_country' ? '→ national fund' : '→ alliance treasury'}. Vote now!`
+    )
+
+    return { success: true, message: `Proposal created. Members must vote (majority required).` }
+  },
+
+  voteOnFundTransfer: (proposalId, vote) => {
+    const player = usePlayerStore.getState()
+    const state = get()
+
+    if (!state.playerAllianceId) return { success: false, message: 'Not in an alliance' }
+
+    const alliance = state.alliances.find(a => a.id === state.playerAllianceId)
+    if (!alliance) return { success: false, message: 'Alliance not found' }
+
+    // Must be a member
+    if (!alliance.members.some(m => m.name === player.name))
+      return { success: false, message: 'Not in this alliance' }
+
+    const proposal = state.fundProposals.find(p => p.id === proposalId && p.status === 'voting')
+    if (!proposal) return { success: false, message: 'Proposal not found or already resolved' }
+
+    // Remove any existing vote
+    const votesFor = proposal.votesFor.filter(n => n !== player.name)
+    const votesAgainst = proposal.votesAgainst.filter(n => n !== player.name)
+
+    if (vote === 'for') votesFor.push(player.name)
+    else votesAgainst.push(player.name)
+
+    // Check majority
+    const majority = Math.ceil(alliance.members.length / 2)
+    let newStatus: AllianceFundProposal['status'] = 'voting'
+
+    if (votesFor.length >= majority) {
+      newStatus = 'passed'
+      // Execute the transfer
+      const execResult = executeFundTransfer(alliance, { ...proposal, votesFor, votesAgainst })
+      if (!execResult.success) {
+        newStatus = 'rejected' // Transfer failed (insufficient balance etc.)
+      }
+    } else if (votesAgainst.length >= majority) {
+      newStatus = 'rejected'
+    }
+
+    set(s => ({
+      fundProposals: s.fundProposals.map(p =>
+        p.id === proposalId ? { ...p, votesFor, votesAgainst, status: newStatus } : p
+      ),
+    }))
+
+    if (newStatus === 'passed') {
+      useNewsStore.getState().pushEvent('alliance',
+        `✅ [${alliance.tag}] Fund transfer PASSED: $${proposal.amount.toLocaleString()}`
+      )
+    } else if (newStatus === 'rejected') {
+      useNewsStore.getState().pushEvent('alliance',
+        `❌ [${alliance.tag}] Fund transfer REJECTED`
+      )
+    }
+
+    return { success: true, message: `Vote recorded: ${vote}` }
+  },
+
+  resolveFundProposals: () => {
+    const now = Date.now()
+    set(s => ({
+      fundProposals: s.fundProposals.map(p => {
+        if (p.status !== 'voting') return p
+        if (now < p.expiresAt) return p
+
+        // Auto-resolve expired proposals — majority wins, ties = rejected
+        const forCount = p.votesFor.length
+        const againstCount = p.votesAgainst.length
+        let newStatus: AllianceFundProposal['status'] = forCount > againstCount ? 'passed' : 'rejected'
+
+        if (newStatus === 'passed') {
+          const state = get()
+          const alliance = state.alliances.find(a =>
+            a.members.some(m => m.name === p.proposerId)
+          )
+          if (alliance) {
+            const result = executeFundTransfer(alliance, p)
+            if (!result.success) newStatus = 'rejected'
+          } else {
+            newStatus = 'rejected'
+          }
+        }
+
+        return { ...p, status: newStatus }
+      }),
+    }))
+  },
 }))
+
+// ── Helper: execute a fund transfer (called after vote passes) ──
+function executeFundTransfer(
+  alliance: Alliance,
+  proposal: AllianceFundProposal
+): { success: boolean; message: string } {
+  try {
+    const worldState = useWorldStore.getState()
+
+    if (proposal.direction === 'to_country') {
+      // Alliance treasury → national fund
+      if (alliance.treasury < proposal.amount) {
+        return { success: false, message: 'Insufficient alliance treasury' }
+      }
+      // Deduct from alliance treasury
+      useAllianceStore.setState(s => ({
+        alliances: s.alliances.map(a =>
+          a.id === alliance.id ? { ...a, treasury: a.treasury - proposal.amount } : a
+        ),
+      }))
+      // Add to national fund
+      worldState.addTreasuryTax(proposal.targetCountryCode, proposal.amount)
+    } else {
+      // National fund → alliance treasury
+      const country = worldState.getCountry(proposal.targetCountryCode)
+      if (!country || country.fund.money < proposal.amount) {
+        return { success: false, message: 'Insufficient national fund balance' }
+      }
+      worldState.spendFromFund(proposal.targetCountryCode, { money: proposal.amount })
+      useAllianceStore.setState(s => ({
+        alliances: s.alliances.map(a =>
+          a.id === alliance.id ? { ...a, treasury: a.treasury + proposal.amount } : a
+        ),
+      }))
+    }
+
+    return { success: true, message: 'Transfer executed' }
+  } catch (e) {
+    console.warn('[Alliance] Fund transfer failed:', e)
+    return { success: false, message: 'Transfer failed' }
+  }
+}

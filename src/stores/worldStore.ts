@@ -1,16 +1,7 @@
 import { create } from 'zustand'
 
-// ── National Fund — single source of truth for country resources ──
-export interface NationalFund {
-  money: number
-  oil: number
-  scrap: number
-  materialX: number
-  bitcoin: number
-  jets: number
-}
-
-export type NationalFundKey = keyof NationalFund
+import type { NationalFund, NationalFundKey, DepositType, RegionalDeposit, ConqueredResourceType, Country, War } from '../types/world.types'
+export type { NationalFund, NationalFundKey, DepositType, RegionalDeposit, ConqueredResourceType, Country, War }
 
 // Tiered seed funds scaled by country economic size
 const FUND_LARGE: NationalFund  = { money: 50_000_000, oil: 5_000_000, scrap: 5_000_000, materialX: 5_000_000, bitcoin: 50_000, jets: 100 }
@@ -24,49 +15,6 @@ function getFundForTier(tier: FundTier): NationalFund {
   return { ...base }
 }
 
-export interface Country {
-  name: string
-  code: string
-  controller: string
-  empire: string | null
-  population: number
-  regions: number
-  military: number
-  fund: NationalFund
-  color: string
-  conqueredResources: ConqueredResourceType[]
-  activeDepositBonus: { type: DepositType; bonus: number } | null
-  portLevel: number
-  airportLevel: number
-  bunkerLevel: number
-  militaryBaseLevel: number
-  hasPort: boolean
-  hasAirport: boolean
-  taxExempt: boolean
-}
-
-export interface War {
-  id: string
-  attacker: string
-  defender: string
-  startedAt: number
-  status: 'active' | 'ceasefire' | 'ended'
-}
-
-// ── Regional Deposits ──
-export type DepositType = 'wheat' | 'fish' | 'steak' | 'oil' | 'materialx'
-
-export interface RegionalDeposit {
-  id: string
-  type: DepositType
-  countryCode: string
-  bonus: number        // 30
-  discoveredBy: string | null
-  active: boolean
-}
-
-// ── Conquered Resources ──
-export type ConqueredResourceType = 'Iron' | 'Titanium' | 'Saltpeter' | 'Rubber' | 'Silicon' | 'Uranium'
 export const CONQUERED_RESOURCE_TYPES: ConqueredResourceType[] = ['Iron', 'Titanium', 'Saltpeter', 'Rubber', 'Silicon', 'Uranium']
 
 /** Calculate the total production bonus from a country's conquered resources */
@@ -280,8 +228,26 @@ const INITIAL_DEPOSITS: RegionalDeposit[] = [
 ]
 
 const makeCountry = (name: string, code: string, controller: string, empire: string | null, population: number, regions: number, military: number, fundTier: FundTier, color: string, conqueredResources: ConqueredResourceType[] = []): Country => ({
-  name, code, controller, empire, population, regions, military, fund: getFundForTier(fundTier), color, conqueredResources, activeDepositBonus: null, portLevel: 1, airportLevel: 1, bunkerLevel: 1, militaryBaseLevel: 1, hasPort: true, hasAirport: true, taxExempt: false,
+  name, code, controller, empire, population, regions, military, fund: getFundForTier(fundTier), forceVault: { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }, color, conqueredResources, activeDepositBonus: null, portLevel: 1, airportLevel: 1, bunkerLevel: 1, militaryBaseLevel: 1, hasPort: true, hasAirport: true, taxExempt: false,
 })
+
+/** Compute next midnight UTC from now */
+function getNextDailyReset(): number {
+  const now = new Date()
+  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+  return tomorrow.getTime()
+}
+
+/** Get current UTC date key for economy ledger */
+function getUTCDayKey(): string {
+  const d = new Date()
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+}
+
+export interface FundSnapshot {
+  timestamp: number
+  funds: Record<string, number>  // countryCode -> fund.money
+}
 
 export interface WorldState {
   countries: Country[]
@@ -289,21 +255,77 @@ export interface WorldState {
   deposits: RegionalDeposit[]
   turn: number
   nextTurnIn: number
+  dailyResetAt: number
+  lastAutoIncomeAt: number  // timestamp of last 8h income tick
+  fundHistory: FundSnapshot[]  // treasury snapshots for charting
+  lastFundSnapshotAt: number   // timestamp of last hourly snapshot
   
+  // War Fund
+  warFund: number  // Global pool fed by all active battles
+  warFundDamageTracker: Record<string, number>  // countryCode -> total damage dealt today
+  warFundBattleOutcomes: Record<string, { wins: number; losses: number }>  // countryCode -> wins/losses today
+
+  // Economy Ledger — tracks money supply flows
+  economyLedger: {
+    dayKey: string                                // UTC date key for current day
+    moneyCreated: Record<string, number>          // source -> total $ created today
+    moneyDestroyed: Record<string, number>        // sink -> total $ destroyed today
+    totalCreatedToday: number
+    totalDestroyedToday: number
+    netFlowToday: number                          // created - destroyed
+    history: Array<{                              // daily snapshots (last 30 days)
+      dayKey: string
+      totalCreated: number
+      totalDestroyed: number
+      netFlow: number
+      topSources: Array<{ source: string; amount: number }>
+      topSinks: Array<{ source: string; amount: number }>
+    }>
+  }
+
   // Actions
   declareWar: (attackerIso: string, defenderIso: string) => void
   canAttack: (attackerIso: string, defenderIso: string) => boolean
   addTreasuryTax: (countryCode: string, amount: number) => void
   addToFund: (countryCode: string, resource: NationalFundKey, amount: number) => void
   spendFromFund: (countryCode: string, costs: Partial<NationalFund>) => boolean
+  transferToForceVault: (countryCode: string, resource: NationalFundKey, amount: number) => boolean
+  spendFromForceVault: (countryCode: string, costs: Partial<Record<NationalFundKey, number>>) => boolean
   discoverDeposit: (depositId: string, playerName: string) => void
   getCountry: (code: string) => Country | undefined
   occupyCountry: (targetIso: string, conquerorIso: string, taxExempt: boolean) => void
+  getTimeUntilDailyReset: () => number
+  processDailyReset: () => void
+  processAutoIncome: () => void
+  snapshotFundHistory: () => void
+  contributeToWarFund: (attackerId: string, defenderId: string) => void
+  recordWarFundDamage: (countryCode: string, damage: number) => void
+  recordWarFundBattleOutcome: (winnerCode: string, loserCode: string) => void
+  distributeWarFund: () => void
+  // Economy Ledger
+  recordEconFlow: (source: string, amount: number, type: 'created' | 'destroyed') => void
+  getEconomySnapshot: () => WorldState['economyLedger']
 }
 
 export const useWorldStore = create<WorldState>((set, get) => ({
   turn: 247,
   nextTurnIn: 342,
+  dailyResetAt: getNextDailyReset(),
+  lastAutoIncomeAt: Date.now(),
+  fundHistory: [],
+  lastFundSnapshotAt: 0,
+  warFund: 0,
+  warFundDamageTracker: {},
+  warFundBattleOutcomes: {},
+  economyLedger: {
+    dayKey: getUTCDayKey(),
+    moneyCreated: {},
+    moneyDestroyed: {},
+    totalCreatedToday: 0,
+    totalDestroyedToday: 0,
+    netFlowToday: 0,
+    history: [],
+  },
 
   deposits: INITIAL_DEPOSITS,
 
@@ -511,6 +533,42 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     return true
   },
 
+  transferToForceVault: (countryCode: string, resource: NationalFundKey, amount: number) => {
+    const country = get().countries.find(c => c.code === countryCode)
+    if (!country || amount <= 0) return false
+    if (country.fund[resource] < amount) return false
+    set((s) => ({
+      countries: s.countries.map(c => {
+        if (c.code !== countryCode) return c
+        return {
+          ...c,
+          fund: { ...c.fund, [resource]: c.fund[resource] - amount },
+          forceVault: { ...c.forceVault, [resource]: c.forceVault[resource] + amount },
+        }
+      })
+    }))
+    return true
+  },
+
+  spendFromForceVault: (countryCode: string, costs: Partial<Record<NationalFundKey, number>>) => {
+    const country = get().countries.find(c => c.code === countryCode)
+    if (!country) return false
+    for (const [key, amount] of Object.entries(costs)) {
+      if (amount && country.forceVault[key as NationalFundKey] < amount) return false
+    }
+    set((s) => ({
+      countries: s.countries.map(c => {
+        if (c.code !== countryCode) return c
+        const newVault = { ...c.forceVault }
+        for (const [key, amount] of Object.entries(costs)) {
+          if (amount) newVault[key as NationalFundKey] -= amount
+        }
+        return { ...c, forceVault: newVault }
+      })
+    }))
+    return true
+  },
+
   discoverDeposit: (depositId, playerName) => set((s) => ({
     deposits: s.deposits.map(d =>
       d.id === depositId ? { ...d, discoveredBy: playerName, active: true } : d
@@ -553,5 +611,201 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     }
 
     return { wars: [...state.wars, newWar] }
-  })
+  }),
+
+  getTimeUntilDailyReset: () => {
+    const ms = get().dailyResetAt - Date.now()
+    return Math.max(0, Math.floor(ms / 1000))
+  },
+
+  processDailyReset: () => {
+    const state = get()
+    if (Date.now() < state.dailyResetAt) return
+
+    // Distribute war fund before resetting
+    get().distributeWarFund()
+
+    // Snapshot economy ledger before resetting
+    const ledger = state.economyLedger
+    const topSources = Object.entries(ledger.moneyCreated)
+      .map(([source, amount]) => ({ source, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 10)
+    const topSinks = Object.entries(ledger.moneyDestroyed)
+      .map(([source, amount]) => ({ source, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 10)
+
+    const dailySnapshot = {
+      dayKey: ledger.dayKey,
+      totalCreated: ledger.totalCreatedToday,
+      totalDestroyed: ledger.totalDestroyedToday,
+      netFlow: ledger.netFlowToday,
+      topSources,
+      topSinks,
+    }
+
+    set({
+      dailyResetAt: getNextDailyReset(),
+      turn: state.turn + 1,
+      warFundDamageTracker: {},
+      warFundBattleOutcomes: {},
+      // Reset economy ledger for new day, archive previous day
+      economyLedger: {
+        dayKey: getUTCDayKey(),
+        moneyCreated: {},
+        moneyDestroyed: {},
+        totalCreatedToday: 0,
+        totalDestroyedToday: 0,
+        netFlowToday: 0,
+        history: [dailySnapshot, ...ledger.history].slice(0, 30),
+      },
+    })
+  },
+
+  // ── War Fund: drain 2% from both treasuries into global pool ──
+  contributeToWarFund: (attackerId, defenderId) => set(state => {
+    const rate = 0.02
+    let totalContribution = 0
+    const updatedCountries = state.countries.map(c => {
+      if (c.code === attackerId || c.code === defenderId) {
+        const drain = Math.floor(c.fund.money * rate)
+        if (drain > 0) {
+          totalContribution += drain
+          return { ...c, fund: { ...c.fund, money: c.fund.money - drain } }
+        }
+      }
+      return c
+    })
+    return {
+      countries: updatedCountries,
+      warFund: state.warFund + totalContribution,
+    }
+  }),
+
+  // ── Track damage per country for daily distribution ──
+  recordWarFundDamage: (countryCode, damage) => set(state => ({
+    warFundDamageTracker: {
+      ...state.warFundDamageTracker,
+      [countryCode]: (state.warFundDamageTracker[countryCode] || 0) + damage,
+    },
+  })),
+
+  // ── Record battle outcome for win/loss multiplier ──
+  recordWarFundBattleOutcome: (winnerCode, loserCode) => set(state => {
+    const outcomes = { ...state.warFundBattleOutcomes }
+    if (!outcomes[winnerCode]) outcomes[winnerCode] = { wins: 0, losses: 0 }
+    if (!outcomes[loserCode]) outcomes[loserCode] = { wins: 0, losses: 0 }
+    outcomes[winnerCode] = { ...outcomes[winnerCode], wins: outcomes[winnerCode].wins + 1 }
+    outcomes[loserCode] = { ...outcomes[loserCode], losses: outcomes[loserCode].losses + 1 }
+    return { warFundBattleOutcomes: outcomes }
+  }),
+
+  // ── 24h distribution: damage-proportional, losers get 0.3x multiplier ──
+  distributeWarFund: () => {
+    const state = get()
+    const pool = state.warFund
+    if (pool <= 0) return
+
+    const dmgTracker = state.warFundDamageTracker
+    const outcomes = state.warFundBattleOutcomes
+
+    // Calculate weighted damage: winners get 1.0x, losers get 0.3x
+    const weightedDmg: Record<string, number> = {}
+    let totalWeighted = 0
+
+    for (const [code, rawDmg] of Object.entries(dmgTracker)) {
+      const record = outcomes[code] || { wins: 0, losses: 0 }
+      // If more losses than wins, apply 0.3x penalty
+      const multiplier = record.losses > record.wins ? 0.3 : 1.0
+      const weighted = rawDmg * multiplier
+      weightedDmg[code] = weighted
+      totalWeighted += weighted
+    }
+
+    if (totalWeighted <= 0) return
+
+    // Distribute to country treasuries proportionally
+    const updatedCountries = state.countries.map(c => {
+      const share = weightedDmg[c.code]
+      if (!share || share <= 0) return c
+      const payout = Math.floor(pool * (share / totalWeighted))
+      if (payout <= 0) return c
+      return { ...c, fund: { ...c.fund, money: c.fund.money + payout } }
+    })
+
+    set({ countries: updatedCountries, warFund: 0 })
+    console.log(`[WarFund] Distributed $${pool.toLocaleString()} across ${Object.keys(weightedDmg).length} countries`)
+  },
+
+  processAutoIncome: () => set((state) => {
+    const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000
+    const now = Date.now()
+    if (now - state.lastAutoIncomeAt < EIGHT_HOURS_MS) return state
+
+    // Generate income for every country based on population + infrastructure
+    const updatedCountries = state.countries.map(country => {
+      const infraMultiplier = 1 +
+        (country.portLevel * 0.05) +
+        (country.airportLevel * 0.05) +
+        (country.militaryBaseLevel * 0.03) +
+        (country.bunkerLevel * 0.02)
+
+      const depositBonus = country.conqueredResources.length * 0.03
+
+      const baseMoney = country.population * 0.1
+      const baseResource = country.population * 0.005
+
+      const totalMultiplier = infraMultiplier + depositBonus
+
+      const fund = { ...country.fund }
+      fund.money += Math.floor(baseMoney * totalMultiplier)
+      fund.oil += Math.floor(baseResource * totalMultiplier * 0.3)
+      fund.scrap += Math.floor(baseResource * totalMultiplier * 0.3)
+      fund.materialX += Math.floor(baseResource * totalMultiplier * 0.2)
+
+      return { ...country, fund }
+    })
+
+    return {
+      countries: updatedCountries,
+      lastAutoIncomeAt: now,
+    }
+  }),
+
+  snapshotFundHistory: () => set((state) => {
+    const ONE_HOUR_MS = 60 * 60 * 1000
+    const now = Date.now()
+    if (now - state.lastFundSnapshotAt < ONE_HOUR_MS) return state
+
+    const funds: Record<string, number> = {}
+    state.countries.forEach(c => { funds[c.code] = c.fund.money })
+
+    const snapshot = { timestamp: now, funds }
+    const MAX_SNAPSHOTS = 4320 // 180 days × 24 hours
+
+    return {
+      fundHistory: [...state.fundHistory.slice(-(MAX_SNAPSHOTS - 1)), snapshot],
+      lastFundSnapshotAt: now,
+    }
+  }),
+
+  // ── Economy Ledger ──
+  recordEconFlow: (source, amount, type) => {
+    if (amount <= 0) return
+    set(state => {
+      const ledger = { ...state.economyLedger }
+      if (type === 'created') {
+        ledger.moneyCreated = { ...ledger.moneyCreated, [source]: (ledger.moneyCreated[source] || 0) + amount }
+        ledger.totalCreatedToday += amount
+      } else {
+        ledger.moneyDestroyed = { ...ledger.moneyDestroyed, [source]: (ledger.moneyDestroyed[source] || 0) + amount }
+        ledger.totalDestroyedToday += amount
+      }
+      ledger.netFlowToday = ledger.totalCreatedToday - ledger.totalDestroyedToday
+      return { economyLedger: ledger }
+    })
+  },
+
+  getEconomySnapshot: () => get().economyLedger,
 }))

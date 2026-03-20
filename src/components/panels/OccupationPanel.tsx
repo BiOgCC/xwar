@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useOccupationStore, type OccupationActionType } from '../../stores/occupationStore'
 import { useUIStore } from '../../stores/uiStore'
+import { usePlayerStore } from '../../stores/playerStore'
 
 const ACTIONS: { type: OccupationActionType; icon: string; name: string; desc: string; variant: string }[] = [
   { type: 'scouting',         icon: '🔭', name: 'SCOUT',      desc: 'Reveal production & scrap values',     variant: 'scout' },
@@ -14,6 +15,7 @@ const ACTIONS: { type: OccupationActionType; icon: string; name: string; desc: s
 export default function OccupationPanel() {
   const occ = useOccupationStore()
   const ui = useUIStore()
+  const player = usePlayerStore()
   const occupations = Object.values(occ.occupations)
   const [selectedOccId, setSelectedOccId] = useState<string | null>(null)
 
@@ -76,17 +78,17 @@ export default function OccupationPanel() {
                     const r = occ.powerDown(selected.id)
                     ui.addFloatingText(`⚡ ${r.companiesDisabled} companies disabled!`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
                   } else if (a.type === 'hijack_production') {
-                    const r = occ.hijackProduction(selected.id)
+                    const r = occ.hijackProduction(selected.id, player.name)
                     ui.addFloatingText(`🏭 ${r.companiesHijacked} companies hijacked for 72h!`, window.innerWidth / 2, window.innerHeight / 2, '#a855f7')
                   } else if (a.type === 'hijack_taxes') {
-                    const r = occ.hijackTaxes(selected.id)
+                    const r = occ.hijackTaxes(selected.id, player.name)
                     ui.addFloatingText(`💰 $${r.taxIncome.toLocaleString()} tax income redirected!`, window.innerWidth / 2, window.innerHeight / 2, '#22d38a')
                   } else if (a.type === 'passive') {
                     occ.setPassive(selected.id)
                     ui.addFloatingText('🏳️ Passive occupation set.', window.innerWidth / 2, window.innerHeight / 2, '#94a3b8')
                   } else if (a.type === 'destroy') {
                     // For simplicity, destroy first available companies
-                    const r = occ.destroyInfrastructure(selected.id, [])
+                    const r = occ.destroyInfrastructure(selected.id, [], player.name)
                     ui.addFloatingText(`💥 ${r.destroyed} companies destroyed! +${r.scrapsGained} scraps`, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
                   }
                 }}

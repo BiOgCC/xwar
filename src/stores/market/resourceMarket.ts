@@ -8,6 +8,7 @@ import { useWorldStore } from '../worldStore'
 import type { MarketState, ResourceId, MarketOrder, TradeRecord } from './types'
 import { RESOURCE_DEFS, TAX_RATE, ORDER_EXPIRY_MS } from './types'
 import { mkId, getPlayerResource, adjustPlayerResource, round2 } from './helpers'
+import { useArmyStore } from '../army'
 
 type Set = StoreApi<MarketState>['setState']
 type Get = () => MarketState
@@ -42,7 +43,8 @@ export function placeResourceOrder(
   if (type === 'buy') {
     if (player.money < totalPrice)
       return { success: false, message: `Need $${totalPrice.toFixed(2)}, have $${player.money.toFixed(2)}` }
-    usePlayerStore.setState(s => ({ money: s.money - totalPrice }))
+    if (!usePlayerStore.getState().spendMoney(totalPrice))
+      return { success: false, message: 'Transaction failed' }
   } else {
     const owned = getPlayerResource(def)
     if (owned < amount)
@@ -109,6 +111,21 @@ export function matchResourceOrders(set: Set, get: Get, resourceId: ResourceId):
       const def = RESOURCE_DEFS.find(r => r.id === resourceId)!
       if (buyOrder.source === 'country' && def.fundKey) {
         useWorldStore.getState().addToFund(buyOrder.countryCode, def.fundKey, matchAmount)
+      } else if (buyOrder.source === 'force_vault' && buyOrder.armyId) {
+        // Deliver to army vault (only oil is storable)
+        const vaultKey = resourceId === 'oil' ? 'oil' : null
+        if (vaultKey) {
+          useArmyStore.setState(s => {
+            const army = s.armies[buyOrder.armyId!]
+            if (!army) return s
+            return { armies: { ...s.armies, [buyOrder.armyId!]: {
+              ...army, vault: { ...army.vault, [vaultKey]: army.vault[vaultKey] + matchAmount },
+            }}}
+          })
+        } else {
+          // Non-storable resource → credit to the ordering player directly
+          adjustPlayerResource(def, matchAmount)
+        }
       } else {
         adjustPlayerResource(def, matchAmount)
       }
@@ -117,8 +134,16 @@ export function matchResourceOrders(set: Set, get: Get, resourceId: ResourceId):
       if (excess > 0) {
         if (buyOrder.source === 'country') {
           useWorldStore.getState().addTreasuryTax(buyOrder.countryCode, excess)
+        } else if (buyOrder.source === 'force_vault' && buyOrder.armyId) {
+          useArmyStore.setState(s => {
+            const army = s.armies[buyOrder.armyId!]
+            if (!army) return s
+            return { armies: { ...s.armies, [buyOrder.armyId!]: {
+              ...army, vault: { ...army.vault, money: army.vault.money + excess },
+            }}}
+          })
         } else {
-          usePlayerStore.setState(s => ({ money: s.money + excess }))
+          usePlayerStore.getState().earnMoney(excess)
         }
       }
 
@@ -126,8 +151,16 @@ export function matchResourceOrders(set: Set, get: Get, resourceId: ResourceId):
       const sellerGets = matchTotal - tax
       if (sellOrder.source === 'country') {
         useWorldStore.getState().addTreasuryTax(sellOrder.countryCode, sellerGets)
+      } else if (sellOrder.source === 'force_vault' && sellOrder.armyId) {
+        useArmyStore.setState(s => {
+          const army = s.armies[sellOrder.armyId!]
+          if (!army) return s
+          return { armies: { ...s.armies, [sellOrder.armyId!]: {
+            ...army, vault: { ...army.vault, money: army.vault.money + sellerGets },
+          }}}
+        })
       } else {
-        usePlayerStore.setState(s => ({ money: s.money + sellerGets }))
+        usePlayerStore.getState().earnMoney(sellerGets)
       }
 
       // Tax to buyer's country fund

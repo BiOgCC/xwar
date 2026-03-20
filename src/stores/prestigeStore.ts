@@ -139,55 +139,8 @@ function generateEconomicStats(): Record<string, number> {
   }
 }
 
-// ====== MOCK PLAYER SCORES (for demo) ======
-
-function generateMockRankings(weekNumber: number): { military: PrestigeRanking[]; economic: PrestigeRanking[] } {
-  const militaryPlayers = [
-    { id: 'IronMarshal', score: 125000 + Math.floor(Math.random() * 50000) },
-    { id: 'TitanSlayer', score: 110000 + Math.floor(Math.random() * 40000) },
-    { id: 'RedBaron', score: 95000 + Math.floor(Math.random() * 35000) },
-    { id: 'StormFury', score: 80000 + Math.floor(Math.random() * 30000) },
-    { id: 'WarDrake', score: 70000 + Math.floor(Math.random() * 25000) },
-    { id: 'Commander_X', score: 60000 + Math.floor(Math.random() * 20000) },
-    { id: 'BladeRunner', score: 50000 + Math.floor(Math.random() * 15000) },
-    { id: 'NightFury', score: 40000 + Math.floor(Math.random() * 10000) },
-  ].sort((a, b) => b.score - a.score)
-
-  const economicPlayers = [
-    { id: 'IronTycoon', score: 200000 + Math.floor(Math.random() * 80000) },
-    { id: 'MegaMiner', score: 180000 + Math.floor(Math.random() * 60000) },
-    { id: 'ResourceKing', score: 150000 + Math.floor(Math.random() * 50000) },
-    { id: 'DeepCore', score: 120000 + Math.floor(Math.random() * 40000) },
-    { id: 'GoldProspector', score: 100000 + Math.floor(Math.random() * 30000) },
-    { id: 'Commander_X', score: 90000 + Math.floor(Math.random() * 25000) },
-    { id: 'CraftKing', score: 70000 + Math.floor(Math.random() * 20000) },
-    { id: 'TradeGuild', score: 50000 + Math.floor(Math.random() * 15000) },
-  ].sort((a, b) => b.score - a.score)
-
-  const military: PrestigeRanking[] = militaryPlayers.slice(0, 5).map((p, i) => ({
-    rankingId: `mr_${weekNumber}_${i}`,
-    weekNumber,
-    playerId: p.id,
-    playerName: p.id,
-    category: 'military' as PrestigeCategory,
-    rankPosition: i + 1,
-    title: MILITARY_TITLES[i],
-    score: p.score,
-  }))
-
-  const economic: PrestigeRanking[] = economicPlayers.slice(0, 5).map((p, i) => ({
-    rankingId: `er_${weekNumber}_${i}`,
-    weekNumber,
-    playerId: p.id,
-    playerName: p.id,
-    category: 'economic' as PrestigeCategory,
-    rankPosition: i + 1,
-    title: ECONOMIC_TITLES[i],
-    score: p.score,
-  }))
-
-  return { military, economic }
-}
+// Rankings will be computed from real player data by the backend.
+// No mock data is seeded — the store starts empty.
 
 // ====== STORE ======
 
@@ -199,9 +152,11 @@ export interface PrestigeState {
   blueprints: PrestigeBlueprint[]
   items: PrestigeItem[]
   archive: PrestigeArchiveEntry[]
+  lastHourlySnapshotAt: number
 
   // Actions
   calculateWeeklyRankings: () => void
+  processHourlySnapshot: () => void
   createBlueprint: (playerId: string, playerName: string) => { success: boolean; message: string; blueprint?: PrestigeBlueprint }
   craftItem: (blueprintId: string, crafterId: string, crafterName: string) => { success: boolean; message: string; item?: PrestigeItem }
   listBlueprintOnMarket: (blueprintId: string, price: number) => boolean
@@ -221,96 +176,22 @@ const SERVER_EPOCH = new Date('2026-01-01').getTime()
 const currentWeek = Math.floor((Date.now() - SERVER_EPOCH) / WEEK_DURATION) + 1
 
 export const usePrestigeStore = create<PrestigeState>((set, get) => {
-  // Generate initial mock data
-  const initRankings = generateMockRankings(currentWeek)
-  const allRankings = [...initRankings.military, ...initRankings.economic]
-
-  // Generate archive for previous weeks
-  const archiveEntries: PrestigeArchiveEntry[] = []
-  for (let w = Math.max(1, currentWeek - 3); w < currentWeek; w++) {
-    const pastRankings = generateMockRankings(w)
-    ;[...pastRankings.military, ...pastRankings.economic].forEach(r => {
-      archiveEntries.push({
-        archiveId: `arch_${w}_${r.rankingId}`,
-        weekNumber: w,
-        playerId: r.playerId,
-        playerName: r.playerName,
-        category: r.category,
-        rankPosition: r.rankPosition,
-        title: r.title,
-        score: r.score,
-        itemCreated: null,
-      })
-    })
-  }
-
-  // Create prestige players from current rankings
-  const initPrestigePlayers: PrestigePlayer[] = allRankings.map(r => ({
-    prestigeId: `pp_${r.rankingId}`,
-    playerId: r.playerId,
-    playerName: r.playerName,
-    weekNumber: r.weekNumber,
-    category: r.category,
-    title: r.title,
-    blueprintCreated: false,
-    cooldownUntilWeek: r.weekNumber + 2,
-  }))
-
   return {
     currentWeek,
     weekStartedAt: SERVER_EPOCH + (currentWeek - 1) * WEEK_DURATION,
-    rankings: allRankings,
-    prestigePlayers: initPrestigePlayers,
+    rankings: [],
+    prestigePlayers: [],
     blueprints: [],
     items: [],
-    archive: archiveEntries,
+    archive: [],
+    lastHourlySnapshotAt: 0,
 
-    calculateWeeklyRankings: () => set((state) => {
-      const newWeek = state.currentWeek + 1
-      const newRankings = generateMockRankings(newWeek)
-      const allNew = [...newRankings.military, ...newRankings.economic]
-
-      // Filter out players on cooldown
-      const validPrestige = allNew.filter(r => {
-        const existing = state.prestigePlayers.find(pp => pp.playerId === r.playerId)
-        return !existing || existing.cooldownUntilWeek <= newWeek
-      })
-
-      // Archive current week
-      const newArchive: PrestigeArchiveEntry[] = state.rankings.map(r => {
-        const pp = state.prestigePlayers.find(pp => pp.playerId === r.playerId && pp.weekNumber === state.currentWeek)
-        return {
-          archiveId: `arch_${state.currentWeek}_${r.rankingId}`,
-          weekNumber: state.currentWeek,
-          playerId: r.playerId,
-          playerName: r.playerName,
-          category: r.category,
-          rankPosition: r.rankPosition,
-          title: r.title,
-          score: r.score,
-          itemCreated: pp?.blueprintCreated ? 'Yes' : null,
-        }
-      })
-
-      const newPrestigePlayers: PrestigePlayer[] = validPrestige.slice(0, 10).map(r => ({
-        prestigeId: `pp_${r.rankingId}`,
-        playerId: r.playerId,
-        playerName: r.playerName,
-        weekNumber: newWeek,
-        category: r.category,
-        title: r.title,
-        blueprintCreated: false,
-        cooldownUntilWeek: newWeek + 2,
-      }))
-
-      return {
-        currentWeek: newWeek,
-        weekStartedAt: Date.now(),
-        rankings: allNew,
-        prestigePlayers: newPrestigePlayers,
-        archive: [...state.archive, ...newArchive],
-      }
-    }),
+    // TODO: Backend will compute rankings from real player stats and push them here.
+    // For now, this just advances the week counter.
+    calculateWeeklyRankings: () => set((state) => ({
+      currentWeek: state.currentWeek + 1,
+      weekStartedAt: Date.now(),
+    })),
 
     createBlueprint: (playerId, playerName) => {
       const state = get()
@@ -436,6 +317,23 @@ export const usePrestigeStore = create<PrestigeState>((set, get) => {
       const state = get()
       const pp = state.prestigePlayers.find(p => p.playerId === playerId && p.weekNumber === state.currentWeek)
       return pp?.title || null
+    },
+
+    processHourlySnapshot: () => {
+      const ONE_HOUR_MS = 60 * 60 * 1000
+      const now = Date.now()
+      const state = get()
+      if (now - state.lastHourlySnapshotAt < ONE_HOUR_MS) return
+
+      // Check if the week has rolled over
+      const newWeek = Math.floor((now - SERVER_EPOCH) / WEEK_DURATION) + 1
+      if (newWeek > state.currentWeek) {
+        // Trigger weekly rollover (calculateWeeklyRankings will advance the week)
+        get().calculateWeeklyRankings()
+      }
+
+      // Mark snapshot taken (rankings recalculation is deferred to backend)
+      set({ lastHourlySnapshotAt: now })
     },
   }
 })

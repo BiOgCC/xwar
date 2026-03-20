@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useAllianceStore } from '../../stores/allianceStore'
-import type { Alliance } from '../../stores/allianceStore'
+import type { Alliance, AllianceFundProposal } from '../../stores/allianceStore'
 import '../../styles/alliance.css'
 
 export default function AlliancePanel() {
@@ -9,13 +9,17 @@ export default function AlliancePanel() {
   const allianceStore = useAllianceStore()
   const myAlliance = allianceStore.getPlayerAlliance()
 
-  const [tab, setTab] = useState<'overview' | 'wars' | 'browse'>('overview')
+  const [tab, setTab] = useState<'overview' | 'wars' | 'congress' | 'browse'>('overview')
   const [createName, setCreateName] = useState('')
   const [createTag, setCreateTag] = useState('')
   const [contributeAmt, setContributeAmt] = useState(100000)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'success' | 'error'>('success')
   const [warTarget, setWarTarget] = useState('')
+  // Congress state
+  const [transferDirection, setTransferDirection] = useState<'to_country' | 'to_alliance'>('to_country')
+  const [transferCountry, setTransferCountry] = useState('')
+  const [transferAmount, setTransferAmount] = useState(100000)
 
   const showMsg = (msg: string, type: 'success' | 'error') => {
     setMessage(msg); setMessageType(type)
@@ -82,6 +86,9 @@ export default function AlliancePanel() {
         </button>
         <button className={`alliance-tab ${tab === 'wars' ? 'alliance-tab--active' : ''}`} onClick={() => setTab('wars')}>
           WARS ({myAlliance.wars.filter(w => w.status === 'active' || w.status === 'voting').length})
+        </button>
+        <button className={`alliance-tab ${tab === 'congress' ? 'alliance-tab--active' : ''}`} onClick={() => setTab('congress')}>
+          CONGRESS ({allianceStore.fundProposals.filter(p => p.status === 'voting').length})
         </button>
         <button className={`alliance-tab ${tab === 'browse' ? 'alliance-tab--active' : ''}`} onClick={() => setTab('browse')}>
           ALL ALLIANCES
@@ -224,6 +231,145 @@ export default function AlliancePanel() {
               ))
             )}
           </div>
+        </>
+      )}
+
+      {/* ═══ CONGRESS TAB ═══ */}
+      {tab === 'congress' && (
+        <>
+          {/* Propose Fund Transfer — leader/officer only */}
+          {(() => {
+            const myMember = myAlliance.members.find(m => m.name === player.name)
+            const canPropose = myMember && (myMember.role === 'leader' || myMember.role === 'officer')
+            const memberCountries = [...new Set(myAlliance.members.map(m => m.countryCode))]
+
+            return canPropose ? (
+              <div style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '6px', padding: '10px', marginBottom: '8px' }}>
+                <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6', letterSpacing: '1px', marginBottom: '8px' }}>📝 PROPOSE FUND TRANSFER</div>
+
+                {/* Direction toggle */}
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                  <button
+                    className={`alliance-amt-btn ${transferDirection === 'to_country' ? 'alliance-amt-btn--active' : ''}`}
+                    onClick={() => setTransferDirection('to_country')}
+                    style={{ flex: 1, fontSize: '8px' }}
+                  >🏛️ Alliance → National Fund</button>
+                  <button
+                    className={`alliance-amt-btn ${transferDirection === 'to_alliance' ? 'alliance-amt-btn--active' : ''}`}
+                    onClick={() => setTransferDirection('to_alliance')}
+                    style={{ flex: 1, fontSize: '8px' }}
+                  >🏦 National Fund → Alliance</button>
+                </div>
+
+                {/* Country selector */}
+                <div style={{ marginBottom: '6px' }}>
+                  <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700, marginBottom: '2px' }}>TARGET COUNTRY</div>
+                  <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+                    {memberCountries.map(code => (
+                      <button key={code}
+                        className={`alliance-amt-btn ${transferCountry === code ? 'alliance-amt-btn--active' : ''}`}
+                        onClick={() => setTransferCountry(code)}
+                        style={{ fontSize: '8px', padding: '2px 8px' }}
+                      >🏳️ {code}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Amount */}
+                <div style={{ marginBottom: '6px' }}>
+                  <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700, marginBottom: '2px' }}>AMOUNT</div>
+                  <div style={{ display: 'flex', gap: '3px' }}>
+                    {[50_000, 100_000, 250_000, 500_000, 1_000_000].map(a => (
+                      <button key={a}
+                        className={`alliance-amt-btn ${transferAmount === a ? 'alliance-amt-btn--active' : ''}`}
+                        onClick={() => setTransferAmount(a)}
+                        style={{ fontSize: '7px' }}
+                      >${a >= 1_000_000 ? `${a/1_000_000}M` : `${a/1000}K`}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Submit */}
+                <button
+                  className="alliance-btn alliance-btn--contribute"
+                  style={{ fontSize: '9px' }}
+                  disabled={!transferCountry}
+                  onClick={() => {
+                    const r = allianceStore.proposeFundTransfer(transferCountry, transferAmount, transferDirection)
+                    showMsg(r.message, r.success ? 'success' : 'error')
+                  }}
+                >
+                  📝 SUBMIT PROPOSAL — ${transferAmount.toLocaleString()} {transferDirection === 'to_country' ? '→ ' + transferCountry : '→ Alliance'}
+                </button>
+              </div>
+            ) : (
+              <div style={{ fontSize: '9px', color: '#64748b', textAlign: 'center', padding: '12px', background: 'rgba(0,0,0,0.15)', borderRadius: '4px', marginBottom: '8px' }}>
+                Only leaders and officers can propose fund transfers.
+              </div>
+            )
+          })()}
+
+          {/* Active Proposals */}
+          <div style={{ fontSize: '9px', fontWeight: 800, color: '#94a3b8', letterSpacing: '1px', marginBottom: '4px' }}>🗳️ FUND PROPOSALS ({allianceStore.fundProposals.length})</div>
+          {allianceStore.fundProposals.length === 0 ? (
+            <div className="alliance-empty">No fund transfer proposals.</div>
+          ) : (
+            allianceStore.fundProposals.map((p: AllianceFundProposal) => {
+              const majority = Math.ceil(myAlliance.members.length / 2)
+              const hasVoted = p.votesFor.includes(player.name) || p.votesAgainst.includes(player.name)
+              const statusColors: Record<string, string> = { voting: '#3b82f6', passed: '#22d38a', rejected: '#ef4444', expired: '#64748b' }
+              const dirLabel = p.direction === 'to_country' ? `Alliance → ${p.targetCountryCode}` : `${p.targetCountryCode} → Alliance`
+
+              return (
+                <div key={p.id} style={{
+                  background: 'rgba(0,0,0,0.2)', border: `1px solid ${statusColors[p.status]}25`,
+                  borderLeft: `3px solid ${statusColors[p.status]}`, borderRadius: '4px',
+                  padding: '8px', marginBottom: '4px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>
+                        ${p.amount.toLocaleString()} {dirLabel}
+                      </div>
+                      <div style={{ fontSize: '7px', color: '#64748b' }}>by {p.proposerId} · {new Date(p.proposedAt).toLocaleTimeString()}</div>
+                    </div>
+                    <span style={{ fontSize: '8px', fontWeight: 900, color: statusColors[p.status], background: `${statusColors[p.status]}18`, padding: '2px 6px', borderRadius: '3px', letterSpacing: '0.5px' }}>
+                      {p.status.toUpperCase()}
+                    </span>
+                  </div>
+
+                  {/* Vote progress */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '8px', color: '#22d38a', fontWeight: 700 }}>✓ {p.votesFor.length}</span>
+                    <div style={{ flex: 1, height: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', height: '100%' }}>
+                        <div style={{ width: `${(p.votesFor.length / myAlliance.members.length) * 100}%`, background: '#22d38a', transition: 'width 0.3s' }} />
+                        <div style={{ width: `${(p.votesAgainst.length / myAlliance.members.length) * 100}%`, background: '#ef4444', transition: 'width 0.3s' }} />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700 }}>✗ {p.votesAgainst.length}</span>
+                    <span style={{ fontSize: '7px', color: '#64748b' }}>need {majority}</span>
+                  </div>
+
+                  {/* Vote buttons */}
+                  {p.status === 'voting' && (
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        className="alliance-vote-btn alliance-vote-btn--for"
+                        style={{ flex: 1, opacity: hasVoted && !p.votesFor.includes(player.name) ? 0.5 : 1 }}
+                        onClick={() => { const r = allianceStore.voteOnFundTransfer(p.id, 'for'); showMsg(r.message, r.success ? 'success' : 'error') }}
+                      >✓ FOR</button>
+                      <button
+                        className="alliance-vote-btn alliance-vote-btn--against"
+                        style={{ flex: 1, opacity: hasVoted && !p.votesAgainst.includes(player.name) ? 0.5 : 1 }}
+                        onClick={() => { const r = allianceStore.voteOnFundTransfer(p.id, 'against'); showMsg(r.message, r.success ? 'success' : 'error') }}
+                      >✗ AGAINST</button>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </>
       )}
 

@@ -203,5 +203,65 @@ export function createVaultSlice(
       }))
       return { success: true, message: 'Equipment returned to vault.' }
     },
+
+    distributeVaultToMembers: (armyId: string, resource: 'money' | 'oil', amount: number) => {
+      const player = usePlayerStore.getState()
+      const state = get()
+      const army = state.armies[armyId]
+      if (!army) return { success: false, message: 'Army not found.' }
+
+      // Only Commander and Colonel can distribute
+      const member = army.members.find(m => m.playerId === player.name)
+      const isCommander = army.commanderId === player.name
+      const hasControl = isCommander || (member && ['colonel', 'general'].includes(member.role))
+      if (!hasControl)
+        return { success: false, message: 'Only Commander and Colonel can distribute vault resources.' }
+
+      if (amount <= 0) return { success: false, message: 'Invalid amount.' }
+      if (army.members.length === 0) return { success: false, message: 'No members to distribute to.' }
+
+      // Check vault balance
+      if (army.vault[resource] < amount)
+        return { success: false, message: `Vault has ${army.vault[resource]} ${resource}, need ${amount}.` }
+
+      const perMember = Math.floor(amount / army.members.length)
+      if (perMember <= 0) return { success: false, message: 'Amount too small to distribute.' }
+      const totalDistributed = perMember * army.members.length
+
+      // Deduct from vault
+      const newVault = { ...army.vault, [resource]: army.vault[resource] - totalDistributed }
+
+      if (resource === 'money') {
+        // Money goes to soldier balances (claimable via claimSalary)
+        const newBalances = { ...army.soldierBalances }
+        army.members.forEach(m => {
+          newBalances[m.playerId] = (newBalances[m.playerId] || 0) + perMember
+        })
+        set(s => ({
+          armies: {
+            ...s.armies,
+            [armyId]: { ...s.armies[armyId], vault: newVault, soldierBalances: newBalances },
+          },
+        }))
+      } else {
+        // Non-money resources: only oil goes directly to each member's player store
+        // We can only credit the local player in single-client mode
+        // In multiplayer, this would need server coordination
+        army.members.forEach(m => {
+          if (m.playerId === player.name) {
+            usePlayerStore.setState(s => ({ oil: (s.oil || 0) + perMember }))
+          }
+          // Other players would receive their share when they log in (server-side)
+        })
+        set(s => ({
+          armies: {
+            ...s.armies,
+            [armyId]: { ...s.armies[armyId], vault: newVault },
+          },
+        }))
+      }
+
+      return { success: true, message: `Distributed ${totalDistributed} ${resource} to ${army.members.length} members ($${perMember} each).` }
+    },
   }
 }

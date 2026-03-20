@@ -461,14 +461,14 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '4px' }}>
               <button disabled={player.stamina < 5}
                 style={{ padding: '8px 0', background: `${atkClr}15`, border: `2px solid ${atkClr}66`, borderRadius: '2px', color: atkClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'attacker'); if (r.isCrit) { setCritSide('atk'); setTimeout(() => setCritSide(null), 500) }; setHitSide('def'); setTimeout(() => setHitSide(null), 300); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id); if (r.isCrit) { setCritSide('atk'); setTimeout(() => setCritSide(null), 500) }; setHitSide('def'); setTimeout(() => setHitSide(null), 300); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
               >
                 ATTACK
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
               </button>
               <button disabled={player.stamina < 5}
                 style={{ padding: '8px 0', background: `${defClr}15`, border: `2px solid ${defClr}66`, borderRadius: '2px', color: defClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id, 'defender'); if (r.isCrit) { setCritSide('def'); setTimeout(() => setCritSide(null), 500) }; setHitSide('atk'); setTimeout(() => setHitSide(null), 300); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
+                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id); if (r.isCrit) { setCritSide('def'); setTimeout(() => setCritSide(null), 500) }; setHitSide('atk'); setTimeout(() => setHitSide(null), 300); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
               >
                 DEFEND
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>

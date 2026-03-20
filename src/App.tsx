@@ -15,6 +15,8 @@ import TopBar from './components/layout/TopBar'
 import Sidebar from './components/layout/Sidebar'
 import NewsTicker from './components/layout/NewsTicker'
 import PanelRouter from './components/layout/PanelRouter'
+import DailyRewardPopup from './components/shared/DailyRewardPopup'
+import AntiBotChallenge from './components/shared/AntiBotChallenge'
 import { COUNTRY_ISO } from './data/countries'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useGameLoop } from './hooks/useGameLoop'
@@ -144,6 +146,12 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Daily Login Reward Popup */}
+      <DailyRewardPopup />
+
+      {/* Anti-Bot Verification Popup */}
+      <AntiBotChallenge />
 
       {/* Scanline Overlay */}
       <div className="hud-scanlines" />

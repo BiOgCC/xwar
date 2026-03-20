@@ -1,9 +1,7 @@
 import { create } from 'zustand'
 
-// ====== TYPES ======
-
-export type CardCategory = 'milestone' | 'timed' | 'combat' | 'economic' | 'shame'
-export type CardRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
+import type { CardCategory, CardRarity, CardConditionContext, WarCardDefinition, EarnedWarCard, NFTMintState, NFTStatus, WeeklyTracking } from '../types/war.types'
+export type { CardCategory, CardRarity, CardConditionContext, WarCardDefinition, EarnedWarCard, NFTMintState, NFTStatus, WeeklyTracking }
 
 export const CARD_CATEGORY_META: Record<CardCategory, { label: string; color: string; icon: string }> = {
   milestone: { label: 'Milestone', color: '#f59e0b', icon: '🏆' },
@@ -21,112 +19,8 @@ export const CARD_RARITY_META: Record<CardRarity, { label: string; color: string
   legendary: { label: 'Legendary', color: '#f59e0b', glowEffect: 'animated-gold' },
 }
 
-// ====== CARD DEFINITION ======
-
-/** A condition function receives current game state snapshots and returns whether the achievement is met */
-export interface CardConditionContext {
-  // Player stats
-  totalDamageDone: number
-  totalMoney: number
-  totalItemsProduced: number
-  playerLevel: number
-  totalCasesOpened: number
-  totalItemsCrafted: number
-  totalItemsDismantled: number
-  // Battle context (set when checking after battle events)
-  singleHitDamage?: number
-  battleDamageDealt?: number
-  battleTotalDamage?: number
-  battleTicksElapsed?: number
-  battleCritsLanded?: number
-  battleHitsTaken?: number
-  /** True if this battle had the most total divisions/damage on the server */
-  battleIsLargest?: boolean
-  /** True if the player triggered a comeback (flipped from 50%+ deficit with enemy at 599 points) */
-  battleIsComeback?: boolean
-  // Weekly tracking
-  weeklyDamage: number
-  weeklyMoney: number
-  /** Consecutive weeks player has been #1 in damage */
-  consecutiveWeeksTopDamage: number
-  /** Consecutive weeks player has been #1 in economy */
-  consecutiveWeeksTopEconomy: number
-  // Casino / market
-  casinoSessionWinnings?: number
-  marketTransactions?: number
-  /** Profit from a single bond exchange */
-  bondExchangeProfit?: number
-  // ── Shame counters (auto-tracked, optional — default 0) ──
-  muteCount?: number
-  deathCount?: number
-  battlesLost?: number
-  totalCasinoLosses?: number
-  bankruptcyCount?: number
-  countrySwitches?: number
-  casinoSpins?: number
-  itemsDestroyed?: number
-}
-
-export interface WarCardDefinition {
-  id: string
-  name: string
-  description: string
-  flavorText: string
-  category: CardCategory
-  rarity: CardRarity
-  /** Whether this card can only be earned once server-wide (first-ever) */
-  firstOnly: boolean
-  /** Whether this card recurs weekly (e.g. "Weekly Warrior") */
-  weekly: boolean
-  /** Condition checker — returns true if the player qualifies */
-  condition: (ctx: CardConditionContext) => boolean
-}
-
-// ====== EARNED CARD ======
-
-export interface EarnedWarCard {
-  id: string
-  cardDefId: string
-  playerId: string
-  playerName: string
-  earnedAt: number
-  weekNumber?: number
-  /** Snapshot of the record value when earned (e.g. damage amount, money amount) */
-  recordValue?: number
-  /** Optional battle ID for combat cards */
-  battleId?: string
-  /** NFT mint status */
-  nft: NFTStatus
-}
-
-// ====== NFT SCAFFOLDING ======
-
-export type NFTMintState = 'unminted' | 'pending' | 'minted' | 'failed'
-
-export interface NFTStatus {
-  mintState: NFTMintState
-  /** Token ID on-chain once minted */
-  tokenId?: string
-  /** Transaction hash */
-  txHash?: string
-  /** Blockchain network (e.g. 'polygon', 'solana') */
-  network?: string
-  /** IPFS CID for the card metadata */
-  metadataCID?: string
-  /** Timestamp of mint */
-  mintedAt?: number
-}
-
 function emptyNFT(): NFTStatus {
   return { mintState: 'unminted' }
-}
-
-// ====== WEEKLY TRACKING ======
-
-export interface WeeklyTracking {
-  weekNumber: number
-  damageByPlayer: Record<string, number>
-  moneyByPlayer: Record<string, number>
 }
 
 // ====== CARD DEFINITIONS ======

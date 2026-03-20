@@ -8,6 +8,19 @@ import authRoutes from './routes/auth.routes.js'
 import playerRoutes from './routes/player.routes.js'
 import inventoryRoutes from './routes/inventory.routes.js'
 import worldRoutes from './routes/world.routes.js'
+import casinoRoutes from './routes/casino.routes.js'
+import armyRoutes from './routes/army.routes.js'
+import battleRoutes from './routes/battle.routes.js'
+import marketRoutes from './routes/market.routes.js'
+import companyRoutes from './routes/company.routes.js'
+import govRoutes from './routes/gov.routes.js'
+import skillsRoutes from './routes/skills.routes.js'
+import stockRoutes from './routes/stock.routes.js'
+import bountyRoutes from './routes/bounty.routes.js'
+
+import { generalLimiter, authLimiter, casinoLimiter } from './middleware/rateLimit.js'
+import { errorHandler } from './middleware/errorHandler.js'
+import { initCronJobs } from './services/cron.service.js'
 
 const app = express()
 const httpServer = createServer(app)
@@ -18,6 +31,7 @@ const io = new SocketServer(httpServer, {
 // ── Middleware ──
 app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:3000'], credentials: true }))
 app.use(express.json())
+app.use(generalLimiter)
 
 // ── Health check ──
 app.get('/api/health', (_req, res) => {
@@ -25,10 +39,22 @@ app.get('/api/health', (_req, res) => {
 })
 
 // ── Routes ──
-app.use('/api/auth', authRoutes)
+app.use('/api/auth', authLimiter, authRoutes)
 app.use('/api/player', playerRoutes)
 app.use('/api/inventory', inventoryRoutes)
 app.use('/api/world', worldRoutes)
+app.use('/api/casino', casinoLimiter, casinoRoutes)
+app.use('/api/army', armyRoutes)
+app.use('/api/battle', battleRoutes)
+app.use('/api/market', marketRoutes)
+app.use('/api/company', companyRoutes)
+app.use('/api/gov', govRoutes)
+app.use('/api/skills', skillsRoutes)
+app.use('/api/stock', stockRoutes)
+app.use('/api/bounty', bountyRoutes)
+
+// ── Global error handler (must be AFTER routes) ──
+app.use(errorHandler)
 
 // ── WebSocket ──
 io.on('connection', (socket) => {
@@ -59,4 +85,7 @@ httpServer.listen(PORT, () => {
 ║  Health: http://localhost:${PORT}/api/health ║
 ╚══════════════════════════════════════════╝
   `)
+
+  // Start cron jobs after server is listening
+  initCronJobs()
 })

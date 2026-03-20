@@ -25,19 +25,7 @@ export interface NavalState {
 }
 
 export const useNavalStore = create<NavalState>((set, get) => ({
-  operations: {
-    // Mock existing operation for testing UI
-    'nav_test_1': {
-      id: 'nav_test_1',
-      initiator: 'Admiral_XYZ',
-      originRegion: 'US',
-      targetRegion: 'RU',
-      warshipId: 'mock-ship-1',
-      playersJoined: ['Admiral_XYZ', 'Sailor_Bob'],
-      launchTime: null,
-      status: 'recruiting'
-    }
-  },
+  operations: {},
   invites: {},
 
   initiateOperation: (initiator, originRegion, targetRegion, warshipId) => {

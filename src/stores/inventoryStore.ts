@@ -1,50 +1,12 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useWarCardsStore } from './warCardsStore'
+import { rateLimiter } from '../engine/AntiExploit'
 
-export type EquipTier = 't1' | 't2' | 't3' | 't4' | 't5' | 't6'
-export type ArmorSlot = 'helmet' | 'chest' | 'legs' | 'gloves' | 'boots'
-export type WeaponSlot = 'weapon'
-export type VehicleSlot = 'vehicle'
-export type EquipSlot = ArmorSlot | WeaponSlot | VehicleSlot
-export type EquipCategory = 'armor' | 'weapon' | 'vehicle'
-export type WeaponSubtype = 'knife' | 'gun' | 'rifle' | 'sniper' | 'tank' | 'rpg' | 'jet' | 'warship'
+import type { EquipTier, ArmorSlot, WeaponSlot, VehicleSlot, EquipSlot, EquipCategory, WeaponSubtype, EquipStats, ItemLocation, EquipItem, LootBoxRewardType, LootBoxResult } from '../types/inventory.types'
 
-// Which weapon subtypes are available at each tier
-export const WEAPON_SUBTYPES: Record<EquipTier, WeaponSubtype[]> = {
-  t1: ['knife'],
-  t2: ['gun'],
-  t3: ['rifle'],
-  t4: ['sniper'],
-  t5: ['tank', 'rpg'],
-  t6: ['jet', 'warship'],
-}
-
-export interface EquipStats {
-  damage?: number
-  critRate?: number
-  critDamage?: number
-  armor?: number
-  dodge?: number
-  precision?: number
-}
-
-export type ItemLocation = 'inventory' | 'vault' | 'division' | 'market'
-
-export interface EquipItem {
-  id: string
-  name: string
-  slot: EquipSlot
-  category: EquipCategory
-  tier: EquipTier
-  equipped: boolean
-  durability: number
-  stats: EquipStats
-  weaponSubtype?: WeaponSubtype
-  location: ItemLocation              // Where the item currently lives
-  vaultArmyId?: string                // Army ID if location='vault'
-  assignedToDivision?: string         // Division ID if location='division'
-}
+// Re-export all types for backward compatibility
+export type { EquipTier, ArmorSlot, WeaponSlot, VehicleSlot, EquipSlot, EquipCategory, WeaponSubtype, EquipStats, ItemLocation, EquipItem, LootBoxRewardType, LootBoxResult }
 
 export const TIER_ORDER: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
 
@@ -104,14 +66,14 @@ export const SCRAP_VALUES: Record<EquipTier, number> = {
   t6: 1480,
 }
 
-export type LootBoxRewardType = 'item' | 'money' | 'resources'
-
-export interface LootBoxResult {
-  rewardType: LootBoxRewardType
-  item?: EquipItem
-  money: number
-  scrap: number
-  oil: number
+// Which weapon subtypes are available at each tier
+export const WEAPON_SUBTYPES: Record<EquipTier, WeaponSubtype[]> = {
+  t1: ['knife'],
+  t2: ['gun'],
+  t3: ['rifle'],
+  t4: ['sniper'],
+  t5: ['tank', 'rpg'],
+  t6: ['jet', 'warship'],
 }
 
 export interface InventoryState {
@@ -306,6 +268,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   totalItemsDismantled: 0,
 
   openLootBox: () => {
+    if (!rateLimiter.check('openLootBox')) return null
     const playerStore = usePlayerStore.getState()
     if (playerStore.lootBoxes <= 0) return null
 
@@ -340,9 +303,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
     usePlayerStore.setState(s => ({
       scrap: s.scrap + scrap,
-      money: s.money + money,
       oil: s.oil + oil,
     }))
+    if (money > 0) usePlayerStore.getState().earnMoney(money)
 
     // War Cards: track cases opened
     set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
@@ -361,6 +324,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   openMilitaryBox: () => {
+    if (!rateLimiter.check('openMilitaryBox')) return null
     const playerStore = usePlayerStore.getState()
     if (playerStore.militaryBoxes <= 0) return null
 

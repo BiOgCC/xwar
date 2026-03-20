@@ -21,6 +21,9 @@ export default function ForcesTab({ iso }: { iso: string }) {
   const [weaponPickerDivId, setWeaponPickerDivId] = useState<string | null>(null)
   const [showDonateForArmy, setShowDonateForArmy] = useState<string | null>(null)
   const [equipPickerItem, setEquipPickerItem] = useState<{ armyId: string; itemId: string } | null>(null)
+  const [showDistribute, setShowDistribute] = useState<string | null>(null)  // army ID
+  const [distResource, setDistResource] = useState<'money' | 'oil'>('money')
+  const [distAmount, setDistAmount] = useState(10000)
 
   const allDivisions = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
   const myArmies = Object.values(armyStore.armies).filter(a => a.countryCode === iso)
@@ -181,6 +184,58 @@ export default function ForcesTab({ iso }: { iso: string }) {
                       >🎁 EQUIP</button>
                     </div>
                   )}
+                  {/* Commander/Colonel vault actions */}
+                  {(() => {
+                    const me = army.members.find(m => m.playerId === player.name)
+                    const isOfficer = army.commanderId === player.name || me?.role === 'colonel' || me?.role === 'general'
+                    if (!isOfficer) return null
+                    return (
+                      <div style={{ marginTop: '4px' }}>
+                        <div style={{ display: 'flex', gap: '3px' }}>
+                          <button className="war-btn war-btn--small"
+                            style={{ fontSize: '7px', padding: '2px 5px', color: '#22d38a', borderColor: 'rgba(34,211,138,0.3)', flex: 1 }}
+                            onClick={() => setShowDistribute(showDistribute === army.id ? null : army.id)}
+                          >📤 DISTRIBUTE</button>
+                          <button className="war-btn war-btn--small"
+                            style={{ fontSize: '7px', padding: '2px 5px', color: '#3b82f6', borderColor: 'rgba(59,130,246,0.3)', flex: 1 }}
+                            onClick={() => { setFeedback('Open Market panel → enable "🏦 Army Vault" toggle to trade vault resources'); setTimeout(() => setFeedback(''), 4000) }}
+                          >📊 TRADE ON MARKET</button>
+                        </div>
+                        {/* Distribute inline form */}
+                        {showDistribute === army.id && (
+                          <div style={{ marginTop: '4px', padding: '6px', background: 'rgba(34,211,138,0.05)', border: '1px solid rgba(34,211,138,0.15)', borderRadius: '4px' }}>
+                            <div style={{ fontSize: '8px', fontWeight: 800, color: '#22d38a', marginBottom: '4px' }}>📤 DISTRIBUTE TO {army.members.length} MEMBERS</div>
+                            <div style={{ display: 'flex', gap: '3px', marginBottom: '4px' }}>
+                              <button className={`war-btn war-btn--small ${distResource === 'money' ? 'war-btn--primary' : ''}`}
+                                style={{ fontSize: '7px', padding: '2px 5px' }}
+                                onClick={() => setDistResource('money')}
+                              >💰 Money</button>
+                              <button className={`war-btn war-btn--small ${distResource === 'oil' ? 'war-btn--primary' : ''}`}
+                                style={{ fontSize: '7px', padding: '2px 5px' }}
+                                onClick={() => setDistResource('oil')}
+                              >🛢️ Oil</button>
+                            </div>
+                            <div style={{ display: 'flex', gap: '3px', marginBottom: '4px' }}>
+                              {(distResource === 'money' ? [10000, 50000, 100000] : [50, 100, 500]).map(a => (
+                                <button key={a}
+                                  className={`war-btn war-btn--small ${distAmount === a ? 'war-btn--primary' : ''}`}
+                                  style={{ fontSize: '7px', padding: '2px 5px', flex: 1 }}
+                                  onClick={() => setDistAmount(a)}
+                                >{distResource === 'money' ? `$${a >= 1000 ? `${a/1000}K` : a}` : `${a}`}</button>
+                              ))}
+                            </div>
+                            <button className="war-btn war-btn--primary" style={{ width: '100%', fontSize: '8px', padding: '4px 0' }}
+                              onClick={() => {
+                                const r = armyStore.distributeVaultToMembers(army.id, distResource, distAmount)
+                                setFeedback(r.message)
+                                setTimeout(() => setFeedback(''), 3000)
+                              }}
+                            >📤 DISTRIBUTE {distResource === 'money' ? `$${distAmount.toLocaleString()}` : `${distAmount} oil`} TO ALL</button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {/* Vault Equipment */}
                   {(() => {
                     const vaultItems = inventory.items.filter(i => i.location === 'vault' && i.vaultArmyId === army.id)

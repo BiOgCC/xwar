@@ -41,7 +41,7 @@ export function getPlayerResource(def: ResourceDef): number {
  */
 export function adjustPlayerResource(def: ResourceDef, delta: number): void {
   usePlayerStore.setState(s => ({
-    [def.playerKey]: ((s as unknown as Record<string, number>)[def.playerKey] ?? 0) + delta,
+    [def.playerKey]: Math.max(0, ((s as unknown as Record<string, number>)[def.playerKey] ?? 0) + delta),
   } as any))
 }
 

@@ -66,21 +66,27 @@ export function useAttack(mapRef: RefObject<GameMapHandle | null>) {
       return { action: 'hoi_battle', success: result.success, battleId: result.battleId }
     }
 
-    // ── Step 3: No divisions → fallback personal attack ──
+    // ── Step 3: No divisions → launch battle + personal attack via battleStore ──
     battle.launchAttack(attackerIso, defenderIso, targetCountryName)
-    const { damage, isCrit, isDodged } = player.attack()
 
+    // Find the battle we just created (or existing one for this region)
     const activeBattle = Object.values(useBattleStore.getState().battles).find(
       b => b.regionName === targetCountryName && b.status === 'active'
     )
-    if (activeBattle && (damage > 0 || isDodged)) {
-      useBattleStore.getState().addDamage(activeBattle.id, 'attacker', damage, isCrit, isDodged, player.name)
+
+    if (activeBattle) {
+      // Route through battleStore.playerAttack (has rate limiting, side detection, damage cap)
+      const result = useBattleStore.getState().playerAttack(activeBattle.id)
+      if (mouseEvent) {
+        ui.addFloatingText(result.message, mouseEvent.clientX, mouseEvent.clientY, result.isCrit ? '#f59e0b' : '#ef4444')
+      }
+      return { action: 'personal_attack', success: true, damage: result.damage, isCrit: result.isCrit, isDodged: false }
     }
 
     if (mouseEvent) {
       ui.addFloatingText('ATTACK LAUNCHED', mouseEvent.clientX, mouseEvent.clientY, '#ef4444')
     }
 
-    return { action: 'personal_attack', success: true, damage, isCrit, isDodged }
+    return { action: 'personal_attack', success: true, damage: 0, isCrit: false, isDodged: false }
   }, [mapRef])
 }

@@ -28,11 +28,11 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
   const claimableContracts = govStore.militaryContracts.filter(c => c.playerId === player.name && c.status === 'claimable').length
   const recruitBadge = shopCount + claimableContracts || undefined
 
-  const tabs: { id: WarTab; label: string; icon: string; count?: number }[] = [
-    { id: 'overview', label: 'HQ', icon: '📊' },
-    { id: 'recruit', label: 'RECRUIT', icon: '🏭', count: recruitBadge },
-    { id: 'armies', label: 'FORCES', icon: '⚔️', count: myDivisions.length },
-    { id: 'battles', label: 'COMBAT', icon: '💥', count: activeBattles.length },
+  const tabs: { id: WarTab; label: string; icon: string; isImg?: boolean; count?: number }[] = [
+    { id: 'overview', label: 'HQ', icon: '🎯' },
+    { id: 'recruit', label: 'RECRUIT', icon: '/assets/icons/gear.png', isImg: true, count: recruitBadge },
+    { id: 'armies', label: 'FORCES', icon: '/assets/icons/divs.png', isImg: true, count: myDivisions.length },
+    { id: 'battles', label: 'COMBAT', icon: '⚔️', count: activeBattles.length },
   ]
 
   return (
@@ -92,9 +92,12 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
             className={`war-tab ${tab === t.id ? 'war-tab--active' : ''}`}
             onClick={() => setTab(t.id)}
           >
-            <span className="war-tab__icon">{t.icon}</span>
+            {t.isImg
+              ? <img src={t.icon} alt={t.label} className="war-tab__img" />
+              : <span className="war-tab__icon">{t.icon}</span>
+            }
             <span className="war-tab__label">{t.label}</span>
-            {t.count !== undefined && <span className="war-tab__badge">{t.count}</span>}
+            {t.count !== undefined && t.count > 0 && <span className="war-tab__badge">{t.count}</span>}
           </button>
         ))}
       </div>

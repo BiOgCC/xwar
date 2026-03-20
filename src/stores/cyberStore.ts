@@ -221,6 +221,12 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     const opDef = CYBER_OPERATIONS.find(op => op.id === operationType)
     if (!opDef) return { success: false, message: 'Unknown operation.' }
 
+    // ── Mutual exclusion: only 1 active/deploying campaign at a time ──
+    const existingActive = Object.values(get().campaigns).find(
+      c => c.status === 'deploying' || c.status === 'active' || c.status === 'returning'
+    )
+    if (existingActive) return { success: false, message: 'Another operation is already in progress. Wait for it to complete.' }
+
     const player = usePlayerStore.getState()
     const { cost } = opDef
 

@@ -284,6 +284,7 @@ export interface Division {
   // Combat tracking
   killCount: number
   battlesSurvived: number
+  deployedAtTick?: number  // Tick when division was deployed to battle (for recall cooldown)
 
   // Star quality
   starQuality: StarQuality
@@ -441,6 +442,7 @@ export interface ArmyState {
   donateEquipmentToVault: (armyId: string, itemId: string) => { success: boolean; message: string }
   sponsorDivision: (armyId: string, divisionType: DivisionType, targetPlayer: string) => { success: boolean; message: string }
   buyArmyBuff: (armyId: string, stat: ArmyBuff['stat'], percentage: number, durationMs: number, cost: number) => { success: boolean; message: string }
+  distributeVaultToMembers: (armyId: string, resource: 'money' | 'oil', amount: number) => { success: boolean; message: string }
 
   // Deployment & Aura
   deployArmyToBattle: (armyId: string, battleId: string) => { success: boolean; message: string }

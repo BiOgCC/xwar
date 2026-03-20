@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useWorldStore } from '../../stores/worldStore'
 
@@ -12,9 +13,28 @@ const formatTime = (secs: number) => {
   return `${m}:${s}`
 }
 
+const formatDailyTime = (secs: number) => {
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  return `${h}h ${m.toString().padStart(2, '0')}m`
+}
+
 export default function TopBar({ timeLeft, onManualTick }: TopBarProps) {
   const player = usePlayerStore()
   const world = useWorldStore()
+  const [dailyLeft, setDailyLeft] = useState(() => world.getTimeUntilDailyReset())
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const remaining = useWorldStore.getState().getTimeUntilDailyReset()
+      setDailyLeft(remaining)
+      // Auto-process daily reset when timer hits 0
+      if (remaining <= 0) {
+        useWorldStore.getState().processDailyReset()
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <header className="hud-topbar">
@@ -25,6 +45,10 @@ export default function TopBar({ timeLeft, onManualTick }: TopBarProps) {
           <span style={{ fontSize: '10px' }}>⏱️</span>
           <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: '#22d38a' }}>{formatTime(timeLeft)}</span>
           <button onClick={onManualTick} style={{ background: '#22d38a', color: '#000', border: 'none', borderRadius: '2px', fontSize: '8px', fontWeight: 'bold', padding: '2px 4px', cursor: 'pointer', marginLeft: '4px' }}>+30m</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(168,85,247,0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(168,85,247,0.2)' }}>
+          <span style={{ fontSize: '10px' }}>📅</span>
+          <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', fontWeight: 700, color: '#a855f7' }}>{formatDailyTime(dailyLeft)}</span>
         </div>
       </div>
       <div className="hud-topbar__center" style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>

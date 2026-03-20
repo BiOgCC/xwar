@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
 import { useCompanyStore } from './companyStore'
 import { useGovernmentStore } from './governmentStore'
+import { usePlayerStore } from './playerStore'
+import { useSkillsStore } from './skillsStore'
 
 // ====== TYPES ======
 
@@ -61,11 +63,11 @@ export interface OccupationState {
 
   // Occupation actions
   scoutRegion: (occupationId: string) => ScoutingResult | null
-  destroyInfrastructure: (occupationId: string, targetIds: string[]) => { destroyed: number; scrapsGained: number }
+  destroyInfrastructure: (occupationId: string, targetIds: string[], executorId?: string) => { destroyed: number; scrapsGained: number }
   powerDown: (occupationId: string) => { companiesDisabled: number }
   liftPowerDown: (occupationId: string) => void
-  hijackProduction: (occupationId: string) => { companiesHijacked: number }
-  hijackTaxes: (occupationId: string) => { taxIncome: number }
+  hijackProduction: (occupationId: string, executorId?: string) => { companiesHijacked: number }
+  hijackTaxes: (occupationId: string, executorId?: string) => { taxIncome: number }
   setPassive: (occupationId: string) => void
 
   // Tick processor
@@ -164,7 +166,7 @@ export const useOccupationStore = create<OccupationState>((set, get) => ({
     return report
   },
 
-  destroyInfrastructure: (occupationId, targetIds) => {
+  destroyInfrastructure: (occupationId, targetIds, executorId) => {
     const state = get()
     const occ = state.occupations[occupationId]
     if (!occ) return { destroyed: 0, scrapsGained: 0 }
@@ -188,9 +190,20 @@ export const useOccupationStore = create<OccupationState>((set, get) => ({
       companies: companyStore.companies.filter(c => !destroySet.has(c.id)),
     })
 
-    // Give scraps to occupier
-    const govStore = useGovernmentStore.getState()
-    govStore.donateToFund(occ.occupierId, 'scrap', scrapsGained)
+    // 98% to executor player, 2% to occupier country fund
+    const playerShare = Math.floor(scrapsGained * 0.98)
+    const fundShare = scrapsGained - playerShare
+    if (executorId) {
+      // Give scrap directly to the player who executed the action
+      const player = usePlayerStore.getState()
+      if (player.name === executorId) {
+        usePlayerStore.setState(s => ({ scrap: (s.scrap || 0) + playerShare }))
+      }
+    }
+    if (fundShare > 0) {
+      const govStore = useGovernmentStore.getState()
+      govStore.donateToFund(occ.occupierId, 'scrap', fundShare)
+    }
 
     set(s => ({
       occupations: {
@@ -249,6 +262,16 @@ export const useOccupationStore = create<OccupationState>((set, get) => ({
     const occ = state.occupations[occupationId]
     if (!occ || occ.activeAction?.type !== 'power_down') return
 
+    // ── Minimum duration scales with prospection/industrialist level ──
+    // Base 4 hours, -30min per skill level, minimum 1 hour
+    const skills = useSkillsStore.getState()
+    const skillLevel = Math.max(skills.economic.prospection || 0, skills.economic.industrialist || 0)
+    const BASE_HOURS = 4
+    const minHours = Math.max(1, BASE_HOURS - skillLevel * 0.5)
+    const minDurationMs = minHours * 60 * 60 * 1000
+    const elapsed = Date.now() - occ.activeAction.startedAt
+    if (elapsed < minDurationMs) return  // Cannot lift yet
+
     // Re-enable all companies
     const companyStore = useCompanyStore.getState()
     useCompanyStore.setState({
@@ -265,10 +288,17 @@ export const useOccupationStore = create<OccupationState>((set, get) => ({
     }))
   },
 
-  hijackProduction: (occupationId) => {
+  hijackProduction: (occupationId, executorId) => {
     const state = get()
     const occ = state.occupations[occupationId]
     if (!occ) return { companiesHijacked: 0 }
+
+    // ── 18-hour cooldown since last hijack ──
+    const HIJACK_COOLDOWN = 18 * 60 * 60 * 1000
+    if (occ.activeAction?.type === 'hijack_production') {
+      const elapsed = Date.now() - occ.activeAction.startedAt
+      if (elapsed < HIJACK_COOLDOWN) return { companiesHijacked: 0 }
+    }
 
     const companyStore = useCompanyStore.getState()
     const regionCompanies = companyStore.companies.filter(c => c.location === occ.occupiedCountry)
@@ -291,17 +321,21 @@ export const useOccupationStore = create<OccupationState>((set, get) => ({
     return { companiesHijacked: regionCompanies.length }
   },
 
-  hijackTaxes: (occupationId) => {
+  hijackTaxes: (occupationId, executorId) => {
     const state = get()
     const occ = state.occupations[occupationId]
     if (!occ) return { taxIncome: 0 }
 
-    // Calculate tax income: 10% of PP * avgSalary
-    const companyStore = useCompanyStore.getState()
-    const regionCompanies = companyStore.companies.filter(c => c.location === occ.occupiedCountry)
-    const totalPP = regionCompanies.reduce((sum, c) => sum + c.level * 10, 0) // PP per hour
-    const taxPerHour = Math.floor(totalPP * 0.10 * AVG_SALARY)
-    const totalTaxFor72h = taxPerHour * 72
+    // ── Steal 91% of the occupier country's fund money ──
+    const worldState = useWorldStore.getState()
+    const occupierCountry = worldState.getCountry(occ.occupierId)
+    if (!occupierCountry) return { taxIncome: 0 }
+
+    const stolenAmount = Math.floor(occupierCountry.fund.money * 0.91)
+    if (stolenAmount <= 0) return { taxIncome: 0 }
+
+    // Drain from occupier's treasury
+    worldState.spendFromFund(occ.occupierId, { money: stolenAmount })
 
     set(s => ({
       occupations: {
@@ -312,16 +346,26 @@ export const useOccupationStore = create<OccupationState>((set, get) => ({
             type: 'hijack_taxes',
             startedAt: Date.now(),
             expiresAt: Date.now() + HIJACK_DURATION,
-            data: { taxIncome: totalTaxFor72h, taxPerHour, occupierId: occ.occupierId },
+            data: { taxIncome: stolenAmount, occupierId: occ.occupierId, executorId },
           },
         },
       },
     }))
 
-    // Immediately add projected taxes to occupier country fund
-    useGovernmentStore.getState().donateToFund(occ.occupierId, 'money' as any, totalTaxFor72h)
+    // 98% to executor, 2% to occupier country fund
+    const playerShare = Math.floor(stolenAmount * 0.98)
+    const fundShare = stolenAmount - playerShare
+    if (executorId) {
+      const player = usePlayerStore.getState()
+      if (player.name === executorId) {
+        player.earnMoney(playerShare)
+      }
+    }
+    if (fundShare > 0) {
+      useGovernmentStore.getState().donateToFund(occ.occupierId, 'money' as any, fundShare)
+    }
 
-    return { taxIncome: totalTaxFor72h }
+    return { taxIncome: stolenAmount }
   },
 
   setPassive: (occupationId) => {

@@ -10,6 +10,7 @@ import './styles/war.css'
 import './styles/combat.css'
 import './styles/map.css'
 import './styles/animations.css'
+import './styles/antibot.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
