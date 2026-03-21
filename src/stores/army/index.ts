@@ -465,6 +465,11 @@ export const useArmyStore = create<ArmyState>((set, get) => {
       },
     }))
 
+    // Persist to backend (fire-and-forget)
+    import('../../api/client').then(({ setArmyAutoDefense }) => {
+      setArmyAutoDefense(armyId, limit).catch(() => {})
+    })
+
     const label = limit === -1 ? 'ALL' : limit === 0 ? 'OFF' : `${limit}`
     return { success: true, message: `Autodefense set to ${label} for ${army.name}.` }
   },

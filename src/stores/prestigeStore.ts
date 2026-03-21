@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { usePlayerStore } from './playerStore'
 
 // ====== TITLES ======
 
@@ -87,6 +88,13 @@ export interface PrestigeArchiveEntry {
   title: string
   score: number
   itemCreated: string | null
+}
+
+// ====== PRESTIGE COSTS ======
+
+export const PRESTIGE_COSTS = {
+  createBlueprint: 5,   // Bitcoin to create a blueprint
+  craftItem: 10,        // Bitcoin to craft an item from blueprint
 }
 
 // ====== MILITARY PRESTIGE ITEM GENERATION ======
@@ -199,6 +207,13 @@ export const usePrestigeStore = create<PrestigeState>((set, get) => {
       if (!pp) return { success: false, message: 'You do not have Prestige status this week.' }
       if (pp.blueprintCreated) return { success: false, message: 'You already created a blueprint this week.' }
 
+      // Bitcoin cost
+      const player = usePlayerStore.getState()
+      if (player.bitcoin < PRESTIGE_COSTS.createBlueprint) {
+        return { success: false, message: `Need ${PRESTIGE_COSTS.createBlueprint} Bitcoin to create a blueprint.` }
+      }
+      player.spendBitcoin(PRESTIGE_COSTS.createBlueprint)
+
       const isMilitary = pp.category === 'military'
       const itemNames = isMilitary ? MILITARY_ITEM_NAMES : ECONOMIC_ITEM_NAMES
       const itemTypes = isMilitary ? MILITARY_ITEM_TYPES : ECONOMIC_ITEM_TYPES
@@ -235,6 +250,13 @@ export const usePrestigeStore = create<PrestigeState>((set, get) => {
       const state = get()
       const bp = state.blueprints.find(b => b.blueprintId === blueprintId)
       if (!bp) return { success: false, message: 'Blueprint not found.' }
+
+      // Bitcoin cost
+      const player = usePlayerStore.getState()
+      if (player.bitcoin < PRESTIGE_COSTS.craftItem) {
+        return { success: false, message: `Need ${PRESTIGE_COSTS.craftItem} Bitcoin to craft a prestige item.` }
+      }
+      player.spendBitcoin(PRESTIGE_COSTS.craftItem)
 
       // Check player doesn't already have a prestige item equipped
       const existingEquipped = state.items.find(i => i.craftedBy === crafterId && i.equipped)

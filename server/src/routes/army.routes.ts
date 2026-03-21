@@ -547,4 +547,33 @@ router.get('/country/:code', async (req, res) => {
   }
 })
 
+// ═══════════════════════════════════════════════
+//  PATCH /api/army/autodefense — Set per-army auto-defense limit
+// ═══════════════════════════════════════════════
+
+const autodefenseSchema = z.object({
+  armyId: z.string().uuid(),
+  limit: z.number().int().min(-1).max(100),  // -1 = all, 0 = off, N = max N
+})
+
+router.patch('/autodefense', validate(autodefenseSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { armyId, limit } = req.body
+
+    const [army] = await db.select().from(armies).where(eq(armies.id, armyId)).limit(1)
+    if (!army) { res.status(404).json({ error: 'Army not found' }); return }
+    if (army.commanderId !== playerId) {
+      res.status(403).json({ error: 'Only the commander can set autodefense.' }); return
+    }
+
+    await db.update(armies).set({ autoDefenseLimit: limit }).where(eq(armies.id, armyId))
+
+    res.json({ success: true, message: `Army autodefense set to ${limit === -1 ? 'ALL' : limit === 0 ? 'OFF' : limit}.` })
+  } catch (err) {
+    console.error('[ARMY] Autodefense error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 export default router

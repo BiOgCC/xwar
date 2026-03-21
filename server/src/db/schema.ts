@@ -24,6 +24,8 @@ export const countries = pgTable('countries', {
   hasAirport:        boolean('has_airport').default(true),
   taxExempt:         boolean('tax_exempt').default(false),
   fund:              jsonb('fund').default({ money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }),
+  forceVault:        jsonb('force_vault').default({ money: 0, oil: 0, scraps: 0, materialX: 0, bitcoin: 0, jets: 0 }),
+  autoDefenseLimit:  integer('auto_defense_limit').default(-1),
   conqueredResources: jsonb('conquered_resources').default([]),
   activeDepositBonus: jsonb('active_deposit_bonus'),
 })
@@ -63,6 +65,7 @@ export const players = pgTable('players', {
   militaryBoxes: integer('military_boxes').default(0),
   staminaPills:  integer('stamina_pills').default(0),
   energyLeaves:  integer('energy_leaves').default(0),
+  badgesOfHonor: integer('badges_of_honor').default(0),
   lootChancePool: integer('loot_chance_pool').default(0),
 
   // XP & Level
@@ -227,6 +230,7 @@ export const armies = pgTable('armies', {
   salaryPercent: numeric('salary_percent', { precision: 4, scale: 2 }).default('5.0'),
   salaryIntervalHours: integer('salary_interval_hours').default(24),
   lastSalaryAt:  timestamp('last_salary_at').defaultNow(),
+  autoDefenseLimit: integer('auto_defense_limit').default(-1),
   createdAt:     timestamp('created_at').defaultNow(),
 }, (table) => ({
   countryIdx: index('idx_armies_country').on(table.countryCode),
@@ -635,4 +639,13 @@ export const navalOperations = pgTable('naval_operations', {
 // Keep old missions export for backward compatibility during migration
 export const missions = missionBoards
 
+// ═══════════════════════════════════════════════
+//  COUNTRY RESEARCH
+// ═══════════════════════════════════════════════
+
+export const countryResearch = pgTable('country_research', {
+  countryCode:      varchar('country_code', { length: 4 }).primaryKey().references(() => countries.code),
+  militaryUnlocked: jsonb('military_unlocked').default([]),
+  economyUnlocked:  jsonb('economy_unlocked').default([]),
+})
 

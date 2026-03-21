@@ -12,7 +12,7 @@ import type { GameMapHandle } from './components/map/GameMap'
 import RegionPopup from './components/map/RegionPopup'
 import BattleMapOverlay from './components/map/BattleMapOverlay'
 import TopBar from './components/layout/TopBar'
-import Sidebar from './components/layout/Sidebar'
+// Sidebar is now integrated into PanelRouter
 import NewsTicker from './components/layout/NewsTicker'
 import PanelRouter from './components/layout/PanelRouter'
 import DailyRewardPopup from './components/shared/DailyRewardPopup'
@@ -86,6 +86,11 @@ function App() {
         <BattleMapOverlay
           mapRef={mapRef}
           onRegionClick={(region) => {
+            // Ocean regions → open standard RegionPopup (which has the naval patrol button)
+            if (region.isOcean) {
+              setSelectedRegion(region)
+              return
+            }
             const playerIso = player.countryCode || 'US'
             if (useRegionStore.getState().canAttackRegion(region.id, playerIso)) {
               setSelectedWarRegion(region)
@@ -106,7 +111,7 @@ function App() {
         </div>
 
         <ActionBar />
-        <Sidebar />
+
         <NewsSlideshow />
         <WorldNewsWidget />
 

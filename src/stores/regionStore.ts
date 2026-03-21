@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
 import { useArmyStore, DIVISION_TEMPLATES } from './army'
+import type { Division } from './army/types'
+import { usePlayerStore } from './playerStore'
 
 // ====== REGION MODEL ======
 
@@ -20,6 +22,8 @@ export interface Region {
   oilYield: number
   tradeRouteValue: number
   isBlockaded: boolean
+  debris: { scrap: number; materialX: number; militaryBoxes: number }
+  scavengeCount: number  // How many times this debris pile has been scavenged (max 4)
 }
 
 // ====== NAMED REGION DEFINITIONS ======
@@ -300,13 +304,50 @@ function computeRegions(): Region[] {
       oilYield: def.oilYield || 0,
       tradeRouteValue: def.tradeRouteValue || 0,
       isBlockaded: false,
+      debris: { scrap: 0, materialX: 0, militaryBoxes: 0 },
+      scavengeCount: 0,
     }
   })
 }
 
+// ====== SCAVENGE MISSIONS ======
+
+export interface ScavengeMission {
+  id: string
+  regionId: string
+  playerId: string
+  divisionIds: string[]
+  startedAt: number
+  endsAt: number
+  waveIndex: number  // 0-3 (which share this mission gets)
+}
+
+// 4 scavenge waves: first-come-first-served
+const SCAVENGE_SHARES = [0.61, 0.19, 0.15, 0.05]
+const SCAVENGE_DURATION = 30 * 60 * 1000  // 30 minutes
+
+// ====== NAVAL PATROL MISSIONS ======
+
+export interface NavalPatrolMission {
+  id: string
+  regionId: string
+  playerId: string
+  divisionIds: string[]   // Naval divisions assigned (warship/submarine)
+  startedAt: number
+  active: boolean
+}
+
+// National fund income per patrol tick: OIL 324 ± 54, Money 635 ± 35
+const PATROL_OIL_BASE = 324
+const PATROL_OIL_VARIANCE = 54
+const PATROL_MONEY_BASE = 635
+const PATROL_MONEY_VARIANCE = 35
+
 // ====== STORE ======
 export interface RegionState {
   regions: Region[]
+  scavengeMissions: ScavengeMission[]
+  navalPatrols: NavalPatrolMission[]
   initialized: boolean
   getRegion: (id: string) => Region | undefined
   getCountryRegions: (cc: string) => Region[]
@@ -318,6 +359,14 @@ export interface RegionState {
   resetCountryRegions: (cc: string) => void
   updateBoundsFromGeoJSON: (geojson: any, isoKey?: string) => void
   processOceanIncome: () => void
+  addDebris: (regionId: string, scrap: number, materialX: number, militaryBoxes: number) => void
+  startScavenge: (regionId: string, divisionIds: string[]) => { success: boolean; message: string }
+  processScavengeTick: () => void
+  // Naval Patrol
+  startNavalPatrol: (regionId: string) => { success: boolean; message: string }
+  stopNavalPatrol: (regionId: string) => { success: boolean; message: string }
+  getPlayerPatrol: (regionId: string) => NavalPatrolMission | undefined
+  processNavalPatrolIncome: () => void
 }
 
 const ISO3_TO_ISO2: Record<string, string> = {
@@ -354,6 +403,8 @@ const ISO3_TO_ISO2: Record<string, string> = {
 
 export const useRegionStore = create<RegionState>((set, get) => ({
   regions: computeRegions(),
+  scavengeMissions: [],
+  navalPatrols: [],
   initialized: true,
 
   getRegion: (id) => get().regions.find(r => r.id === id),
@@ -554,7 +605,8 @@ export const useRegionStore = create<RegionState>((set, get) => ({
         generatedRegionObjs.push({
           id, name: stateName, countryCode: cc, controlledBy, captureProgress: 0,
           attackedBy: null, assignedArmyId: null, position: [cLng, cLat], adjacent: [], defense,
-          isOcean: false, fishingBonus: 0, oilYield: 0, tradeRouteValue: 0, isBlockaded: false
+          isOcean: false, fishingBonus: 0, oilYield: 0, tradeRouteValue: 0, isBlockaded: false,
+          debris: { scrap: 0, materialX: 0, militaryBoxes: 0 }, scavengeCount: 0,
         })
       })
        
@@ -585,6 +637,243 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     Object.entries(yieldsByCountry).forEach(([cc, yields]) => {
       if (yields.money > 0) worldStore.addToFund(cc, 'money', yields.money)
       if (yields.oil > 0) worldStore.addToFund(cc, 'oil', yields.oil)
+    })
+  },
+
+  // ====== DEBRIS & SCAVENGING ======
+
+  addDebris: (regionId, scrap, materialX, militaryBoxes) => set(s => ({
+    regions: s.regions.map(r => r.id === regionId ? {
+      ...r,
+      debris: {
+        scrap: r.debris.scrap + scrap,
+        materialX: r.debris.materialX + materialX,
+        militaryBoxes: r.debris.militaryBoxes + militaryBoxes,
+      },
+      scavengeCount: 0,  // Reset scavenge count when new debris is added
+    } : r)
+  })),
+
+  startScavenge: (regionId, divisionIds) => {
+    const state = get()
+    const region = state.regions.find(r => r.id === regionId)
+    if (!region) return { success: false, message: 'Region not found.' }
+    if (region.debris.scrap <= 0 && region.debris.materialX <= 0 && region.debris.militaryBoxes <= 0) {
+      return { success: false, message: 'No debris to scavenge.' }
+    }
+    if (region.scavengeCount >= 4) return { success: false, message: 'Debris fully scavenged.' }
+    if (divisionIds.length === 0) return { success: false, message: 'Select at least one division.' }
+
+    // Validate: only Recon and Jeep
+    const armyStore = useArmyStore.getState()
+    const player = usePlayerStore.getState()
+    for (const id of divisionIds) {
+      const div = armyStore.divisions[id]
+      if (!div) return { success: false, message: `Division ${id} not found.` }
+      if (div.ownerId !== player.name) return { success: false, message: 'Not your division.' }
+      if (div.type !== 'recon' && div.type !== 'jeep') return { success: false, message: 'Only Recon and Jeep can scavenge.' }
+      if (div.status !== 'ready') return { success: false, message: `${div.name} is not ready.` }
+    }
+
+    // Check if this player already has a mission on this region
+    const existing = state.scavengeMissions.find(m => m.regionId === regionId && m.playerId === player.name)
+    if (existing) return { success: false, message: 'Already scavenging this region.' }
+
+    const waveIndex = region.scavengeCount
+    const now = Date.now()
+
+    // Set divisions to scavenging status
+    divisionIds.forEach(id => {
+      useArmyStore.setState(s => ({
+        divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'scavenging' } }
+      }))
+    })
+
+    // Increment scavenge count on region
+    set(s => ({
+      regions: s.regions.map(r => r.id === regionId ? { ...r, scavengeCount: r.scavengeCount + 1 } : r),
+      scavengeMissions: [...s.scavengeMissions, {
+        id: `scav_${now}`,
+        regionId,
+        playerId: player.name,
+        divisionIds,
+        startedAt: now,
+        endsAt: now + SCAVENGE_DURATION,
+        waveIndex,
+      }],
+    }))
+
+    const share = SCAVENGE_SHARES[waveIndex]
+    return { success: true, message: `Scavenging! Wave ${waveIndex + 1}/4 (${Math.round(share * 100)}% share). Returns in 30 min.` }
+  },
+
+  processScavengeTick: () => {
+    const state = get()
+    const now = Date.now()
+    const completed: ScavengeMission[] = []
+    const remaining: ScavengeMission[] = []
+
+    state.scavengeMissions.forEach(m => {
+      if (now >= m.endsAt) completed.push(m)
+      else remaining.push(m)
+    })
+
+    if (completed.length === 0) return
+
+    completed.forEach(m => {
+      const region = state.regions.find(r => r.id === m.regionId)
+      if (!region) return
+
+      const share = SCAVENGE_SHARES[m.waveIndex] || 0
+      const scrapGained = Math.floor(region.debris.scrap * share)
+      const matXGained = Math.floor(region.debris.materialX * share)
+      const boxGained = Math.floor(region.debris.militaryBoxes * share)
+
+      // Award resources to player if they're the mission owner
+      const player = usePlayerStore.getState()
+      if (player.name === m.playerId) {
+        usePlayerStore.setState(s => ({
+          scrap: s.scrap + scrapGained,
+          materialX: s.materialX + matXGained,
+          militaryBoxes: s.militaryBoxes + boxGained,
+        }))
+      }
+
+      // Return divisions to ready
+      m.divisionIds.forEach(id => {
+        useArmyStore.setState(s => {
+          const div = s.divisions[id]
+          if (!div || div.status !== 'scavenging') return s
+          return { divisions: { ...s.divisions, [id]: { ...div, status: 'ready' } } }
+        })
+      })
+    })
+
+    set({ scavengeMissions: remaining })
+  },
+
+  // ====== NAVAL PATROL ======
+
+  startNavalPatrol: (regionId) => {
+    const state = get()
+    const region = state.regions.find(r => r.id === regionId)
+    if (!region) return { success: false, message: 'Region not found.' }
+    if (!region.isOcean) return { success: false, message: 'Can only patrol ocean regions.' }
+
+    const player = usePlayerStore.getState()
+    const armyStore = useArmyStore.getState()
+
+    // Check if already patrolling this region
+    const existing = state.navalPatrols.find(p => p.regionId === regionId && p.playerId === player.name && p.active)
+    if (existing) return { success: false, message: 'Already patrolling this region.' }
+
+    // Find ready naval divisions owned by the player
+    const navalDivs = (Object.values(armyStore.divisions) as Division[]).filter(
+      d => d.ownerId === player.name && d.category === 'naval' && d.status === 'ready' && d.manpower > 0
+    )
+    if (navalDivs.length === 0) return { success: false, message: 'No ready naval divisions available. Recruit warships or submarines first.' }
+
+    const divisionIds = navalDivs.map(d => d.id)
+
+    // Set divisions to patrolling status
+    divisionIds.forEach(id => {
+      useArmyStore.setState(s => ({
+        divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'patrolling' } }
+      }))
+    })
+
+    const now = Date.now()
+    set(s => ({
+      navalPatrols: [...s.navalPatrols, {
+        id: `patrol_${now}`,
+        regionId,
+        playerId: player.name,
+        divisionIds,
+        startedAt: now,
+        active: true,
+      }],
+    }))
+
+    return { success: true, message: `⚓ ${divisionIds.length} naval division(s) deployed to patrol ${region.name}! Farming OIL + FISH.` }
+  },
+
+  stopNavalPatrol: (regionId) => {
+    const state = get()
+    const player = usePlayerStore.getState()
+    const patrol = state.navalPatrols.find(p => p.regionId === regionId && p.playerId === player.name && p.active)
+    if (!patrol) return { success: false, message: 'No active patrol on this region.' }
+
+    // Return divisions to ready
+    patrol.divisionIds.forEach(id => {
+      useArmyStore.setState(s => {
+        const div = s.divisions[id]
+        if (!div || div.status !== 'patrolling') return s
+        return { divisions: { ...s.divisions, [id]: { ...div, status: 'ready' } } }
+      })
+    })
+
+    set(s => ({
+      navalPatrols: s.navalPatrols.map(p =>
+        p.id === patrol.id ? { ...p, active: false } : p
+      ),
+    }))
+
+    return { success: true, message: 'Naval patrol recalled. Divisions returning to ready.' }
+  },
+
+  getPlayerPatrol: (regionId) => {
+    const state = get()
+    const player = usePlayerStore.getState()
+    return state.navalPatrols.find(p => p.regionId === regionId && p.playerId === player.name && p.active)
+  },
+
+  processNavalPatrolIncome: () => {
+    const state = get()
+    const worldStore = useWorldStore.getState()
+    const player = usePlayerStore.getState()
+
+    state.navalPatrols.forEach(patrol => {
+      if (!patrol.active) return
+      const region = state.regions.find(r => r.id === patrol.regionId)
+      if (!region || !region.isOcean) return
+
+      // Verify divisions are still alive
+      const armyStore = useArmyStore.getState()
+      const aliveDivs = patrol.divisionIds.filter(id => {
+        const d = armyStore.divisions[id]
+        return d && d.status === 'patrolling' && d.manpower > 0
+      })
+      if (aliveDivs.length === 0) {
+        // Auto-stop patrol if no divisions left
+        set(s => ({
+          navalPatrols: s.navalPatrols.map(p =>
+            p.id === patrol.id ? { ...p, active: false } : p
+          ),
+        }))
+        return
+      }
+
+      // ── Player-level income: OIL + FISH from region yields ──
+      if (patrol.playerId === player.name) {
+        const oilGain = region.oilYield || 0
+        const fishGain = region.fishingBonus || 0
+        if (oilGain > 0 || fishGain > 0) {
+          usePlayerStore.setState(s => ({
+            oil: s.oil + oilGain,
+            fish: s.fish + fishGain,
+          }))
+        }
+      }
+
+      // ── National fund income: OIL 324±54, Money 635±35 ──
+      const vary = (base: number, v: number) => base + Math.floor((Math.random() * 2 - 1) * v)
+      const fundOil = vary(PATROL_OIL_BASE, PATROL_OIL_VARIANCE)
+      const fundMoney = vary(PATROL_MONEY_BASE, PATROL_MONEY_VARIANCE)
+
+      // Add to the controlling country's fund (player's country)
+      const cc = player.countryCode
+      if (fundOil > 0) worldStore.addToFund(cc, 'oil', fundOil)
+      if (fundMoney > 0) worldStore.addToFund(cc, 'money', fundMoney)
     })
   },
 }))

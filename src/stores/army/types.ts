@@ -53,7 +53,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.10, hitRate: 0.50, critRateMult: 0.80, critDmgMult: 1.50,
     healthMult: 24.0, dodgeMult: 1.30, armorMult: 1.30,
     manpowerCost: 200, trainingTime: 25,
-    recruitCost: { money: 40000, oil: 400, materialX: 150, scrap: 200 },
+    recruitCost: { money: 40000, oil: 400, materialX: 0, scrap: 200 },
     upkeepCost: { oil: 40, materialX: 15 },
     popCost: 1, seats: 0,
     attackSpeed: 1.5,
@@ -64,7 +64,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.11, hitRate: 0.55, critRateMult: 1.00, critDmgMult: 1.60,
     healthMult: 28.8, dodgeMult: 0.90, armorMult: 1.30,
     manpowerCost: 350, trainingTime: 30,
-    recruitCost: { money: 60000, oil: 600, materialX: 250, scrap: 350 },
+    recruitCost: { money: 60000, oil: 600, materialX: 0, scrap: 350 },
     upkeepCost: { oil: 60, materialX: 25 },
     popCost: 1, seats: 0,
     attackSpeed: 1,
@@ -75,7 +75,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.13, hitRate: 0.70, critRateMult: 1.56, critDmgMult: 2.50,
     healthMult: 24.0, dodgeMult: 1.60, armorMult: 1.20,
     manpowerCost: 150, trainingTime: 40,
-    recruitCost: { money: 80000, oil: 500, materialX: 300, scrap: 400 },
+    recruitCost: { money: 80000, oil: 500, materialX: 0, scrap: 400 },
     upkeepCost: { oil: 50, materialX: 30 },
     popCost: 1, seats: 0,
     attackSpeed: 0.6,
@@ -86,7 +86,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.15, hitRate: 0.50, critRateMult: 1.20, critDmgMult: 2.00,
     healthMult: 30.0, dodgeMult: 0.70, armorMult: 1.30,
     manpowerCost: 250, trainingTime: 35,
-    recruitCost: { money: 100000, oil: 800, materialX: 400, scrap: 500 },
+    recruitCost: { money: 100000, oil: 800, materialX: 0, scrap: 500 },
     upkeepCost: { oil: 80, materialX: 40 },
     popCost: 1, seats: 0,
     attackSpeed: 0.8,
@@ -99,7 +99,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.20, hitRate: 0.60, critRateMult: 0.90, critDmgMult: 1.70,
     healthMult: 30.0, dodgeMult: 1.50, armorMult: 1.50,
     manpowerCost: 150, trainingTime: 35,
-    recruitCost: { money: 100000, oil: 1500, materialX: 600, scrap: 400 },
+    recruitCost: { money: 100000, oil: 1500, materialX: 0, scrap: 400 },
     upkeepCost: { oil: 150, materialX: 60 },
     popCost: 2, seats: 0,
     attackSpeed: 1.3,
@@ -110,7 +110,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.22, hitRate: 0.66, critRateMult: 1.10, critDmgMult: 1.80,
     healthMult: 36.0, dodgeMult: 0.80, armorMult: 2.00,
     manpowerCost: 200, trainingTime: 50,
-    recruitCost: { money: 150000, oil: 2500, materialX: 1000, scrap: 600 },
+    recruitCost: { money: 150000, oil: 2500, materialX: 0, scrap: 600 },
     upkeepCost: { oil: 250, materialX: 100 },
     popCost: 2, seats: 1,
     attackSpeed: 0.5,
@@ -121,7 +121,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.26, hitRate: 0.80, critRateMult: 1.75, critDmgMult: 2.80,
     healthMult: 26.0, dodgeMult: 1.40, armorMult: 1.20,
     manpowerCost: 100, trainingTime: 60,
-    recruitCost: { money: 200000, oil: 3000, materialX: 1200, scrap: 700 },
+    recruitCost: { money: 200000, oil: 3000, materialX: 0, scrap: 700 },
     upkeepCost: { oil: 300, materialX: 120 },
     popCost: 2, seats: 2,
     attackSpeed: 0.7,
@@ -132,7 +132,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.30, hitRate: 0.60, critRateMult: 1.35, critDmgMult: 2.20,
     healthMult: 40.0, dodgeMult: 0.70, armorMult: 2.50,
     manpowerCost: 250, trainingTime: 60,
-    recruitCost: { money: 250000, oil: 4000, materialX: 1500, scrap: 800 },
+    recruitCost: { money: 250000, oil: 4000, materialX: 0, scrap: 800 },
     upkeepCost: { oil: 400, materialX: 150 },
     popCost: 2, seats: 5,
     attackSpeed: 0.4,
@@ -143,14 +143,39 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.35, hitRate: 0.85, critRateMult: 1.50, critDmgMult: 2.50,
     healthMult: 50.0, dodgeMult: 1.20, armorMult: 3.00,
     manpowerCost: 300, trainingTime: 80,
-    recruitCost: { money: 300000, oil: 6000, materialX: 2500, scrap: 1200 },
+    recruitCost: { money: 300000, oil: 6000, materialX: 0, scrap: 1200 },
     upkeepCost: { oil: 600, materialX: 250 },
     popCost: 2, seats: 6,
     attackSpeed: 0.3,
   },
 }
 
-// ====== STAR QUALITY SYSTEM ======
+// ====== DEBRIS TABLE (dropped when division is destroyed in battle) ======
+// Values represent base amounts ±20% randomized at drop time.
+// militaryBoxChance is 0–1 probability of dropping a military loot box.
+export interface DebrisEntry { scrap: number; materialX: number; militaryBoxChance: number }
+export const DEBRIS_TABLE: Record<DivisionType, DebrisEntry> = {
+  recon:     { scrap: 60,   materialX: 20,   militaryBoxChance: 0.05 },
+  assault:   { scrap: 100,  materialX: 35,   militaryBoxChance: 0.08 },
+  sniper:    { scrap: 120,  materialX: 40,   militaryBoxChance: 0.10 },
+  rpg:       { scrap: 150,  materialX: 55,   militaryBoxChance: 0.12 },
+  jeep:      { scrap: 200,  materialX: 80,   militaryBoxChance: 0.10 },
+  tank:      { scrap: 350,  materialX: 150,  militaryBoxChance: 0.15 },
+  jet:       { scrap: 400,  materialX: 180,  militaryBoxChance: 0.18 },
+  warship:   { scrap: 500,  materialX: 250,  militaryBoxChance: 0.20 },
+  submarine: { scrap: 700,  materialX: 400,  militaryBoxChance: 0.25 },
+}
+
+/** Roll debris with ±20% randomization */
+export function rollDebris(type: DivisionType): { scrap: number; materialX: number; militaryBox: boolean } {
+  const entry = DEBRIS_TABLE[type]
+  const vary = () => 0.80 + Math.random() * 0.40 // 0.80 – 1.20
+  return {
+    scrap: Math.floor(entry.scrap * vary()),
+    materialX: Math.floor(entry.materialX * vary()),
+    militaryBox: Math.random() < entry.militaryBoxChance,
+  }
+}
 
 export type StarQuality = 1 | 2 | 3 | 4 | 5
 
@@ -299,7 +324,7 @@ export interface Division {
   stance: 'unassigned' | 'force_pool' | 'reserve' | 'first_line_defense'
   autoTrainingEnabled: boolean  // Passive experience gain when ready
 
-  status: 'training' | 'ready' | 'in_combat' | 'recovering' | 'destroyed' | 'listed'
+  status: 'training' | 'ready' | 'in_combat' | 'recovering' | 'destroyed' | 'listed' | 'scavenging' | 'patrolling'
   trainingProgress: number  // Legacy: used for retreat/recover tick counter
   recoveryTicksNeeded: number  // How many ticks needed to finish recovering
   readyAt: number           // Timestamp: when training finishes (0 = not training)

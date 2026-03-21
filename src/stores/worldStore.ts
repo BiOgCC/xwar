@@ -288,6 +288,8 @@ export interface WorldState {
 
   // Actions
   declareWar: (attackerIso: string, defenderIso: string) => void
+  endWar: (iso1: string, iso2: string) => void
+  printMoney: (countryCode: string, amount: number) => void
   canAttack: (attackerIso: string, defenderIso: string) => boolean
   addTreasuryTax: (countryCode: string, amount: number) => void
   addToFund: (countryCode: string, resource: NationalFundKey, amount: number) => void
@@ -555,6 +557,11 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         }
       })
     }))
+    // Persist to backend (fire-and-forget)
+    import('../api/client').then(({ transferToForceVault: apiTransfer }) => {
+      const fundKey = resource === 'scrap' ? 'scraps' : resource
+      apiTransfer(countryCode, fundKey, amount).catch(() => {})
+    })
     return true
   },
 
@@ -574,6 +581,15 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         return { ...c, forceVault: newVault }
       })
     }))
+    // Persist each resource spend to backend (fire-and-forget)
+    import('../api/client').then(({ spendFromForceVault: apiSpend }) => {
+      for (const [key, amount] of Object.entries(costs)) {
+        if (amount && amount > 0) {
+          const fundKey = key === 'scrap' ? 'scraps' : key
+          apiSpend(countryCode, fundKey, amount).catch(() => {})
+        }
+      }
+    })
     return true
   },
 
@@ -624,6 +640,26 @@ export const useWorldStore = create<WorldState>((set, get) => ({
 
     return { wars: [...state.wars, newWar] }
   }),
+
+  endWar: (iso1, iso2) => set((state) => ({
+    wars: state.wars.map(w => {
+      if (w.status !== 'active') return w
+      const match = (w.attacker === iso1 && w.defender === iso2) ||
+                    (w.attacker === iso2 && w.defender === iso1)
+      return match ? { ...w, status: 'ended' as const } : w
+    })
+  })),
+
+  printMoney: (countryCode, amount) => {
+    if (amount <= 0) return
+    set((s) => ({
+      countries: s.countries.map(c =>
+        c.code === countryCode ? { ...c, fund: { ...c.fund, money: c.fund.money + amount } } : c
+      )
+    }))
+    // Track in economy ledger
+    get().recordEconFlow('print_money', amount, 'created')
+  },
 
   getTimeUntilDailyReset: () => {
     const ms = get().dailyResetAt - Date.now()

@@ -78,6 +78,7 @@ export function useGameLoop() {
     // REGION (10s) — region capture progress
     unsubs.push(gameClock.subscribe('region', () => {
       try { useRegionStore.getState().tickCapture() } catch (e) { console.warn('[Region]:', e) }
+      try { useRegionStore.getState().processScavengeTick() } catch (e) { console.warn('[Region] scavenge:', e) }
     }))
 
     // STOCK (10s) — stock market price tick + bond resolution + 12h sessions
@@ -92,6 +93,7 @@ export function useGameLoop() {
     unsubs.push(gameClock.subscribe('economy', () => {
       try { useCompanyStore.getState().processTick() } catch (e) { console.warn('[Economy] company:', e) }
       try { useRegionStore.getState().processOceanIncome() } catch (e) { console.warn('[Economy] ocean:', e) }
+      try { useRegionStore.getState().processNavalPatrolIncome() } catch (e) { console.warn('[Economy] naval patrol:', e) }
       try {
         const mkt = useMarketStore.getState()
         mkt.tickPrices()

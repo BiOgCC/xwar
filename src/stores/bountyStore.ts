@@ -25,26 +25,28 @@ export interface Bounty {
 }
 
 // ── NPC Bounty Hunt System ──
+// Fixed bounty pot divided among all damage contributors on elimination
 export interface NPCTarget {
   id: string
   name: string
   countryCode: string   // current country they're in
   health: number
   maxHealth: number
-  rewardPerDamage: number  // $ earned per point of damage
+  totalBounty: number     // Fixed total $ pot for this NPC
   rank: 'grunt' | 'elite' | 'boss'
   active: boolean
+  damageDealers: Record<string, number>  // playerName → total damage dealt
 }
 
 const NPC_TEMPLATES = [
-  { name: 'Rogue Operative', maxHealth: 500, rewardPerDamage: 100, rank: 'grunt' as const },
-  { name: 'Shadow Agent', maxHealth: 800, rewardPerDamage: 150, rank: 'grunt' as const },
-  { name: 'Desert Phantom', maxHealth: 1200, rewardPerDamage: 200, rank: 'elite' as const },
-  { name: 'Iron Viper', maxHealth: 1500, rewardPerDamage: 250, rank: 'elite' as const },
-  { name: 'The Butcher', maxHealth: 3000, rewardPerDamage: 400, rank: 'boss' as const },
-  { name: 'Ghost of Kyiv', maxHealth: 2000, rewardPerDamage: 350, rank: 'boss' as const },
-  { name: 'Crimson Jackal', maxHealth: 600, rewardPerDamage: 120, rank: 'grunt' as const },
-  { name: 'Steel Cobra', maxHealth: 1000, rewardPerDamage: 180, rank: 'elite' as const },
+  { name: 'Rogue Operative', maxHealth: 500, totalBounty: 25_000, rank: 'grunt' as const },
+  { name: 'Shadow Agent', maxHealth: 800, totalBounty: 40_000, rank: 'grunt' as const },
+  { name: 'Desert Phantom', maxHealth: 1200, totalBounty: 75_000, rank: 'elite' as const },
+  { name: 'Iron Viper', maxHealth: 1500, totalBounty: 100_000, rank: 'elite' as const },
+  { name: 'The Butcher', maxHealth: 3000, totalBounty: 300_000, rank: 'boss' as const },
+  { name: 'Ghost of Kyiv', maxHealth: 2000, totalBounty: 200_000, rank: 'boss' as const },
+  { name: 'Crimson Jackal', maxHealth: 600, totalBounty: 30_000, rank: 'grunt' as const },
+  { name: 'Steel Cobra', maxHealth: 1000, totalBounty: 80_000, rank: 'elite' as const },
 ]
 
 const BOUNTY_MIN = 10_000
@@ -185,9 +187,10 @@ export const useBountyStore = create<BountyState>((set, get) => ({
       countryCode: countries[Math.floor(Math.random() * countries.length)],
       health: tmpl.maxHealth,
       maxHealth: tmpl.maxHealth,
-      rewardPerDamage: tmpl.rewardPerDamage,
+      totalBounty: tmpl.totalBounty,
       rank: tmpl.rank,
       active: true,
+      damageDealers: {},
     }))
 
     set({ npcTargets: newTargets, lastNPCRotationAt: now })
@@ -197,7 +200,7 @@ export const useBountyStore = create<BountyState>((set, get) => ({
   },
 
   attackNPC: (npcId, damage) => {
-    // ── Fix 1: Rate limit, stamina cost, damage cap, country check ──
+    // ── Rate limit, stamina cost, damage cap, country check ──
     if (!rateLimiter.check('attackNPC')) return { success: false, message: 'Too fast! Wait a moment.', moneyEarned: 0 }
 
     const player = usePlayerStore.getState()
@@ -218,32 +221,46 @@ export const useBountyStore = create<BountyState>((set, get) => ({
     // Cap damage to player's attack stat (fallback 10 if undefined)
     const maxDmg = Math.max(1, (player as any).attack || 10)
     const effectiveDamage = Math.min(damage, npc.health, maxDmg)
-    const moneyEarned = effectiveDamage * npc.rewardPerDamage
     const newHealth = npc.health - effectiveDamage
     const eliminated = newHealth <= 0
 
-    // Pay the player
-    usePlayerStore.getState().earnMoney(moneyEarned)
+    // Track damage dealt — payout happens only on elimination
+    const updatedDealers = { ...npc.damageDealers }
+    updatedDealers[player.name] = (updatedDealers[player.name] || 0) + effectiveDamage
+
+    let moneyEarned = 0
+
+    if (eliminated) {
+      // ── Pot-based payout: divide total bounty among all damage contributors ──
+      const totalDamage = Object.values(updatedDealers).reduce((s, d) => s + d, 0)
+      const playerDamage = updatedDealers[player.name] || 0
+      const playerShare = Math.floor(npc.totalBounty * (playerDamage / Math.max(1, totalDamage)))
+      moneyEarned = playerShare
+
+      // Pay this player their share
+      if (playerShare > 0) usePlayerStore.getState().earnMoney(playerShare)
+
+      // In multiplayer, other contributors would get paid server-side.
+      // For now, log the split for the news ticker.
+      const dealerCount = Object.keys(updatedDealers).length
+      useNewsStore.getState().pushEvent('bounty',
+        `💀 ${npc.name} eliminated! $${npc.totalBounty.toLocaleString()} bounty split among ${dealerCount} hunter${dealerCount > 1 ? 's' : ''}. ${player.name} earned $${playerShare.toLocaleString()}`
+      )
+    }
 
     set(s => ({
       npcTargets: s.npcTargets.map(t =>
         t.id === npcId
-          ? { ...t, health: Math.max(0, newHealth), active: !eliminated }
+          ? { ...t, health: Math.max(0, newHealth), active: !eliminated, damageDealers: updatedDealers }
           : t
       ),
     }))
 
-    if (eliminated) {
-      useNewsStore.getState().pushEvent('bounty',
-        `💀 ${player.name} eliminated ${npc.name}! Total bounty: $${moneyEarned.toLocaleString()}`
-      )
-    }
-
     return {
       success: true,
       message: eliminated
-        ? `${npc.name} eliminated! Earned $${moneyEarned.toLocaleString()}`
-        : `Hit ${npc.name} for ${effectiveDamage} damage! Earned $${moneyEarned.toLocaleString()}`,
+        ? `${npc.name} eliminated! Your share: $${moneyEarned.toLocaleString()} of $${npc.totalBounty.toLocaleString()}`
+        : `Hit ${npc.name} for ${effectiveDamage} damage! (${npc.health - effectiveDamage > 0 ? npc.health - effectiveDamage : 0} HP left)`,
       moneyEarned,
     }
   },

@@ -24,13 +24,13 @@ interface CraftModalProps {
   onClose: () => void
 }
 
-const costTable: Record<string, { scrap: number; materialX: number; money: number }> = {
-  t1: { scrap: 20, materialX: 5, money: 50 },
-  t2: { scrap: 60, materialX: 15, money: 150 },
-  t3: { scrap: 180, materialX: 45, money: 500 },
-  t4: { scrap: 540, materialX: 130, money: 1500 },
-  t5: { scrap: 1600, materialX: 400, money: 5000 },
-  t6: { scrap: 4800, materialX: 1200, money: 15000 },
+const costTable: Record<string, { scrap: number; bitcoin: number }> = {
+  t1: { scrap: 50, bitcoin: 1 },
+  t2: { scrap: 150, bitcoin: 1 },
+  t3: { scrap: 450, bitcoin: 1 },
+  t4: { scrap: 1350, bitcoin: 1 },
+  t5: { scrap: 4050, bitcoin: 1 },
+  t6: { scrap: 12150, bitcoin: 1 },
 }
 
 const statPreview: Record<string, Record<string, string>> = {
@@ -64,9 +64,8 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
 
   const doCraft = (tier: EquipTier, slot: EquipSlot) => {
     const cost = costTable[tier]
-    if (player.scrap < cost.scrap || player.materialX < cost.materialX || player.money < cost.money) return
-    player.spendMoney(cost.money)
-    player.spendMaterialX(cost.materialX)
+    if (player.scrap < cost.scrap || player.bitcoin < cost.bitcoin) return
+    player.spendBitcoin(cost.bitcoin)
     player.spendScrap(cost.scrap)
     const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
     const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][Math.floor(Math.random() * WEAPON_SUBTYPES[tier].length)] : undefined
@@ -111,8 +110,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
             fontFamily: 'var(--font-mono)', letterSpacing: '0.04em', textTransform: 'uppercase',
           }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><ResourceIcon resourceKey="scrap" size={14} />{player.scrap.toLocaleString()} SCRAP</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><ResourceIcon resourceKey="materialX" size={14} />{player.materialX.toLocaleString()} MAT X</span>
-            <span>💰 ${player.money.toLocaleString()}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><ResourceIcon resourceKey="bitcoin" size={14} />{player.bitcoin.toLocaleString()} BTC</span>
           </div>
 
           {/* Slot Tabs */}
@@ -146,7 +144,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
               })
               return entries.map((entry, idx) => {
                 const tc = costTable[entry.tier]
-                const canAfford = player.scrap >= tc.scrap && player.materialX >= tc.materialX && player.money >= tc.money
+                const canAfford = player.scrap >= tc.scrap && player.bitcoin >= tc.bitcoin
                 const preview = statPreview[craftSlot]?.[entry.tier] || ''
                 const imgUrl = getItemImagePath(entry.tier, craftSlot, craftSlot === 'weapon' ? 'weapon' : 'armor', entry.subtype)
 
@@ -171,16 +169,15 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                       {preview}
                     </div>
                     <div style={{ fontSize: '7px', color: '#475569', marginBottom: '6px', fontFamily: 'var(--font-mono)', letterSpacing: '0.03em' }}>
-                      {tc.scrap} / {tc.materialX} / ${tc.money}
+                      {tc.scrap} ⚙️ / {tc.bitcoin} ₿
                     </div>
                     <button
                       disabled={!canAfford}
                       onClick={() => {
                         if (entry.subtype) {
                           const cost = costTable[entry.tier]
-                          if (player.scrap < cost.scrap || player.materialX < cost.materialX || player.money < cost.money) return
-                          player.spendMoney(cost.money)
-                          player.spendMaterialX(cost.materialX)
+                          if (player.scrap < cost.scrap || player.bitcoin < cost.bitcoin) return
+                          player.spendBitcoin(cost.bitcoin)
                           player.spendScrap(cost.scrap)
                           const result = generateStats('weapon', 'weapon', entry.tier, entry.subtype)
                           const indLevel = useSkillsStore.getState().economic.industrialist || 0
@@ -233,7 +230,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
               {TIER_ORDER.map(tier => {
                 const tc = costTable[tier]
-                const canAfford = player.scrap >= tc.scrap && player.materialX >= tc.materialX && player.money >= tc.money
+                const canAfford = player.scrap >= tc.scrap && player.bitcoin >= tc.bitcoin
                 return (
                   <button
                     key={`rand-${tier}`}

@@ -225,8 +225,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   heroBuffBattleId: null,
   avatar: '/assets/avatars/avatar_male.png',
 
-  setAvatar: (path) => set({ avatar: path }),
-  equipAmmo: (type) => set({ equippedAmmo: type }),
+  setAvatar: (path) => {
+    set({ avatar: path })
+    import('../api/client').then(({ setAvatar }) => setAvatar(path).catch(() => {}))
+  },
+  equipAmmo: (type) => {
+    set({ equippedAmmo: type })
+    import('../api/client').then(({ equipAmmoApi }) => equipAmmoApi(type).catch(() => {}))
+  },
 
   consumeFood: (type) => {
     if (!rateLimiter.check('consumeFood')) return false
@@ -243,6 +249,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         stamina: s.stamina + staminaGain
       }
     })
+    if (consumed) {
+      import('../api/client').then(({ eatFoodApi }) => eatFoodApi(type).catch(() => {}))
+    }
     return consumed
   },
 
@@ -384,6 +393,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       playerLevel: newState.level,
       singleHitDamage: finalDamage,
     })
+    // Persist attack to backend (fire-and-forget)
+    import('../api/client').then(({ attackApi }) => attackApi().catch(() => {}))
     return { damage: finalDamage, isCrit, isDodged }
   },
 

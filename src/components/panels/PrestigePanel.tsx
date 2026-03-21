@@ -6,6 +6,7 @@ import {
   usePrestigeStore,
   MILITARY_TITLES,
   ECONOMIC_TITLES,
+  PRESTIGE_COSTS,
   getPrestigeItemImage,
   type PrestigeCategory,
 } from '../../stores/prestigeStore'
@@ -161,8 +162,8 @@ export default function PrestigePanel() {
                   {myPrestige.blueprintCreated ? '✓ Blueprint created this week' : '⚡ Blueprint available — create one!'}
                 </div>
                 {!myPrestige.blueprintCreated && (
-                  <button className="hud-btn-primary" onClick={handleCreateBlueprint} style={{ marginTop: '8px', width: '100%', padding: '10px', fontSize: '12px', fontWeight: 900, background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
-                    ⭐ CREATE PRESTIGE BLUEPRINT
+                  <button className="hud-btn-primary" onClick={handleCreateBlueprint} disabled={player.bitcoin < PRESTIGE_COSTS.createBlueprint} style={{ marginTop: '8px', width: '100%', padding: '10px', fontSize: '12px', fontWeight: 900, background: player.bitcoin >= PRESTIGE_COSTS.createBlueprint ? 'linear-gradient(135deg, #f59e0b, #d97706)' : '#333', opacity: player.bitcoin >= PRESTIGE_COSTS.createBlueprint ? 1 : 0.5, cursor: player.bitcoin >= PRESTIGE_COSTS.createBlueprint ? 'pointer' : 'not-allowed' }}>
+                    ⭐ CREATE PRESTIGE BLUEPRINT ({PRESTIGE_COSTS.createBlueprint} ₿)
                   </button>
                 )}
               </div>
@@ -248,9 +249,10 @@ export default function PrestigePanel() {
                     <button
                       className="hud-btn-primary"
                       onClick={() => handleCraft(bp.blueprintId)}
-                      style={{ width: '100%', padding: '6px', fontWeight: 900, fontSize: '11px', background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+                      disabled={player.bitcoin < PRESTIGE_COSTS.craftItem}
+                      style={{ width: '100%', padding: '6px', fontWeight: 900, fontSize: '11px', background: player.bitcoin >= PRESTIGE_COSTS.craftItem ? 'linear-gradient(135deg, #f59e0b, #d97706)' : '#333', opacity: player.bitcoin >= PRESTIGE_COSTS.craftItem ? 1 : 0.5, cursor: player.bitcoin >= PRESTIGE_COSTS.craftItem ? 'pointer' : 'not-allowed' }}
                     >
-                      ⭐ CRAFT PRESTIGE ITEM
+                      ⭐ CRAFT PRESTIGE ITEM ({PRESTIGE_COSTS.craftItem} ₿)
                     </button>
                   </div>
                 ))}
@@ -303,7 +305,7 @@ export default function PrestigePanel() {
                       ))}
                     </div>
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <button className="hud-btn-primary" onClick={() => handleCraft(bp.blueprintId)} style={{ fontSize: '9px', padding: '4px 8px' }}>CRAFT ITEM</button>
+                      <button className="hud-btn-primary" onClick={() => handleCraft(bp.blueprintId)} disabled={player.bitcoin < PRESTIGE_COSTS.craftItem} style={{ fontSize: '9px', padding: '4px 8px', opacity: player.bitcoin >= PRESTIGE_COSTS.craftItem ? 1 : 0.5 }}>CRAFT ({PRESTIGE_COSTS.craftItem} ₿)</button>
                       {!bp.listedOnMarket && (
                         <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
                           <input type="number" value={listPrice} onChange={(e) => setListPrice(Math.max(1, parseInt(e.target.value) || 1))} style={{ ...ss, width: '60px', padding: '4px' }} />

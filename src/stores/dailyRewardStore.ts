@@ -21,13 +21,13 @@ export interface DailyReward {
 }
 
 export const DAILY_REWARDS: DailyReward[] = [
-  { day: 1, label: 'Day 1', icon: '🎁', money: 50_000, items: [{ type: 'bread', amount: 5 }] },
-  { day: 2, label: 'Day 2', icon: '🎁', money: 75_000, items: [{ type: 'sushi', amount: 5 }] },
-  { day: 3, label: 'Day 3', icon: '🎁', money: 100_000, items: [{ type: 'wagyu', amount: 5 }], lootBoxes: 1 },
-  { day: 4, label: 'Day 4', icon: '🎁', money: 150_000, items: [{ type: 'staminaPills', amount: 2 }] },
-  { day: 5, label: 'Day 5', icon: '🎁', money: 200_000, militaryBoxes: 1 },
+  { day: 1, label: 'Day 1', icon: '🎁', money: 50_000, bitcoin: 2, items: [{ type: 'bread', amount: 5 }] },
+  { day: 2, label: 'Day 2', icon: '🎁', money: 75_000, bitcoin: 2, items: [{ type: 'sushi', amount: 5 }] },
+  { day: 3, label: 'Day 3', icon: '🎁', money: 100_000, bitcoin: 2, items: [{ type: 'wagyu', amount: 5 }], lootBoxes: 1 },
+  { day: 4, label: 'Day 4', icon: '🎁', money: 150_000, bitcoin: 2, items: [{ type: 'staminaPills', amount: 2 }] },
+  { day: 5, label: 'Day 5', icon: '🎁', money: 200_000, bitcoin: 2, militaryBoxes: 1 },
   { day: 6, label: 'Day 6', icon: '🎁', money: 300_000, bitcoin: 3 },
-  { day: 7, label: 'Day 7', icon: '🏆', money: 500_000, t5Item: true },
+  { day: 7, label: 'Day 7', icon: '🏆', money: 500_000, bitcoin: 2, t5Item: true },
 ]
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000

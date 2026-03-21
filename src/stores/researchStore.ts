@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
+import { getResearch as fetchResearchApi, unlockResearch } from '../api/client'
 
 // ====== RESEARCH NODE DEFINITIONS ======
 
@@ -44,7 +45,8 @@ export interface ResearchState {
 
   getResearch: (countryCode: string) => CountryResearch
   canUnlock: (countryCode: string, tree: 'military' | 'economy', nodeId: string) => boolean
-  unlockNode: (countryCode: string, tree: 'military' | 'economy', nodeId: string) => { success: boolean; message: string }
+  unlockNode: (countryCode: string, tree: 'military' | 'economy', nodeId: string) => Promise<{ success: boolean; message: string }>
+  fetchResearch: (countryCode: string) => Promise<void>
 
   // Bonus getters
   getMilitaryBonuses: (countryCode: string) => MilitaryBonuses
@@ -102,35 +104,56 @@ export const useResearchStore = create<ResearchState>((set, get) => ({
     return true
   },
 
-  unlockNode: (countryCode, tree, nodeId) => {
-    const state = get()
-    if (!state.canUnlock(countryCode, tree, nodeId)) {
-      return { success: false, message: 'Cannot unlock this research.' }
+  unlockNode: async (countryCode, tree, nodeId) => {
+    try {
+      const res: any = await unlockResearch(countryCode, tree, nodeId)
+      if (res.success) {
+        const nodes = tree === 'military' ? MILITARY_DOCTRINE : ECONOMIC_THEORY
+        const node = nodes.find(n => n.id === nodeId)
+        // Update local state
+        const state = get()
+        const r = state.getResearch(countryCode)
+        const key = tree === 'military' ? 'military' : 'economy'
+        const updated: CountryResearch = { ...r, [key]: [...r[key], nodeId] }
+        set({ research: { ...state.research, [countryCode]: updated } })
+        return { success: true, message: res.message || `Researched: ${node?.name}!` }
+      }
+      return { success: false, message: res.message || 'Failed to unlock.' }
+    } catch (err: any) {
+      // Fallback to local-only for offline/dev mode
+      const state = get()
+      if (!state.canUnlock(countryCode, tree, nodeId)) {
+        return { success: false, message: err.message || 'Cannot unlock this research.' }
+      }
+      const nodes = tree === 'military' ? MILITARY_DOCTRINE : ECONOMIC_THEORY
+      const node = nodes.find(n => n.id === nodeId)!
+      const spent = useWorldStore.getState().spendFromFund(countryCode, { money: node.cost })
+      if (!spent) return { success: false, message: 'Not enough funds.' }
+      const r = state.getResearch(countryCode)
+      const key = tree === 'military' ? 'military' : 'economy'
+      const updated: CountryResearch = { ...r, [key]: [...r[key], nodeId] }
+      set({ research: { ...state.research, [countryCode]: updated } })
+      return { success: true, message: `Researched: ${node.name}! ${node.effect}` }
     }
+  },
 
-    const nodes = tree === 'military' ? MILITARY_DOCTRINE : ECONOMIC_THEORY
-    const node = nodes.find(n => n.id === nodeId)!
-
-    // Spend from fund
-    const spent = useWorldStore.getState().spendFromFund(countryCode, { money: node.cost })
-    if (!spent) return { success: false, message: 'Not enough funds.' }
-
-    // Add to unlocked
-    const r = state.getResearch(countryCode)
-    const key = tree === 'military' ? 'military' : 'economy'
-    const updated: CountryResearch = {
-      ...r,
-      [key]: [...r[key], nodeId],
+  fetchResearch: async (countryCode) => {
+    try {
+      const res = await fetchResearchApi(countryCode)
+      if (res.success && res.research) {
+        set(s => ({
+          research: {
+            ...s.research,
+            [countryCode]: {
+              military: (res.research.military as string[]) || [],
+              economy: (res.research.economy as string[]) || [],
+            },
+          },
+        }))
+      }
+    } catch (err) {
+      console.error('[ResearchStore] Fetch failed', err)
     }
-
-    set({
-      research: {
-        ...state.research,
-        [countryCode]: updated,
-      },
-    })
-
-    return { success: true, message: `Researched: ${node.name}! ${node.effect}` }
   },
 
   getMilitaryBonuses: (countryCode) => {

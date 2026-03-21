@@ -28,6 +28,7 @@ export interface FloatingText {
 export interface UIState {
   activePanel: PanelType
   lastClosedPanel: PanelType
+  panelHistory: PanelType[]
   panelFullscreen: boolean
   showModal: boolean
   modalContent: string | null
@@ -39,6 +40,7 @@ export interface UIState {
   selectedForeignCountry: string | null
   setActivePanel: (panel: PanelType) => void
   togglePanel: (panel: PanelType) => void
+  goBack: () => void
   setPanelFullscreen: (v: boolean) => void
   setProfileDefaultTab: (tab: string | null) => void
   cycleResourceView: () => void
@@ -58,6 +60,7 @@ let chatCounter = 0
 export const useUIStore = create<UIState>((set) => ({
   activePanel: null,
   lastClosedPanel: null,
+  panelHistory: [],
   panelFullscreen: false,
   selectedForeignCountry: null,
   showModal: false,
@@ -75,16 +78,33 @@ export const useUIStore = create<UIState>((set) => ({
     },
   ],
 
-  setActivePanel: (panel) => set({ activePanel: panel }),
+  setActivePanel: (panel) => set((state) => {
+    const history = state.activePanel && state.activePanel !== panel
+      ? [...state.panelHistory, state.activePanel].slice(-20)
+      : state.panelHistory
+    return { activePanel: panel, panelHistory: history }
+  }),
 
   togglePanel: (panel) =>
     set((state) => {
       if (state.activePanel === panel) {
         // Closing — remember it, and exit fullscreen
-        return { activePanel: null, lastClosedPanel: panel, panelFullscreen: false }
+        return { activePanel: null, lastClosedPanel: panel, panelFullscreen: false, panelHistory: [] }
       }
-      return { activePanel: panel }
+      const history = state.activePanel
+        ? [...state.panelHistory, state.activePanel].slice(-20)
+        : state.panelHistory
+      return { activePanel: panel, panelHistory: history }
     }),
+
+  goBack: () => set((state) => {
+    if (state.panelHistory.length === 0) {
+      return { activePanel: null, panelFullscreen: false, panelHistory: [] }
+    }
+    const history = [...state.panelHistory]
+    const prev = history.pop()!
+    return { activePanel: prev, panelHistory: history }
+  }),
 
   setPanelFullscreen: (v) => set({ panelFullscreen: v }),
 

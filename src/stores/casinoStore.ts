@@ -118,6 +118,7 @@ export interface CasinoState {
   totalSpins: number
   totalWon: number
   totalLost: number
+  casinoPool: number            // Pool-based payouts: losers fund winners
   spinForBet: (betAmount: number) => void
   resolveResult: () => void
   resetCasino: () => void
@@ -139,6 +140,7 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
   totalSpins: 0,
   totalWon: 0,
   totalLost: 0,
+  casinoPool: 5_000_000,  // Seeded at $5M — losers fund winners
 
   spinForBet: (betAmount: number) => {
     const player = usePlayerStore.getState()
@@ -172,6 +174,9 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
       resultIndex: winIndex,
       activeSegments: segments,
     })
+
+    // Persist to backend (fire-and-forget)
+    import('../api/client').then(({ casinoWheelSpin }) => casinoWheelSpin(betAmount).catch(() => {}))
   },
 
   resolveResult: () => {
@@ -187,9 +192,14 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
 
     switch (segment.type) {
       case 'multiply': {
-        // Payout created from thin air (bet tax already taken at spin time)
-        const payout = Math.floor(s.currentBet * segment.multiplier)
-        player.earnMoney(payout)
+        // Payout drawn from pool (not minted from thin air)
+        const rawPayout = Math.floor(s.currentBet * segment.multiplier)
+        const payout = Math.min(rawPayout, s.casinoPool)
+        if (payout > 0) {
+          player.earnMoney(payout)
+          // Deduct from pool
+          set(prev => ({ casinoPool: prev.casinoPool - payout }))
+        }
 
         winText = 'YOU WON!'
         winAmount = `$${payout.toLocaleString()}`
@@ -226,7 +236,9 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
         break
       }
       case 'bankrupt': {
-        // Money already lost (deducted on bet), 15% bet tax already sent
+        // Money already lost (deducted on bet) — 95% feeds the casino pool
+        const poolContribution = Math.floor(s.currentBet * 0.95)
+        set(prev => ({ casinoPool: prev.casinoPool + poolContribution }))
         winText = 'BANKRUPT!'
         winAmount = `LOST $${s.currentBet.toLocaleString()}`
         winType = 'lose'

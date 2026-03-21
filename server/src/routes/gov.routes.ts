@@ -548,4 +548,128 @@ router.post('/authorize-nuke', requireAuth as any, async (req, res) => {
   }
 })
 
+// ═══════════════════════════════════════════════
+//  PATCH /api/gov/autodefense — Set country auto-defense limit
+// ═══════════════════════════════════════════════
+
+const autodefenseSchema = z.object({
+  countryCode: z.string().min(2).max(4),
+  limit: z.number().int().min(-1).max(100),  // -1 = all, 0 = off, N = max N
+})
+
+router.patch('/autodefense', requireAuth as any, validate(autodefenseSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { countryCode, limit } = req.body
+
+    const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!gov || !player || gov.president !== player.name) {
+      res.status(403).json({ error: 'Only the president can set autodefense.' }); return
+    }
+
+    await db.update(countries).set({ autoDefenseLimit: limit }).where(eq(countries.code, countryCode))
+
+    res.json({ success: true, message: `Autodefense set to ${limit === -1 ? 'ALL' : limit === 0 ? 'OFF' : limit}.` })
+  } catch (err) {
+    console.error('[GOV] Autodefense error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
+//  POST /api/gov/force-vault/transfer — Transfer fund → forceVault
+// ═══════════════════════════════════════════════
+
+const forceVaultTransferSchema = z.object({
+  countryCode: z.string().min(2).max(4),
+  resource: z.enum(['money', 'oil', 'scraps', 'materialX', 'bitcoin', 'jets']),
+  amount: z.number().int().positive(),
+})
+
+router.post('/force-vault/transfer', requireAuth as any, validate(forceVaultTransferSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { countryCode, resource, amount } = req.body
+
+    const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!gov || !player || gov.president !== player.name) {
+      res.status(403).json({ error: 'Only the president can manage the force vault.' }); return
+    }
+
+    // Atomic: deduct from fund, add to forceVault
+    const result = await db.execute(sql`
+      UPDATE countries SET
+        fund = jsonb_set(
+          fund, ${sql.raw(`'{${resource}}'`)},
+          to_jsonb(COALESCE((fund->>'${sql.raw(resource)}')::bigint, 0) - ${amount})
+        ),
+        force_vault = jsonb_set(
+          COALESCE(force_vault, '{}')::jsonb, ${sql.raw(`'{${resource}}'`)},
+          to_jsonb(COALESCE((force_vault->>'${sql.raw(resource)}')::bigint, 0) + ${amount})
+        )
+      WHERE code = ${countryCode}
+        AND COALESCE((fund->>'${sql.raw(resource)}')::bigint, 0) >= ${amount}
+      RETURNING code
+    `)
+
+    if ((result as any).length === 0) {
+      res.status(400).json({ error: `Treasury doesn't have enough ${resource}.` }); return
+    }
+
+    res.json({ success: true, message: `Transferred ${amount} ${resource} to force vault.` })
+  } catch (err) {
+    console.error('[GOV] Force vault transfer error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
+//  POST /api/gov/force-vault/spend — Spend from forceVault
+// ═══════════════════════════════════════════════
+
+const forceVaultSpendSchema = z.object({
+  countryCode: z.string().min(2).max(4),
+  resource: z.enum(['money', 'oil', 'scraps', 'materialX', 'bitcoin', 'jets']),
+  amount: z.number().int().positive(),
+})
+
+router.post('/force-vault/spend', requireAuth as any, validate(forceVaultSpendSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { countryCode, resource, amount } = req.body
+
+    const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!gov || !player) { res.status(404).json({ error: 'Not found' }); return }
+
+    // President or congress can spend
+    const congress = (gov.congress as string[]) || []
+    if (gov.president !== player.name && !congress.includes(player.name!)) {
+      res.status(403).json({ error: 'Only president or congress can spend from force vault.' }); return
+    }
+
+    const result = await db.execute(sql`
+      UPDATE countries SET
+        force_vault = jsonb_set(
+          COALESCE(force_vault, '{}')::jsonb, ${sql.raw(`'{${resource}}'`)},
+          to_jsonb(COALESCE((force_vault->>'${sql.raw(resource)}')::bigint, 0) - ${amount})
+        )
+      WHERE code = ${countryCode}
+        AND COALESCE((force_vault->>'${sql.raw(resource)}')::bigint, 0) >= ${amount}
+      RETURNING code
+    `)
+
+    if ((result as any).length === 0) {
+      res.status(400).json({ error: `Force vault doesn't have enough ${resource}.` }); return
+    }
+
+    res.json({ success: true, message: `Spent ${amount} ${resource} from force vault.` })
+  } catch (err) {
+    console.error('[GOV] Force vault spend error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 export default router

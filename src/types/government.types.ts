@@ -6,7 +6,16 @@
 import type { NationalFund } from './world.types'
 import type { DivisionType, StarQuality, StatModifiers } from '../stores/army'
 
-export type LawType = 'declare_war' | 'propose_peace' | 'impeach_president' | 'tax_change' | 'declare_sworn_enemy' | 'authorize_nuclear_action' | 'propose_alliance' | 'break_alliance'
+export type LawType =
+  | 'declare_war' | 'propose_peace' | 'impeach_president'
+  | 'tax_change' | 'declare_sworn_enemy'
+  | 'authorize_nuclear_action' | 'propose_alliance' | 'break_alliance'
+  // Economic & military policy laws
+  | 'print_money' | 'trade_embargo' | 'lift_embargo'
+  | 'conscription' | 'end_conscription'
+  | 'import_tariff' | 'minimum_wage'
+  | 'military_spending_change' | 'nationalize_company_law'
+
 export type LawStatus = 'active' | 'passed' | 'failed'
 
 export interface Citizen {
@@ -24,6 +33,7 @@ export interface Law {
   type: LawType
   targetCountryId?: string
   newValue?: number
+  stringValue?: string   // for company IDs, etc.
   votesFor: string[]
   votesAgainst: string[]
   proposedAt: number
@@ -102,4 +112,9 @@ export interface Government {
   armedForces: string[]  // Division IDs owned by the government (defense-only reserve)
   lastFreeRecruitAt: number  // timestamp of last free 12h recruit
   equipmentVault: string[]   // Item IDs owned by the government (from market purchases)
+  // Country policies (set via laws)
+  embargoes: string[]          // country codes we're embargoing
+  conscriptionActive: boolean
+  importTariff: number         // 0-50%
+  minimumWage: number          // 0 = disabled
 }

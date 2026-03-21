@@ -9,7 +9,7 @@ import { useGovernmentStore } from './governmentStore'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
-import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './army'
+import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, rollDebris, type Division } from './army'
 import { useSpecializationStore } from './specializationStore'
 import { useWarCardsStore } from './warCardsStore'
 import { getCountryName, getCountryFlag, getCountryFlagUrl } from '../data/countries'
@@ -131,17 +131,20 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   setWarMotd: (motd: string) => set({ warMotd: motd.substring(0, 200) }),
   combatTickLeft: 15,
   setCombatTickLeft: (val: number) => set({ combatTickLeft: val }),
-  setBattleOrder: (battleId: string, side: 'attacker' | 'defender', order: TacticalOrder) => set((state) => {
-    const battle = state.battles[battleId]
-    if (!battle) return state
-    const key = side === 'attacker' ? 'attackerOrder' : 'defenderOrder'
-    return {
-      battles: {
-        ...state.battles,
-        [battleId]: { ...battle, [key]: order },
-      },
-    }
-  }),
+  setBattleOrder: (battleId: string, side: 'attacker' | 'defender', order: TacticalOrder) => {
+    set((state) => {
+      const battle = state.battles[battleId]
+      if (!battle) return state
+      const key = side === 'attacker' ? 'attackerOrder' : 'defenderOrder'
+      return {
+        battles: {
+          ...state.battles,
+          [battleId]: { ...battle, [key]: order },
+        },
+      }
+    })
+    import('../api/client').then(({ setBattleOrder }) => setBattleOrder(battleId, side, order).catch(() => {}))
+  },
   setBattleOrderMessage: (battleId: string, message: string) => set((state) => {
     const battle = state.battles[battleId]
     if (!battle) return state
@@ -154,15 +157,18 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   }),
 
   // ====== LEGACY LAUNCH ======
-  launchAttack: (attackerId, defenderId, regionName, type = 'invasion', regionId?) => set((state) => {
-    const existing = Object.values(state.battles).find(b => b.regionName === regionName && b.status === 'active')
-    if (existing) return state
+  launchAttack: (attackerId, defenderId, regionName, type = 'invasion', regionId?) => {
+    set((state) => {
+      const existing = Object.values(state.battles).find(b => b.regionName === regionName && b.status === 'active')
+      if (existing) return state
 
-    const id = `battle_${Date.now()}_${regionName.replace(/\s+/g, '_')}`
-    const battle = mkBattle(id, attackerId, defenderId, regionName, type, regionId)
+      const id = `battle_${Date.now()}_${regionName.replace(/\s+/g, '_')}`
+      const battle = mkBattle(id, attackerId, defenderId, regionName, type, regionId)
 
-    return { battles: { ...state.battles, [id]: battle } }
-  }),
+      return { battles: { ...state.battles, [id]: battle } }
+    })
+    import('../api/client').then(({ launchBattle }) => launchBattle(attackerId, defenderId, regionName, type).catch(() => {}))
+  },
 
   // ====== BATTLE LAUNCH ======
   launchHOIBattle: (attackerArmyId, defenderCountryCode, type = 'invasion') => {
@@ -842,16 +848,31 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // --- Refresh division states after damage ---
       const updatedArmyStore = useArmyStore.getState()
 
-      // Check for destroyed divisions
+      // Check for destroyed divisions and generate debris
       let atkDestroyed = 0, defDestroyed = 0
+      let debrisScrap = 0, debrisMatX = 0, debrisBoxes = 0
       battle.attacker.divisionIds.forEach(id => {
         const d = updatedArmyStore.divisions[id]
-        if (d?.status === 'destroyed') { atkDestroyed++; newCombatLog.push({ tick, timestamp: now, type: 'destroyed', side: 'attacker', divisionName: d.name, message: `💀 ${d.name} destroyed!` }) }
+        if (d?.status === 'destroyed') {
+          atkDestroyed++
+          newCombatLog.push({ tick, timestamp: now, type: 'destroyed', side: 'attacker', divisionName: d.name, message: `💀 ${d.name} destroyed!` })
+          const debris = rollDebris(d.type)
+          debrisScrap += debris.scrap; debrisMatX += debris.materialX; debrisBoxes += debris.militaryBox ? 1 : 0
+        }
       })
       battle.defender.divisionIds.forEach(id => {
         const d = updatedArmyStore.divisions[id]
-        if (d?.status === 'destroyed') { defDestroyed++; newCombatLog.push({ tick, timestamp: now, type: 'destroyed', side: 'defender', divisionName: d.name, message: `💀 ${d.name} destroyed!` }) }
+        if (d?.status === 'destroyed') {
+          defDestroyed++
+          newCombatLog.push({ tick, timestamp: now, type: 'destroyed', side: 'defender', divisionName: d.name, message: `💀 ${d.name} destroyed!` })
+          const debris = rollDebris(d.type)
+          debrisScrap += debris.scrap; debrisMatX += debris.materialX; debrisBoxes += debris.militaryBox ? 1 : 0
+        }
       })
+      // Deposit debris into the region
+      if ((debrisScrap > 0 || debrisMatX > 0 || debrisBoxes > 0) && battle.regionId) {
+        useRegionStore.getState().addDebris(battle.regionId, debrisScrap, debrisMatX, debrisBoxes)
+      }
 
       // --- Award ground points ---
       const activeRoundIndex = battle.rounds.length - 1
@@ -1123,6 +1144,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       }
     } catch (e) { console.warn('[Hit Loot] Error', e) }
 
+    // Persist to backend (fire-and-forget)
+    import('../api/client').then(({ battleAttack }) => battleAttack(battleId).catch(() => {}))
     return {
       damage,
       isCrit,
@@ -1177,6 +1200,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       },
     }))
 
+    // Persist to backend (fire-and-forget)
+    import('../api/client').then(({ battleDefend }) => battleDefend(battleId).catch(() => {}))
     return {
       blocked,
       message: `🛡️ Blocked ${blocked} incoming damage!`,
@@ -1238,6 +1263,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       },
     }))
 
+    // Persist to backend (fire-and-forget)
+    import('../api/client').then(({ battleDeploy }) => battleDeploy(battleId, validIds, side).catch(() => {}))
     return { success: true, message: `${validIds.length} division(s) deployed to battle!` }
   },
 
@@ -1329,6 +1356,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       },
     }))
 
+    // Persist to backend (fire-and-forget)
+    import('../api/client').then(({ battleRecall }) => battleRecall(battleId, divisionId, side).catch(() => {}))
     return { success: true, message: `${divName} recalled.` }
   },
 }))

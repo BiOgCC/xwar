@@ -168,12 +168,23 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     armedForces: [],
     lastFreeRecruitAt: 0,
     equipmentVault: [],
+    embargoes: [],
+    conscriptionActive: false,
+    importTariff: 0,
+    minimumWage: 0,
   }
 }
 
 export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   autoDefenseLimit: -1,
-  setAutoDefenseLimit: (limit) => set({ autoDefenseLimit: limit }),
+  setAutoDefenseLimit: (limit) => {
+    set({ autoDefenseLimit: limit })
+    // Persist to backend (fire-and-forget)
+    import('../api/client').then(({ setCountryAutoDefense }) => {
+      const player = (window as any).__xwar_player_country || 'US'
+      setCountryAutoDefense(player, limit).catch(() => {})
+    })
+  },
   governments: {
     'US': mkGov('US', 'Commander_X', ['AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5']),
     'RU': mkGov('RU', 'AI_Commander_Putin', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
