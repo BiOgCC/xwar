@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import maplibregl from 'maplibre-gl'
+import 'flag-icons/css/flag-icons.min.css'
 import type { Country } from '../../stores/worldStore'
 import { useWorldStore } from '../../stores/worldStore'
 import type { Region } from '../../stores/regionStore'
@@ -84,6 +85,18 @@ const COUNTRY_ISO: Record<string, string> = {
 const ISO3_TO_NAME: Record<string, string> = {}
 Object.entries(COUNTRY_ISO).forEach(([name, iso3]) => { ISO3_TO_NAME[iso3] = name })
 
+// ── Hoisted utility (no re-creation on every map load) ──
+const hslToHex = (h: number, s: number, l: number): string => {
+  s /= 100; l /= 100
+  const a = s * Math.min(l, 1 - l)
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)
+    return Math.round(255 * color).toString(16).padStart(2, '0')
+  }
+  return `#${f(0)}${f(8)}${f(4)}`
+}
+
 const DEFAULT_CENTER: [number, number] = [20, 25]
 const DEFAULT_ZOOM = 2.0
 
@@ -166,7 +179,12 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
       attributionControl: false,
       pitchWithRotate: false,
       dragRotate: false,
-      doubleClickZoom: false, // prevent double-click zoom to avoid conflicts with marker clicks
+      doubleClickZoom: false,
+      // ── Performance flags ──
+      fadeDuration: 0,           // skip tile-fade animation (saves GPU compositing)
+      refreshExpiredTiles: false, // don't re-fetch stale tiles during play session
+      maxTileCacheSize: 50,      // limit VRAM tile cache (was unlimited)
+      trackResize: false,        // we handle resize manually via ResizeObserver
     })
 
     m.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
@@ -203,7 +221,13 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
       fetch(GEOJSON_URL)
         .then(r => r.json())
         .then((geojson: any) => {
-          m.addSource('xwar-states', { type: 'geojson', data: geojson })
+          m.addSource('xwar-states', { 
+            type: 'geojson', 
+            data: geojson,
+            tolerance: 1.2, // Aggressive simplification (removes millions of tiny vertices)
+            buffer: 0,      // Removes off-tile overlapping rendering overhead
+            generateId: true // Helps maplibre track features faster
+          })
 
           // Inject Ocean Blocks as GeoJSON Features
           const oceanFeatures = Object.entries(OCEAN_POLYGONS).map(([name, coords]) => ({
@@ -213,6 +237,99 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           }))
           geojson.features.push(...oceanFeatures)
 
+          // ── Compute true country centroids dynamically from state polygons ──
+          const countryData = new Map<string, { sumLng: number, sumLat: number, count: number, minL: number, maxL: number, minT: number, maxT: number }>()
+          ;(geojson.features || []).forEach((feat: any) => {
+            const iso3 = feat.properties?.['adm0_a3']
+            if (!iso3 || iso3 === 'OCE' || iso3 === '-99') return
+            if (!countryData.has(iso3)) countryData.set(iso3, { sumLng: 0, sumLat: 0, count: 0, minL: 180, maxL: -180, minT: 90, maxT: -90 })
+            const s = countryData.get(iso3)!
+            
+            let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90
+            let hasCoords = false
+            const walk = (coords: any) => {
+              if (typeof coords[0] === 'number') {
+                 if (coords[0] < minLng) minLng = coords[0]; if (coords[0] > maxLng) maxLng = coords[0]
+                 if (coords[1] < minLat) minLat = coords[1]; if (coords[1] > maxLat) maxLat = coords[1]
+                 hasCoords = true
+              } else coords.forEach(walk)
+            }
+            if (feat.geometry?.coordinates) walk(feat.geometry.coordinates)
+            // Fix wrap-arounds and bounds filtering for scattered islands/colonies
+            if (hasCoords && minLng < maxLng && minLat < maxLat) {
+               if (iso3 === 'RUS' && minLng < 0) return // Ignore Russian far east crossing dateline for centroid
+               if (iso3 === 'USA' && (minLng < -130 || minLat > 50)) return // Ignore Alaska/Hawaii for center
+               if (iso3 === 'FRA' && (minLng < -10 || minLng > 20)) return // Ignore French Guiana/islands
+               s.sumLng += (minLng + maxLng) / 2
+               s.sumLat += (minLat + maxLat) / 2
+               s.count++
+               if (minLng < s.minL) s.minL = minLng
+               if (maxLng > s.maxL) s.maxL = maxLng
+               if (minLat < s.minT) s.minT = minLat
+               if (maxLat > s.maxT) s.maxT = maxLat
+            }
+          })
+
+          // ── PRE-CALCULATE WAR AND PLAYER STATES FOR MARKERS ──
+          const playerCountry = countries.find(c => c.controller === 'Player Alliance')
+          const playerISO = playerCountry ? COUNTRY_ISO[playerCountry.name] : null
+          const playerEmpire = playerCountry?.empire
+
+          const wars = useWorldStore.getState().wars
+          const enemyISOs = new Set<string>()
+          wars.forEach(w => {
+            if (w.status !== 'active') return
+            if (w.attacker === (playerCountry?.code || 'US')) enemyISOs.add(w.defender)
+            if (w.defender === (playerCountry?.code || 'US')) enemyISOs.add(w.attacker)
+          })
+
+          // ── HTML MARKERS FOR COUNTRIES (flag-icons + Text + Assets) ──
+          const currentMarkers: maplibregl.Marker[] = []
+          countries.forEach(c => {
+            const iso3 = COUNTRY_ISO[c.name]
+            if (!iso3) return
+            
+            let center = COUNTRY_CENTROIDS[c.name]
+            let area = 0
+            
+            if (countryData.has(iso3)) {
+               const s = countryData.get(iso3)!
+               if (s.count > 0 && !center) center = [s.sumLng / s.count, s.sumLat / s.count]
+               area = (s.maxL - s.minL) * (s.maxT - s.minT)
+            }
+            if (!center) return
+
+            let sizeClass = 'tiny'
+            if (area > 300) sizeClass = 'giant'
+            else if (area > 50) sizeClass = 'large'
+            else if (area > 15) sizeClass = 'medium'
+            else if (area > 3) sizeClass = 'small'
+
+            const isEnemy = enemyISOs.has(c.code)
+            const isPlayer = playerCountry?.code === c.code
+
+            const el = document.createElement('div')
+            el.className = `country-marker marker-${sizeClass}`
+            if (isEnemy) el.classList.add('country-marker--enemy')
+            
+
+
+            const flag = document.createElement('span')
+            flag.className = `fi fi-${c.code.toLowerCase()} country-marker__flag`
+            
+            const txt = document.createElement('span')
+            txt.className = 'country-marker__text'
+            txt.innerText = c.name
+
+            el.appendChild(flag)
+            el.appendChild(txt)
+
+            const marker = new maplibregl.Marker({ element: el })
+              .setLngLat(center)
+              .addTo(m)
+            currentMarkers.push(marker)
+          })
+
           // Build game country color map
           const gameColors: Record<string, string> = {}
           const controlledISOs: string[] = []
@@ -221,18 +338,6 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             if (iso) { gameColors[iso] = c.color; controlledISOs.push(iso) }
           })
           gameColors['OCE'] = '#0077be' // Base oceanic color
-
-          // HSL to hex converter
-          const hslToHex = (h: number, s: number, l: number): string => {
-            s /= 100; l /= 100
-            const a = s * Math.min(l, 1 - l)
-            const f = (n: number) => {
-              const k = (n + h / 30) % 12
-              const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)
-              return Math.round(255 * color).toString(16).padStart(2, '0')
-            }
-            return `#${f(0)}${f(8)}${f(4)}`
-          }
 
           // Generate unique hex color for every country/state
           const colorExpr: any[] = ['match', ['get', 'adm0_a3']]
@@ -297,113 +402,30 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             },
           })
 
-          // ── 6. STATE/PROVINCE BORDERS & LABELS ──
-          try {
-            const vtSource = Object.keys(style?.sources || {}).find(s => {
-              const src = style?.sources?.[s] as any
-              return src?.type === 'vector'
-            })
-            if (vtSource) {
-              // State/province border lines (admin_level 3-4)
-              m.addLayer({
-                id: 'xwar-admin1-borders',
-                type: 'line',
-                source: vtSource,
-                'source-layer': 'boundary',
-                filter: ['all', ['>=', 'admin_level', 3], ['<=', 'admin_level', 4]],
-                paint: {
-                  'line-color': 'rgba(0, 0, 0, 0.55)',
-                  'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.3, 4, 0.8, 6, 1.2, 8, 1.8],
-                },
-              })
+          // (Carto Vector tile boundaries were extremely slow. We now strictly use the GeoJSON boundaries.)
 
-              // County/district borders (admin_level 5-6) — visible at higher zoom
-              m.addLayer({
-                id: 'xwar-admin2-borders',
-                type: 'line',
-                source: vtSource,
-                'source-layer': 'boundary',
-                filter: ['all', ['>=', 'admin_level', 5], ['<=', 'admin_level', 6]],
-                paint: {
-                  'line-color': 'rgba(0, 0, 0, 0.3)',
-                  'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.1, 6, 0.3, 8, 0.6],
-                },
-                minzoom: 5,
-              })
-
-              // State/province name labels (English)
-              m.addLayer({
-                id: 'xwar-state-labels',
-                type: 'symbol',
-                source: vtSource,
-                'source-layer': 'place',
-                filter: ['in', 'class', 'state', 'province'],
-                layout: {
-                  'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']],
-                  'text-size': ['interpolate', ['linear'], ['zoom'], 4, 9, 6, 12, 8, 15],
-                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                  'text-transform': 'uppercase',
-                  'text-letter-spacing': 0.08,
-                  'text-max-width': 8,
-                  'text-allow-overlap': false,
-                  'text-padding': 6,
-                },
-                paint: {
-                  'text-color': 'rgba(230, 240, 250, 0.7)',
-                  'text-halo-color': 'rgba(0, 0, 0, 0.9)',
-                  'text-halo-width': 1.5,
-                },
-                minzoom: 7,
-              })
-
-              // City labels at higher zoom (English)
-              m.addLayer({
-                id: 'xwar-city-labels',
-                type: 'symbol',
-                source: vtSource,
-                'source-layer': 'place',
-                filter: ['in', 'class', 'city', 'town'],
-                layout: {
-                  'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']],
-                  'text-size': ['interpolate', ['linear'], ['zoom'], 6, 8, 8, 11, 10, 14],
-                  'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-                  'text-max-width': 8,
-                  'text-allow-overlap': false,
-                  'text-padding': 3,
-                },
-                paint: {
-                  'text-color': 'rgba(200, 210, 225, 0.55)',
-                  'text-halo-color': 'rgba(0, 0, 0, 0.8)',
-                  'text-halo-width': 1,
-                },
-                minzoom: 6,
-              })
-
-              // Country name labels (English, large)
-              m.addLayer({
-                id: 'xwar-country-labels',
-                type: 'symbol',
-                source: vtSource,
-                'source-layer': 'place',
-                filter: ['==', 'class', 'country'],
-                layout: {
-                  'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name']],
-                  'text-size': ['interpolate', ['linear'], ['zoom'], 1, 10, 3, 14, 5, 18],
-                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                  'text-transform': 'uppercase',
-                  'text-letter-spacing': 0.2,
-                  'text-max-width': 10,
-                  'text-allow-overlap': false,
-                  'text-padding': 10,
-                },
-                paint: {
-                  'text-color': 'rgba(255, 255, 255, 0.7)',
-                  'text-halo-color': 'rgba(0, 0, 0, 0.9)',
-                  'text-halo-width': 2.5,
-                },
-              })
-            }
-          } catch {}
+          // ── STATE NAMES FROM GEOJSON (Real Game States) ──
+          m.addLayer({
+            id: 'xwar-state-names',
+            type: 'symbol',
+            source: 'xwar-states',
+            filter: ['!=', ['get', 'isOcean'], true],
+            minzoom: 3.5, // appear as user zooms in
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+              'text-size': ['interpolate', ['linear'], ['zoom'], 3.5, 9, 6, 14, 8, 18],
+              'text-transform': 'uppercase',
+              'text-letter-spacing': 0.1,
+              'text-max-width': 8,
+              'text-allow-overlap': false,
+            },
+            paint: {
+              'text-color': 'rgba(240, 245, 255, 0.9)',
+              'text-halo-color': 'rgba(0, 0, 0, 0.85)',
+              'text-halo-width': 1.5,
+            },
+          })
 
           // ── 7. HOVER HIGHLIGHT ──
           m.addLayer({
@@ -423,12 +445,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           })
 
           // ── 8. PLAYER & ALLY TERRITORY GLOW ──
-          // Find player country ISO
-          const playerCountry = countries.find(c => c.controller === 'Player Alliance')
-          const playerISO = playerCountry ? COUNTRY_ISO[playerCountry.name] : null
-
           // Find ally ISOs (same empire as player)
-          const playerEmpire = playerCountry?.empire
           const allyISOs = countries
             .filter(c => c.empire === playerEmpire && c.controller !== 'Player Alliance')
             .map(c => COUNTRY_ISO[c.name])
@@ -495,14 +512,6 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           }
 
           // ── 9. ACTIVE WAR — ENEMY TERRITORY INDICATORS ──
-          const wars = useWorldStore.getState().wars
-          const enemyISOs = new Set<string>()
-          wars.forEach(w => {
-            if (w.status !== 'active') return
-            if (w.attacker === (playerCountry?.code || 'US')) enemyISOs.add(w.defender)
-            if (w.defender === (playerCountry?.code || 'US')) enemyISOs.add(w.attacker)
-          })
-
           // Convert 2-letter codes to 3-letter ISOs for GeoJSON matching
           const ISO2_TO_ISO3: Record<string, string> = {}
           countries.forEach(c => {
@@ -538,25 +547,28 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             })
           }
 
-          // ── Hover interactions ──
+          // ── Hover interactions (rAF-debounced to avoid thrashing the GPU) ──
           let hoveredStateName: string | null = null
-          
+          let hoverRaf: number | null = null
+
           const handleHoverMove = (e: any) => {
-            if (e.features && e.features.length > 0) {
-              const stateName = e.features[0].properties?.['name']
-              if (stateName && stateName !== hoveredStateName) {
-                hoveredStateName = stateName
-                m.setFilter('xwar-state-hover', ['==', ['get', 'name'], stateName])
-                m.setPaintProperty('xwar-state-hover', 'fill-opacity', 0.15)
-                m.setFilter('xwar-state-hover-border', ['==', ['get', 'name'], stateName])
-                m.setPaintProperty('xwar-state-hover-border', 'line-opacity', 1)
-                m.getCanvas().style.cursor = 'pointer'
-              }
-            }
+            if (!e.features || e.features.length === 0) return
+            const stateName = e.features[0].properties?.['name']
+            if (!stateName || stateName === hoveredStateName) return
+            hoveredStateName = stateName
+            if (hoverRaf) cancelAnimationFrame(hoverRaf)
+            hoverRaf = requestAnimationFrame(() => {
+              m.setFilter('xwar-state-hover', ['==', ['get', 'name'], stateName])
+              m.setPaintProperty('xwar-state-hover', 'fill-opacity', 0.15)
+              m.setFilter('xwar-state-hover-border', ['==', ['get', 'name'], stateName])
+              m.setPaintProperty('xwar-state-hover-border', 'line-opacity', 1)
+              m.getCanvas().style.cursor = 'pointer'
+            })
           }
-          
+
           const handleHoverLeave = () => {
             hoveredStateName = null
+            if (hoverRaf) cancelAnimationFrame(hoverRaf)
             m.setFilter('xwar-state-hover', ['==', ['get', 'name'], ''])
             m.setPaintProperty('xwar-state-hover', 'fill-opacity', 0)
             m.setFilter('xwar-state-hover-border', ['==', ['get', 'name'], ''])
@@ -606,34 +618,44 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
 
       m.getCanvas().style.cursor = 'crosshair'
+      if (mapContainer.current) {
+        mapContainer.current.setAttribute('data-zoom', Math.floor(DEFAULT_ZOOM).toString())
+      }
     })
 
-    // Coordinate tracking
-    m.on('mousemove', (e) => {
-      if (onMouseMove) {
-        const { lat, lng } = e.lngLat
-        onMouseMove(
-          `${Math.abs(lat).toFixed(2)}° ${lat >= 0 ? 'N' : 'S'}`,
-          `${Math.abs(lng).toFixed(2)}° ${lng >= 0 ? 'E' : 'W'}`
-        )
+    // Watch zoom changes to fade out country markers manually via CSS class
+    m.on('zoom', () => {
+      if (!mapContainer.current) return
+      const z = m.getZoom()
+      mapContainer.current.setAttribute('data-zoom', Math.floor(z).toString())
+      if (z > 4.5) {
+        mapContainer.current.classList.add('zoomed-in')
+      } else {
+        mapContainer.current.classList.remove('zoomed-in')
       }
+    })
+
+    // Coordinate tracking — throttled to ~100 ms to cut CPU overhead
+    let coordThrottle: ReturnType<typeof setTimeout> | null = null
+    m.on('mousemove', (e) => {
+      if (!onMouseMove || coordThrottle) return
+      coordThrottle = setTimeout(() => { coordThrottle = null }, 100)
+      const { lat, lng } = e.lngLat
+      onMouseMove(
+        `${Math.abs(lat).toFixed(2)}° ${lat >= 0 ? 'N' : 'S'}`,
+        `${Math.abs(lng).toFixed(2)}° ${lng >= 0 ? 'E' : 'W'}`
+      )
     })
 
     map.current = m
 
-    // Force resize to fix WebGL projection vs container height bugs
+    // Force resize once after layout settles (single timeout is enough)
     const resizeObserver = new ResizeObserver(() => {
       map.current?.resize()
     })
     resizeObserver.observe(mapContainer.current)
 
-    // Initial resize delay to ensure flex layout settled
-    setTimeout(() => {
-      map.current?.resize()
-    }, 100)
-    setTimeout(() => {
-      map.current?.resize()
-    }, 500)
+    setTimeout(() => { map.current?.resize() }, 150)
 
     return () => {
       resizeObserver.disconnect()

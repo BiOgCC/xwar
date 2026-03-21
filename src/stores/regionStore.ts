@@ -509,16 +509,99 @@ export const useRegionStore = create<RegionState>((set, get) => ({
   updateBoundsFromGeoJSON: (geojson: any, isoKey = 'ISO3166-1-Alpha-3') => {
     const updated = new Map<string, [number, number, number, number]>()
     const featuresByCountry = new Map<string, any[]>()
-    
+
+    // ── Real centroid map: "CC:normalizedName" → [lng, lat] ──
+    const centroidMap = new Map<string, [number, number]>()
+
+    // Known name mismatches between REGION_DEFS and GeoJSON feature names
+    const NAME_ALIASES: Record<string, string[]> = {
+      // Brazil
+      'Mato G. do Sul': ['Mato Grosso do Sul'],
+      'Rondonia':       ['Rondônia'],
+      'Piaui':          ['Piauí'],
+      'Ceara':          ['Ceará'],
+      'Goias':          ['Goiás'],
+      'Para':           ['Pará'],
+      'Maranhao':       ['Maranhão'],
+      // India
+      'Kashmir':        ['Jammu and Kashmir', 'Jammu & Kashmir'],
+      // (Northeast alias merged below with Nigeria)
+      // China
+      'Inner Mongolia': ['Nei Mongol', 'Inner Mongolia Autonomous Region'],
+      'Xinjiang':       ['Xinjiang Uyghur Autonomous Region'],
+      'Tibet':          ['Xizang Autonomous Region', 'Tibet Autonomous Region'],
+      'Jiangsu/Shanghai': ['Jiangsu', 'Shanghai'],
+      'Mongolia Border':  ['Mongolia'],
+      'Manchuria Coast':  ['Heilongjiang'],
+      // Russia
+      'Western Russia': ['Smolensk Oblast', 'Bryansk Oblast', 'Smolensk'],
+      'Volga':          ['Tatarstan', 'Saratov Oblast', 'Saratov'],
+      'Caucasus':       ['Krasnodar Krai', 'Krasnodar'],
+      'Komi':           ['Komi Republic', 'Komi'],
+      'Tyumen':         ["Tyumen' Oblast", 'Tyumen Oblast', 'Tyumen'],
+      'Far East':       ['Khabarovsk Krai', 'Khabarovsk'],
+      'Buryatia':       ['Buryatiya', 'Republic of Buryatia'],
+      'Karelia':        ['Republic of Karelia'],
+      'Arkhangelsk':    ["Arkhangel'sk Oblast", 'Arkhangelsk Oblast'],
+      // Germany
+      'Mecklenburg':    ['Mecklenburg-Vorpommern'],
+      'Lower Saxony':   ['Niedersachsen'],
+      'Brandenburg':    ['Brandenburg'],
+      'Saxony-Anhalt':  ['Sachsen-Anhalt'],
+      'North Rhine-Westphalia': ['Nordrhein-Westfalen'],
+      'Thuringia':      ['Thüringen'],
+      'Saxony':         ['Sachsen', 'Freistaat Sachsen'],
+      'Rhineland-Palat':['Rheinland-Pfalz'],
+      'Baden-Württemberg': ['Baden-Württemberg'],
+      'Bavaria':        ['Bayern', 'Freistaat Bayern'],
+      // UK
+      'North England':  ['North East England', 'North East'],
+      'East England':   ['East of England'],
+      'London & SE':    ['Greater London', 'South East England'],
+      'West Midlands':  ['West Midlands (region)', 'West Midlands'],
+      'East Midlands':  ['East Midlands (region)', 'East Midlands'],
+      'South West':     ['South West England'],
+      // Turkey
+      'Istanbul':       ['İstanbul', 'Istanbul Province'],
+      'Marmara':        ['Bursa', 'Bursa Province'],
+      'Black Sea':      ['Trabzon', 'Trabzon Province'],
+      'Aegean':         ['İzmir', 'Izmir', 'Izmir Province'],
+      'Mediterranean':  ['Antalya', 'Antalya Province'],
+      'Eastern Anatolia': ['Erzurum', 'Erzurum Province'],
+      // Turkey / Nigeria (shared key — list all aliases, centroid lookup is per-CC)
+      'Southeast':      ['Gaziantep', 'Diyarbakır', 'Diyarbakir', 'Enugu State', 'Enugu'],
+      // Nigeria
+      'Lagos':          ['Lagos State'],
+      'Southwest':      ['Oyo State', 'Oyo'],
+      'South South':    ['Rivers State', 'Rivers'],
+      'North Central':  ['Abuja Federal Capital Territory', 'FCT'],
+      'Northwest':      ['Kano State', 'Kano'],
+      // India / Nigeria (shared key)
+      'Northeast':      ['Assam', 'Meghalaya', 'Arunachal Pradesh', 'Borno State', 'Borno'],
+      // Mexico
+      'Mexico City':    ['Ciudad de México', 'Distrito Federal', 'Federal District'],
+      // Cuba
+      'Havana':         ['La Habana', 'Ciudad de La Habana'],
+      'Central Cuba':   ['Villa Clara'],
+      'Santiago':       ['Santiago de Cuba'],
+      // Bahamas
+      'Nassau':         ['New Providence'],
+      'Grand Island':   ['Grand Bahama', 'Freeport'],
+    }
+
+    const norm = (s: string) => s.toLowerCase().trim()
+
     for (const feat of geojson.features || []) {
       const iso3 = feat.properties?.[isoKey]
       const cc = ISO3_TO_ISO2[iso3]
       if (!cc) continue
-      
+
       if (!featuresByCountry.has(cc)) featuresByCountry.set(cc, [])
       featuresByCountry.get(cc)!.push(feat)
-      
+
       let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90
+      let sumLng = 0, sumLat = 0, count = 0
+
       const walk = (coords: any) => {
         if (typeof coords[0] === 'number') {
           const [lng, lat] = coords
@@ -526,9 +609,11 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           if (cc === 'US' && (lng < -130 || lat > 50)) return
           if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng
           if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat
+          sumLng += lng; sumLat += lat; count++
         } else coords.forEach(walk)
       }
       walk(feat.geometry.coordinates)
+
       if (minLng < maxLng && minLat < maxLat) {
         const existing = updated.get(cc)
         if (existing) {
@@ -541,47 +626,79 @@ export const useRegionStore = create<RegionState>((set, get) => ({
         }
         COUNTRY_BOUNDS[cc] = updated.get(cc)!
       }
+
+      // Store centroid keyed by ALL available name variants
+      if (count > 0) {
+        const centroid: [number, number] = [sumLng / count, sumLat / count]
+        const names = [
+          feat.properties?.name,
+          feat.properties?.['name:en'],
+          feat.properties?.name_en,
+        ].filter(Boolean) as string[]
+        names.forEach(n => centroidMap.set(`${cc}:${norm(n)}`, centroid))
+      }
     }
-    
+
+    // Helper: find real centroid for a region by name
+    const getRealCentroid = (cc: string, name: string): [number, number] | null => {
+      const direct = centroidMap.get(`${cc}:${norm(name)}`)
+      if (direct) return direct
+      for (const alias of (NAME_ALIASES[name] || [])) {
+        const match = centroidMap.get(`${cc}:${norm(alias)}`)
+        if (match) return match
+      }
+      return null
+    }
+
     const { regions } = get()
     const defs = REGION_DEFS
     const hardcodedIso2s = new Set(defs.map(d => d.countryCode))
     const nextRegions: Region[] = []
-    
-    // 1. Recompute hardcoded regions
+
+    // 1. Recompute hardcoded regions — real centroid where available, offset fallback otherwise
     regions.forEach(r => {
-      if (hardcodedIso2s.has(r.countryCode)) {
-        const b = COUNTRY_BOUNDS[r.countryCode]
-        const d = defs.find(x => x.id === r.id)
-        if (b && d) {
-          nextRegions.push({ ...r, position: [b[0] + d.offsetX * (b[2] - b[0]), b[1] + d.offsetY * (b[3] - b[1])] as [number, number] })
-        } else {
-          nextRegions.push(r)
-        }
+      if (!hardcodedIso2s.has(r.countryCode)) return
+
+      // Ocean blocks: keep their hardcoded positions (no GeoJSON feature to match)
+      if (r.isOcean) { nextRegions.push(r); return }
+
+      const realPos = getRealCentroid(r.countryCode, r.name)
+      if (realPos) {
+        nextRegions.push({ ...r, position: realPos })
+        return
+      }
+
+      // Fallback: offset-based position from country bounding box
+      const b = COUNTRY_BOUNDS[r.countryCode]
+      const d = defs.find(x => x.id === r.id)
+      if (b && d) {
+        nextRegions.push({ ...r, position: [b[0] + d.offsetX * (b[2] - b[0]), b[1] + d.offsetY * (b[3] - b[1])] as [number, number] })
+      } else {
+        nextRegions.push(r)
       }
     })
-    
-    // 2. Generate missing regions procedurally
+
+    // 2. Generate missing regions procedurally (all non-hardcoded countries)
     const world = useWorldStore.getState()
     const allGeneratedIds = new Set<string>()
 
     world.countries.forEach(country => {
       const cc = country.code
       if (hardcodedIso2s.has(cc)) return // Skip hardcoded
-      
+
       const feats = featuresByCountry.get(cc)
       if (!feats || feats.length === 0) return
-       
+
       const countryGeneratedIds: string[] = []
       const generatedRegionObjs: Region[] = []
-       
+
       feats.forEach(feat => {
         const stateName = feat.properties?.name || 'Unknown'
         const id = `${cc}-${stateName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase()}`
         if (allGeneratedIds.has(id)) return
         allGeneratedIds.add(id)
         countryGeneratedIds.push(id)
-          
+
         let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90
         const walk = (coords: any) => {
           if (typeof coords[0] === 'number') {
@@ -591,17 +708,17 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           } else coords.forEach(walk)
         }
         walk(feat.geometry.coordinates)
-          
+
         const cLng = minLng < maxLng ? (minLng + maxLng) / 2 : 0
         const cLat = minLat < maxLat ? (minLat + maxLat) / 2 : 0
-          
+
         const defense = Math.max(15, Math.floor(country.military / 3))
-        
+
         let controlledBy = cc
         if (country.empire && country.controller !== 'Player Alliance') {
           controlledBy = country.empire
         }
-          
+
         generatedRegionObjs.push({
           id, name: stateName, countryCode: cc, controlledBy, captureProgress: 0,
           attackedBy: null, assignedArmyId: null, position: [cLng, cLat], adjacent: [], defense,
@@ -609,16 +726,17 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           debris: { scrap: 0, materialX: 0, militaryBoxes: 0 }, scavengeCount: 0,
         })
       })
-       
+
       // Full internal adjacency for procedurally generated regions
       generatedRegionObjs.forEach(r => {
         r.adjacent = countryGeneratedIds.filter(id => id !== r.id)
         nextRegions.push(r)
       })
     })
-    
+
     set({ regions: nextRegions })
   },
+
 
   processOceanIncome: () => {
     const { regions } = get()
