@@ -12,7 +12,7 @@ interface RewardEntry {
   label: string
   value: string
   tier?: EquipTier
-  icon: string
+  icon: React.ReactNode
 }
 
 interface RewardRevealProps {

@@ -45,4 +45,5 @@ export interface LootBoxResult {
   money: number
   scrap: number
   oil: number
+  badgesOfHonor?: number
 }

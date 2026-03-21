@@ -9,8 +9,10 @@ import MarketGearTab from './market/MarketGearTab'
 import MarketDivsTab from './market/MarketDivsTab'
 import MarketOrdersTab from './market/MarketOrdersTab'
 import MarketHistoryTab from './market/MarketHistoryTab'
+import MarketCryptoTab from './market/MarketCryptoTab'
 
 const TAB_DEFS = [
+  { key: 'crypto' as const, icon: '/assets/items/icon_bitcoin.png', label: 'Black Mkt' },
   { key: 'trading' as const, icon: '/assets/icons/market.png', label: 'Market' },
   { key: 'equipment' as const, icon: '/assets/icons/gear.png', label: 'Gear' },
   { key: 'divisions' as const, icon: '/assets/icons/divs.png', label: 'Divs' },
@@ -69,7 +71,9 @@ export default function MarketPanel() {
             onClick={() => setTab(t.key)}
             className={`market-tab ${tab === t.key ? 'market-tab--active' : ''}`}
           >
-            <span className="market-tab__icon"><img src={t.icon} alt={t.label} style={{ width: 18, height: 18, objectFit: 'contain' }} /></span>
+            <span className="market-tab__icon">
+              <img src={t.icon} alt={t.label} style={{ width: 18, height: 18, objectFit: 'contain', filter: t.key === 'crypto' ? 'brightness(0) invert(1)' : undefined }} />
+            </span>
             {t.label}
           </button>
         ))}
@@ -77,6 +81,7 @@ export default function MarketPanel() {
 
       {/* Tab content */}
       <div className="market-content">
+        {tab === 'crypto' && <MarketCryptoTab showFb={showFb} />}
         {tab === 'trading' && <MarketTradingTab showFb={showFb} />}
         {tab === 'equipment' && <MarketGearTab showFb={showFb} />}
         {tab === 'divisions' && <MarketDivsTab showFb={showFb} />}

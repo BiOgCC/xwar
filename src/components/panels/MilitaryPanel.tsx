@@ -64,7 +64,7 @@ export default function MilitaryPanel() {
   )
 
   const allReports = Object.values(mil.reports).sort((a, b) => b.timestamp - a.timestamp)
-  const canAffordHunger = Math.floor(player.hunger) >= 1
+  const canAffordBadge = player.badgesOfHonor >= 1
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -141,7 +141,7 @@ export default function MilitaryPanel() {
               {operations.map(op => {
                 const color = PILLAR_COLORS[activePillar] || '#ef4444'
                 const hasTarget = targetCountry !== '' && targetRegion !== ''
-                const canLaunch = canAffordHunger && hasTarget
+                const canLaunch = canAffordBadge && hasTarget
                 const isExpanded = expandedOp === op.id
 
                 return (
@@ -167,7 +167,7 @@ export default function MilitaryPanel() {
                           fontSize: '8px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px',
                           background: `${color}12`, color: color, border: `1px solid ${color}30`,
                         }}>
-                          1🍗 → 1₿ + 1📦
+                          1🎖️ → 1₿ + 1📦
                         </span>
                       </div>
                       <div style={{ fontSize: '9px', color: '#94a3b8' }}>{op.description}</div>
@@ -209,11 +209,11 @@ export default function MilitaryPanel() {
                             </div>
                             <div style={{
                               fontSize: '9px', fontWeight: 700, padding: '5px', borderRadius: '4px', textAlign: 'center',
-                              background: canAffordHunger ? 'rgba(34,211,138,0.08)' : 'rgba(239,68,68,0.08)',
-                              border: `1px solid ${canAffordHunger ? 'rgba(34,211,138,0.2)' : 'rgba(239,68,68,0.2)'}`,
-                              color: canAffordHunger ? '#22d38a' : '#ef4444',
+                              background: canAffordBadge ? 'rgba(34,211,138,0.08)' : 'rgba(239,68,68,0.08)',
+                              border: `1px solid ${canAffordBadge ? 'rgba(34,211,138,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                              color: canAffordBadge ? '#22d38a' : '#ef4444',
                             }}>
-                              🍗1 Hunger
+                              🎖️1 Badge
                             </div>
                           </div>
                         </div>
@@ -246,7 +246,7 @@ export default function MilitaryPanel() {
                             boxShadow: canLaunch ? `0 0 12px ${color}20` : 'none',
                           }}
                         >
-                          {!hasTarget ? '🎯 SELECT TARGET FIRST' : !canAffordHunger ? '🍗 EAT FOOD FIRST' : '⚔️ LAUNCH DUEL'}
+                          {!hasTarget ? '🎯 SELECT TARGET FIRST' : !canAffordBadge ? '🎖️ NEED BADGE OF HONOR' : '⚔️ LAUNCH DUEL'}
                         </button>
                       </div>
                     )}
@@ -261,8 +261,8 @@ export default function MilitaryPanel() {
               background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
               display: 'flex', justifyContent: 'space-around', fontSize: '9px', fontWeight: 700,
             }}>
-              <span style={{ color: canAffordHunger ? '#22d38a' : '#ef4444' }}>
-                🍗 {Math.floor(player.hunger)}/{player.maxHunger}
+              <span style={{ color: canAffordBadge ? '#22d38a' : '#ef4444' }}>
+                🎖️ {player.badgesOfHonor}
               </span>
               <span style={{ color: player.stamina > 0 ? '#3b82f6' : '#ef4444' }}>
                 ⚡ {Math.floor(player.stamina)}/{player.maxStamina}

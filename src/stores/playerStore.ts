@@ -64,6 +64,7 @@ export interface PlayerState {
   companiesOwned: number
   lootBoxes: number
   militaryBoxes: number
+  badgesOfHonor: number
   staminaPills: number
   energyLeaves: number
   lootChancePool: number
@@ -129,6 +130,7 @@ export interface PlayerState {
   spendOil: (amount: number) => boolean
   spendScrap: (amount: number) => boolean
   spendBitcoin: (amount: number) => boolean
+  spendBadgesOfHonor: (amount: number) => boolean
   regenerateBars: () => void
 
   // Shame counter increments
@@ -192,6 +194,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   companiesOwned: 3,
   lootBoxes: 5,
   militaryBoxes: 5,
+  badgesOfHonor: 5,
   staminaPills: 0,
   energyLeaves: 0,
   lootChancePool: 0,
@@ -574,6 +577,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const s = get()
     if (s.bitcoin < amount) return false
     set({ bitcoin: s.bitcoin - amount })
+    return true
+  },
+
+  spendBadgesOfHonor: (amount) => {
+    const s = get()
+    if (s.badgesOfHonor < amount) return false
+    set({ badgesOfHonor: s.badgesOfHonor - amount })
     return true
   },
 

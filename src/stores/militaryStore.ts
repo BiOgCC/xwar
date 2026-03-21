@@ -22,8 +22,8 @@ export interface MilitaryOperationDef {
   description: string
   resultDescription: string
   icon: string
-  /** Cost to launch this duel (always 1 hunger) */
-  hungerCost: number
+  /** Cost to launch this duel (badges of honor) */
+  badgeCost: number
   /** Bitcoin reward for winning */
   bitcoinReward: number
   /** Military cases reward for winning */
@@ -44,7 +44,7 @@ export interface MilitaryReport {
 }
 
 // ====== OPERATION DEFINITIONS ======
-// 1v1 instant duels — each costs 1 hunger, rewards 1 bitcoin + 1 military case
+// 1v1 instant duels — each costs 1 badge of honor, rewards 1 bitcoin + 1 military case
 
 export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
   // GROUND
@@ -53,28 +53,28 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     name: 'Assault', icon: '⚔️',
     description: 'Fast 1v1 duel. Rush into enemy territory and deal damage.',
     resultDescription: 'Defeat your opponent to claim ground. Winner deals lasting damage to region stability.',
-    hungerCost: 1, bitcoinReward: 1, caseReward: 1,
+    badgeCost: 1, bitcoinReward: 1, caseReward: 1,
   },
   {
     id: 'invasion', pillar: 'ground',
     name: 'Invasion', icon: '🚩',
     description: 'All-in territorial duel. Fight for full regional control.',
     resultDescription: 'Winner captures influence over the region. Defender loses regional control points.',
-    hungerCost: 1, bitcoinReward: 1, caseReward: 1,
+    badgeCost: 1, bitcoinReward: 1, caseReward: 1,
   },
   {
     id: 'occupation', pillar: 'ground',
     name: 'Occupation', icon: '🛡️',
     description: 'Endurance duel. Hold the line and grind your opponent down.',
     resultDescription: 'Winner reinforces their hold on the region. Steady income from occupied territory.',
-    hungerCost: 1, bitcoinReward: 1, caseReward: 1,
+    badgeCost: 1, bitcoinReward: 1, caseReward: 1,
   },
   {
     id: 'sabotage', pillar: 'ground',
     name: 'Sabotage', icon: '💣',
     description: 'Covert strike. Disable an enemy company if you win both rounds.',
     resultDescription: '10-hour duel. If defended and attacker wins → second battle. Win both → disable target company for 48 hours (no division count contribution).',
-    hungerCost: 1, bitcoinReward: 1, caseReward: 1,
+    badgeCost: 1, bitcoinReward: 1, caseReward: 1,
   },
 
   // AIR
@@ -83,7 +83,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     name: 'Air Strike', icon: '✈️',
     description: 'Lightning strike from the skies. Hit any region with an airport.',
     resultDescription: 'Winner deals infrastructure damage. Airports and logistics disrupted in the target region.',
-    hungerCost: 1, bitcoinReward: 1, caseReward: 1,
+    badgeCost: 1, bitcoinReward: 1, caseReward: 1,
   },
 
   // NAVAL
@@ -92,7 +92,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     name: 'Naval Strike', icon: '⛴️',
     description: 'Naval assault on coastal targets. Blockade enemy shipping.',
     resultDescription: 'Winner disrupts trade routes. Coastal defenses weakened in the target region.',
-    hungerCost: 1, bitcoinReward: 1, caseReward: 1,
+    badgeCost: 1, bitcoinReward: 1, caseReward: 1,
   },
 ]
 
@@ -151,9 +151,9 @@ export const useMilitaryStore = create<MilitaryState>((set, get) => ({
 
     const player = usePlayerStore.getState()
 
-    // Check hunger — use floor to handle fractional regen values
-    if (Math.floor(player.hunger) < opDef.hungerCost) {
-      return { success: false, message: `Not enough hunger (${opDef.hungerCost} required). Eat food first!` }
+    // Check badges of honor
+    if (player.badgesOfHonor < opDef.badgeCost) {
+      return { success: false, message: `Not enough Badges of Honor (${opDef.badgeCost} required). Get them from loot boxes or the market!` }
     }
 
     // Check target
@@ -166,8 +166,8 @@ export const useMilitaryStore = create<MilitaryState>((set, get) => ({
       return { success: false, message: "Can't attack your own country." }
     }
 
-    // Spend hunger
-    player.consumeBar('hunger', opDef.hungerCost)
+    // Spend badges of honor
+    player.spendBadgesOfHonor(opDef.badgeCost)
 
     // Create a quick battle via battleStore
     const battleStore = useBattleStore.getState()

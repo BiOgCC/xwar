@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SPRINGS, TIER_FX, useScreenShake } from './AnimationSystem'
 import RewardReveal, { type RewardEntry } from './RewardReveal'
-import { type LootBoxResult } from '../../stores/inventoryStore'
+import { getItemImagePath, type LootBoxResult } from '../../stores/inventoryStore'
 
 /* ═══════════════════════════════════════════════════
    LootBoxOpener — Three-Phase Animation Sequence
@@ -83,7 +83,7 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
           label: result.item.slot.toUpperCase(),
           value: result.item.name,
           tier: result.item.tier,
-          icon: '⚔️',
+          icon: <img src={getItemImagePath(result.item.tier, result.item.slot, result.item.category, result.item.weaponSubtype) || ''} alt="item" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />,
         })
       }
       if (result.money > 0) {
@@ -91,7 +91,7 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
           type: 'money',
           label: 'MONEY',
           value: `$${result.money.toLocaleString()}`,
-          icon: '💰',
+          icon: <img src="/assets/items/icon_bitcoin.png" alt="money" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />,
         })
       }
       if (result.scrap > 0) {
@@ -99,7 +99,7 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
           type: 'scrap',
           label: 'SCRAP',
           value: `+${result.scrap}`,
-          icon: '🔩',
+          icon: <img src="/assets/items/icon_scrap.png" alt="scrap" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />,
         })
       }
       if (result.oil > 0) {
@@ -107,7 +107,15 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
           type: 'scrap',
           label: 'OIL',
           value: `+${result.oil}`,
-          icon: '🛢️',
+          icon: <img src="/assets/items/icon_oil.png" alt="oil" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />,
+        })
+      }
+      if (result.badgesOfHonor && result.badgesOfHonor > 0) {
+        rewardEntries.push({
+          type: 'item',
+          label: 'BADGE OF HONOR',
+          value: `+${result.badgesOfHonor}`,
+          icon: <span style={{ fontSize: '36px' }}>🎖️</span>,
         })
       }
 

@@ -32,6 +32,10 @@ export interface DivisionTemplate {
     materialX: number
     scrap: number
   }
+  upkeepCost: {
+    oil: number
+    materialX: number
+  }
   trainingTime: number
   popCost: number          // Pop Cap cost: infantry=1, mechanized=2
   seats: number            // Transport capacity: how many infantry divs this unit can carry
@@ -50,6 +54,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 24.0, dodgeMult: 1.30, armorMult: 1.30,
     manpowerCost: 200, trainingTime: 25,
     recruitCost: { money: 40000, oil: 400, materialX: 150, scrap: 200 },
+    upkeepCost: { oil: 40, materialX: 15 },
     popCost: 1, seats: 0,
     attackSpeed: 1.5,
   },
@@ -60,6 +65,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 28.8, dodgeMult: 0.90, armorMult: 1.30,
     manpowerCost: 350, trainingTime: 30,
     recruitCost: { money: 60000, oil: 600, materialX: 250, scrap: 350 },
+    upkeepCost: { oil: 60, materialX: 25 },
     popCost: 1, seats: 0,
     attackSpeed: 1,
   },
@@ -70,6 +76,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 24.0, dodgeMult: 1.60, armorMult: 1.20,
     manpowerCost: 150, trainingTime: 40,
     recruitCost: { money: 80000, oil: 500, materialX: 300, scrap: 400 },
+    upkeepCost: { oil: 50, materialX: 30 },
     popCost: 1, seats: 0,
     attackSpeed: 0.6,
   },
@@ -80,6 +87,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 30.0, dodgeMult: 0.70, armorMult: 1.30,
     manpowerCost: 250, trainingTime: 35,
     recruitCost: { money: 100000, oil: 800, materialX: 400, scrap: 500 },
+    upkeepCost: { oil: 80, materialX: 40 },
     popCost: 1, seats: 0,
     attackSpeed: 0.8,
   },
@@ -92,6 +100,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 30.0, dodgeMult: 1.50, armorMult: 1.50,
     manpowerCost: 150, trainingTime: 35,
     recruitCost: { money: 100000, oil: 1500, materialX: 600, scrap: 400 },
+    upkeepCost: { oil: 150, materialX: 60 },
     popCost: 2, seats: 0,
     attackSpeed: 1.3,
   },
@@ -102,6 +111,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 36.0, dodgeMult: 0.80, armorMult: 2.00,
     manpowerCost: 200, trainingTime: 50,
     recruitCost: { money: 150000, oil: 2500, materialX: 1000, scrap: 600 },
+    upkeepCost: { oil: 250, materialX: 100 },
     popCost: 2, seats: 1,
     attackSpeed: 0.5,
   },
@@ -112,6 +122,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 26.0, dodgeMult: 1.40, armorMult: 1.20,
     manpowerCost: 100, trainingTime: 60,
     recruitCost: { money: 200000, oil: 3000, materialX: 1200, scrap: 700 },
+    upkeepCost: { oil: 300, materialX: 120 },
     popCost: 2, seats: 2,
     attackSpeed: 0.7,
   },
@@ -122,6 +133,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 40.0, dodgeMult: 0.70, armorMult: 2.50,
     manpowerCost: 250, trainingTime: 60,
     recruitCost: { money: 250000, oil: 4000, materialX: 1500, scrap: 800 },
+    upkeepCost: { oil: 400, materialX: 150 },
     popCost: 2, seats: 5,
     attackSpeed: 0.4,
   },
@@ -132,6 +144,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 50.0, dodgeMult: 1.20, armorMult: 3.00,
     manpowerCost: 300, trainingTime: 80,
     recruitCost: { money: 300000, oil: 6000, materialX: 2500, scrap: 1200 },
+    upkeepCost: { oil: 600, materialX: 250 },
     popCost: 2, seats: 6,
     attackSpeed: 0.3,
   },
@@ -482,4 +495,5 @@ export interface ArmyState {
   processSalaryTick: () => void
   depositBattleReward: (armyId: string, playerId: string, amount: number) => void
   recordMemberDamage: (armyId: string, playerId: string, damage: number) => void
+  processEconomyUpkeepTick: () => void
 }

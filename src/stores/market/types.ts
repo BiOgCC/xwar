@@ -22,6 +22,7 @@ export type ResourceId =
   | 'bread' | 'steak' | 'sushi' | 'fish' | 'wagyu' | 'wheat'
   | 'blueBullets' | 'greenBullets' | 'purpleBullets' | 'redBullets'
   | 'lootBoxes' | 'militaryBoxes'
+  | 'badgesOfHonor'
   | 'staminaPills' | 'energyLeaves'
 
 // ── Resource Metadata ──
@@ -57,6 +58,8 @@ export const RESOURCE_DEFS: ResourceDef[] = [
   // Cases
   { id: 'lootBoxes',     name: 'Civilian Loot Box', icon: '📦', iconImage: '/assets/items/lootbox_civilian.png', category: 'Cases', playerKey: 'lootBoxes',    basePrice: 34.79 },
   { id: 'militaryBoxes', name: 'Military Loot Box', icon: '🧰', iconImage: '/assets/items/lootbox_military.png', category: 'Cases', playerKey: 'militaryBoxes', basePrice: 3.46 },
+  // Military
+  { id: 'badgesOfHonor', name: 'Badge of Honor', icon: '🎖️', category: 'Military', playerKey: 'badgesOfHonor', basePrice: 15.00 },
   // Buffs
   { id: 'staminaPills', name: 'Stamina Pill', icon: '💊', category: 'Buffs', playerKey: 'staminaPills', basePrice: 31.70 },
   { id: 'energyLeaves', name: 'Energy Leaf',  icon: '🍃', category: 'Buffs', playerKey: 'energyLeaves', basePrice: 0.07 },

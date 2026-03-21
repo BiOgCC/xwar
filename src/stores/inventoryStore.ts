@@ -319,6 +319,12 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         set(s => ({ items: [...s.items, item] }))
       }
 
+      // 15% chance to drop a Badge of Honor
+      const badgeDrop = Math.random() < 0.15 ? 1 : 0
+      if (badgeDrop > 0) {
+        usePlayerStore.setState(s => ({ badgesOfHonor: s.badgesOfHonor + badgeDrop }))
+      }
+
       // Track case opens
       set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
       const inv = get()
@@ -336,7 +342,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       if (!item && bonusMoney > 0 && bonusScrap === 0) rewardType = 'money'
       else if (!item) rewardType = 'resources'
 
-      return { rewardType, item, money: bonusMoney || 0, scrap: bonusScrap || 0, oil: 0 }
+      return { rewardType, item, money: bonusMoney || 0, scrap: bonusScrap || 0, oil: 0, badgesOfHonor: badgeDrop }
     } catch(e) { console.error('Lootbox err', e); return null }
   },
 
@@ -353,6 +359,12 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       usePlayerStore.setState(s => ({ militaryBoxes: s.militaryBoxes - 1 }))
       if (item) set(s => ({ items: [...s.items, item] }))
 
+      // 25% chance to drop a Badge of Honor
+      const badgeDrop = Math.random() < 0.25 ? 1 : 0
+      if (badgeDrop > 0) {
+        usePlayerStore.setState(s => ({ badgesOfHonor: s.badgesOfHonor + badgeDrop }))
+      }
+
       set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
       const inv = get()
       const ps = usePlayerStore.getState()
@@ -365,7 +377,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         totalItemsDismantled: inv.totalItemsDismantled,
       })
 
-      return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0 }
+      return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0, badgesOfHonor: badgeDrop }
     } catch(e) { console.error('Milbox err', e); return null }
   },
 

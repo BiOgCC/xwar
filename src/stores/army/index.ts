@@ -541,6 +541,26 @@ export const useArmyStore = create<ArmyState>((set, get) => {
       },
     }))
   },
+
+  processEconomyUpkeepTick: () => {
+    const playerStore = usePlayerStore.getState()
+    const state = get()
+    let totalOil = 0
+    let totalMatX = 0
+
+    Object.values(state.divisions).forEach(div => {
+      if (div.ownerId === playerStore.name && div.status !== 'destroyed') {
+        const template = DIVISION_TEMPLATES[div.type]
+        if (template && template.upkeepCost) {
+          totalOil += template.upkeepCost.oil
+          totalMatX += template.upkeepCost.materialX
+        }
+      }
+    })
+
+    if (totalOil > 0) playerStore.spendOil(totalOil)
+    if (totalMatX > 0) playerStore.spendMaterialX(totalMatX)
+  },
 }})
 
 // Re-export everything from types for backward compatibility

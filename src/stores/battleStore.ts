@@ -10,6 +10,7 @@ import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
 import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './army'
+import { useSpecializationStore } from './specializationStore'
 import { useWarCardsStore } from './warCardsStore'
 import { getCountryName, getCountryFlag, getCountryFlagUrl } from '../data/countries'
 import { useRegionStore } from './regionStore'
@@ -1102,10 +1103,30 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // Degrade equipped items durability
     useInventoryStore.getState().degradeEquippedItems(1)
 
+    // ── Hit Loot Drops (7% base + Mercenary Bonus) ──
+    let dropMsg = ''
+    try {
+      const merB = useSpecializationStore.getState().getMercenaryBonuses()
+      const dropChance = 7 + (merB?.lootChancePercent || 0)
+      if (Math.random() * 100 < dropChance) {
+        const roll = Math.random()
+        if (roll < 0.01) {
+          usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + 1 }))
+          dropMsg = ' [₿+1]'
+        } else if (roll < 0.34) {
+          usePlayerStore.setState(s => ({ militaryBoxes: (s.militaryBoxes || 0) + 1 }))
+          dropMsg = ' [🧰+1]'
+        } else {
+          usePlayerStore.setState(s => ({ lootBoxes: (s.lootBoxes || 0) + 1 }))
+          dropMsg = ' [📦+1]'
+        }
+      }
+    } catch (e) { console.warn('[Hit Loot] Error', e) }
+
     return {
       damage,
       isCrit,
-      message: isCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`,
+      message: (isCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`) + dropMsg,
     }
   },
 

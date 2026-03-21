@@ -135,6 +135,7 @@ export function useGameLoop() {
         })
       } catch (e) { console.warn('[Economy] war cards:', e) }
       try { useCompanyStore.getState().processMaintenanceTick() } catch (e) { console.warn('[Economy] maintenance:', e) }
+      try { useArmyStore.getState().processEconomyUpkeepTick() } catch (e) { console.warn('[Economy] military upkeep:', e) }
       try { useWorldStore.getState().snapshotFundHistory() } catch (e) { console.warn('[Economy] fund snapshot:', e) }
       // Prestige hourly snapshot + weekly jackpot
       try {
