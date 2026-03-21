@@ -35,10 +35,21 @@ router.post('/sell', requireAuth as any, validate(sellSchema), async (req, res) 
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
 
     // For equipment listings, verify ownership and lock the item
+    let equipSnapshot: any = null
     if (resourceId) {
       const [item] = await db.select().from(items).where(eq(items.id, resourceId)).limit(1)
       if (!item) { res.status(404).json({ error: 'Item not found' }); return }
       if (item.ownerId !== playerId) { res.status(403).json({ error: 'Not your item' }); return }
+      if (item.location !== 'inventory') { res.status(400).json({ error: 'Item not in inventory' }); return }
+      if (item.equipped) { res.status(400).json({ error: 'Unequip item first' }); return }
+      // Lock item to market
+      await db.update(items).set({ location: 'market', equipped: false }).where(eq(items.id, resourceId))
+      // Build equipSnapshot for marketplace display
+      equipSnapshot = {
+        name: item.name, tier: item.tier, slot: item.slot,
+        category: item.category, stats: item.stats,
+        durability: item.durability, weaponSubtype: item.weaponSubtype,
+      }
     } else {
       // Bulk resource: verify player has enough
       const resourceCol = getResourceColumn(itemType)
@@ -64,7 +75,7 @@ router.post('/sell', requireAuth as any, validate(sellSchema), async (req, res) 
       amount,
       pricePerUnit: pricePerUnit.toString(),
       totalPrice: totalPrice.toString(),
-      equipSnapshot: resourceId ? {} : null,
+      equipSnapshot: equipSnapshot,
       source: 'player',
       countryCode: player.countryCode,
       status: 'open',
@@ -122,8 +133,8 @@ router.post('/buy', requireAuth as any, validate(buySchema), async (req, res) =>
 
     // Transfer resource/item to buyer
     if (order.resourceId) {
-      // Item transfer
-      await db.update(items).set({ ownerId: playerId }).where(eq(items.id, order.resourceId))
+      // Item transfer: change owner and reset location back to inventory
+      await db.update(items).set({ ownerId: playerId, location: 'inventory', equipped: false }).where(eq(items.id, order.resourceId))
     } else {
       // Bulk resource: add to buyer
       const resourceCol = getResourceColumn(order.itemType)
@@ -205,6 +216,11 @@ router.post('/cancel', requireAuth as any, validate(cancelSchema), async (req, r
           [order.itemType]: sql`${resourceCol} + ${unfilled}`,
         }).where(eq(players.id, playerId))
       }
+    }
+
+    // Unlock equipment items back to inventory
+    if (order.resourceId && order.itemType === 'equipment') {
+      await db.update(items).set({ location: 'inventory' }).where(eq(items.id, order.resourceId))
     }
 
     await db.update(marketOrders).set({ status: 'cancelled' }).where(eq(marketOrders.id, orderId))

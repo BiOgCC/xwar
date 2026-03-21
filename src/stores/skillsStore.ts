@@ -7,21 +7,21 @@ export type EconomicSkill = 'work' | 'entrepreneurship' | 'production' | 'prospe
 export type SkillName = MilitarySkill | EconomicSkill
 
 export const MILITARY_SKILLS: { key: MilitarySkill; label: string; icon: string; desc: string }[] = [
-  { key: 'attack', label: 'Attack', icon: '⚔️', desc: 'Increases base attack damage' },
-  { key: 'critRate', label: 'Crit Rate', icon: '🎯', desc: 'Increases critical hit chance' },
-  { key: 'critDamage', label: 'Crit Damage', icon: '💥', desc: 'Increases critical hit multiplier' },
-  { key: 'precision', label: 'Hit Rate', icon: '💢', desc: 'Increases chance to land a hit (+5% per level)' },
-  { key: 'stamina', label: 'Stamina', icon: '⚡', desc: 'Increases max stamina bar' },
-  { key: 'hunger', label: 'Hunger', icon: '🍖', desc: 'Increases max hunger bar' },
-  { key: 'armor', label: 'Armor', icon: '🛡️', desc: 'Reduces incoming damage' },
-  { key: 'dodge', label: 'Dodge', icon: '💨', desc: 'Chance to avoid damage' },
+  { key: 'attack', label: 'Attack', icon: '⚔️', desc: 'Increases base attack damage (+20 per level)' },
+  { key: 'critRate', label: 'Crit Rate', icon: '🎯', desc: 'Increases critical hit chance (+5% per level)' },
+  { key: 'critDamage', label: 'Crit Damage', icon: '💥', desc: 'Increases critical hit multiplier (+0.10x per level)' },
+  { key: 'precision', label: 'Hit Rate', icon: '💢', desc: 'Hit rate +5%/lvl (cap 90%). Excess → +0.5% crit per 1% overflow' },
+  { key: 'stamina', label: 'Stamina', icon: '⚡', desc: 'Increases max stamina bar (+20 per level)' },
+  { key: 'hunger', label: 'Hunger', icon: '🍖', desc: 'Increases max hunger bar (+1 per level)' },
+  { key: 'armor', label: 'Armor', icon: '🛡️', desc: 'Reduces incoming damage (% mitigation, +5 armor per level)' },
+  { key: 'dodge', label: 'Dodge', icon: '💨', desc: 'Chance to avoid damage (+3% per level)' },
 ]
 
 export const ECONOMIC_SKILLS: { key: EconomicSkill; label: string; icon: string; desc: string }[] = [
-  { key: 'work', label: 'Work', icon: '🔨', desc: 'Increases max work bar' },
-  { key: 'entrepreneurship', label: 'Enterprise', icon: '💼', desc: 'Increases max entrepreneurship bar' },
-  { key: 'production', label: 'Production', icon: '⚙️', desc: 'Increases production output' },
-  { key: 'prospection', label: 'Prospection', icon: '⛏️', desc: 'Chance to find country resource deposit when working' },
+  { key: 'work', label: 'Work', icon: '🔨', desc: 'Increases max work bar (+20 per level)' },
+  { key: 'entrepreneurship', label: 'Enterprise', icon: '💼', desc: 'Increases max entrepreneurship bar (+15 per level)' },
+  { key: 'production', label: 'Production', icon: '⚙️', desc: 'Increases production bar fill per work/enterprise action (+2 per level)' },
+  { key: 'prospection', label: 'Prospection', icon: '⛏️', desc: '3% chance per level to find bonus scrap when working (up to 30%)' },
   { key: 'industrialist', label: 'Industrialist', icon: '🏭', desc: 'Increased red bullet chance on produce, up to 20% superforge chance on craft (+10% stats)' },
 ]
 
@@ -30,6 +30,7 @@ export interface SkillsState {
   economic: Record<EconomicSkill, number>
   getSkillCost: (currentLevel: number) => number
   assignSkillPoint: (tree: 'military' | 'economic', skill: SkillName) => boolean
+  resetSkills: (tree: 'military' | 'economic') => boolean
   getLevel: (skill: SkillName) => number
 }
 
@@ -97,6 +98,38 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       } else if (skill === 'entrepreneurship') {
         usePlayerStore.setState({ maxEntrepreneurship: 100 + (currentLevel + 1) * 15 })
       }
+    }
+    return true
+  },
+
+  resetSkills: (tree) => {
+    const RESPEC_COST = 50000
+    const player = usePlayerStore.getState()
+    if (player.money < RESPEC_COST) return false
+
+    const state = get()
+    // Calculate total SP to refund
+    const skills = tree === 'military' ? state.military : state.economic
+    let refund = 0
+    for (const level of Object.values(skills)) {
+      for (let i = 0; i < level; i++) refund += i + 1  // sum of costs: 1+2+...+level
+    }
+
+    // Spend gold
+    usePlayerStore.setState(s => ({ money: s.money - RESPEC_COST, skillPoints: s.skillPoints + refund }))
+
+    if (tree === 'military') {
+      // Reset military skills and revert bar maxes
+      set({
+        military: { attack: 0, critRate: 0, critDamage: 0, precision: 0, stamina: 0, hunger: 0, armor: 0, dodge: 0 },
+      })
+      usePlayerStore.setState({ maxStamina: 100, maxHunger: 5 })
+    } else {
+      // Reset economic skills and revert bar maxes
+      set({
+        economic: { work: 0, entrepreneurship: 0, production: 0, prospection: 0, industrialist: 0 },
+      })
+      usePlayerStore.setState({ maxWork: 100, maxEntrepreneurship: 100 })
     }
     return true
   },

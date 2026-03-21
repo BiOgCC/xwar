@@ -47,7 +47,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     id: 'recon', name: 'Recon Squad', icon: '/assets/divisions/recon.png', category: 'land', group: 'infantry',
     description: 'Scout unit. Base infantry stats with enhanced evasion.',
     atkDmgMult: 0.10, hitRate: 0.50, critRateMult: 0.80, critDmgMult: 1.50,
-    healthMult: 24.0, dodgeMult: 1.30, armorMult: 1.00,
+    healthMult: 24.0, dodgeMult: 1.30, armorMult: 1.30,
     manpowerCost: 200, trainingTime: 25,
     recruitCost: { money: 40000, oil: 400, materialX: 150, scrap: 200 },
     popCost: 1, seats: 0,
@@ -57,7 +57,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     id: 'assault', name: 'Assault Infantry', icon: '/assets/divisions/assault.png', category: 'land', group: 'infantry',
     description: 'Frontline fighters. Harder hits with better survivability.',
     atkDmgMult: 0.11, hitRate: 0.55, critRateMult: 1.00, critDmgMult: 1.60,
-    healthMult: 28.8, dodgeMult: 0.90, armorMult: 1.10,
+    healthMult: 28.8, dodgeMult: 0.90, armorMult: 1.30,
     manpowerCost: 350, trainingTime: 30,
     recruitCost: { money: 60000, oil: 600, materialX: 250, scrap: 350 },
     popCost: 1, seats: 0,
@@ -67,7 +67,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     id: 'sniper', name: 'Sniper Division', icon: '/assets/divisions/sniper.png', category: 'land', group: 'infantry',
     description: 'Precision unit. Devastating critical hits from range.',
     atkDmgMult: 0.13, hitRate: 0.70, critRateMult: 1.56, critDmgMult: 2.50,
-    healthMult: 24.0, dodgeMult: 0.90, armorMult: 0.80,
+    healthMult: 24.0, dodgeMult: 1.60, armorMult: 1.20,
     manpowerCost: 150, trainingTime: 40,
     recruitCost: { money: 80000, oil: 500, materialX: 300, scrap: 400 },
     popCost: 1, seats: 0,
@@ -109,7 +109,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     id: 'jet', name: 'Jet Fighters', icon: '/assets/divisions/jet.png', category: 'air', group: 'mechanized',
     description: 'Air superiority. Precise strikes with massive criticals.',
     atkDmgMult: 0.26, hitRate: 0.80, critRateMult: 1.75, critDmgMult: 2.80,
-    healthMult: 26.0, dodgeMult: 1.40, armorMult: 1.00,
+    healthMult: 26.0, dodgeMult: 1.40, armorMult: 1.20,
     manpowerCost: 100, trainingTime: 60,
     recruitCost: { money: 200000, oil: 3000, materialX: 1200, scrap: 700 },
     popCost: 2, seats: 2,
@@ -131,7 +131,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     atkDmgMult: 0.35, hitRate: 0.85, critRateMult: 1.50, critDmgMult: 2.50,
     healthMult: 50.0, dodgeMult: 1.20, armorMult: 3.00,
     manpowerCost: 300, trainingTime: 80,
-    recruitCost: { money: 500000, oil: 6000, materialX: 2500, scrap: 1200 },
+    recruitCost: { money: 300000, oil: 6000, materialX: 2500, scrap: 1200 },
     popCost: 2, seats: 6,
     attackSpeed: 0.3,
   },
@@ -301,6 +301,9 @@ export interface Division {
   // Star quality
   starQuality: StarQuality
   statModifiers: StatModifiers
+
+  // Cooldowns
+  lastHealedAt?: number    // Timestamp when the division was last healed
 }
 
 // ====== MILITARY FORCE ======
@@ -382,6 +385,9 @@ export interface Army {
   totalAttack: number
   totalDefense: number
 
+  /** Autodefense limit for this force: -1 = all, 0 = off, N = max N divisions */
+  autoDefenseLimit: number
+
   // Salary distribution system
   salaryPool: number                             // Money waiting to be distributed
   splitMode: SalaryDistributionMode              // How salary is split among soldiers
@@ -439,6 +445,7 @@ export interface ArmyState {
   rebuildDivision: (divisionId: string) => { success: boolean; message: string }
   setDivisionStance: (divisionId: string, stance: 'unassigned' | 'force_pool' | 'reserve' | 'first_line_defense') => { success: boolean; message: string }
   toggleAutoTraining: (divisionId: string) => { success: boolean; message: string }
+  setArmyAutoDefenseLimit: (armyId: string, limit: number) => { success: boolean; message: string }
 
   // Reinforcement
   reinforceDivision: (divisionId: string) => { success: boolean; message: string }

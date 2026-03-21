@@ -2,6 +2,7 @@ import type { ArmyState } from './types'
 import { DIVISION_TEMPLATES, rollStarQuality } from './types'
 import { usePlayerStore } from '../playerStore'
 import { useInventoryStore } from '../inventoryStore'
+import { useResearchStore } from '../researchStore'
 import type { StoreApi } from 'zustand'
 
 export function createCombatSlice(
@@ -56,12 +57,15 @@ export function createCombatSlice(
       const player = usePlayerStore.getState()
       const healPct = foodType === 'wagyu' ? 0.03 : foodType === 'sushi' ? 0.02 : 0.01
       const state = get()
+      const now = Date.now()
+      const TWELVE_HOURS = 12 * 60 * 60 * 1000
 
       const myDivs = Object.values(state.divisions).filter(
-        d => d.ownerId === player.name && d.status === 'in_combat' && d.health < d.maxHealth
+        d => d.ownerId === player.name && d.status === 'in_combat' && d.health < d.maxHealth &&
+             (!d.lastHealedAt || now - d.lastHealedAt >= TWELVE_HOURS)
       )
 
-      if (myDivs.length === 0) return { success: false, message: 'No damaged deployed divisions to heal.' }
+      if (myDivs.length === 0) return { success: false, message: 'No damaged deployed divisions eligible for healing (12h cooldown).' }
 
       let totalHealed = 0
       const newDivisions = { ...state.divisions }
@@ -70,7 +74,7 @@ export function createCombatSlice(
         const newHp = Math.min(div.maxHealth, div.health + healAmount)
         const actualHeal = newHp - div.health
         totalHealed += actualHeal
-        newDivisions[div.id] = { ...div, health: newHp }
+        newDivisions[div.id] = { ...div, health: newHp, lastHealedAt: now }
       }
 
       set({ divisions: newDivisions })
@@ -86,7 +90,9 @@ export function createCombatSlice(
       if (div.status !== 'destroyed') return { success: false, message: 'Division is not destroyed.' }
 
       const template = DIVISION_TEMPLATES[div.type]
-      const reviveCost = Math.floor(template.recruitCost.money * 0.6)
+      // Apply Economic Theory research bonus to revive cost
+      const ecoBonuses = useResearchStore.getState().getEconomyBonuses(div.countryCode || 'US')
+      const reviveCost = Math.floor(template.recruitCost.money * 0.5 * ecoBonuses.reviveCostMult) // 50% of recruit cost × research
 
       const player = usePlayerStore.getState()
       if (player.money < reviveCost) return { success: false, message: `Need $${reviveCost.toLocaleString()} to revive. You have $${player.money.toLocaleString()}.` }
@@ -198,7 +204,9 @@ export function createCombatSlice(
 
       const template = DIVISION_TEMPLATES[div.type]
       const missingPct = (div.maxManpower - div.manpower) / div.maxManpower
-      const reinforceCostMoney = Math.ceil(template.recruitCost.money * missingPct)
+      // Apply Economic Theory research bonus to reinforce money cost
+      const rEcoBonuses = useResearchStore.getState().getEconomyBonuses(div.countryCode || 'US')
+      const reinforceCostMoney = Math.ceil(template.recruitCost.money * missingPct * rEcoBonuses.recruitCostMult)
       const reinforceCostOil = Math.ceil(template.recruitCost.oil * missingPct)
 
       const player = usePlayerStore.getState()

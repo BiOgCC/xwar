@@ -10,6 +10,7 @@ import {
   type MilitaryPillar,
   type MilitaryOperationDef,
 } from '../../stores/militaryStore'
+import { useArmyStore } from '../../stores/army'
 import RegionPicker from '../shared/RegionPicker'
 
 type ViewMode = 'operations' | 'active' | 'reports'
@@ -274,6 +275,74 @@ export default function MilitaryPanel() {
               </span>
             </div>
           </div>
+
+          {/* Force Autodefense Section */}
+          {(() => {
+            const armyStore = useArmyStore()
+            const playerArmies = Object.values(armyStore.armies).filter(a => a.countryCode === iso)
+            if (playerArmies.length === 0) return null
+            return (
+              <div className="war-card" style={{ borderColor: 'rgba(34,211,138,0.15)' }}>
+                <div className="war-card__title" style={{ marginBottom: '8px' }}>🛡️ FORCE AUTODEFENSE</div>
+                <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '8px' }}>
+                  Set how many divisions each military force auto-deploys on defense.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {playerArmies.map(army => {
+                    const armyDivCount = army.divisionIds.filter(did => {
+                      const d = armyStore.divisions[did]
+                      return d && d.status === 'ready'
+                    }).length
+                    const limit = army.autoDefenseLimit ?? 0
+                    const sv = limit === -1 ? armyDivCount + 1 : limit
+                    const label = limit === -1 ? 'ALL' : limit === 0 ? 'OFF' : `${limit}`
+                    const color = limit === 0 ? '#ef4444' : limit === -1 ? '#22d38a' : '#3b82f6'
+
+                    return (
+                      <div key={army.id} style={{
+                        padding: '8px', borderRadius: '5px',
+                        background: 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${color}25`,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>
+                            ⚔️ {army.name}
+                          </span>
+                          <span style={{ fontSize: '8px', color: '#64748b' }}>
+                            {armyDivCount} div{armyDivCount !== 1 ? 's' : ''} ready
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <input
+                            type="range"
+                            min={0}
+                            max={armyDivCount + 1}
+                            value={sv}
+                            onChange={e => {
+                              const v = parseInt(e.target.value)
+                              armyStore.setArmyAutoDefenseLimit(army.id, v > armyDivCount ? -1 : v)
+                            }}
+                            style={{ flex: 1, accentColor: color, cursor: 'pointer' }}
+                          />
+                          <div style={{
+                            minWidth: '36px', textAlign: 'center', padding: '3px 6px', borderRadius: '3px',
+                            fontSize: '10px', fontWeight: 900,
+                            background: `${color}18`, border: `1px solid ${color}40`, color,
+                          }}>
+                            {label}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: '#475569', marginTop: '2px' }}>
+                          <span>OFF</span>
+                          <span>ALL</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
         </>
       )}
 

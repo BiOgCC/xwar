@@ -277,12 +277,60 @@ export function GovCitizenshipTab() {
 export function GovWarTab() {
   const player = usePlayerStore()
   const world = useWorldStore()
+  const govStore = useGovernmentStore()
+  const armyStore = useArmyStore()
   const iso = player.countryCode || 'US'
   const wars = world.wars?.filter(w => (w.attacker === iso || w.defender === iso) && w.status === 'active') || []
   const battles = Object.values(useBattleStore.getState().battles).filter(b => b.attackerId === iso || b.defenderId === iso)
 
+  // Autodefense slider state
+  const countryDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === iso && d.status === 'ready')
+  const maxDivs = countryDivs.length
+  const currentLimit = govStore.autoDefenseLimit // -1 = all, 0 = off, N = cap
+  // Slider value: 0 = off, 1..maxDivs = N, maxDivs+1 = ALL (-1)
+  const sliderVal = currentLimit === -1 ? maxDivs + 1 : currentLimit
+  const sliderLabel = currentLimit === -1 ? 'ALL' : currentLimit === 0 ? 'OFF' : `${currentLimit}`
+  const sliderColor = currentLimit === 0 ? '#ef4444' : currentLimit === -1 ? '#22d38a' : '#3b82f6'
+
+  const handleSlider = (val: number) => {
+    if (val > maxDivs) govStore.setAutoDefenseLimit(-1)
+    else govStore.setAutoDefenseLimit(val)
+  }
+
   return (
     <>
+      {/* Country Autodefense Card */}
+      <div className="gov-section gov-section--highlight" style={{ borderLeft: `3px solid ${sliderColor}` }}>
+        <div className="gov-section__title" style={{ color: sliderColor }}>
+          🛡️ COUNTRY AUTODEFENSE
+        </div>
+        <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '8px' }}>
+          Set how many divisions auto-deploy when your country is attacked. Armed Forces always deploy regardless.
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <input
+            type="range"
+            min={0}
+            max={maxDivs + 1}
+            value={sliderVal}
+            onChange={e => handleSlider(parseInt(e.target.value))}
+            style={{ flex: 1, accentColor: sliderColor, cursor: 'pointer' }}
+          />
+          <div style={{
+            minWidth: '42px', textAlign: 'center', padding: '4px 8px', borderRadius: '4px',
+            fontSize: '11px', fontWeight: 900, letterSpacing: '0.5px',
+            background: `${sliderColor}18`, border: `1px solid ${sliderColor}40`, color: sliderColor,
+          }}>
+            {sliderLabel}
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: '#475569', marginTop: '3px' }}>
+          <span>OFF</span>
+          <span>{maxDivs} div{maxDivs !== 1 ? 's' : ''} ready</span>
+          <span>ALL</span>
+        </div>
+      </div>
+
       <div className="gov-section">
         <div className="gov-section__title gov-section__title--red">⚔️ ACTIVE WARS</div>
         {wars.length === 0 && battles.length === 0

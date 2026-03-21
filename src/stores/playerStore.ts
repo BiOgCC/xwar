@@ -4,6 +4,8 @@ import { useSkillsStore } from './skillsStore'
 import { useSpecializationStore } from './specializationStore'
 import { useWarCardsStore } from './warCardsStore'
 import { rateLimiter, validateEarn, validateSpend, logSuspicion } from '../engine/AntiExploit'
+import { applyCatchUpXP } from '../engine/catchup'
+import { useWorldStore } from './worldStore'
 
 import type { PlayerRole, MilitaryRank } from '../types/player.types'
 export type { PlayerRole, MilitaryRank }
@@ -283,7 +285,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     totalCritRate += milSkills.critRate * 5
     totalCritDmg += milSkills.critDamage * 20
     totalArmor += milSkills.armor * 5
-    totalDodge += milSkills.dodge * 5
+    totalDodge += milSkills.dodge * 3
     totalPrecision += milSkills.precision * 5
 
     // Specialization bonuses
@@ -291,35 +293,38 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     totalDmg = Math.floor(totalDmg * (1 + specBonus.damagePercent / 100))
     totalCritRate += specBonus.critRatePercent
 
-    // Hit Rate Check: base 50% + equipment + skills
-    const totalHitRate = Math.min(100, 50 + totalPrecision)
+    // Hit Rate Check: base 50% + equipment + skills, soft-capped at 90%
+    const rawHitRate = 50 + totalPrecision
+    const totalHitRate = Math.min(90, rawHitRate)
+    const overflowCrit = Math.max(0, rawHitRate - 90) * 0.5  // overflow → bonus crit
     const didHit = Math.random() * 100 < totalHitRate
 
     // Dodge Check & Stamina Cost Calculation
     const isDodged = Math.random() < (totalDodge / 100)
-    let staminaCost = 0
-    
+
     if (!isDodged) {
-      staminaCost = Math.max(0, 10 - (10 * (totalArmor / 100)))
       invStore.degradeEquippedItems(1) // Item durability damage
     }
-
-    if (s.stamina < staminaCost) return { damage: 0, isCrit: false, isDodged: false } // Not enough stamina
 
     if (usedAmmo === 'red') {
       totalCritRate += 10
     }
+    // Add overflow crit from hit rate
+    totalCritRate += overflowCrit
 
     const isCrit = Math.random() < (totalCritRate / 100)
     let finalMultiplier = damageMultiplier
     
     if (isCrit) {
-      finalMultiplier *= (1.5 + (totalCritDmg / 100))
+      finalMultiplier *= (1.5 + (totalCritDmg / 200))
     }
 
-    const finalDamage = didHit ? Math.floor(totalDmg * finalMultiplier) : Math.floor(totalDmg * finalMultiplier * 0.66)
+    let finalDamage = didHit ? Math.floor(totalDmg * finalMultiplier) : Math.floor(totalDmg * finalMultiplier * 0.66)
+    // Armor % mitigation: armor / (armor + 100)
+    const armorMitigation = totalArmor / (totalArmor + 100)
+    finalDamage = Math.max(1, Math.floor(finalDamage * (1 - armorMitigation)))
 
-    const xpGain = 25
+    const xpGain = applyCatchUpXP(25, s.level, useWorldStore.getState().serverMedianLevel)
     let newXP = s.experience + xpGain
     let newLevel = s.level
     let newSP = s.skillPoints
@@ -332,7 +337,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
 
     const updates: Partial<PlayerState> = {
-      stamina: Math.max(0, s.stamina - staminaCost),
+      stamina: Math.max(0, s.stamina - 10),
       rank: Math.min(s.maxRank, s.rank + 0.5),
       experience: newXP,
       level: newLevel,
@@ -435,7 +440,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   gainXP: (amount) =>
     set((s) => {
-      let newXP = s.experience + amount
+      const medianLevel = useWorldStore.getState().serverMedianLevel
+      const boosted = applyCatchUpXP(amount, s.level, medianLevel)
+      let newXP = s.experience + boosted
       let newLevel = s.level
       let newSP = s.skillPoints
       let nextXP = s.experienceToNext
@@ -461,10 +468,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   doWork: () => {
     set((s) => {
       if (Math.floor(s.work) < 10) return {}
-      const fill = 20
+      const productionLevel = useSkillsStore.getState().economic.production
+      const fill = 20 + productionLevel * 2
+      // Prospection: chance to find bonus scrap
+      const prospectionLevel = useSkillsStore.getState().economic.prospection
+      const prospectChance = prospectionLevel * 0.03  // 3% per level, up to 30%
+      const foundScrap = Math.random() < prospectChance
+      const bonusScrap = foundScrap ? (5 + prospectionLevel * 2) : 0
       return {
         work: Math.max(0, s.work - 10),
         productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
+        scrap: s.scrap + bonusScrap,
       }
     })
     useSpecializationStore.getState().recordWork()
@@ -473,7 +487,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   doEntrepreneurship: () => {
     set((s) => {
       if (Math.floor(s.entrepreneurship) < 10) return {}
-      const fill = 25
+      const productionLevel = useSkillsStore.getState().economic.production
+      const fill = 25 + productionLevel * 2
       return {
         entrepreneurship: Math.max(0, s.entrepreneurship - 10),
         productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
@@ -487,7 +502,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (s.productionBar < s.productionBarMax) return {}
       const chance = industrialistLevel * 0.05
       const foundBitcoin = Math.random() < chance
-      const xpGain = 30
+      const medianLevel = useWorldStore.getState().serverMedianLevel
+      const xpGain = applyCatchUpXP(30, s.level, medianLevel)
       let newXP = s.experience + xpGain
       let newLevel = s.level
       let newSP = s.skillPoints

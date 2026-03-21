@@ -13,7 +13,7 @@ export interface Citizen {
   id: string
   name: string
   level: number
-  role: 'president' | 'congress' | 'citizen'
+  role: 'president' | 'vicepresident' | 'minister' | 'congress' | 'citizen'
   joinedAt: number
 }
 
@@ -99,4 +99,7 @@ export interface Government {
   citizens: Citizen[]
   divisionShop: DivisionListing[]
   militaryBudgetPercent: number
+  armedForces: string[]  // Division IDs owned by the government (defense-only reserve)
+  lastFreeRecruitAt: number  // timestamp of last free 12h recruit
+  equipmentVault: string[]   // Item IDs owned by the government (from market purchases)
 }

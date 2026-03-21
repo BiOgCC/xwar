@@ -1,5 +1,9 @@
 import { create } from 'zustand'
 import { rateLimiter } from '../engine/AntiExploit'
+import { computePlayerCombatStats, aggregateEquipmentStats, computeBaseSkillStats, type PlayerCombatStats } from '../engine/stats'
+import { computeDivisionAttack, computeDamageToDefender, computePlayerAttack, deviate, EMPTY_STAR_MODS, EMPTY_EQUIP_BONUS, NO_ORDER, NO_AURA, type AuraBonus, type OrderEffects as EngineOrderEffects } from '../engine/combat'
+import { getWarRewards } from '../engine/economy'
+import { useResearchStore } from './researchStore'
 import { useWorldStore } from './worldStore'
 import { useGovernmentStore } from './governmentStore'
 import { usePlayerStore } from './playerStore'
@@ -13,42 +17,17 @@ import { useRegionStore } from './regionStore'
 // Re-export for backwards compatibility — consumers importing from battleStore still work
 export { getCountryName, getCountryFlag, getCountryFlagUrl }
 
-// ====== PLAYER COMBAT STATS HELPER ======
-export function getPlayerCombatStats() {
-  const player = usePlayerStore.getState()
+// ====== PLAYER COMBAT STATS HELPER (delegates to engine/stats.ts) ======
+export function getPlayerCombatStats(): PlayerCombatStats {
   const skills = useSkillsStore.getState().military
   const equipped = useInventoryStore.getState().getEquipped()
-
-  let eqDmg = 0, eqCritRate = 0, eqCritDmg = 0, eqArmor = 0, eqDodge = 0, eqPrecision = 0
-  equipped.forEach((item: any) => {
-    if (item.stats.damage) eqDmg += item.stats.damage
-    if (item.stats.critRate) eqCritRate += item.stats.critRate
-    if (item.stats.critDamage) eqCritDmg += item.stats.critDamage
-    if (item.stats.armor) eqArmor += item.stats.armor
-    if (item.stats.dodge) eqDodge += item.stats.dodge
-    if (item.stats.precision) eqPrecision += item.stats.precision
-  })
-
-  return {
-    attackDamage: 100 + eqDmg + skills.attack * 20,
-    critRate: 10 + eqCritRate + skills.critRate * 5,
-    critMultiplier: (100 + eqCritDmg + skills.critDamage * 20) / 100,
-    armorBlock: eqArmor + skills.armor * 5,
-    dodgeChance: 5 + eqDodge + skills.dodge * 5,
-    hitRate: Math.min(100, 50 + eqPrecision + skills.precision * 5),
-  }
+  const eqStats = aggregateEquipmentStats(equipped)
+  return computePlayerCombatStats(skills, eqStats)
 }
 
-export function getBaseSkillStats() {
+export function getBaseSkillStats(): PlayerCombatStats {
   const skills = useSkillsStore.getState().military
-  return {
-    attackDamage: 100 + skills.attack * 20,
-    critRate: 10 + skills.critRate * 5,
-    critMultiplier: (100 + skills.critDamage * 20) / 100,
-    armorBlock: skills.armor * 5,
-    dodgeChance: 5 + skills.dodge * 5,
-    hitRate: Math.min(100, 50 + skills.precision * 5),
-  }
+  return computeBaseSkillStats(skills)
 }
 
 // ====== TYPES ======
@@ -309,8 +288,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     const newFeed = [{ playerName, side, amount: finalAmount, isCrit, isDodged, time: now }, ...damageFeed].slice(0, 20)
 
-    // --- 2% of manual damage hurts opposing divisions ---
-    const splashDmg = Math.floor(finalAmount * 0.02)
+    // --- 420% of manual damage hurts opposing divisions (x4.2 splash) ---
+    const splashDmg = Math.floor(finalAmount * 4.20)
     if (splashDmg > 0) {
       const armyStore = useArmyStore.getState()
       const oppositeDivIds = side === 'attacker'
@@ -458,15 +437,72 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
         // ── #10 FIX: Cross-validate country code matches battle side ──
         const expectedCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
-        if (sideData.countryCode !== expectedCountry) return  // defensive: side data corrupted
-
+        if (sideData.countryCode !== expectedCountry) return
         const govStore = useGovernmentStore.getState()
-        const countryDivs = Object.values(armyStore.divisions).filter(
-          d => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
-            && (side === 'attacker' || (govStore.autoDefenseEnabled && (d.stance === 'first_line_defense' || d.stance === 'unassigned')))
-        )
-        if (countryDivs.length === 0) return
-        const ids = countryDivs.map(d => d.id)
+        const gov = govStore.governments[expectedCountry]
+        const armedForceIds = (side === 'defender' && gov?.armedForces) ? gov.armedForces : []
+        const countryAutoDefLimit = govStore.autoDefenseLimit  // -1 = all, 0 = off, N = cap
+
+        // Collect eligible divisions by source
+        let eligible: string[] = []
+
+        if (side === 'attacker') {
+          // Attackers: deploy all ready divisions for the country
+          eligible = Object.values(armyStore.divisions)
+            .filter(d => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0)
+            .map(d => d.id)
+        } else {
+          // Defenders: respect autodefense limits
+
+          // 1) Armed Forces ALWAYS deploy (not subject to country limit)
+          const afEligible = Object.values(armyStore.divisions)
+            .filter(d => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
+              && armedForceIds.includes(d.id))
+            .map(d => d.id)
+
+          // 2) Per-army autodefense: collect divisions from armies with autoDefenseLimit != 0
+          const armyEligible: string[] = []
+          Object.values(armyStore.armies).forEach(army => {
+            if (army.countryCode !== expectedCountry) return
+            if (army.autoDefenseLimit === 0) return  // this army has autodefense OFF
+            const armyReadyDivs = army.divisionIds.filter(did => {
+              const d = armyStore.divisions[did]
+              return d && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
+                && !armedForceIds.includes(did)  // don't double-count armed forces
+            })
+            if (army.autoDefenseLimit === -1) {
+              armyEligible.push(...armyReadyDivs)
+            } else {
+              armyEligible.push(...armyReadyDivs.slice(0, army.autoDefenseLimit))
+            }
+          })
+
+          // 3) Country-level unassigned divisions (not in any army) — only if country limit allows
+          const unassignedEligible = countryAutoDefLimit !== 0
+            ? Object.values(armyStore.divisions)
+                .filter(d => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
+                  && !armedForceIds.includes(d.id)
+                  && (d.stance === 'first_line_defense' || d.stance === 'unassigned')
+                  && !Object.values(armyStore.armies).some(a => a.divisionIds.includes(d.id)))
+                .map(d => d.id)
+            : []
+
+          // Combine: armed forces + army contributions + unassigned
+          eligible = [...afEligible]
+          const nonAf = [...armyEligible, ...unassignedEligible]
+
+          // Apply country-level limit to non-armed-force divisions
+          if (countryAutoDefLimit === 0) {
+            // Only armed forces deploy
+          } else if (countryAutoDefLimit === -1) {
+            eligible.push(...nonAf)
+          } else {
+            eligible.push(...nonAf.slice(0, countryAutoDefLimit))
+          }
+        }
+
+        if (eligible.length === 0) return
+        const ids = eligible
         // Mark as in_combat with deployedAtTick for recall cooldown
         const currentTick = battle.ticksElapsed || 0
         ids.forEach(id => {
@@ -476,9 +512,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         })
         sideData.divisionIds = [...new Set([...sideData.divisionIds, ...ids])]
         sideData.engagedDivisionIds = [...new Set([...sideData.engagedDivisionIds, ...ids])]
+        const afCount = ids.filter(id => armedForceIds.includes(id)).length
+        const playerCount = ids.length - afCount
+        const parts: string[] = []
+        if (playerCount > 0) parts.push(`${playerCount} ${side} division(s)`)
+        if (afCount > 0) parts.push(`${afCount} Armed Forces reserve(s)`)
         newCombatLog.push({
           tick, timestamp: now, type: 'reinforcement' as const, side,
-          message: `🚀 ${ids.length} ${side} division(s) auto-deployed!`,
+          message: `🚀 ${parts.join(' + ')} auto-deployed!`,
         })
       }
       autoDeploySide('attacker')
@@ -505,6 +546,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
       // --- Random ±10% deviation for combat variability ---
       const deviate = (v: number) => v * (0.9 + Math.random() * 0.2)
+
+      // --- Military Doctrine research bonuses (fetched once per tick) ---
+      const atkMilBonus = useResearchStore.getState().getMilitaryBonuses(battle.attackerId)
+      const defMilBonus = useResearchStore.getState().getMilitaryBonuses(battle.defenderId)
 
       // --- ATTACKER DAMAGE (player stats × division template multipliers) ---
       // Attack speed accumulator: add 1.0 per tick, fire when accum >= attackSpeed
@@ -537,8 +582,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         while (cooldowns[divId] >= as) {
           cooldowns[divId] -= as
           const atkDivLevel = Math.floor((div.experience || 0) / 10)
-          // Hit check (order hitBonus + aura precisionPct + equip hitRate applied)
-          if (Math.random() > Math.min(0.95, tHitRate + atkDivLevel * 0.01 + atkOrd.hitBonus + atkAura.precisionPct / 100 + eq.bonusHitRate)) {
+          // Hit check (order hitBonus + aura precisionPct + equip hitRate + research hitRate applied)
+          if (Math.random() > Math.min(0.95, tHitRate + atkDivLevel * 0.01 + atkOrd.hitBonus + atkAura.precisionPct / 100 + eq.bonusHitRate + atkMilBonus.hitRateBonus)) {
             atkMisses++
             divEvents.push({ divName: div.name, side: 'atk', event: 'miss' })
             continue
@@ -554,7 +599,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const effectiveCritRate = deviate((playerStats.critRate + atkOrd.critBonus + eq.bonusCritRate) * (tCritRate + atkDivLevel * 0.01))
           if (Math.random() * 100 < effectiveCritRate) {
             // Apply aura crit damage bonus + equip crit dmg
-            const effectiveCritMult = playerStats.critMultiplier * (tCritDmg + atkDivLevel * 0.01) * (1 + atkAura.critDmgPct / 100) + eq.bonusCritDmg / 100
+            const effectiveCritMult = playerStats.critMultiplier * (tCritDmg + atkDivLevel * 0.01) * (1 + atkAura.critDmgPct / 100) * atkMilBonus.critDmgBonus + eq.bonusCritDmg / 100
             dmg = Math.floor(dmg * effectiveCritMult)
             atkCrits++
             divEvents.push({ divName: div.name, side: 'atk', event: 'crit', dmg })
@@ -562,8 +607,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const strength = div.health / div.maxHealth
           dmg = Math.floor(dmg * strength)
           dmg = Math.floor(dmg * atkOrd.atkMult)
-          // Apply ±10% deviation to final damage
-          dmg = Math.floor(deviate(dmg))
+          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus
+          dmg = Math.floor(deviate(dmg) * atkMilBonus.damageBonus * atkMilBonus.allCombatBonus)
           atkTotalDmg += Math.max(1, dmg)
         }
       })
@@ -604,8 +649,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         while (cooldowns[divId] >= defAS) {
           cooldowns[divId] -= defAS
           const defDivLevel = Math.floor((d.experience || 0) / 10)
-          // Hit check (order hitBonus + aura precisionPct + equip hitRate applied)
-          if (Math.random() > Math.min(0.95, dHitRate + defDivLevel * 0.01 + defOrd.hitBonus + defAura.precisionPct / 100 + deq.bonusHitRate)) {
+          // Hit check (order hitBonus + aura precisionPct + equip hitRate + research hitRate applied)
+          if (Math.random() > Math.min(0.95, dHitRate + defDivLevel * 0.01 + defOrd.hitBonus + defAura.precisionPct / 100 + deq.bonusHitRate + defMilBonus.hitRateBonus)) {
             defMisses++
             divEvents.push({ divName: d.name, side: 'def', event: 'miss' })
             continue
@@ -621,7 +666,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const effectiveCritRate = deviate((playerStats.critRate + defOrd.critBonus + deq.bonusCritRate) * (dCritRate + defDivLevel * 0.01))
           if (Math.random() * 100 < effectiveCritRate) {
             // Apply aura crit damage bonus + equip crit dmg
-            const effectiveCritMult = playerStats.critMultiplier * (dCritDmg + defDivLevel * 0.01) * (1 + defAura.critDmgPct / 100) + deq.bonusCritDmg / 100
+            const effectiveCritMult = playerStats.critMultiplier * (dCritDmg + defDivLevel * 0.01) * (1 + defAura.critDmgPct / 100) * defMilBonus.critDmgBonus + deq.bonusCritDmg / 100
             dmg = Math.floor(dmg * effectiveCritMult)
             defCrits++
             divEvents.push({ divName: d.name, side: 'def', event: 'crit', dmg })
@@ -629,8 +674,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const strength = d.health / d.maxHealth
           dmg = Math.floor(dmg * strength)
           dmg = Math.floor(dmg * defOrd.atkMult)
-          // Apply ±10% deviation to final damage
-          dmg = Math.floor(deviate(dmg))
+          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus
+          dmg = Math.floor(deviate(dmg) * defMilBonus.damageBonus * defMilBonus.allCombatBonus)
           defTotalDmg += Math.max(1, dmg)
         }
       })
@@ -638,8 +683,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // --- Pre-compute per-division defensive hits (for staggered real-time application) ---
       // Collect hits with side info so damage bar can animate per-hit
       const hitSchedule: { divId: string; divName: string; damage: number; equipDmg: number; side: 'atk' | 'def'; displayDmg: number; isCrit: boolean }[] = []
-      const manpowerDmgToDefender = Math.floor(atkTotalDmg * 0.25)
-      const manpowerDmgToAttacker = Math.floor(defTotalDmg * 0.25)
+      const manpowerDmgToDefender = Math.floor(atkTotalDmg * 0.80)
+      const manpowerDmgToAttacker = Math.floor(defTotalDmg * 0.80)
 
       // Attacker hits defender divisions
       let defHitCount = 0
@@ -658,9 +703,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             divEvents.push({ divName: d.name, side: 'atk', event: 'dodge' })
             return
           }
-          const armorReduction = Math.floor(((playerStats.armorBlock || 0) + defEq.bonusArmor) * tmpl.armorMult * defOrderFx.armorMult)
-          let finalDmg = Math.max(1, basePerDiv - armorReduction)
-          finalDmg = Math.max(1, Math.floor(finalDmg / tmpl.healthMult))
+          const totalDefArmor = ((playerStats.armorBlock || 0) + defEq.bonusArmor) * tmpl.armorMult * defOrderFx.armorMult * defMilBonus.armorBonus
+          const defArmorMit = totalDefArmor / (totalDefArmor + 100)
+          let finalDmg = Math.max(1, Math.floor(basePerDiv * (1 - defArmorMit)))
+          finalDmg = Math.max(1, Math.floor(finalDmg / 1.35)) // healthMult divider x1.35
           hitSchedule.push({ divId: id, divName: d.name, damage: finalDmg, equipDmg: 0.3, side: 'atk', displayDmg: 0, isCrit: false })
           defHitCount++
         })
@@ -682,9 +728,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             divEvents.push({ divName: d.name, side: 'def', event: 'dodge' })
             return
           }
-          const armorReduction = Math.floor(((playerStats.armorBlock || 0) + atkEq.bonusArmor) * tmpl.armorMult * atkOrderFx.armorMult)
-          let finalDmg = Math.max(1, basePerDiv - armorReduction)
-          finalDmg = Math.max(1, Math.floor(finalDmg / tmpl.healthMult))
+          const totalAtkArmor = ((playerStats.armorBlock || 0) + atkEq.bonusArmor) * tmpl.armorMult * atkOrderFx.armorMult * atkMilBonus.armorBonus
+          const atkArmorMit = totalAtkArmor / (totalAtkArmor + 100)
+          let finalDmg = Math.max(1, Math.floor(basePerDiv * (1 - atkArmorMit)))
+          finalDmg = Math.max(1, Math.floor(finalDmg / 1.35)) // healthMult divider x1.35
           hitSchedule.push({ divId: id, divName: d.name, damage: finalDmg, equipDmg: 0.3, side: 'def', displayDmg: 0, isCrit: false })
           atkHitCount++
         })
@@ -868,10 +915,28 @@ export const useBattleStore = create<BattleState>((set, get) => ({
               }))
             }
           }
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}!` })
+          // --- War Rewards (with Economic Theory research bonus) ---
+          const atkKills = battle.defender.divisionsDestroyed + defDestroyed
+          const defKills = battle.attacker.divisionsDestroyed + atkDestroyed
+          const ecoBonuses = useResearchStore.getState().getEconomyBonuses(battle.attackerId)
+          const winnerRewards = getWarRewards(atkKills, true, ecoBonuses.warRewardsMult * ecoBonuses.allEconomyBonus)
+          const loserRewards = getWarRewards(defKills, false)
+          const ps = usePlayerStore.getState()
+          ps.earnMoney(winnerRewards.totalMoney)
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}! 💰 +$${winnerRewards.totalMoney.toLocaleString()} (base $${winnerRewards.baseMoney.toLocaleString()} + ${atkKills} kills × $${winnerRewards.killBounty.toLocaleString()})` })
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFEAT — ${getCountryName(battle.defenderId)} loses ${battle.regionName}. 💰 Consolation: $${loserRewards.totalMoney.toLocaleString()}` })
         } else if (defRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
           newStatus = 'defender_won'
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}!` })
+          // --- War Rewards (with Economic Theory research bonus) ---
+          const atkKills = battle.defender.divisionsDestroyed + defDestroyed
+          const defKills = battle.attacker.divisionsDestroyed + atkDestroyed
+          const ecoBonuses = useResearchStore.getState().getEconomyBonuses(battle.defenderId)
+          const winnerRewards = getWarRewards(defKills, true, ecoBonuses.warRewardsMult * ecoBonuses.allEconomyBonus)
+          const loserRewards = getWarRewards(atkKills, false)
+          const ps = usePlayerStore.getState()
+          ps.earnMoney(winnerRewards.totalMoney)
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}! 💰 +$${winnerRewards.totalMoney.toLocaleString()} (base $${winnerRewards.baseMoney.toLocaleString()} + ${defKills} kills × $${winnerRewards.killBounty.toLocaleString()})` })
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ ATTACK FAILED — ${getCountryName(battle.attackerId)} repelled from ${battle.regionName}. 💰 Consolation: $${loserRewards.totalMoney.toLocaleString()}` })
         } else {
           newRounds = [...newRounds, { attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }]
           newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `🔔 Round ${battle.rounds.length} complete! New round begins.` })

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useArmyStore } from '../../stores/army'
+import { useWorldStore } from '../../stores/worldStore'
+import { getCatchUpXPMultiplier } from '../../engine/catchup'
 import { usePlayerStore as usePlayerStoreBase } from '../../stores/playerStore'
 import ProfileTab from './ProfileTab'
 import InventoryTab from './InventoryTab'
@@ -73,6 +75,8 @@ export default function ProfilePanel() {
         const { used: popUsed, max: popMax } = useArmyStore.getState().getPlayerPopCap()
         const popPct = popMax > 0 ? Math.round((popUsed / popMax) * 100) : 0
         const popColor = popPct >= 90 ? '#ef4444' : popPct >= 70 ? '#f59e0b' : '#22d38a'
+        const catchUpMult = getCatchUpXPMultiplier(player.level, useWorldStore.getState().serverMedianLevel)
+        const catchUpActive = catchUpMult > 1.0
         return (
           <div className="ptab-hero">
             {/* Avatar */}
@@ -126,7 +130,19 @@ export default function ProfilePanel() {
                 <div className="ptab-hero__xp-track">
                   <div className="ptab-hero__xp-fill" style={{ width: `${xpPercent}%` }} />
                 </div>
-                <span className="ptab-hero__xp-text">{player.experience.toLocaleString()} / {player.experienceToNext.toLocaleString()} XP</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span className="ptab-hero__xp-text">{player.experience.toLocaleString()} / {player.experienceToNext.toLocaleString()} XP</span>
+                  {catchUpActive && (
+                    <span style={{
+                      fontSize: '7px', fontWeight: 700, color: '#22d38a',
+                      background: 'rgba(34, 211, 138, 0.12)', border: '1px solid rgba(34, 211, 138, 0.3)',
+                      borderRadius: '4px', padding: '1px 4px', whiteSpace: 'nowrap',
+                      textShadow: '0 0 6px rgba(34, 211, 138, 0.4)',
+                    }}>
+                      🚀 +{Math.round((catchUpMult - 1) * 100)}% XP
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

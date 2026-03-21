@@ -3,6 +3,7 @@ import { DIVISION_TEMPLATES, rollStarQuality, getEffectiveManpower, getEffective
 import { usePlayerStore, getMilitaryRank } from '../playerStore'
 import { useInventoryStore } from '../inventoryStore'
 import { useWorldStore } from '../worldStore'
+import { useResearchStore } from '../researchStore'
 import type { StoreApi } from 'zustand'
 
 // Shared counter — must be module-level to persist across calls
@@ -20,7 +21,16 @@ export function createRecruitmentSlice(
     recruitDivision: (type: DivisionType, armyId?: string) => {
       const template = DIVISION_TEMPLATES[type]
       const player = usePlayerStore.getState()
-      const cost = template.recruitCost
+      const baseCost = template.recruitCost
+
+      // Apply Economic Theory research bonus to recruit money cost
+      const ecoBonuses = useResearchStore.getState().getEconomyBonuses(player.countryCode || 'US')
+      const cost = {
+        money: Math.floor(baseCost.money * ecoBonuses.recruitCostMult),
+        oil: baseCost.oil,
+        materialX: baseCost.materialX,
+        scrap: baseCost.scrap,
+      }
 
       // Check resources
       if (player.money < cost.money) return { success: false, message: 'Not enough money.' }
@@ -74,6 +84,14 @@ export function createRecruitmentSlice(
 
       const id = `div_${++divCounter}_${Date.now()}`
       const { star, modifiers } = rollStarQuality()
+
+      // Apply Military Doctrine research bonus to training time
+      let trainingMs = template.trainingTime * 15_000
+      try {
+        const milBonus = useResearchStore.getState().getMilitaryBonuses(player.countryCode || 'US')
+        trainingMs = Math.floor(trainingMs * milBonus.trainingTimeMult)
+      } catch { /* researchStore not ready */ }
+
       const division: Division = {
         id,
         type,
@@ -92,7 +110,7 @@ export function createRecruitmentSlice(
         status: 'training',
         trainingProgress: 0,
         recoveryTicksNeeded: 0,
-        readyAt: Date.now() + (template.trainingTime * 15_000),
+        readyAt: Date.now() + trainingMs,
         reinforcing: false,
         reinforceProgress: 0,
         killCount: 0,

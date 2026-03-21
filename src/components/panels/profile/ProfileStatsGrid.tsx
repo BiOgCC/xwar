@@ -47,11 +47,15 @@ export default function ProfileStatsGrid() {
   const mil = skillsStore.military
   const baseDmg       = 100 + eqDmg      + mil.attack * 20
   const finalDmg      = Math.floor(baseDmg * ammoBonus.dmg)
-  const finalCritRate = 10  + eqCritRate  + mil.critRate * 5 + ammoBonus.crit
-  const finalCritDmg  = 100 + eqCritDmg  + mil.critDamage * 20
+  const rawCritDmg    = eqCritDmg  + mil.critDamage * 20
+  const finalCritMult = 1.5 + rawCritDmg / 200
   const finalArmor    = 0   + eqArmor    + mil.armor * 5
-  const finalDodge    = 5   + eqDodge    + mil.dodge * 5
-  const finalHitRate  = Math.min(100, 50 + eqPrecision + mil.precision * 5)
+  const armorMitPct   = finalArmor / (finalArmor + 100) * 100
+  const finalDodge    = 5   + eqDodge    + mil.dodge * 3
+  const rawHitRate    = 50  + eqPrecision + mil.precision * 5
+  const finalHitRate  = Math.min(90, rawHitRate)
+  const overflowCrit  = Math.max(0, rawHitRate - 90) * 0.5
+  const finalCritRate = 10  + eqCritRate  + mil.critRate * 5 + ammoBonus.crit + overflowCrit
 
   // Economic Skills
   const eco = skillsStore.economic
@@ -71,11 +75,11 @@ export default function ProfileStatsGrid() {
         </div>
         {[
           { label: 'Attack Damage',      val: `${finalDmg}${ammoBonus.dmg > 1 ? ` (\u00d7${ammoBonus.dmg})` : ''}`, color: '#f87171' },
-          { label: 'Crit Rate',          val: `${finalCritRate}%${ammoBonus.crit > 0 ? ' (+ammo)' : ''}`, color: '#fb923c' },
-          { label: 'Crit Amplifier',     val: `${finalCritDmg}%`, color: '#fb923c' },
-          { label: 'Armor Mitigation',   val: `${finalArmor}%`,   color: '#94a3b8' },
+          { label: 'Crit Rate',          val: `${finalCritRate.toFixed(1)}%${ammoBonus.crit > 0 ? ' (+ammo)' : ''}${overflowCrit > 0 ? ` (+${overflowCrit.toFixed(0)} ovf)` : ''}`, color: '#fb923c' },
+          { label: 'Crit Multiplier',    val: `${finalCritMult.toFixed(2)}x`, color: '#fb923c' },
+          { label: 'Armor Mitigation',   val: `${finalArmor} (${armorMitPct.toFixed(1)}%)`,   color: '#94a3b8' },
           { label: 'Evasion Dodge',      val: `${finalDodge}%`,   color: '#34d399' },
-          { label: 'Hit Rate',           val: `${finalHitRate}%`, color: '#fbbf24' },
+          { label: 'Hit Rate',           val: `${finalHitRate}%${rawHitRate > 90 ? ' (capped)' : ''}`, color: '#fbbf24' },
           { label: 'Ammo Bonus',         val: ammoBonus.label,    color: player.equippedAmmo === 'none' ? '#475569' : '#fbbf24' },
           { label: 'Stamina Cap',        val: `${player.maxStamina}`, color: '#f87171' },
           { label: 'Hunger Cap',         val: `${player.maxHunger}`,  color: '#f59e0b' },

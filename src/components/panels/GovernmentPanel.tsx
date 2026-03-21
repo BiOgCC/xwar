@@ -6,11 +6,11 @@ import GovHomeTab from './government/GovHomeTab'
 import GovFinanceTab from './government/GovFinanceTab'
 import { GovAccountTab, GovCitizenshipTab, GovWarTab } from './government/GovSmallTabs'
 import GovRegionTab from './government/GovRegionTab'
-import GovEmpireTab from './government/GovEmpireTab'
+import GovResearchTab from './government/GovResearchTab'
 import GovLawsTab from './government/GovLawsTab'
 import '../../styles/gov.css'
 
-type GovTab = 'home' | 'finance' | 'account' | 'citizenship' | 'war' | 'defense' | 'empire' | 'laws'
+type GovTab = 'home' | 'finance' | 'account' | 'citizenship' | 'war' | 'defense' | 'research' | 'laws'
 
 const TABS: { id: GovTab; label: string; icon: string }[] = [
   { id: 'home', label: 'HQ', icon: '🏠' },
@@ -19,7 +19,7 @@ const TABS: { id: GovTab; label: string; icon: string }[] = [
   { id: 'citizenship', label: 'CITIZENS', icon: '👥' },
   { id: 'war', label: 'WAR', icon: '⚔️' },
   { id: 'defense', label: 'REGION', icon: '🏗️' },
-  { id: 'empire', label: 'EMPIRE', icon: '👑' },
+  { id: 'research', label: 'RESEARCH', icon: '🔬' },
   { id: 'laws', label: 'GOV', icon: '📜' },
 ]
 
@@ -89,7 +89,7 @@ export default function GovernmentPanel() {
         {tab === 'citizenship' && <GovCitizenshipTab />}
         {tab === 'war' && <GovWarTab />}
         {tab === 'defense' && <GovRegionTab />}
-        {tab === 'empire' && <GovEmpireTab />}
+        {tab === 'research' && <GovResearchTab />}
         {tab === 'laws' && <GovLawsTab />}
       </div>
     </div>

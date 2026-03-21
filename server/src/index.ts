@@ -23,6 +23,7 @@ import cyberRoutes from './routes/cyber.routes.js'
 import allianceRoutes from './routes/alliance.routes.js'
 import warcardsRoutes from './routes/warcards.routes.js'
 import dailyRoutes from './routes/daily.routes.js'
+import navalRoutes from './routes/naval.routes.js'
 
 import { generalLimiter, authLimiter, casinoLimiter } from './middleware/rateLimit.js'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -47,14 +48,14 @@ const httpServer = createServer(app)
 let ioInstance: SocketServer | null = null
 if (runWs) {
   ioInstance = new SocketServer(httpServer, {
-    cors: { origin: ['http://localhost:5173', 'http://localhost:3000'], credentials: true },
+    cors: { origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'], credentials: true },
   })
 }
 const io = ioInstance
 
 if (runApi) {
   // ── Middleware ──
-  app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:3000'], credentials: true }))
+  app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'], credentials: true }))
   app.use(express.json())
   app.use(pinoHttp({ logger }))
   app.use(generalLimiter)
@@ -82,6 +83,7 @@ if (runApi) {
   app.use('/api/alliance', allianceRoutes)
   app.use('/api/warcards', warcardsRoutes)
   app.use('/api/daily', dailyRoutes)
+  app.use('/api/naval', navalRoutes)
 
   // ── Global error handler (must be AFTER routes) ──
   app.use(errorHandler)

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useWorldStore, getCountryResourceBonus, type DepositType } from './worldStore'
+import { useResearchStore } from './researchStore'
 import { api } from '../api/client'
 
 import type { CompanyType, Company, CompanyTemplate, DepositEvent, JobListing, CompanyTransaction } from '../types/company.types'
@@ -468,7 +469,11 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       work: Math.max(0, s.work - 10),
       specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
     }))
-    usePlayerStore.getState().earnMoney(res.netPay)
+    // Apply Economic Theory research bonus to work earnings
+    const { useResearchStore } = await import('./researchStore')
+    const ecoBonuses = useResearchStore.getState().getEconomyBonuses(player.countryCode || 'US')
+    const boostedPay = Math.floor(res.netPay * ecoBonuses.workEarningsBonus * ecoBonuses.allEconomyBonus)
+    usePlayerStore.getState().earnMoney(boostedPay)
     player.gainXP(8)
 
     // Add contribution to the employer's company production (if it's a player company and local player owns it)
@@ -578,7 +583,10 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         
         const effectiveLevel = Math.min(6, c.level)
         const bonus = getLocationBonus(c)
-        const pointsGenerated = effectiveLevel * (1 + bonus / 100)
+        // Apply Economic Theory research bonus to production
+        const player = usePlayerStore.getState()
+        const ecoBonuses = useResearchStore.getState().getEconomyBonuses(player.countryCode || 'US')
+        const pointsGenerated = effectiveLevel * (1 + bonus / 100) * ecoBonuses.productionBonus
         
         return {
           ...c,

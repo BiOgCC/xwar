@@ -1,4 +1,6 @@
 import { usePlayerStore } from '../../stores/playerStore'
+import { useWorldStore } from '../../stores/worldStore'
+import { getCatchUpXPMultiplier } from '../../engine/catchup'
 import {
   useSkillsStore,
   MILITARY_SKILLS,
@@ -10,17 +12,28 @@ import {
 export default function SkillsTab() {
   const player = usePlayerStore()
   const skills = useSkillsStore()
+  const catchUpMult = getCatchUpXPMultiplier(player.level, useWorldStore.getState().serverMedianLevel)
+  const catchUpActive = catchUpMult > 1.0
 
   const getMilValue = (key: string, level: number) => {
     switch (key) {
       case 'attack': return `${100 + level * 20}`
       case 'critRate': return `${10 + level * 5}%`
-      case 'critDamage': return `${100 + level * 20}%`
-      case 'precision': return `${Math.min(100, 50 + level * 5)}%`
+      case 'critDamage': return `${(1.5 + (level * 20) / 200).toFixed(2)}x`
+      case 'precision': {
+        const raw = 50 + level * 5
+        const capped = Math.min(90, raw)
+        const overflow = Math.max(0, raw - 90) * 0.5
+        return `${capped}%${overflow > 0 ? ` +${overflow.toFixed(0)}% crit` : ''}`
+      }
       case 'stamina': return `${100 + level * 20}`
       case 'hunger': return `${5 + level * 1}`
-      case 'armor': return `${0 + level * 5}%`
-      case 'dodge': return `${5 + level * 5}%`
+      case 'armor': {
+        const armor = level * 5
+        const mitigation = armor / (armor + 100)
+        return `${armor} (${(mitigation * 100).toFixed(1)}%)`
+      }
+      case 'dodge': return `${5 + level * 3}%`
       default: return ''
     }
   }
@@ -29,8 +42,8 @@ export default function SkillsTab() {
     switch (key) {
       case 'work': return `${100 + level * 20}`
       case 'entrepreneurship': return `${100 + level * 15}`
-      case 'production': return `${10 + level * 5}`
-      case 'prospection': return `${level * 5}%`
+      case 'production': return `+${20 + level * 2} fill`
+      case 'prospection': return `${level * 3}%`
       case 'industrialist': return `${level * 5}%`
       default: return ''
     }
@@ -43,6 +56,16 @@ export default function SkillsTab() {
         <span className="skills-sp__icon">⭐</span>
         <span className="skills-sp__label">Available Skill Points</span>
         <span className="skills-sp__value">{player.skillPoints}</span>
+        {catchUpActive && (
+          <span style={{
+            fontSize: '8px', fontWeight: 700, color: '#22d38a',
+            background: 'rgba(34, 211, 138, 0.12)', border: '1px solid rgba(34, 211, 138, 0.3)',
+            borderRadius: '4px', padding: '2px 6px', marginLeft: '6px', whiteSpace: 'nowrap',
+            textShadow: '0 0 6px rgba(34, 211, 138, 0.4)',
+          }}>
+            🚀 +{Math.round((catchUpMult - 1) * 100)}% XP BOOST
+          </span>
+        )}
       </div>
 
       {/* Military Doctrine */}
@@ -86,6 +109,13 @@ export default function SkillsTab() {
             )
           })}
         </div>
+        <button
+          className="skill-row__btn skill-row__btn--mil"
+          style={{ width: '100%', marginTop: '8px', padding: '6px 0', fontSize: '11px', opacity: 0.8 }}
+          onClick={() => { if (confirm('Reset all Military skills? Costs 50,000 gold. All SP will be refunded.')) skills.resetSkills('military') }}
+        >
+          🔄 Reset Military (50k)
+        </button>
       </div>
 
       {/* Economic Theory */}
@@ -129,6 +159,13 @@ export default function SkillsTab() {
             )
           })}
         </div>
+        <button
+          className="skill-row__btn skill-row__btn--eco"
+          style={{ width: '100%', marginTop: '8px', padding: '6px 0', fontSize: '11px', opacity: 0.8 }}
+          onClick={() => { if (confirm('Reset all Economic skills? Costs 50,000 gold. All SP will be refunded.')) skills.resetSkills('economic') }}
+        >
+          🔄 Reset Economic (50k)
+        </button>
       </div>
     </div>
   )

@@ -3,6 +3,8 @@ import { type DivisionType, type StarQuality, type StatModifiers, DIVISION_TEMPL
 import { useWorldStore, type NationalFund, type NationalFundKey } from './worldStore'
 import { usePlayerStore } from './playerStore'
 import { useArmyStore } from './army'
+import { useInventoryStore } from './inventoryStore'
+import { useMarketStore } from './market'
 import { api } from '../api/client'
 
 import type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government } from '../types/government.types'
@@ -75,8 +77,9 @@ const INFRA_DIVISION_MAP: Record<string, { types: DivisionType[]; getLevel: (c: 
 }
 
 export interface GovernmentState {
-  autoDefenseEnabled: boolean
-  setAutoDefense: (enabled: boolean) => void
+  /** Country-level autodefense limit: -1 = all divisions, 0 = off, N = max N divisions */
+  autoDefenseLimit: number
+  setAutoDefenseLimit: (limit: number) => void
   governments: Record<string, Government>
   laws: Record<string, Law>
   contributionMissions: Record<string, ContributionMission>
@@ -122,6 +125,12 @@ export interface GovernmentState {
   // Military budget
   setMilitaryBudget: (countryId: string, percent: number) => { success: boolean; message: string }
   processBudgetDistribution: (ticksPerDay: number) => void
+  // Armed Forces
+  donateToArmedForces: (countryCode: string, divisionId: string, source: 'player' | 'army', armyId?: string) => { success: boolean; message: string }
+  recruitFreeFromShop: (countryCode: string, listingId: string) => { success: boolean; message: string }
+  recruitEquipmentFromMarket: (countryCode: string, orderId: string) => { success: boolean; message: string }
+  buyCasesForCountry: (countryCode: string, quantity: number) => { success: boolean; message: string }
+  appointRole: (countryCode: string, targetId: string, role: 'vicepresident' | 'minister' | 'congress' | 'citizen') => { success: boolean; message: string }
 }
 
 // Helper to create mock citizens
@@ -156,12 +165,15 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     citizens: mockCitizens(code, president, congress),
     divisionShop: [],
     militaryBudgetPercent: 5,
+    armedForces: [],
+    lastFreeRecruitAt: 0,
+    equipmentVault: [],
   }
 }
 
 export const useGovernmentStore = create<GovernmentState>((set, get) => ({
-  autoDefenseEnabled: true,
-  setAutoDefense: (enabled) => set({ autoDefenseEnabled: enabled }),
+  autoDefenseLimit: -1,
+  setAutoDefenseLimit: (limit) => set({ autoDefenseLimit: limit }),
   governments: {
     'US': mkGov('US', 'Commander_X', ['AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5']),
     'RU': mkGov('RU', 'AI_Commander_Putin', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
@@ -971,5 +983,274 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
         }))
       })
     })
+  },
+
+  // ====== ARMED FORCES ======
+
+  donateToArmedForces: (countryCode, divisionId, source, armyId) => {
+    const state = get()
+    const gov = state.governments[countryCode]
+    if (!gov) return { success: false, message: 'Government not found.' }
+    const player = usePlayerStore.getState()
+    const armyStore = useArmyStore.getState()
+    const div = armyStore.divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (div.status === 'in_combat' || div.status === 'destroyed' || div.status === 'listed')
+      return { success: false, message: 'Division is not available for donation.' }
+
+    if (source === 'player') {
+      if (div.ownerId !== player.name) return { success: false, message: 'Not your division.' }
+    } else if (source === 'army') {
+      if (!armyId) return { success: false, message: 'Army ID required.' }
+      const army = armyStore.armies[armyId]
+      if (!army) return { success: false, message: 'Army not found.' }
+      if (army.commanderId !== player.name)
+        return { success: false, message: 'Only the commander can donate army divisions.' }
+      if (!army.divisionIds.includes(divisionId))
+        return { success: false, message: 'Division is not in this army.' }
+      // Remove from army
+      useArmyStore.setState(s => ({
+        armies: { ...s.armies, [armyId]: {
+          ...s.armies[armyId],
+          divisionIds: s.armies[armyId].divisionIds.filter(id => id !== divisionId),
+        }},
+      }))
+    }
+
+    // Transfer division ownership to government
+    useArmyStore.setState(s => ({
+      divisions: { ...s.divisions, [divisionId]: {
+        ...s.divisions[divisionId],
+        ownerId: `GOV_${countryCode}`,
+        countryCode,
+        status: 'ready' as any,
+        equipment: [],
+        stance: 'first_line_defense' as any,
+      }},
+    }))
+
+    // Add to armed forces
+    set(s => ({
+      governments: {
+        ...s.governments,
+        [countryCode]: {
+          ...s.governments[countryCode],
+          armedForces: [...s.governments[countryCode].armedForces, divisionId],
+        },
+      },
+    }))
+
+    return { success: true, message: `Donated ${div.name} to ${countryCode} Armed Forces!` }
+  },
+
+  recruitFreeFromShop: (countryCode, listingId) => {
+    const FREE_RECRUIT_COOLDOWN = 12 * 60 * 60 * 1000  // 12 hours
+    const state = get()
+    const gov = state.governments[countryCode]
+    if (!gov) return { success: false, message: 'Government not found.' }
+
+    const player = usePlayerStore.getState()
+    const isOfficial = gov.president === player.name ||
+      gov.citizens.some(c => c.id === player.name && (c.role === 'vicepresident' || c.role === 'minister'))
+    if (!isOfficial)
+      return { success: false, message: 'Only president, VP, or minister can recruit.' }
+
+    // Cooldown check
+    const now = Date.now()
+    if (now - gov.lastFreeRecruitAt < FREE_RECRUIT_COOLDOWN) {
+      const remainH = Math.ceil((FREE_RECRUIT_COOLDOWN - (now - gov.lastFreeRecruitAt)) / 3600000)
+      return { success: false, message: `Free recruit on cooldown. ${remainH}h remaining.` }
+    }
+
+    const listingIdx = gov.divisionShop.findIndex(l => l.id === listingId)
+    if (listingIdx === -1) return { success: false, message: 'Listing not found in shop.' }
+    const listing = gov.divisionShop[listingIdx]
+
+    // Create division for armed forces
+    const template = DIVISION_TEMPLATES[listing.divisionType]
+    const divId = `af_${countryCode}_${now}_${Math.random().toString(36).substr(2, 6)}`
+    const division = {
+      id: divId,
+      type: listing.divisionType,
+      name: `${template.name} (${listing.starQuality}★)`,
+      category: template.category,
+      ownerId: `GOV_${countryCode}`,
+      countryCode,
+      manpower: getEffectiveManpower(template),
+      maxManpower: getEffectiveManpower(template),
+      health: getEffectiveHealth(template),
+      maxHealth: getEffectiveHealth(template),
+      equipment: [] as string[],
+      experience: 0,
+      stance: 'first_line_defense' as const,
+      autoTrainingEnabled: false,
+      status: 'training' as const,
+      trainingProgress: 0,
+      readyAt: now + (template.trainingTime * 15_000),
+      reinforcing: false,
+      reinforceProgress: 0,
+      recoveryTicksNeeded: 0,
+      killCount: 0,
+      battlesSurvived: 0,
+      starQuality: listing.starQuality,
+      statModifiers: listing.statModifiers,
+    }
+
+    useArmyStore.setState(s => ({
+      divisions: { ...s.divisions, [divId]: division },
+    }))
+
+    // Remove listing from shop, update cooldown, add to armed forces
+    const newShop = [...gov.divisionShop]
+    newShop.splice(listingIdx, 1)
+    set(s => ({
+      governments: {
+        ...s.governments,
+        [countryCode]: {
+          ...s.governments[countryCode],
+          divisionShop: newShop,
+          lastFreeRecruitAt: now,
+          armedForces: [...s.governments[countryCode].armedForces, divId],
+        },
+      },
+    }))
+
+    return { success: true, message: `Recruited ${template.name} (${listing.starQuality}★) into Armed Forces for free!` }
+  },
+
+  recruitEquipmentFromMarket: (countryCode, orderId) => {
+    const state = get()
+    const gov = state.governments[countryCode]
+    if (!gov) return { success: false, message: 'Government not found.' }
+
+    const player = usePlayerStore.getState()
+    const isOfficial = gov.president === player.name ||
+      gov.citizens.some(c => c.id === player.name && (c.role === 'vicepresident' || c.role === 'minister'))
+    if (!isOfficial)
+      return { success: false, message: 'Only president, VP, or minister can buy for the country.' }
+
+    // Find the market order
+    const mktState = useMarketStore.getState()
+    const order = mktState.orders.find((o: any) => o.id === orderId && o.itemType === 'equipment' && o.status === 'open')
+    if (!order) return { success: false, message: 'Market listing not found.' }
+
+    // Pay from national fund
+    const ws = useWorldStore.getState()
+    const country = ws.getCountry(countryCode)
+    if (!country || country.fund.money < order.totalPrice)
+      return { success: false, message: `National fund insufficient. Need $${order.totalPrice.toLocaleString()}.` }
+
+    ws.spendFromFund(countryCode, { money: order.totalPrice })
+
+    // Tax
+    const tax = Math.round(order.totalPrice * 0.01)
+    const sellerGets = order.totalPrice - tax
+
+    // Credit seller
+    usePlayerStore.getState().earnMoney(sellerGets)
+
+    // Move item to country vault
+    const eqId = order.equipItemId
+    if (eqId) {
+      useInventoryStore.setState((s: any) => ({
+        items: s.items.map((i: any) => i.id === eqId ? {
+          ...i, location: 'country_vault' as const, equipped: false,
+        } : i)
+      }))
+
+      // Add to equipment vault
+      set(s => ({
+        governments: {
+          ...s.governments,
+          [countryCode]: {
+            ...s.governments[countryCode],
+            equipmentVault: [...(s.governments[countryCode].equipmentVault || []), eqId],
+          },
+        },
+      }))
+    }
+
+    // Tax to country
+    ws.addTreasuryTax(countryCode, tax)
+
+    // Mark order as filled
+    useMarketStore.setState((s: any) => ({
+      orders: s.orders.map((o: any) => o.id === orderId ? { ...o, status: 'filled', filledAmount: 1 } : o),
+    }))
+
+    return { success: true, message: `Country purchased ${order.equipSnapshot?.name || 'item'} for $${order.totalPrice.toLocaleString()} from national fund!` }
+  },
+
+  buyCasesForCountry: (countryCode, quantity) => {
+    const CASE_PRICE = 500  // per case
+    const state = get()
+    const gov = state.governments[countryCode]
+    if (!gov) return { success: false, message: 'Government not found.' }
+
+    const player = usePlayerStore.getState()
+    const isOfficial = gov.president === player.name ||
+      gov.citizens.some(c => c.id === player.name && (c.role === 'vicepresident' || c.role === 'minister'))
+    if (!isOfficial)
+      return { success: false, message: 'Only president, VP, or minister can buy cases for the country.' }
+
+    const totalCost = CASE_PRICE * quantity
+    const ws = useWorldStore.getState()
+    const country = ws.getCountry(countryCode)
+    if (!country || country.fund.money < totalCost)
+      return { success: false, message: `National fund insufficient. Need $${totalCost.toLocaleString()}.` }
+
+    ws.spendFromFund(countryCode, { money: totalCost })
+
+    // Open cases immediately and put items in country vault
+    const inv = useInventoryStore.getState()
+    for (let i = 0; i < quantity; i++) {
+      // Generate a random item using the loot box logic — simplified: call openLootBox internally
+      // For now, give the cases to the official who opened them (they handle distribution)
+    }
+    // Give cases to the official acting on behalf of the country
+    usePlayerStore.setState(s => ({ lootBoxes: s.lootBoxes + quantity }))
+
+    return { success: true, message: `Purchased ${quantity} cases for $${totalCost.toLocaleString()} from national fund! Cases added to your inventory for distribution.` }
+  },
+
+  appointRole: (countryCode, targetId, role) => {
+    const state = get()
+    const gov = state.governments[countryCode]
+    if (!gov) return { success: false, message: 'Government not found.' }
+
+    const player = usePlayerStore.getState()
+    if (gov.president !== player.name)
+      return { success: false, message: 'Only the president can appoint roles.' }
+
+    const citizen = gov.citizens.find(c => c.id === targetId)
+    if (!citizen) return { success: false, message: 'Citizen not found.' }
+    if (targetId === player.name) return { success: false, message: 'Cannot change your own role.' }
+
+    // Validate: only 1 VP, max 3 ministers
+    if (role === 'vicepresident') {
+      const existingVP = gov.citizens.find(c => c.role === 'vicepresident')
+      if (existingVP && existingVP.id !== targetId)
+        return { success: false, message: `${existingVP.name} is already Vice President. Demote them first.` }
+    }
+    if (role === 'minister') {
+      const ministerCount = gov.citizens.filter(c => c.role === 'minister' && c.id !== targetId).length
+      if (ministerCount >= 3)
+        return { success: false, message: 'Maximum 3 ministers allowed. Demote one first.' }
+    }
+
+    set(s => ({
+      governments: {
+        ...s.governments,
+        [countryCode]: {
+          ...s.governments[countryCode],
+          citizens: s.governments[countryCode].citizens.map(c =>
+            c.id === targetId ? { ...c, role } : c
+          ),
+        },
+      },
+    }))
+
+    const roleLabel = role === 'vicepresident' ? 'Vice President' : role.charAt(0).toUpperCase() + role.slice(1)
+    return { success: true, message: `${citizen.name} appointed as ${roleLabel}!` }
   },
 }))

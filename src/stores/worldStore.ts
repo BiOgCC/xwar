@@ -256,6 +256,9 @@ export interface WorldState {
   turn: number
   nextTurnIn: number
   dailyResetAt: number
+
+  // Catch-up mechanics: median level of all active players on the server
+  serverMedianLevel: number
   lastAutoIncomeAt: number  // timestamp of last 8h income tick
   fundHistory: FundSnapshot[]  // treasury snapshots for charting
   lastFundSnapshotAt: number   // timestamp of last hourly snapshot
@@ -305,12 +308,16 @@ export interface WorldState {
   // Economy Ledger
   recordEconFlow: (source: string, amount: number, type: 'created' | 'destroyed') => void
   getEconomySnapshot: () => WorldState['economyLedger']
+
+  // Catch-up: recalculate median from all player levels
+  updateServerMedianLevel: (playerLevels: number[]) => void
 }
 
 export const useWorldStore = create<WorldState>((set, get) => ({
   turn: 247,
   nextTurnIn: 342,
   dailyResetAt: getNextDailyReset(),
+  serverMedianLevel: 10,  // sensible default; recalculated from real player data
   lastAutoIncomeAt: Date.now(),
   fundHistory: [],
   lastFundSnapshotAt: 0,
@@ -813,4 +820,14 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   },
 
   getEconomySnapshot: () => get().economyLedger,
+
+  updateServerMedianLevel: (playerLevels: number[]) => {
+    if (playerLevels.length === 0) return
+    const sorted = [...playerLevels].sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    const median = sorted.length % 2 === 0
+      ? Math.floor((sorted[mid - 1] + sorted[mid]) / 2)
+      : sorted[mid]
+    set({ serverMedianLevel: Math.max(1, median) })
+  },
 }))

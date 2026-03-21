@@ -142,6 +142,34 @@ export async function doWork() {
   return api.post('/player/work')
 }
 
+// ── Daily Rewards API ──────────────────────────────────────────
+
+export async function getDailyStatus() {
+  return api.get<any>('/daily/status')
+}
+
+export async function claimDailyReward() {
+  return api.post<any>('/daily/claim')
+}
+
+// ── Naval API ──────────────────────────────────────────────────
+
+export async function getActiveNavalOps() {
+  return api.get<{ success: boolean; operations: any[] }>('/naval/active')
+}
+
+export async function initiateNavalOp(originRegion: string, targetRegion: string, warshipId: string) {
+  return api.post<{ success: boolean; operationId: string; message: string }>('/naval/initiate', { originRegion, targetRegion, warshipId })
+}
+
+export async function joinNavalOp(opId: string) {
+  return api.post<{ success: boolean; message: string; playersJoined: string[] }>(`/naval/join/${opId}`)
+}
+
+export async function launchNavalOp(opId: string) {
+  return api.post<{ success: boolean; message: string }>(`/naval/launch/${opId}`)
+}
+
 // ── Inventory API ────────────────────────────────────────────
 
 export async function getInventory(location?: string) {

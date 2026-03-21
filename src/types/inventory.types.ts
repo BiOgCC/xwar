@@ -20,7 +20,7 @@ export interface EquipStats {
   precision?: number
 }
 
-export type ItemLocation = 'inventory' | 'vault' | 'division' | 'market'
+export type ItemLocation = 'inventory' | 'vault' | 'division' | 'market' | 'country_vault'
 
 export interface EquipItem {
   id: string

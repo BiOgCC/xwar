@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
-import { useInventoryStore, generateStats, WEAPON_SUBTYPES } from './inventoryStore'
+import { getDailyStatus, claimDailyReward } from '../api/client'
 import type { EquipItem } from './inventoryStore'
 
 /* ══════════════════════════════════════════════
@@ -43,8 +43,8 @@ export interface DailyRewardState {
   showPopup: boolean         // whether to show the reward popup
 
   // Actions
-  checkLoginReward: () => void
-  claimReward: () => { success: boolean; message: string; reward?: DailyReward }
+  checkLoginReward: () => Promise<void>
+  claimReward: () => Promise<{ success: boolean; message: string; reward?: DailyReward }>
   dismissPopup: () => void
   canClaim: () => boolean
   getCurrentReward: () => DailyReward
@@ -56,92 +56,39 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
   lastClaimedAt: 0,
   showPopup: false,
 
-  checkLoginReward: () => {
-    const state = get()
-    const nowUTC = getDayStartUTC()
-    const lastUTC = getDayStartUTC(state.lastClaimedAt)
-
-    // First time or missed a day or more
-    if (state.lastClaimedAt === 0 || nowUTC > lastUTC) {
-      const daysMissed = (nowUTC - lastUTC) / ONE_DAY_MS
-
-      // If more than 1 day missed, reset streak
-      if (state.lastClaimedAt > 0 && daysMissed > 1) {
-        set({ loginStreak: 0, showPopup: true })
-      } else {
-        set({ showPopup: true })
+  checkLoginReward: async () => {
+    try {
+      const res = await getDailyStatus()
+      if (res.success) {
+        set({ 
+          loginStreak: res.streak,
+          lastClaimedAt: res.lastClaimedAt ? new Date(res.lastClaimedAt).getTime() : 0,
+          showPopup: res.canClaim
+        })
       }
+    } catch (err) {
+      console.error('[DailyReward] checkLoginReward error:', err)
     }
   },
 
-  claimReward: () => {
-    const state = get()
-    const nowUTC = getDayStartUTC()
-    const lastUTC = getDayStartUTC(state.lastClaimedAt)
-
-    if (state.lastClaimedAt > 0 && nowUTC <= lastUTC) {
-      return { success: false, message: 'Come back tomorrow!' }
+  claimReward: async () => {
+    try {
+      const res = await claimDailyReward()
+      
+      // Sync player data from db after claiming
+      await usePlayerStore.getState().fetchPlayer()
+      
+      set({
+        loginStreak: res.streak,
+        lastClaimedAt: Date.now(),
+        showPopup: false,
+      })
+      
+      // We map the backend response back into the DailyReward shape for the UI
+      return { success: true, message: res.message, reward: res.reward as DailyReward }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to claim reward' }
     }
-
-    const daysMissed = (nowUTC - lastUTC) / ONE_DAY_MS
-    let newStreak = state.loginStreak
-
-    // Reset if missed a day
-    if (state.lastClaimedAt > 0 && daysMissed > 1) {
-      newStreak = 0
-    }
-
-    // Advance streak (wraps after day 7)
-    newStreak = (newStreak % 7) + 1
-    const reward = DAILY_REWARDS[newStreak - 1]
-
-    // Grant rewards to player
-    const player = usePlayerStore.getState()
-    player.earnMoney(reward.money)
-
-    if (reward.items) {
-      for (const item of reward.items) {
-        usePlayerStore.setState(s => ({
-          [item.type]: ((s as any)[item.type] || 0) + item.amount,
-        }))
-      }
-    }
-    if (reward.bitcoin) {
-      usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + reward.bitcoin! }))
-    }
-    if (reward.lootBoxes) {
-      usePlayerStore.setState(s => ({ lootBoxes: s.lootBoxes + reward.lootBoxes! }))
-    }
-    if (reward.militaryBoxes) {
-      usePlayerStore.setState(s => ({ militaryBoxes: s.militaryBoxes + reward.militaryBoxes! }))
-    }
-    if (reward.t5Item) {
-      // Generate a random T5 item
-      const slots = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots'] as const
-      const slot = slots[Math.floor(Math.random() * slots.length)]
-      const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
-      const subtype = slot === 'weapon' ? WEAPON_SUBTYPES['t5'][Math.floor(Math.random() * WEAPON_SUBTYPES['t5'].length)] : undefined
-      const result = generateStats(category, slot, 't5', subtype)
-      const newItem: EquipItem = {
-        id: `daily_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        name: `🎁 ${result.name}`,
-        slot, category, tier: 't5',
-        equipped: false,
-        durability: 100,
-        stats: result.stats,
-        weaponSubtype: result.weaponSubtype,
-        location: 'inventory',
-      }
-      useInventoryStore.getState().addItem(newItem)
-    }
-
-    set({
-      loginStreak: newStreak,
-      lastClaimedAt: Date.now(),
-      showPopup: false,
-    })
-
-    return { success: true, message: `Day ${newStreak} reward claimed!`, reward }
   },
 
   dismissPopup: () => set({ showPopup: false }),

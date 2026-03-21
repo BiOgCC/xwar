@@ -1,0 +1,56 @@
+REGION-ONLY COMBAT SIMULATION
+100 users | 30 days | 3 wars/day
+6 players/side × 3 divs/player = 18 divs/side
+30 ticks/war | 15 player clicks/war
+
+================ RESULTS ================
+
+💰 ECONOMY (NEW: heal $12/HP, revive 50%/25%, rewards $400k+$20k/kill)
+  Initial Deployment Cost:  $453.370.000
+  Insurance Cost (10%×35%): $15.672.000
+  Revival Cost (50%/25%):   $101.962.500
+  Healing Cost ($12/HP):    $32.427.240
+  Total Post-War Sink:      $150.061.740
+  War Rewards ($400k+kill): $18.563.000
+  Net Economy Impact:       $-131.498.740
+  XP Lost from Revivals:    24.920
+
+💸 COST PER DIVISION TYPE (sorted by total sink)
+UNIT TYPE            | RECRUIT$     | REVIVE$    | HEAL$      | TOTAL SINK
+--------------------------------------------------------------------------
+Warship              | $88.750.000 | $19.562.500 | $4.609.845 | $24.172.345
+Submarine            | $98.100.000 | $16.500.000 | $4.909.380 | $21.409.380
+Jet                  | $72.000.000 | $18.150.000 | $2.952.240 | $21.102.240
+Tank                 | $56.700.000 | $12.675.000 | $4.367.910 | $17.042.910
+Jeep                 | $37.000.000 | $8.875.000 | $3.899.430 | $12.774.430
+RPG                  | $36.500.000 | $9.000.000 | $3.659.910 | $12.659.910
+Sniper               | $27.280.000 | $7.540.000 | $2.090.520 | $9.630.520
+Assault              | $21.840.000 | $5.790.000 | $3.060.825 | $8.850.825
+Recon Squad          | $15.200.000 | $3.870.000 | $2.877.180 | $6.747.180
+
+⚔️ COMBAT
+- Wars: 90 | Ticks: 720
+
+🗡️ RAW DMG: Atk 6.196.335 (51.1%) | Def 5.918.176 (48.9%)
+
+📊 SOURCES: Div-vs-Div 4.390.249 (50.7%) | Player 4.261.079 (49.3%)
+   Kills: 783 by Divs | 1102 by Players
+
+🏆 W/L: Atk 43 (47.8%) | Def 44 (48.9%) | Draw 3
+
+💀 MORTALITY LADDER
+UNIT TYPE            | DEPLOYED | KILLED   | SURVIVED | MORTALITY %
+---------------------------------------------------------------------
+Sniper               | 341      | 234      | 107      | 68.6%
+Assault              | 364      | 232      | 132      | 63.7%
+Recon Squad          | 380      | 238      | 142      | 62.6%
+Jet                  | 360      | 223      | 137      | 61.9%
+RPG                  | 365      | 216      | 149      | 59.2%
+Jeep                 | 370      | 209      | 161      | 56.5%
+Tank                 | 378      | 209      | 169      | 55.3%
+Warship              | 355      | 190      | 165      | 53.5%
+Submarine            | 327      | 134      | 193      | 41.0%
+---------------------------------------------------------------------
+TOTAL                | 3240     | 1885     | 1355     | 58.2%
+====================================================
+

@@ -96,6 +96,7 @@ export const useArmyStore = create<ArmyState>((set, get) => {
       deployedToBattleId: null, status: 'idle',
       totalManpower: ids.reduce((s, did) => s + divs[did].manpower, 0),
       totalAttack: ids.length * 100, totalDefense: ids.length * 100,
+      autoDefenseLimit: 0,
       salaryPool: 0, splitMode: 'equal', soldierBalances: {}, distributionInterval: DEFAULT_DISTRIBUTION_INTERVAL, lastDistribution: Date.now(), lastClaimed: {},
     }
   }
@@ -184,6 +185,7 @@ export const useArmyStore = create<ArmyState>((set, get) => {
           totalManpower: 0,
           totalAttack: 0,
           totalDefense: 0,
+          autoDefenseLimit: 0,
           salaryPool: 0, splitMode: 'equal', soldierBalances: {}, distributionInterval: DEFAULT_DISTRIBUTION_INTERVAL, lastDistribution: Date.now(), lastClaimed: {},
         },
       },
@@ -447,6 +449,24 @@ export const useArmyStore = create<ArmyState>((set, get) => {
     }))
 
     return { success: true, message: `${army.name} deployed to ${regionCode}!` }
+  },
+
+  // ====== AUTODEFENSE LIMIT ======
+
+  setArmyAutoDefenseLimit: (armyId, limit) => {
+    const state = get()
+    const army = state.armies[armyId]
+    if (!army) return { success: false, message: 'Army not found.' }
+
+    set(s => ({
+      armies: {
+        ...s.armies,
+        [armyId]: { ...army, autoDefenseLimit: limit },
+      },
+    }))
+
+    const label = limit === -1 ? 'ALL' : limit === 0 ? 'OFF' : `${limit}`
+    return { success: true, message: `Autodefense set to ${label} for ${army.name}.` }
   },
 
   // ====== BATTLE ORDERS ======

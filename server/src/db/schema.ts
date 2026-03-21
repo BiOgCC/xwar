@@ -616,6 +616,22 @@ export const breachAttempts = pgTable('breach_attempts', {
   playerIdx: index('idx_breach_attempts_player').on(table.playerId),
 }))
 
+// ═══════════════════════════════════════════════
+//  NAVAL OPERATIONS
+// ═══════════════════════════════════════════════
+
+export const navalOperations = pgTable('naval_operations', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  initiatorId:  uuid('initiator_id').references(() => players.id).notNull(),
+  originRegion: varchar('origin_region', { length: 64 }).notNull(),
+  targetRegion: varchar('target_region', { length: 64 }).notNull(),
+  warshipId:    uuid('warship_id').notNull(),
+  playersJoined: jsonb('players_joined').default([]), // array of string (playerName)
+  status:       varchar('status', { length: 16 }).default('recruiting'),
+  launchedAt:   timestamp('launched_at'),
+  createdAt:    timestamp('created_at').defaultNow(),
+})
+
 // Keep old missions export for backward compatibility during migration
 export const missions = missionBoards
 

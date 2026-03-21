@@ -289,7 +289,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
   fetchInventory: async () => {
     try {
-      const res: any = await api.get('/inventory?location=inventory')
+      const res: any = await api.get('/inventory')
       if (res.items) {
         set({ items: res.items })
       }
