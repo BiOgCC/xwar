@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useWorldStore, getCountryResourceBonus, type DepositType } from './worldStore'
+import { api } from '../api/client'
 
 import type { CompanyType, Company, CompanyTemplate, DepositEvent, JobListing, CompanyTransaction } from '../types/company.types'
 export type { CompanyType, Company, CompanyTemplate, DepositEvent, JobListing, CompanyTransaction }
@@ -212,17 +213,18 @@ export interface CompanyState {
   transactions: CompanyTransaction[]
   activeJobId: string | null
 
-  buildCompany: (type: CompanyType) => boolean
-  upgradeCompany: (companyId: string) => boolean
-  moveCompany: (companyId: string, newCountryCode: string) => boolean
-  doEnterprise: (companyId: string) => { message: string, type: string } | null
-  produceCompany: (companyId: string) => { message: string, type: string } | null
-  collectAll: () => { collected: number; messages: string[] }
-  doWork: () => { message: string, type: string, cashFound?: number } | null
+  fetchAll: () => Promise<void>
+  buildCompany: (type: CompanyType) => Promise<boolean>
+  upgradeCompany: (companyId: string) => Promise<boolean>
+  moveCompany: (companyId: string, newCountryCode: string) => Promise<boolean>
+  doEnterprise: (companyId: string) => Promise<{ message: string, type: string } | null>
+  produceCompany: (companyId: string) => Promise<{ message: string, type: string } | null>
+  collectAll: () => Promise<{ collected: number; messages: string[] }>
+  doWork: () => Promise<{ message: string, type: string, cashFound?: number } | null>
   setActiveJob: (jobId: string | null) => void
-  postJob: (companyId: string, payPerPP: number) => boolean
-  removeJob: (companyId: string) => void
-  prospect: (companyId: string) => DepositEvent | null
+  postJob: (companyId: string, payPerPP: number) => Promise<boolean>
+  removeJob: (companyId: string) => Promise<void>
+  prospect: (companyId: string) => Promise<DepositEvent | null>
   getBuildableTypes: () => CompanyType[]
   processTick: () => void
   nukeCountry: (targetCountryCode: string) => number
@@ -249,10 +251,24 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
   transactions: [],
   activeJobId: null,
 
+  fetchAll: async () => {
+    try {
+      const res = await api.get<{ companies: Company[], transactions: CompanyTransaction[] }>('/company/my-companies')
+      const jobsRes = await api.get<{ jobs: JobListing[] }>('/company/jobs')
+      set({ 
+        companies: res.companies || [], 
+        transactions: res.transactions || [],
+        jobs: jobsRes.jobs || []
+      })
+    } catch (err) {
+      console.error('Failed to fetch companies', err)
+    }
+  },
+
   getBuildableTypes: () => BUILDABLE_TYPES,
   setActiveJob: (jobId) => set({ activeJobId: jobId }),
 
-  buildCompany: (type) => {
+  buildCompany: async (type) => {
     const template = COMPANY_TEMPLATES[type]
     const player = usePlayerStore.getState()
 
@@ -260,25 +276,20 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       return false
     }
 
+    const res = await api.post<{ success: boolean, company: Company }>('/company/create', { type }).catch(() => null)
+    if (!res || !res.success) return false
+
     player.spendMoney(template.buildCost.money)
     if (!usePlayerStore.getState().spendBitcoin(template.buildCost.bitcoin)) return false
 
-    const newComp: Company = {
-      id: `comp-${++companyCounter}-${Date.now()}`,
-      type,
-      level: 1,
-      autoProduction: true,
-      productionProgress: 0,
-      productionMax: template.baseProductionMax,
-      location: player.country, // Defaults to player's country
-    }
+    const newComp: Company = res.company
 
     set((s) => ({ companies: [...s.companies, newComp] }))
     usePlayerStore.setState((s) => ({ companiesOwned: s.companiesOwned + 1 }))
     return true
   },
 
-  upgradeCompany: (companyId) => {
+  upgradeCompany: async (companyId) => {
     const state = get()
     const company = state.companies.find((c) => c.id === companyId)
     if (!company) return false
@@ -290,6 +301,9 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     if (player.bitcoin < cost.bitcoin) {
       return false
     }
+
+    const res = await api.post<{ success: boolean }>('/company/upgrade', { companyId }).catch(() => null)
+    if (!res || !res.success) return false
 
     usePlayerStore.setState((s) => ({
       bitcoin: s.bitcoin - cost.bitcoin,
@@ -305,7 +319,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     return true
   },
 
-  moveCompany: (companyId, newCountryCode) => {
+  moveCompany: async (companyId, newCountryCode) => {
     const state = get()
     const company = state.companies.find(c => c.id === companyId)
     if (!company) return false
@@ -314,68 +328,72 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const moveCost = 500
     if (player.money < moveCost) return false
 
+    const res = await api.post<{ success: boolean }>('/company/move', { companyId, newLocation: newCountryCode }).catch(() => null)
+    if (!res || !res.success) return false
+
     player.spendMoney(moveCost)
     set(s => ({
       companies: s.companies.map(c =>
         c.id === companyId ? { ...c, location: newCountryCode } : c
       ),
+      jobs: s.jobs.map(j => 
+        j.companyId === companyId ? { ...j, location: newCountryCode } : j
+      )
     }))
     return true
   },
 
-  postJob: (companyId, payPerPP) => {
+  postJob: async (companyId, payPerPP) => {
     const state = get()
     const company = state.companies.find(c => c.id === companyId)
     if (!company || company.type === 'prospection_center') return false
 
+    let res;
+    try {
+      res = await api.post<{ success: boolean, job: JobListing }>('/company/post-job', { companyId, payPerPP })
+    } catch (e) {
+      return false;
+    }
+
+    if (!res || !res.success || !res.job) return false
+
     // Remove any existing job for this company
     const filtered = state.jobs.filter(j => j.companyId !== companyId)
 
-    const player = usePlayerStore.getState()
-    const template = COMPANY_TEMPLATES[company.type]
-    const bonus = getLocationBonus(company)
-
-    const newJob: JobListing = {
-      id: `job-player-${Date.now()}`,
-      companyId: company.id,
-      employerName: player.name,
-      companyType: company.type,
-      companyLevel: company.level,
-      payPerPP,
-      productionBonus: bonus,
-      location: company.location,
-    }
-
-    set({ jobs: [...filtered, newJob] })
+    set({ jobs: [...filtered, res.job] })
     return true
   },
 
-  removeJob: (companyId) => {
+  removeJob: async (companyId) => {
+    await api.post('/company/remove-job', { companyId }).catch(() => {})
     set(s => ({ jobs: s.jobs.filter(j => j.companyId !== companyId) }))
   },
 
   /** Enterprise: owner works on their OWN company to fill its production bar */
-  doEnterprise: (companyId) => {
+  doEnterprise: async (companyId) => {
     const state = get()
     const company = state.companies.find((c) => c.id === companyId)
     if (!company) return null
     if (company.type === 'prospection_center') return null
 
+    let res;
+    try {
+      res = await api.post<{ success: boolean, contribution: number, message: string }>('/company/enterprise', { companyId })
+    } catch (error: any) {
+      return { message: error.message || 'Enterprise failed.', type: 'error' }
+    }
+
+    if (!res || !res.success) return { message: 'Enterprise failed.', type: 'error' }
+
     const player = usePlayerStore.getState()
-    if (player.entrepreneurship <= 0) return { message: 'No entrepreneurship points left', type: 'error' }
-
-    const skills = useSkillsStore.getState()
-    const prodSkill = skills.economic.production
-
-    // Production input = base + skill variance
-    const prodInput = getProductionContribution(prodSkill, company.level)
-    const bonus = getLocationBonus(company)
-    const fill = prodInput * (1 + bonus / 100)
+    if (Math.floor(player.entrepreneurship) < 10) return { message: 'Not enough enterprise points (10 required).', type: 'error' }
 
     usePlayerStore.setState((s) => ({
       entrepreneurship: Math.max(0, s.entrepreneurship - 10),
       specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
     }))
+
+    const fill = res.contribution
 
     set((s) => ({
       companies: s.companies.map((c) =>
@@ -385,258 +403,99 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       ),
     }))
 
-    player.gainXP(10)
+    usePlayerStore.getState().gainXP(10)
     const bonusMsg = triggerEconomicModifiers()
 
     return { 
-      message: `+${Math.floor(fill)} production (${bonus}% bonus)${bonusMsg}`,
+      message: `+${Math.floor(fill)} production${bonusMsg}`,
       type: 'enterprise' 
     }
   },
 
-  /** Produce: can be clicked any time points are > 0 */
-  produceCompany: (companyId) => {
+  /** Produce: can be clicked any time points are > 0 (now fully server-authoritative) */
+  produceCompany: async (companyId) => {
     const state = get()
     const company = state.companies.find((c) => c.id === companyId)
     if (!company || company.productionProgress <= 0) return null
 
-    const points = company.productionProgress
-    const player = usePlayerStore.getState()
-    const bonus = getLocationBonus(company)
-
-    let result = ''
-    let usedPoints = points
-
-    switch (company.type) {
-      case 'bitcoin_miner': {
-        const moneyEarned = Math.floor(points * (1 + bonus / 100))
-        usePlayerStore.getState().earnMoney(moneyEarned)
-        result = `+$${moneyEarned}`
-        const btcChance = Math.min(0.05, 0.01 + (points * 0.00066))
-        if (Math.random() < btcChance) {
-          usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + 1 }))
-          result += ' & 1 ₿ bonus!'
-        }
-        break
-      }
-      case 'wheat_farm': {
-        const output = Math.max(1, Math.floor(points * 0.5))
-        usePlayerStore.setState(s => ({ wheat: s.wheat + output }))
-        result = `+${output} Wheat`
-        break
-      }
-      case 'fish_farm': {
-        const output = Math.max(1, Math.floor(points * 0.5))
-        usePlayerStore.setState(s => ({ fish: s.fish + output }))
-        result = `+${output} Fish`
-        break
-      }
-      case 'steak_farm': {
-        const output = Math.max(1, Math.floor(points * 0.5))
-        usePlayerStore.setState(s => ({ steak: s.steak + output }))
-        result = `+${output} Steak`
-        break
-      }
-      case 'bakery': {
-        const affordable = Math.floor(player.wheat / 10)
-        const possible = Math.max(1, Math.floor(points * 0.1))
-        const count = Math.min(affordable, possible)
-        if (count <= 0) return { message: 'Not enough Wheat (Need 10/Bread)', type: 'error' }
-        usePlayerStore.setState(s => ({ wheat: s.wheat - 10 * count, bread: s.bread + count }))
-        result = `+${count} Bread`
-        usedPoints = (count === possible) ? points : count * 10
-        break
-      }
-      case 'sushi_bar': {
-        const affordable = Math.floor(player.fish / 1)
-        const possible = Math.max(1, Math.floor(points * 0.1))
-        const count = Math.min(affordable, possible)
-        if (count <= 0) return { message: 'Not enough Fish (Need 1/Sushi)', type: 'error' }
-        usePlayerStore.setState(s => ({ fish: s.fish - 1 * count, sushi: s.sushi + count }))
-        result = `+${count} Sushi`
-        usedPoints = (count === possible) ? points : count * 10
-        break
-      }
-      case 'wagyu_grill': {
-        const affordable = Math.floor(player.steak / 1)
-        const possible = Math.max(1, Math.floor(points * 0.1))
-        const count = Math.min(affordable, possible)
-        if (count <= 0) return { message: 'Not enough Steak (Need 1/Wagyu)', type: 'error' }
-        usePlayerStore.setState(s => ({ steak: s.steak - 1 * count, wagyu: s.wagyu + count }))
-        result = `+${count} Wagyu`
-        usedPoints = (count === possible) ? points : count * 10
-        break
-      }
-      case 'green_ammo_factory': {
-        const possible = Math.floor(points / 1)
-        if (possible <= 0) return { message: 'Need at least 1 PP', type: 'error' }
-        const count = Math.min(player.materialX, possible)
-        if (count <= 0) return { message: 'Not enough MaterialX', type: 'error' }
-        if (!usePlayerStore.getState().spendMaterialX(count)) return { message: 'Not enough MaterialX', type: 'error' }
-        usePlayerStore.setState(s => ({ greenBullets: s.greenBullets + count }))
-        result = `+${count} Green Bullets`
-        usedPoints = count * 1
-        const indBonus = Math.min(0.40, (useSkillsStore.getState().economic.industrialist || 0) * 0.05)
-        if (points >= company.productionMax && Math.random() < (0.10 + indBonus)) {
-          usePlayerStore.setState(s => ({ redBullets: s.redBullets + 1 }))
-          result += ' & 1 🔴 RED BULLET!'
-        }
-        break
-      }
-      case 'blue_ammo_factory': {
-        const possible = Math.floor(points / 3)
-        if (possible <= 0) return { message: 'Need at least 3 PP', type: 'error' }
-        const count = Math.min(Math.floor(player.materialX / 3), possible)
-        if (count <= 0) return { message: 'Not enough MaterialX', type: 'error' }
-        if (!usePlayerStore.getState().spendMaterialX(count * 3)) return { message: 'Not enough MaterialX', type: 'error' }
-        usePlayerStore.setState(s => ({ blueBullets: s.blueBullets + count }))
-        result = `+${count} Blue Bullets`
-        usedPoints = count * 3
-        const indBonus = Math.min(0.40, (useSkillsStore.getState().economic.industrialist || 0) * 0.05)
-        if (points >= company.productionMax && Math.random() < (0.10 + indBonus)) {
-          usePlayerStore.setState(s => ({ redBullets: s.redBullets + 1 }))
-          result += ' & 1 🔴 RED BULLET!'
-        }
-        break
-      }
-      case 'purple_ammo_factory': {
-        const possible = Math.floor(points / 9)
-        if (possible <= 0) return { message: 'Need at least 9 PP', type: 'error' }
-        const count = Math.min(Math.floor(player.materialX / 9), possible)
-        if (count <= 0) return { message: 'Not enough MaterialX', type: 'error' }
-        if (!usePlayerStore.getState().spendMaterialX(count * 9)) return { message: 'Not enough MaterialX', type: 'error' }
-        usePlayerStore.setState(s => ({ purpleBullets: s.purpleBullets + count }))
-        result = `+${count} Purple Bullets`
-        usedPoints = count * 9
-        const indBonus = Math.min(0.40, (useSkillsStore.getState().economic.industrialist || 0) * 0.05)
-        if (points >= company.productionMax && Math.random() < (0.10 + indBonus)) {
-          usePlayerStore.setState(s => ({ redBullets: s.redBullets + 1 }))
-          result += ' & 1 🔴 RED BULLET!'
-        }
-        break
-      }
-      case 'oil_refinery': {
-        const output = Math.max(1, Math.floor(points * 0.5))
-        usePlayerStore.setState(s => ({ oil: s.oil + output }))
-        result = `+${output} Oil`
-        break
-      }
-      case 'materialx_refiner': {
-        const output = Math.max(1, Math.floor(points * 0.25))
-        usePlayerStore.setState(s => ({ materialX: s.materialX + output }))
-        result = `+${output} MaterialX`
-        break
-      }
-      default:
-        return null
+    const res = await api.post<{ success: boolean, message?: string }>('/company/produce', { companyId }).catch((e) => e)
+    if (!res || !res.success) {
+      const errorMsg = (res as any)?.response?.data?.error || res?.message || 'Production failed. Missing resources?'
+      return { message: errorMsg, type: 'error' }
     }
 
-    // Deduct used points
-    set((s) => ({
-      companies: s.companies.map((c) =>
-        c.id === companyId ? { ...c, productionProgress: Math.max(0, c.productionProgress - usedPoints) } : c
-      ),
-    }))
-
-    usePlayerStore.setState((s) => ({
-      itemsProduced: s.itemsProduced + 1
-    }))
-    player.gainXP(20)
+    // Backend updated everything. Just fetch to re-sync!
+    await usePlayerStore.getState().fetchPlayer()
+    await state.fetchAll()
 
     const bonusMsg = triggerEconomicModifiers()
-    result += bonusMsg
+    const finalMessage = (res.message || 'Produced goods!') + bonusMsg
 
     const tx: CompanyTransaction = {
       id: `tx-${Date.now()}`,
-      message: `${COMPANY_TEMPLATES[company.type].label}: ${result}`,
+      message: `${COMPANY_TEMPLATES[company.type].label}: ${finalMessage}`,
       timestamp: Date.now()
     }
     set(s => ({ transactions: [tx, ...s.transactions].slice(0, 50) }))
 
-    return { message: result, type: 'produce' }
+    return { message: finalMessage, type: 'produce' }
   },
 
   /** Work: worker works on their active job */
-  doWork: () => {
+  doWork: async () => {
     const state = get()
     if (!state.activeJobId) return { message: 'No active job selected', type: 'error' }
     
     const job = state.jobs.find((j) => j.id === state.activeJobId)
     if (!job) return { message: 'Invalid job', type: 'error' }
 
-    const player = usePlayerStore.getState()
-    if (player.work <= 0) return { message: 'No work points left', type: 'error' }
-
-    const skills = useSkillsStore.getState()
-    const prodSkill = skills.economic.production
-
-    // Production input = base + skill variance
-    const prodInput = getProductionContribution(prodSkill, job.companyLevel)
-    const contribution = Math.floor(prodInput * (1 + job.productionBonus / 100))
-
-    // Pay = contribution * payPerPP
-    const grossPay = Math.floor(contribution * job.payPerPP)
-    const totalTax = Math.floor(grossPay * TAX_RATE)
-    const employeeTax = Math.floor(totalTax / 2)
-    const employerTax = totalTax - employeeTax
-    const netPay = grossPay - employeeTax
-
-    // Salary comes from the employer (they get production/items in return)
-    const isNpcJob = job.companyId.startsWith('npc')
-    const employerCompany = state.companies.find(c => c.id === job.companyId)
-
-    if (isNpcJob) {
-      // NPC employer: country fund simulates NPC economy
-      const ws = useWorldStore.getState()
-      const country = ws.getCountry(job.location)
-      const fundAvailable = country?.fund.money ?? 0
-      const canPay = Math.min(grossPay, fundAvailable)
-      if (canPay <= 0) return { message: 'Employer cannot afford to pay wages', type: 'error' }
-      ws.spendFromFund(job.location, { money: canPay })
-    } else if (employerCompany) {
-      // Player-owned company: employer pays from their wallet
-      // In single-player this is the same player, but the mechanic is correct for multiplayer
-      // For now, treat it as employer paying — we deduct from whoever owns the company
-      // Since we're single-player, the player is both employer and employee for their own companies
-      // The salary self-regulates: employer sets payPerPP based on item value they receive
-      if (player.money < grossPay) return { message: 'Employer cannot afford to pay wages', type: 'error' }
-      player.spendMoney(grossPay)
-    } else {
-      return { message: 'Employer company not found', type: 'error' }
+    let res;
+    try {
+      res = await api.post<{ success: boolean, netPay: number, contribution: number, employerCost: number, message: string }>('/company/work', { jobId: state.activeJobId })
+    } catch (error: any) {
+      return { message: error.message || 'Failed to work. Network error or rejected.', type: 'error' }
     }
 
-    // Consume work bar, give net pay to employee
+    if (!res || !res.success) return { message: 'Failed to work. Network error or rejected.', type: 'error' }
+
+    const player = usePlayerStore.getState()
+    if (Math.floor(player.work) < 10) return { message: 'Not enough work points (10 required).', type: 'error' }
+    
+    // The backend handles money deduction, addition, taxation, and work points.
+    // We just need to sync the local player store and potentially the employer company if we own it.
+    
     usePlayerStore.setState((s) => ({
       work: Math.max(0, s.work - 10),
       specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
     }))
-    usePlayerStore.getState().earnMoney(netPay)
+    usePlayerStore.getState().earnMoney(res.netPay)
+    player.gainXP(8)
 
-    // Send tax to country treasury
-    useWorldStore.getState().addTreasuryTax(job.location, totalTax)
-
-    // Add contribution to the employer's company production (if it's a player company)
+    // Add contribution to the employer's company production (if it's a player company and local player owns it)
+    const employerCompany = state.companies.find(c => c.id === job.companyId)
     if (employerCompany) {
       set(s => ({
         companies: s.companies.map(c =>
           c.id === job.companyId
-            ? { ...c, productionProgress: c.productionProgress + contribution }
+            ? { ...c, productionProgress: c.productionProgress + res.contribution }
             : c
         )
       }))
+      
+      // Since we own the company, we must also deduct the employer's money locally to stay in sync
+      usePlayerStore.getState().spendMoney(res.employerCost)
     }
 
     const bonusMsg = triggerEconomicModifiers()
 
-    player.gainXP(8)
     return {
-      message: `+$${netPay} pay (${contribution}PP × $${job.payPerPP}/PP, Tax: $${totalTax})${bonusMsg}`,
+      message: res.message + bonusMsg,
       type: 'work',
-      cashFound: netPay
+      cashFound: res.netPay
     }
   },
 
-  prospect: (companyId) => {
+  prospect: async (companyId) => {
     const state = get()
     const company = state.companies.find((c) => c.id === companyId)
     if (!company || company.type !== 'prospection_center') return null
@@ -645,9 +504,16 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     if (player.bitcoin < 1) return null
     if (player.stamina < 10) return null
 
-    // Spend resources
+    // Spend resources BEFORE async call to prevent race conditions
     if (!usePlayerStore.getState().spendBitcoin(1)) return null
     player.consumeBar('stamina', 10)
+
+    const res = await api.post<{ success: boolean, deposit: any }>('/company/prospect', { companyId }).catch(() => null)
+    if (!res || !res.success) {
+      // Refund on failure
+      usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + 1, stamina: s.stamina + 10 }))
+      return null
+    }
 
     // Get prospection skill level for bonus chance
     const skills = useSkillsStore.getState()
@@ -778,7 +644,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     })
   },
 
-  collectAll: () => {
+  collectAll: async () => {
     const state = get()
     const messages: string[] = []
     let collected = 0
@@ -788,7 +654,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       if (company.type === 'prospection_center') continue
       if (company.productionProgress <= 0) continue
 
-      const result = get().produceCompany(company.id)
+      const result = await get().produceCompany(company.id)
       if (result && result.type !== 'error') {
         collected++
         messages.push(result.message)

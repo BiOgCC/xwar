@@ -4,6 +4,8 @@
  * Automatically injects JWT token and handles errors.
  */
 
+import { socketManager } from './socket'
+
 const API_BASE = 'http://localhost:3001/api'
 
 let authToken: string | null = null
@@ -13,8 +15,10 @@ export function setAuthToken(token: string | null) {
   authToken = token
   if (token) {
     localStorage.setItem('xwar_token', token)
+    socketManager.connect()
   } else {
     localStorage.removeItem('xwar_token')
+    socketManager.disconnect()
   }
 }
 

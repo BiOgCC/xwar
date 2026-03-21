@@ -93,6 +93,7 @@ const UNIT_COLORS: Record<DivisionType, { body: string; accent: string }> = {
   tank:    { body: '#5a5a5a', accent: '#3a3a3a' },
   jet:     { body: '#4a5a7a', accent: '#2a3a5a' },
   warship: { body: '#3a4a6a', accent: '#1a2a4a' },
+  submarine: { body: '#0f172a', accent: '#1e293b' },
 }
 
 // ====== TERRAIN GROUND ======
@@ -241,7 +242,7 @@ function Soldier({
     }
   })
 
-  const isVehicle = divisionType === 'jeep' || divisionType === 'tank' || divisionType === 'warship'
+  const isVehicle = divisionType === 'jeep' || divisionType === 'tank' || divisionType === 'warship' || divisionType === 'submarine'
   const isAir = false
   const isArtillery = false
 

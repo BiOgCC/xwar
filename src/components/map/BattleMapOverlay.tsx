@@ -49,6 +49,7 @@ export default function BattleMapOverlay({ mapRef, onRegionClick }: BattleMapOve
   // Find active enemy country codes
   const enemyCodes = useMemo(() => {
     const codes = new Set<string>()
+    codes.add('OC') // Oceans are always claimable
     wars.forEach(w => {
       if (w.status !== 'active') return
       if (w.attacker === playerIso) codes.add(w.defender)

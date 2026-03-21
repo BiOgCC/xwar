@@ -262,6 +262,10 @@ function getResourceColumn(itemType: string) {
     bread: players.bread,
     sushi: players.sushi,
     wagyu: players.wagyu,
+    bitcoin: players.bitcoin,
+    wheat: players.wheat,
+    fish: players.fish,
+    steak: players.steak,
   }
   return map[itemType] || null
 }

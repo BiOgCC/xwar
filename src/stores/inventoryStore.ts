@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { api } from '../api/client'
 import { usePlayerStore } from './playerStore'
 import { useWarCardsStore } from './warCardsStore'
 import { rateLimiter } from '../engine/AntiExploit'
@@ -8,7 +9,7 @@ import type { EquipTier, ArmorSlot, WeaponSlot, VehicleSlot, EquipSlot, EquipCat
 // Re-export all types for backward compatibility
 export type { EquipTier, ArmorSlot, WeaponSlot, VehicleSlot, EquipSlot, EquipCategory, WeaponSubtype, EquipStats, ItemLocation, EquipItem, LootBoxRewardType, LootBoxResult }
 
-export const TIER_ORDER: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
+export const TIER_ORDER: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6', 't7']
 
 export const TIER_COLORS: Record<EquipTier, string> = {
   t1: '#9ca3af',
@@ -17,6 +18,7 @@ export const TIER_COLORS: Record<EquipTier, string> = {
   t4: '#a855f7',
   t5: '#f59e0b',
   t6: '#ef4444',
+  t7: '#06b6d4',
 }
 
 export const TIER_LABELS: Record<EquipTier, string> = {
@@ -26,6 +28,7 @@ export const TIER_LABELS: Record<EquipTier, string> = {
   t4: 'Epic (T4)',
   t5: 'Legendary (T5)',
   t6: 'Mythic (T6)',
+  t7: 'Exotic (T7)',
 }
 
 export const ARMOR_SLOTS: ArmorSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
@@ -47,10 +50,15 @@ export function getItemImagePath(tier: EquipTier, slot: EquipSlot, category: Equ
   // Weapon subtypes with their own icons
   if (category === 'weapon' && weaponSubtype === 'rpg') return '/assets/items/t5_weapon_rpg.png'
   if (category === 'weapon' && weaponSubtype === 'warship') return '/assets/items/t6_weapon_warship.png'
+  if (weaponSubtype === 'submarine') return '/assets/items/t6_weapon_warship.png'
 
   if (tier === 't6') {
     if (category === 'vehicle') return '/assets/items/t6_weapon_warship.png'
     if (category === 'weapon') return '/assets/items/t6_weapon_jet.png'
+  }
+  
+  if (tier === 't7') {
+    return '/assets/items/t6_weapon_warship.png' // Fallback for T7
   }
   
   return `/assets/items/${tier}_${slot}.png`
@@ -64,6 +72,7 @@ export const SCRAP_VALUES: Record<EquipTier, number> = {
   t4: 162,
   t5: 486,
   t6: 1480,
+  t7: 4500,
 }
 
 // Which weapon subtypes are available at each tier
@@ -74,6 +83,7 @@ export const WEAPON_SUBTYPES: Record<EquipTier, WeaponSubtype[]> = {
   t4: ['sniper'],
   t5: ['tank', 'rpg'],
   t6: ['jet', 'warship'],
+  t7: ['submarine'],
 }
 
 export interface InventoryState {
@@ -82,11 +92,13 @@ export interface InventoryState {
   totalCasesOpened: number
   totalItemsDismantled: number
 
-  openLootBox: () => LootBoxResult | null
-  openMilitaryBox: () => LootBoxResult | null
-  dismantleItem: (itemId: string) => number // returns scrap gained
-  equipItem: (itemId: string) => void
-  unequipItem: (itemId: string) => void
+  fetchInventory: () => Promise<void>
+  openLootBox: () => Promise<LootBoxResult | null>
+  openMilitaryBox: () => Promise<LootBoxResult | null>
+  dismantleItem: (itemId: string) => Promise<{ success: boolean; scrapGained: number; message: string }>
+  sellItem: (itemId: string) => Promise<{ success: boolean; moneyGained: number; message: string }>
+  equipItem: (itemId: string) => Promise<{ success: boolean; message: string }>
+  unequipItem: (itemId: string) => Promise<{ success: boolean; message: string }>
   removeItem: (itemId: string) => void
   addItem: (item: EquipItem) => void
   degradeEquippedItems: (amount: number) => void
@@ -113,12 +125,15 @@ export function generateStats(category: EquipCategory, slot: EquipSlot, tier: Eq
     // T5: Tank (151-199 dmg, 21-30% crit)  |  RPG (same stats)
     // T6: Jet (200-300 dmg, 31-49% crit)   |  Warship (same stats)
     
-    // Handle subtypes for T5 and T6
+    // Handle subtypes for T5 and T6 and T7
     if (tier === 't5' && weaponSubtype === 'rpg') {
       return { name: 'RPG', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) }, weaponSubtype: 'rpg' }
     }
     if (tier === 't6' && weaponSubtype === 'warship') {
       return { name: 'Warship', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) }, weaponSubtype: 'warship' }
+    }
+    if (tier === 't7' && weaponSubtype === 'submarine') {
+      return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(40, 60) }, weaponSubtype: 'submarine' }
     }
     
     switch (tier) {
@@ -128,9 +143,12 @@ export function generateStats(category: EquipCategory, slot: EquipSlot, tier: Eq
       case 't4': return { name: 'Sniper', stats: { damage: randomInt(121, 150), critRate: randomInt(16, 20) }, weaponSubtype: 'sniper' }
       case 't5': return { name: 'Tank', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) }, weaponSubtype: 'tank' }
       case 't6': return { name: 'Jet', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) }, weaponSubtype: 'jet' }
+      case 't7': return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(40, 60) }, weaponSubtype: 'submarine' }
     }
   } else if (category === 'vehicle') {
-    if (tier === 't6') {
+    if (tier === 't7') {
+      return { name: 'T7 Submarine', stats: { damage: randomInt(400, 550), critRate: randomInt(45, 65) } }
+    } else if (tier === 't6') {
       return { name: 'T6 Warship', stats: { damage: randomInt(301, 400), critRate: randomInt(40, 49) } }
     } else {
       return { name: `T${tLevel} Vehicle`, stats: { damage: randomInt(10 * tLevel, 20 * tLevel) } } // Fallback
@@ -169,10 +187,11 @@ export function generateStats(category: EquipCategory, slot: EquipSlot, tier: Eq
 }
 
 function rollLootBoxItem(): EquipItem {
-  // Tier chance (T1: 50%, T2: 39%, T3: 7%, T4: 3%, T5: 0.85%, T6: 0.15%)
+  // Tier chance
   const rT = Math.random() * 100
   let tier: EquipTier = 't1'
-  if (rT < 0.15) tier = 't6'
+  if (rT < 0.05) tier = 't7'
+  else if (rT < 0.15) tier = 't6'
   else if (rT < 1.00) tier = 't5'
   else if (rT < 4.00) tier = 't4'
   else if (rT < 11.00) tier = 't3'
@@ -182,10 +201,11 @@ function rollLootBoxItem(): EquipItem {
 }
 
 function rollMilitaryBoxItem(): EquipItem {
-  // Military: T1: 5%, T2: 15%, T3: 30%, T4: 25%, T5: 18%, T6: 7%
+  // Military Box chance
   const rT = Math.random() * 100
   let tier: EquipTier = 't3'
-  if (rT < 7.00) tier = 't6'
+  if (rT < 2.00) tier = 't7'
+  else if (rT < 7.00) tier = 't6'
   else if (rT < 25.00) tier = 't5'
   else if (rT < 50.00) tier = 't4'
   else if (rT < 80.00) tier = 't3'
@@ -196,11 +216,11 @@ function rollMilitaryBoxItem(): EquipItem {
 }
 
 export function rollItemOfTier(tier: EquipTier): EquipItem {
-  // Type chance (66% Armor, 34% Weapon, but if T6, 20% chance of Vehicle)
+  // Type chance (66% Armor, 34% Weapon, but if T6/T7, 20% chance of Vehicle)
   let category: EquipCategory = Math.random() < 0.66 ? 'armor' : 'weapon'
   let slot: EquipSlot = 'weapon'
   
-  if (tier === 't6' && Math.random() < 0.20) {
+  if ((tier === 't6' || tier === 't7') && Math.random() < 0.20) {
     category = 'vehicle'
     slot = 'vehicle'
   } else if (category === 'armor') {
@@ -263,139 +283,168 @@ function getStarterKit(): EquipItem[] {
 }
 
 export const useInventoryStore = create<InventoryState>((set, get) => ({
-  items: getStarterKit(),
+  items: [],
   totalCasesOpened: 0,
   totalItemsDismantled: 0,
 
-  openLootBox: () => {
+  fetchInventory: async () => {
+    try {
+      const res: any = await api.get('/inventory?location=inventory')
+      if (res.items) {
+        set({ items: res.items })
+      }
+    } catch (e) {
+      console.error('Failed to fetch inventory:', e)
+    }
+  },
+
+  openLootBox: async () => {
     if (!rateLimiter.check('openLootBox')) return null
     const playerStore = usePlayerStore.getState()
     if (playerStore.lootBoxes <= 0) return null
 
-    usePlayerStore.setState(s => ({ lootBoxes: s.lootBoxes - 1 }))
+    try {
+      const res: any = await api.post('/inventory/open-box', { boxType: 'loot' })
+      if (!res.success) return null
+      
+      const { item, bonusMoney, bonusScrap } = res
+      
+      usePlayerStore.setState(s => ({
+        lootBoxes: s.lootBoxes - 1,
+        money: s.money + (bonusMoney || 0),
+        scrap: s.scrap + (bonusScrap || 0)
+      }))
 
-    // Civilian box: 35% money, 25% resources, 40% item
-    const roll = Math.random() * 100
-    let rewardType: LootBoxRewardType
-    let item: EquipItem | undefined
-    let money = 0
-    let scrap = 0
-    let oil = 0
+      if (item) {
+        set(s => ({ items: [...s.items, item] }))
+      }
 
-    if (roll < 35) {
-      // Money only
-      rewardType = 'money'
-      money = randomInt(200, 2000)
-    } else if (roll < 60) {
-      // Resources
-      rewardType = 'resources'
-      scrap = randomInt(100, 800)
-      oil = randomInt(50, 400)
-      money = randomInt(50, 300)
-    } else {
-      // Item + some bonus money/scrap
-      rewardType = 'item'
-      item = rollLootBoxItem()
-      scrap = randomInt(20, 200)
-      money = randomInt(50, 500)
-      set(s => ({ items: [...s.items, item!] }))
-    }
+      // Track case opens
+      set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
+      const inv = get()
+      const ps = usePlayerStore.getState()
+      useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+        totalDamageDone: ps.damageDone,
+        totalMoney: ps.money,
+        totalItemsProduced: ps.itemsProduced,
+        playerLevel: ps.level,
+        totalCasesOpened: inv.totalCasesOpened,
+        totalItemsDismantled: inv.totalItemsDismantled,
+      })
 
-    usePlayerStore.setState(s => ({
-      scrap: s.scrap + scrap,
-      oil: s.oil + oil,
-    }))
-    if (money > 0) usePlayerStore.getState().earnMoney(money)
+      let rewardType: LootBoxRewardType = 'item'
+      if (!item && bonusMoney > 0 && bonusScrap === 0) rewardType = 'money'
+      else if (!item) rewardType = 'resources'
 
-    // War Cards: track cases opened
-    set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
-    const inv = get()
-    const ps = usePlayerStore.getState()
-    useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-      totalDamageDone: ps.damageDone,
-      totalMoney: ps.money,
-      totalItemsProduced: ps.itemsProduced,
-      playerLevel: ps.level,
-      totalCasesOpened: inv.totalCasesOpened,
-      totalItemsDismantled: inv.totalItemsDismantled,
-    })
-
-    return { rewardType, item, scrap, money, oil }
+      return { rewardType, item, money: bonusMoney || 0, scrap: bonusScrap || 0, oil: 0 }
+    } catch(e) { console.error('Lootbox err', e); return null }
   },
 
-  openMilitaryBox: () => {
+  openMilitaryBox: async () => {
     if (!rateLimiter.check('openMilitaryBox')) return null
     const playerStore = usePlayerStore.getState()
     if (playerStore.militaryBoxes <= 0) return null
 
-    usePlayerStore.setState(s => ({ militaryBoxes: s.militaryBoxes - 1 }))
+    try {
+      const res: any = await api.post('/inventory/open-box', { boxType: 'military' })
+      if (!res.success) return null
 
-    // Military box: ONLY items, high T5/T6 chance
-    const item = rollMilitaryBoxItem()
-    set(s => ({ items: [...s.items, item] }))
+      const { item } = res
+      usePlayerStore.setState(s => ({ militaryBoxes: s.militaryBoxes - 1 }))
+      if (item) set(s => ({ items: [...s.items, item] }))
 
-    // War Cards: track cases opened
-    set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
-    const inv = get()
-    const ps = usePlayerStore.getState()
-    useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-      totalDamageDone: ps.damageDone,
-      totalMoney: ps.money,
-      totalItemsProduced: ps.itemsProduced,
-      playerLevel: ps.level,
-      totalCasesOpened: inv.totalCasesOpened,
-      totalItemsDismantled: inv.totalItemsDismantled,
-    })
-
-    return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0 }
-  },
-
-  dismantleItem: (itemId) => {
-    const state = get()
-    const item = state.items.find((i) => i.id === itemId)
-    if (!item || item.equipped) return 0
-    if (item.location !== 'inventory') return 0 // Can only dismantle items in inventory
-    const scrapGain = SCRAP_VALUES[item.tier]
-    set((s) => ({
-      items: s.items.filter((i) => i.id !== itemId),
-      totalItemsDismantled: s.totalItemsDismantled + 1,
-    }))
-
-    // War Cards: track dismantles
-    const inv = get()
-    const ps = usePlayerStore.getState()
-    useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-      totalDamageDone: ps.damageDone,
-      totalMoney: ps.money,
-      totalItemsProduced: ps.itemsProduced,
-      playerLevel: ps.level,
-      totalCasesOpened: inv.totalCasesOpened,
-      totalItemsDismantled: inv.totalItemsDismantled,
-    })
-
-    return scrapGain
-  },
-
-  equipItem: (itemId) =>
-    set((s) => {
-      const item = s.items.find((i) => i.id === itemId)
-      if (!item) return s
-      if (item.location !== 'inventory') return s // Can only equip items in inventory
-      // Unequip any item in the same slot
-      const updated = s.items.map((i) => {
-        if (i.id === itemId) return { ...i, equipped: true }
-        if (i.slot === item.slot && i.equipped) return { ...i, equipped: false }
-        return i
+      set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
+      const inv = get()
+      const ps = usePlayerStore.getState()
+      useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+        totalDamageDone: ps.damageDone,
+        totalMoney: ps.money,
+        totalItemsProduced: ps.itemsProduced,
+        playerLevel: ps.level,
+        totalCasesOpened: inv.totalCasesOpened,
+        totalItemsDismantled: inv.totalItemsDismantled,
       })
-      return { items: updated }
-    }),
 
-  unequipItem: (itemId) =>
-    set((s) => ({
-      items: s.items.map((i) =>
-        i.id === itemId ? { ...i, equipped: false } : i
-      ),
-    })),
+      return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0 }
+    } catch(e) { console.error('Milbox err', e); return null }
+  },
+
+  dismantleItem: async (itemId) => {
+    try {
+      const res: any = await api.post(`/inventory/dismantle/${itemId}`)
+      if (res.success) {
+        set((s) => ({
+          items: s.items.filter((i) => i.id !== itemId),
+          totalItemsDismantled: s.totalItemsDismantled + 1,
+        }))
+        
+        usePlayerStore.setState(s => ({ scrap: s.scrap + (res.scrapGained || 0) }))
+
+        // War Cards
+        const inv = get()
+        const ps = usePlayerStore.getState()
+        useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+          totalDamageDone: ps.damageDone,
+          totalMoney: ps.money,
+          totalItemsProduced: ps.itemsProduced,
+          playerLevel: ps.level,
+          totalCasesOpened: inv.totalCasesOpened,
+          totalItemsDismantled: inv.totalItemsDismantled,
+        })
+        return { success: true, scrapGained: res.scrapGained, message: 'Dismantled item' }
+      }
+      return { success: false, scrapGained: 0, message: res.error || 'Failed to dismantle' }
+    } catch (e: any) {
+      return { success: false, scrapGained: 0, message: e.message || 'Error dismantling item' }
+    }
+  },
+
+  sellItem: async (itemId) => {
+    try {
+      const res: any = await api.post(`/inventory/sell/${itemId}`)
+      if (res.success) {
+        set((s) => ({
+          items: s.items.filter((i) => i.id !== itemId),
+        }))
+        usePlayerStore.setState(s => ({ money: s.money + (res.moneyGained || 0) }))
+        return { success: true, moneyGained: res.moneyGained, message: 'Item sold' }
+      }
+      return { success: false, moneyGained: 0, message: res.error || 'Failed to sell' }
+    } catch (e: any) {
+      return { success: false, moneyGained: 0, message: e.message || 'Error selling item' }
+    }
+  },
+
+  equipItem: async (itemId) => {
+    try {
+      const res: any = await api.post(`/inventory/equip/${itemId}`)
+      if (res.success) {
+        set((s) => {
+          const item = s.items.find((i) => i.id === itemId)
+          if (!item) return s
+          const updated = s.items.map((i) => {
+            if (i.id === itemId) return { ...i, equipped: true }
+            if (i.slot === item.slot && i.equipped) return { ...i, equipped: false }
+            return i
+          })
+          return { items: updated }
+        })
+        return { success: true, message: 'Item equipped' }
+      }
+      return { success: false, message: 'Failed to equip item' }
+    } catch (e: any) { return { success: false, message: e.message } }
+  },
+
+  unequipItem: async (itemId) => {
+    try {
+      const res: any = await api.post(`/inventory/unequip/${itemId}`)
+      if (res.success) {
+        set((s) => ({ items: s.items.map((i) => i.id === itemId ? { ...i, equipped: false } : i) }))
+        return { success: true, message: 'Item unequipped' }
+      }
+      return { success: false, message: 'Failed to unequip item' }
+    } catch (e: any) { return { success: false, message: e.message } }
+  },
 
   removeItem: (itemId) =>
     set((s) => ({
@@ -421,7 +470,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       )
     })),
 
-  getEquipped: () => get().items.filter((i) => i.equipped),
+  getEquipped: () => get().items.filter((i) => i.equipped && i.location === 'inventory'),
 
   getPlayerItems: () => get().items.filter((i) => i.location === 'inventory'),
 

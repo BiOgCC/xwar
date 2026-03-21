@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   useWarCardsStore,
   CARD_CATEGORY_META,
@@ -244,6 +244,11 @@ export default function WarCardsTab() {
   const [subTab, setSubTab] = useState<SubTab>('collection')
   const [filterCat, setFilterCat] = useState<CardCategory | 'all'>('all')
 
+  useEffect(() => {
+    cards.fetchMyCards()
+    cards.fetchAllCards()
+  }, [])
+
   const myCards = cards.getPlayerCards(player.name)
   const hallOfFame = cards.getHallOfFame()
   const leaderboard = cards.getLeaderboard()
@@ -252,8 +257,8 @@ export default function WarCardsTab() {
   const filteredDefs = filterCat === 'all' ? allDefs : allDefs.filter(d => d.category === filterCat)
   const sortedDefs = [...filteredDefs].sort((a, b) => RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity))
 
-  const handleMint = (earnedCardId: string) => {
-    const result = cards.requestMint(earnedCardId, 'polygon')
+  const handleMint = async (earnedCardId: string) => {
+    const result = await cards.requestMint(earnedCardId, 'polygon')
     ui.addFloatingText(result.message, window.innerWidth / 2, window.innerHeight / 2, result.success ? '#22d38a' : '#ef4444')
   }
 

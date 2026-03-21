@@ -1,0 +1,326 @@
+/* ============================================
+   ACTION BAR — Bottom-center floating game flow bar
+   ============================================ */
+
+.action-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  background: rgba(8, 12, 18, 0.88);
+  border: 1px solid rgba(34, 211, 138, 0.14);
+  border-radius: 10px;
+  padding: 4px 6px;
+  backdrop-filter: blur(16px);
+  z-index: 60;
+  animation: actionbar-slide-up 350ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow:
+    0 -2px 24px rgba(0, 0, 0, 0.4),
+    0 0 1px rgba(34, 211, 138, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+@keyframes actionbar-slide-up {
+  from {
+    transform: translateX(-50%) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ---- Individual action button ---- */
+.action-bar__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  position: relative;
+  transition: all 180ms ease;
+  min-width: 62px;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.action-bar__btn:hover {
+  background: rgba(34, 211, 138, 0.07);
+  border-color: rgba(34, 211, 138, 0.12);
+}
+
+.action-bar__btn:hover .action-bar__icon {
+  transform: scale(1.15);
+}
+
+.action-bar__btn:active {
+  transform: scale(0.96);
+}
+
+/* Active state (panel is open) */
+.action-bar__btn--active {
+  background: rgba(34, 211, 138, 0.1);
+  border-color: rgba(34, 211, 138, 0.25);
+  box-shadow: 0 0 12px rgba(34, 211, 138, 0.12);
+}
+
+.action-bar__btn--active .action-bar__label {
+  color: var(--accent-primary);
+}
+
+.action-bar__btn--active .action-bar__icon {
+  filter: drop-shadow(0 0 4px rgba(34, 211, 138, 0.4));
+}
+
+/* Ready/available glow pulse */
+.action-bar__btn--ready::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  box-shadow: 0 0 6px rgba(34, 211, 138, 0.6);
+  animation: ready-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ready-pulse {
+  0%, 100% { opacity: 0.4; transform: translateX(-50%) scale(0.8); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.2); }
+}
+
+/* ---- Icon ---- */
+.action-bar__icon {
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+/* ---- Label ---- */
+.action-bar__label {
+  font-family: var(--font-display);
+  font-size: 7.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: color 180ms ease;
+  white-space: nowrap;
+}
+
+/* ---- Micro-status indicator ---- */
+.action-bar__status {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  line-height: 1;
+  margin-top: -1px;
+}
+
+.action-bar__status--good {
+  color: var(--accent-primary);
+  opacity: 1;
+}
+
+.action-bar__status--warn {
+  color: var(--accent-warning);
+  opacity: 1;
+}
+
+.action-bar__status--danger {
+  color: var(--accent-danger);
+  opacity: 1;
+}
+
+/* ---- Shortcut key hint ---- */
+.action-bar__key {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.25);
+  pointer-events: none;
+}
+
+/* ---- Separator between flow phases ---- */
+.action-bar__sep {
+  width: 1px;
+  background: rgba(34, 211, 138, 0.1);
+  margin: 4px 2px;
+  align-self: stretch;
+}
+
+/* ---- Arrow connector between steps ---- */
+.action-bar__flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(34, 211, 138, 0.18);
+  font-size: 10px;
+  padding: 0 1px;
+  user-select: none;
+}
+
+/* ============================================
+   SLOT WRAPPER (anchor for dropup menu)
+   ============================================ */
+.action-bar__slot {
+  position: relative;
+}
+
+/* ============================================
+   DROPUP MENU
+   ============================================ */
+.action-bar__menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 200px;
+  max-width: 260px;
+  background: rgba(8, 12, 18, 0.94);
+  border: 1px solid rgba(34, 211, 138, 0.18);
+  border-radius: 8px;
+  padding: 6px;
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 -4px 24px rgba(0, 0, 0, 0.5),
+    0 0 1px rgba(34, 211, 138, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  animation: menu-pop-up 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Arrow pointer */
+.action-bar__menu::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: rgba(8, 12, 18, 0.94);
+  border-right: 1px solid rgba(34, 211, 138, 0.18);
+  border-bottom: 1px solid rgba(34, 211, 138, 0.18);
+}
+
+@keyframes menu-pop-up {
+  from {
+    transform: translateX(-50%) translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ---- Menu title ---- */
+.action-bar__menu-title {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.12em;
+  padding: 4px 8px 4px;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(34, 211, 138, 0.08);
+  margin-bottom: 2px;
+}
+
+/* ---- Menu button ---- */
+.action-bar__menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 11px;
+  color: var(--text-secondary);
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.action-bar__menu-btn:hover:not(:disabled) {
+  background: rgba(34, 211, 138, 0.08);
+  border-color: rgba(34, 211, 138, 0.12);
+  color: var(--text-primary);
+}
+
+.action-bar__menu-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.action-bar__menu-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Accent variant (Collect All) */
+.action-bar__menu-btn--accent {
+  background: rgba(34, 211, 138, 0.06);
+  border-color: rgba(34, 211, 138, 0.12);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.action-bar__menu-btn--accent:hover:not(:disabled) {
+  background: rgba(34, 211, 138, 0.14);
+  border-color: rgba(34, 211, 138, 0.25);
+}
+
+/* ---- Menu cost / right-side info ---- */
+.action-bar__menu-cost {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.action-bar__menu-cost--full {
+  color: var(--accent-primary);
+}
+
+/* ---- Menu separator ---- */
+.action-bar__menu-sep {
+  height: 1px;
+  background: rgba(34, 211, 138, 0.08);
+  margin: 2px 4px;
+}
+
+/* ---- Menu hint text ---- */
+.action-bar__menu-hint {
+  font-family: var(--font-display);
+  font-size: 8px;
+  color: var(--text-muted);
+  padding: 3px 8px;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+

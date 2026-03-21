@@ -9,10 +9,12 @@ export default function ProfileSpecBars() {
   const eco = ss.getEconomicTier()
   const pol = ss.getPoliticianTier()
   const mer = ss.getMercenaryTier()
+  const inf = ss.getInfluencerTier()
   const milB = ss.getMilitaryBonuses()
   const ecoB = ss.getEconomicBonuses()
   const polB = ss.getPoliticianBonuses()
   const merB = ss.getMercenaryBonuses()
+  const infB = ss.getInfluencerBonuses()
 
   const bars = [
     { key: 'mil', icon: '⚔️', name: 'Military', tier: mil, color: '#f87171', trackClass: 'ptab-spec-card__mil', border: 'rgba(239,68,68,0.2)',
@@ -23,6 +25,8 @@ export default function ProfileSpecBars() {
       bonus: polB.countryDamage > 0 ? `Country: +${polB.countryDamage}% DMG/Prod/Prosp/Ind${polB.countryDodge > 0 ? '/Dodge' : ''} (as Pres.)` : '' },
     { key: 'mer', icon: '🪖', name: 'Mercenary', tier: mer, color: '#22d38a', trackClass: 'ptab-spec-card__eco', border: 'rgba(34,211,138,0.2)',
       bonus: merB.abroadDamagePercent > 0 ? `+${merB.abroadDamagePercent}% Abroad DMG${merB.lootChancePercent > 0 ? `, +${merB.lootChancePercent}% Loot` : ''}` : '' },
+    { key: 'inf', icon: '🌟', name: 'Influencer', tier: inf, color: '#eab308', trackClass: 'ptab-spec-card__eco', border: 'rgba(234,179,8,0.2)',
+      bonus: infB.extraFriendSlots > 0 ? `+${infB.extraFriendSlots} Friends${infB.giftingTaxReduction > 0 ? `, -${infB.giftingTaxReduction}% Gift Tax` : ''}${infB.bloodPactXPBonus > 0 ? `, +${infB.bloodPactXPBonus}% Pact XP` : ''}` : '' },
   ]
 
   return (

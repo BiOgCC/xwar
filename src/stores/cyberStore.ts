@@ -4,6 +4,7 @@ import { useWorldStore } from './worldStore'
 import { useCompanyStore } from './companyStore'
 import { useBattleStore } from './battleStore'
 import { useGovernmentStore } from './governmentStore'
+import { useMissionStore } from './missionStore'
 import {
   type ContestState,
   CONTEST_DURATION_MS,
@@ -282,6 +283,7 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       campaigns: { ...state.campaigns, [campaignId]: campaign },
     })
 
+    useMissionStore.getState().trackCyber()
     return { success: true, message: `Operation ${opDef.name} entering deployment phase.`, campaignId }
   },
 
@@ -292,7 +294,7 @@ export const useCyberStore = create<CyberState>((set, get) => ({
 
     const p = usePlayerStore.getState()
     if (type === 'work') {
-      if (p.work < amount) return false
+      if (Math.floor(p.work) < amount) return false
       p.consumeBar('work', amount)
     } else {
       if (p.stamina < amount) return false

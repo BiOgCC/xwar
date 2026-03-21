@@ -345,6 +345,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     makeCountry('Mexico', 'MX', 'Cartel Coalition', null, 18000, 6, 40, 'medium', '#fd9644', ['Iron']),
     makeCountry('Cuba', 'CU', 'Caribbean Command', 'Eastern Bloc', 6000, 2, 35, 'small', '#b71540', ['Saltpeter']),
     makeCountry('Bahamas', 'BS', 'Island Syndicate', null, 2000, 1, 15, 'small', '#0abde3', []),
+    makeCountry('Oceania', 'OC', 'OC', null, 0, 3, 0, 'tiny', '#0077be', []),
     // ── Europe ──
     makeCountry('France', 'FR', 'French Republic', 'NATO', 16000, 4, 70, 'large', '#2980b9', ['Titanium']),
     makeCountry('Spain', 'ES', 'Iberian Guard', 'NATO', 12000, 4, 52, 'medium', '#d4ac0d', ['Iron']),
@@ -582,6 +583,8 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   })),
 
   canAttack: (attackerIso, defenderIso) => {
+    if (defenderIso === 'OC' || attackerIso === 'OC') return true // Ocean blocks are always attackable
+
     const adjacent = ADJACENCY_MAP[attackerIso] || []
     if (!adjacent.includes(defenderIso)) return false
     
@@ -595,6 +598,8 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   },
 
   declareWar: (attackerIso, defenderIso) => set((state) => {
+    if (defenderIso === 'OC' || attackerIso === 'OC') return state // No formal war needed for oceans
+
     const existing = state.wars.find(w => 
       w.status === 'active' && 
       ((w.attacker === attackerIso && w.defender === defenderIso) || 

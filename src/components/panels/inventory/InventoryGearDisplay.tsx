@@ -29,7 +29,7 @@ export default function InventoryGearDisplay({ onPickSlot, onPickAmmo }: Props) 
     const tc = TIER_COLORS[item.tier as keyof typeof TIER_COLORS]||'#94a3b8'
     const tl = TIER_LABELS[item.tier as keyof typeof TIER_LABELS]||item.tier.toUpperCase()
     const img = getItemImagePath(item.tier,item.slot,item.category,item.weaponSubtype)
-    const dur = item.durability??100, dc = dur<30?'#ef4444':dur<60?'#f59e0b':'#22d38a'
+    const dur = Number(item.durability??100), dc = dur<30?'#ef4444':dur<60?'#f59e0b':'#22d38a'
     const se:{label:string;val:string;color:string}[] = []
     if(item.stats.damage) se.push({label:'DMG',val:String(item.stats.damage),color:'#f87171'})
     if(item.stats.critRate) se.push({label:'CRIT',val:`${item.stats.critRate}%`,color:'#fb923c'})
@@ -50,12 +50,12 @@ export default function InventoryGearDisplay({ onPickSlot, onPickAmmo }: Props) 
   const best = () => {
     const allItems = useInventoryStore.getState().items.filter(i => i.location === 'inventory')
     ;(['helmet','chest','legs','gloves','boots'] as const).forEach(slot => {
-      const c = allItems.filter(i=>i.slot===slot&&i.durability>0)
+      const c = allItems.filter(i=>i.slot===slot&&Number(i.durability)>0)
       if(!c.length) return
       const b = c.reduce((a,b)=>{const aT=(a.stats.damage||0)+(a.stats.armor||0)+(a.stats.critRate||0)+(a.stats.critDamage||0)+(a.stats.dodge||0)+(a.stats.precision||0);const bT=(b.stats.damage||0)+(b.stats.armor||0)+(b.stats.critRate||0)+(b.stats.critDamage||0)+(b.stats.dodge||0)+(b.stats.precision||0);return bT>aT?b:a})
       useInventoryStore.getState().equipItem(b.id)
     })
-    const w = allItems.filter(i=>i.location === 'inventory' && i.slot==='weapon'&&i.durability>0)
+    const w = allItems.filter(i=>i.location === 'inventory' && i.slot==='weapon'&&Number(i.durability)>0)
     if(w.length) { const bw=w.reduce((a,b)=>{const aT=(a.stats.damage||0)+(a.stats.critRate||0)+(a.stats.critDamage||0);const bT=(b.stats.damage||0)+(b.stats.critRate||0)+(b.stats.critDamage||0);return bT>aT?b:a}); useInventoryStore.getState().equipItem(bw.id) }
     const p=usePlayerStore.getState(); if(p.redBullets>0) p.equipAmmo('red'); else if(p.purpleBullets>0) p.equipAmmo('purple'); else if(p.blueBullets>0) p.equipAmmo('blue'); else if(p.greenBullets>0) p.equipAmmo('green')
   }

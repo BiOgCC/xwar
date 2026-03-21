@@ -140,6 +140,9 @@ export interface PlayerState {
   incrementItemsDestroyed: (amount?: number) => void
   /** Check shame cards and award any that are newly earned */
   checkShameCards: () => void
+
+  /** Fetch the live player state from backend */
+  fetchPlayer: () => Promise<void>
 }
 
 function xpForLevel(level: number): number {
@@ -224,7 +227,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (!rateLimiter.check('consumeFood')) return false
     let consumed = false
     set((s) => {
-      if (s[type] <= 0 || s.hunger <= 0) return {}
+      if (s[type] <= 0 || Math.floor(s.hunger) <= 0) return {}
       
       const staminaGain = type === 'wagyu' ? 30 : type === 'sushi' ? 20 : 10
       consumed = true
@@ -232,7 +235,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       return {
         [type]: s[type] - 1,
         hunger: Math.max(0, s.hunger - 1),
-        stamina: Math.min(s.maxStamina, s.stamina + staminaGain)
+        stamina: s.stamina + staminaGain
       }
     })
     return consumed
@@ -457,6 +460,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   doWork: () => {
     set((s) => {
+      if (Math.floor(s.work) < 10) return {}
       const fill = 20
       return {
         work: Math.max(0, s.work - 10),
@@ -468,6 +472,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   doEntrepreneurship: () => {
     set((s) => {
+      if (Math.floor(s.entrepreneurship) < 10) return {}
       const fill = 25
       return {
         entrepreneurship: Math.max(0, s.entrepreneurship - 10),
@@ -633,5 +638,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       casinoSpins: s.casinoSpins,
       itemsDestroyed: s.itemsDestroyed,
     })
+  },
+
+  fetchPlayer: async () => {
+    try {
+      const { api } = await import('../api/client')
+      const res = await api.get<Partial<PlayerState>>('/player')
+      if (res && res.name) {
+        set(res)
+      }
+    } catch (err) {
+      console.error('Failed to fetch player state:', err)
+    }
   },
 }))

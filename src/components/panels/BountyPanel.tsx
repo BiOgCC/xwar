@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
-import { useBountyStore, getAllKnownPlayers } from '../../stores/bountyStore'
+import { useBountyStore } from '../../stores/bountyStore'
+import { api } from '../../api/client'
 import '../../styles/bounty.css'
 
 export default function BountyPanel() {
@@ -19,8 +20,19 @@ export default function BountyPanel() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [hunterViewId, setHunterViewId] = useState<string | null>(null)
 
-  // Search: filter known players by query
-  const allPlayers = useMemo(() => getAllKnownPlayers(), [])
+  const [allPlayers, setAllPlayers] = useState<{name: string, country: string}[]>([])
+
+  useEffect(() => {
+    bounty.fetchActiveBounties()
+    api.get('/player/all')
+      .then((res: any) => {
+        if (res.success && res.players) {
+          setAllPlayers(res.players)
+        }
+      })
+      .catch(err => console.error('Failed to load player directory:', err))
+  }, [])
+
   const filteredPlayers = useMemo(() => {
     if (!searchQuery.trim()) return allPlayers
     const q = searchQuery.toLowerCase()
@@ -34,11 +46,11 @@ export default function BountyPanel() {
     setShowDropdown(false)
   }
 
-  const handlePlace = () => {
+  const handlePlace = async () => {
     if (!targetName.trim()) {
       setMessage('Select a target'); setMessageType('error'); return
     }
-    const result = bounty.placeBounty(targetName, targetCountry, amount, reason)
+    const result = await bounty.placeBounty(targetName, targetCountry, amount, reason)
     setMessage(result.message)
     setMessageType(result.success ? 'success' : 'error')
     if (result.success) {
@@ -47,19 +59,19 @@ export default function BountyPanel() {
     }
   }
 
-  const handleClaim = (bountyId: string) => {
-    const result = bounty.claimBounty(bountyId, player.name)
+  const handleClaim = async (bountyId: string) => {
+    const result = await bounty.claimBounty(bountyId, player.name)
     setMessage(result.message)
     setMessageType(result.success ? 'success' : 'error')
   }
 
-  const handleSubscribe = (bountyId: string) => {
+  const handleSubscribe = async (bountyId: string) => {
     const b = bounty.bounties.find(x => x.id === bountyId)
     if (!b) return
     const isHunting = b.hunters.includes(player.name)
     const result = isHunting
-      ? bounty.unsubscribeFromBounty(bountyId)
-      : bounty.subscribeToBounty(bountyId)
+      ? await bounty.unsubscribeFromBounty(bountyId)
+      : await bounty.subscribeToBounty(bountyId)
     setMessage(result.message)
     setMessageType(result.success ? 'success' : 'error')
   }

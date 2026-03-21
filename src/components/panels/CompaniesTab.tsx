@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useSkillsStore } from '../../stores/skillsStore'
@@ -25,6 +25,10 @@ export default function CompaniesTab() {
   const [postJobPayPerPP, setPostJobPayPerPP] = useState('2.0')
   const [moveCompanyId, setMoveCompanyId] = useState<string | null>(null)
 
+  useEffect(() => {
+    companyStore.fetchAll()
+  }, [])
+
   const flash = (msg: string, duration = 3000) => {
     setToast(msg)
     setTimeout(() => setToast(null), duration)
@@ -35,24 +39,24 @@ export default function CompaniesTab() {
     uiStore.addFloatingText(text, rect.left + rect.width / 2, rect.top, color)
   }
 
-  const handleEnterprise = (e: React.MouseEvent, companyId: string) => {
-    const result = companyStore.doEnterprise(companyId)
+  const handleEnterprise = async (e: React.MouseEvent, companyId: string) => {
+    const result = await companyStore.doEnterprise(companyId)
     if (result) {
       if (result.type === 'error') flash(result.message)
       else spawnFloating(e, result.message, '#a855f7')
     }
   }
 
-  const handleProduce = (e: React.MouseEvent, companyId: string) => {
-    const result = companyStore.produceCompany(companyId)
+  const handleProduce = async (e: React.MouseEvent, companyId: string) => {
+    const result = await companyStore.produceCompany(companyId)
     if (result) {
       if (result.type === 'error') flash(result.message)
       else spawnFloating(e, result.message, '#22d38a')
     }
   }
 
-  const handleProspect = (companyId: string) => {
-    const deposit = companyStore.prospect(companyId)
+  const handleProspect = async (companyId: string) => {
+    const deposit = await companyStore.prospect(companyId)
     if (deposit) {
       flash(`🎉 DEPOSIT FOUND! ${deposit.resource} in ${deposit.country}! +${deposit.bitcoinReward} ₿ jackpot!`, 5000)
     } else if (player.bitcoin < 1) {
@@ -62,8 +66,8 @@ export default function CompaniesTab() {
     }
   }
 
-  const handleBuild = (type: CompanyType) => {
-    if (companyStore.buildCompany(type)) {
+  const handleBuild = async (type: CompanyType) => {
+    if (await companyStore.buildCompany(type)) {
       flash(`✅ Built ${COMPANY_TEMPLATES[type].label}!`)
       setShowBuild(false)
     } else {
@@ -71,8 +75,8 @@ export default function CompaniesTab() {
     }
   }
 
-  const handleUpgrade = (companyId: string) => {
-    if (companyStore.upgradeCompany(companyId)) {
+  const handleUpgrade = async (companyId: string) => {
+    if (await companyStore.upgradeCompany(companyId)) {
       flash('⬆️ Upgraded!')
     } else {
       flash('❌ Not enough resources')
@@ -85,8 +89,8 @@ export default function CompaniesTab() {
     setShowJobs(false)
   }
 
-  const handleWork = (e: React.MouseEvent) => {
-    const result = companyStore.doWork()
+  const handleWork = async (e: React.MouseEvent) => {
+    const result = await companyStore.doWork()
     if (result) {
       if (result.type === 'error') flash(result.message)
       else spawnFloating(e, result.message, '#3b82f6')
@@ -182,7 +186,7 @@ export default function CompaniesTab() {
                   <button
                     className="ctab-job-card__work-btn"
                     onClick={handleWork}
-                    disabled={player.work <= 0}
+                    disabled={Math.floor(player.work) < 10}
                   >
                     🔨 Work Now
                   </button>
@@ -212,8 +216,8 @@ export default function CompaniesTab() {
               <button
                 className="ctab-build-btn"
                 style={{ background: 'rgba(34,211,138,0.12)', color: '#22d38a', border: '1px solid rgba(34,211,138,0.3)' }}
-                onClick={() => {
-                  const result = companyStore.collectAll()
+                onClick={async () => {
+                  const result = await companyStore.collectAll()
                   if (result.collected > 0) {
                     flash(`📦 Collected from ${result.collected} companies!`)
                   } else {
@@ -314,7 +318,7 @@ export default function CompaniesTab() {
                         <button
                           className="ctab-action-btn ctab-action-btn--enterprise"
                           onClick={e => handleEnterprise(e, company.id)}
-                          disabled={player.entrepreneurship <= 0 || isFull}
+                          disabled={Math.floor(player.entrepreneurship) < 10 || isFull}
                           title="Spend Entrepreneurship to fill production bar"
                         >
                           💼 Enterprise
@@ -354,9 +358,9 @@ export default function CompaniesTab() {
                           />
                           <button
                             className="ctab-footer-btn ctab-footer-btn--confirm"
-                            onClick={() => {
+                            onClick={async () => {
                               const val = parseFloat(postJobPayPerPP)
-                              if (val > 0 && companyStore.postJob(company.id, val)) {
+                              if (val > 0 && await companyStore.postJob(company.id, val)) {
                                 flash(`📋 Job posted at $${val}/PP`)
                               }
                               setPostJobCompanyId(null)
@@ -379,15 +383,15 @@ export default function CompaniesTab() {
                           {hasActiveJob && (
                             <button
                               className="ctab-footer-btn ctab-footer-btn--remove"
-                              onClick={() => { companyStore.removeJob(company.id); flash('Job removed') }}
+                              onClick={async () => { await companyStore.removeJob(company.id); flash('Job removed') }}
                             >🗑️</button>
                           )}
                           {moveCompanyId === company.id ? (
                             <select
                               className="ctab-move-select"
                               value={company.location}
-                              onChange={e => {
-                                if (companyStore.moveCompany(company.id, e.target.value)) {
+                              onChange={async e => {
+                                if (await companyStore.moveCompany(company.id, e.target.value)) {
                                   flash(`🚚 Moved to ${e.target.value}`)
                                 } else {
                                   flash('❌ Need $500 to move')
@@ -491,7 +495,7 @@ export default function CompaniesTab() {
                     <span style={{ color: '#64748b', fontSize: '8px' }}>Tax: 10% split</span>
                   </div>
                   {isActiveJob ? (
-                    <button className="ctab-job-card__work-btn ctab-job-card__work-btn--active" onClick={handleWork} disabled={player.work <= 0}>
+                    <button className="ctab-job-card__work-btn ctab-job-card__work-btn--active" onClick={handleWork} disabled={Math.floor(player.work) < 10}>
                       🔨 Work Now
                     </button>
                   ) : (

@@ -40,8 +40,8 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
   const [hitSide, setHitSide] = useState<'atk' | 'def' | null>(null)
 
   // Determine dominant division type for tracer variation
-  const getDominantType = (divIds: string[]): 'infantry' | 'tank' | 'jet' | 'warship' => {
-    const counts = { infantry: 0, tank: 0, jet: 0, warship: 0 }
+  const getDominantType = (divIds: string[]): 'infantry' | 'tank' | 'jet' | 'warship' | 'submarine' => {
+    const counts = { infantry: 0, tank: 0, jet: 0, warship: 0, submarine: 0 }
     divIds.forEach(id => {
       const d = armyStore.divisions[id]
       if (!d) return
@@ -49,8 +49,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
       else if (['jeep', 'tank'].includes(d.type)) counts.tank++
       else if (d.type === 'jet') counts.jet++
       else if (d.type === 'warship') counts.warship++
+      else if (d.type === 'submarine') counts.submarine++
     })
-    return (Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'infantry') as 'infantry' | 'tank' | 'jet' | 'warship'
+    return (Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'infantry') as 'infantry' | 'tank' | 'jet' | 'warship' | 'submarine'
   }
 
   const iso = player.countryCode || 'US'

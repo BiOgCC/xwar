@@ -48,15 +48,8 @@ export function useGameLoop() {
       try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
     }))
 
-    // MILITARY (15s) — detection windows, contests
-    unsubs.push(gameClock.subscribe('military', () => {
-      try {
-        import('../stores/militaryStore').then(m => {
-          m.useMilitaryStore.getState().processDetectionWindows()
-          m.useMilitaryStore.getState().resolveContests()
-        })
-      } catch (e) { console.warn('[Military]:', e) }
-    }))
+    // MILITARY — no longer needs a tick (lobby-based quick battles now)
+
 
     // CYBER (15s) — cyber detection, stamina contests
     unsubs.push(gameClock.subscribe('cyber', () => {
@@ -98,6 +91,7 @@ export function useGameLoop() {
     // ECONOMY (30min) — company production, market prices, world timers
     unsubs.push(gameClock.subscribe('economy', () => {
       try { useCompanyStore.getState().processTick() } catch (e) { console.warn('[Economy] company:', e) }
+      try { useRegionStore.getState().processOceanIncome() } catch (e) { console.warn('[Economy] ocean:', e) }
       try {
         const mkt = useMarketStore.getState()
         mkt.tickPrices()
@@ -118,7 +112,6 @@ export function useGameLoop() {
       try {
         import('../stores/bountyStore').then(m => {
           m.useBountyStore.getState().rotateNPCBounties()
-          m.useBountyStore.getState().expireBounties()
         })
       } catch (e) { console.warn('[Economy] bounty rotation:', e) }
       // Daily checks: war cards, company maintenance, fund snapshot

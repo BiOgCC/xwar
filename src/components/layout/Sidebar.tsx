@@ -10,7 +10,7 @@ const SIDEBAR_CIVILIAN = [
   { id: 'bounty' as const, icon: '🎯', label: 'BOUNTY' },
   { id: 'stocks' as const, icon: '📈', label: 'STOCKS' },
   { id: 'alliance' as const, icon: '🤝', label: 'ALLIANCE' },
-  { id: 'chat' as const, icon: '💬', label: 'CHAT' },
+  { id: 'social_club' as const, icon: '🏛️', label: 'SOCIAL CLUB' },
 ]
 
 const SIDEBAR_WAR = [
@@ -37,7 +37,10 @@ export default function Sidebar() {
             key={item.id}
             className={`hud-sidebar__item ${((item.id === 'companies' || item.id === 'inventory') ? activePanel === 'profile' : activePanel === item.id) ? 'hud-sidebar__item--active' : ''}`}
             onClick={() => {
-              if (item.id === 'inventory') {
+              if (item.id === 'profile') {
+                setProfileDefaultTab(null)
+                setActivePanel('profile')
+              } else if (item.id === 'inventory') {
                 setProfileDefaultTab('inventory')
                 setActivePanel('profile')
               } else if (item.id === 'companies') {

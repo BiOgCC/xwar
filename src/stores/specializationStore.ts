@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 // ── Types ───────────────────────────────────────────────────────────────────
-export type SpecCategory = 'military' | 'economic' | 'politician' | 'mercenary'
+export type SpecCategory = 'military' | 'economic' | 'politician' | 'mercenary' | 'influencer'
 
 export interface SpecTier {
   tier: number
@@ -22,6 +22,7 @@ const MIL_TIER_LABELS = ['Civilian', 'Initiate', 'Specialist', 'Veteran', 'Exper
 const ECO_TIER_LABELS = ['Civilian', 'Initiate', 'Specialist', 'Veteran', 'Expert', 'Tycoon']
 const POL_TIER_LABELS = ['Civilian', 'Initiate', 'Advocate',  'Senator',  'Minister', 'Statesman']
 const MER_TIER_LABELS = ['Civilian', 'Recruit',  'Operative', 'Enforcer', 'Agent',    'Mercenary']
+const INF_TIER_LABELS = ['Civilian', 'Supporter', 'Guide', 'Mentor', 'Ambassador', 'Influencer']
 
 // ── Per-action daily caps ──
 const ACTION_CAPS = {
@@ -43,6 +44,12 @@ const ACTION_CAPS = {
   abroadWin:   5,
   bounty:      1,   // hard cap
   abroadKill:  5,
+  // Influencer
+  wallPost:    5,
+  menteeProgress: 3,
+  articlePublish: 2,
+  referral:    1,   // hard cap
+  bloodPactLvl: 2,
 } as const
 
 function todayKey(): string {
@@ -60,6 +67,7 @@ export interface SpecializationState {
   economicXP: number
   politicianXP: number
   mercenaryXP: number
+  influencerXP: number
 
   // Daily tracking
   dailyDate: string
@@ -67,6 +75,7 @@ export interface SpecializationState {
   dailyEconomicPoints: number
   dailyPoliticianPoints: number
   dailyMercenaryPoints: number
+  dailyInfluencerPoints: number
   dailyDamageAccumulator: number
   dailyAbroadDamageAccumulator: number
   dailyCountryDamageAccumulator: number
@@ -86,6 +95,12 @@ export interface SpecializationState {
   dailyAbroadWinCount: number
   dailyBountyCount: number
   dailyAbroadKillCount: number
+  // Influencer daily counts
+  dailyWallPostCount: number
+  dailyMenteeProgressCount: number
+  dailyArticlePublishCount: number
+  dailyReferralCount: number
+  dailyBloodPactLvlCount: number
 
   // ── Military Actions ──
   recordDamage: (damage: number) => number
@@ -106,16 +121,24 @@ export interface SpecializationState {
   recordAbroadRoundWin: () => number
   recordBountyClaim: () => number
   recordAbroadKill: () => number
+  // ── Influencer Actions ──
+  recordWallPost: () => number
+  recordMenteeProgress: () => number
+  recordArticlePublish: () => number
+  recordReferral: () => number
+  recordBloodPactLevelUp: () => number
 
   // ── Getters ──
   getMilitaryTier: () => TierInfo
   getEconomicTier: () => TierInfo
   getPoliticianTier: () => TierInfo
   getMercenaryTier: () => TierInfo
+  getInfluencerTier: () => TierInfo
   getMilitaryBonuses: () => { damagePercent: number; critRatePercent: number }
   getEconomicBonuses: () => { extraCompanySlots: number; productionPercent: number }
   getPoliticianBonuses: () => { countryDamage: number; countryProduction: number; countryProspection: number; countryIndustrialist: number; countryDodge: number }
   getMercenaryBonuses: () => { abroadDamagePercent: number; lootChancePercent: number }
+  getInfluencerBonuses: () => { extraFriendSlots: number; giftingTaxReduction: number; extraMenteeSlots: number; bloodPactXPBonus: number }
 }
 
 type TierInfo = { tier: number; label: string; xp: number; nextXP: number; percent: number }
@@ -125,12 +148,13 @@ function ensureToday(state: SpecializationState): Partial<SpecializationState> {
   if (state.dailyDate !== today) {
     return {
       dailyDate: today,
-      dailyMilitaryPoints: 0, dailyEconomicPoints: 0, dailyPoliticianPoints: 0, dailyMercenaryPoints: 0,
+      dailyMilitaryPoints: 0, dailyEconomicPoints: 0, dailyPoliticianPoints: 0, dailyMercenaryPoints: 0, dailyInfluencerPoints: 0,
       dailyDamageAccumulator: 0, dailyAbroadDamageAccumulator: 0, dailyCountryDamageAccumulator: 0,
       dailyDamageCount: 0, dailyRoundWinCount: 0, dailyTrainCount: 0,
       dailyWorkCount: 0, dailyProduceCount: 0, dailyDonateCount: 0,
       dailyCountryDmgCount: 0, dailyPolDonateCount: 0, dailyElectionCount: 0, dailyHoldOfficeCount: 0,
       dailyAbroadDmgCount: 0, dailyAbroadWinCount: 0, dailyBountyCount: 0, dailyAbroadKillCount: 0,
+      dailyWallPostCount: 0, dailyMenteeProgressCount: 0, dailyArticlePublishCount: 0, dailyReferralCount: 0, dailyBloodPactLvlCount: 0,
     }
   }
   return {}
@@ -141,12 +165,14 @@ const POINTS_KEYS: Record<SpecCategory, keyof SpecializationState> = {
   economic: 'dailyEconomicPoints',
   politician: 'dailyPoliticianPoints',
   mercenary: 'dailyMercenaryPoints',
+  influencer: 'dailyInfluencerPoints',
 }
 const XP_KEYS: Record<SpecCategory, keyof SpecializationState> = {
   military: 'militaryXP',
   economic: 'economicXP',
   politician: 'politicianXP',
   mercenary: 'mercenaryXP',
+  influencer: 'influencerXP',
 }
 
 function addSpecXP(
@@ -220,16 +246,17 @@ function handleDamageAccum(
 
 // ═══════════════════════════════════════════════════════════════════════════
 export const useSpecializationStore = create<SpecializationState>((set, get) => ({
-  militaryXP: 0, economicXP: 0, politicianXP: 0, mercenaryXP: 0,
+  militaryXP: 0, economicXP: 0, politicianXP: 0, mercenaryXP: 0, influencerXP: 0,
 
   dailyDate: todayKey(),
-  dailyMilitaryPoints: 0, dailyEconomicPoints: 0, dailyPoliticianPoints: 0, dailyMercenaryPoints: 0,
+  dailyMilitaryPoints: 0, dailyEconomicPoints: 0, dailyPoliticianPoints: 0, dailyMercenaryPoints: 0, dailyInfluencerPoints: 0,
   dailyDamageAccumulator: 0, dailyAbroadDamageAccumulator: 0, dailyCountryDamageAccumulator: 0,
 
   dailyDamageCount: 0, dailyRoundWinCount: 0, dailyTrainCount: 0,
   dailyWorkCount: 0, dailyProduceCount: 0, dailyDonateCount: 0,
   dailyCountryDmgCount: 0, dailyPolDonateCount: 0, dailyElectionCount: 0, dailyHoldOfficeCount: 0,
   dailyAbroadDmgCount: 0, dailyAbroadWinCount: 0, dailyBountyCount: 0, dailyAbroadKillCount: 0,
+  dailyWallPostCount: 0, dailyMenteeProgressCount: 0, dailyArticlePublishCount: 0, dailyReferralCount: 0, dailyBloodPactLvlCount: 0,
 
   // ═══ MILITARY ═══
   recordDamage: (damage) => {
@@ -413,11 +440,69 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
     return gained
   },
 
+  // ═══ INFLUENCER ═══
+  recordWallPost: () => {
+    let gained = 0
+    set((s) => {
+      const reset = ensureToday(s); const m = { ...s, ...reset }
+      const c = m.dailyWallPostCount
+      const { updates, gained: g } = addSpecXP(m, 'influencer', 3, c, ACTION_CAPS.wallPost)
+      gained = g
+      return { ...updates, dailyWallPostCount: c + 1 }
+    })
+    return gained
+  },
+  recordMenteeProgress: () => {
+    let gained = 0
+    set((s) => {
+      const reset = ensureToday(s); const m = { ...s, ...reset }
+      const c = m.dailyMenteeProgressCount
+      const { updates, gained: g } = addSpecXP(m, 'influencer', 8, c, ACTION_CAPS.menteeProgress)
+      gained = g
+      return { ...updates, dailyMenteeProgressCount: c + 1 }
+    })
+    return gained
+  },
+  recordArticlePublish: () => {
+    let gained = 0
+    set((s) => {
+      const reset = ensureToday(s); const m = { ...s, ...reset }
+      const c = m.dailyArticlePublishCount
+      const { updates, gained: g } = addSpecXP(m, 'influencer', 5, c, ACTION_CAPS.articlePublish)
+      gained = g
+      return { ...updates, dailyArticlePublishCount: c + 1 }
+    })
+    return gained
+  },
+  recordReferral: () => {
+    let gained = 0
+    set((s) => {
+      const reset = ensureToday(s); const m = { ...s, ...reset }
+      if (m.dailyReferralCount >= ACTION_CAPS.referral) return reset
+      const { updates, gained: g } = addSpecXP(m, 'influencer', 15, 0, 999)
+      gained = g
+      return { ...updates, dailyReferralCount: m.dailyReferralCount + 1 }
+    })
+    return gained
+  },
+  recordBloodPactLevelUp: () => {
+    let gained = 0
+    set((s) => {
+      const reset = ensureToday(s); const m = { ...s, ...reset }
+      const c = m.dailyBloodPactLvlCount
+      const { updates, gained: g } = addSpecXP(m, 'influencer', 12, c, ACTION_CAPS.bloodPactLvl)
+      gained = g
+      return { ...updates, dailyBloodPactLvlCount: c + 1 }
+    })
+    return gained
+  },
+
   // ═══ GETTERS ═══
   getMilitaryTier:   () => getTierInfo(get().militaryXP,   MIL_TIER_LABELS),
   getEconomicTier:   () => getTierInfo(get().economicXP,   ECO_TIER_LABELS),
   getPoliticianTier: () => getTierInfo(get().politicianXP, POL_TIER_LABELS),
   getMercenaryTier:  () => getTierInfo(get().mercenaryXP,  MER_TIER_LABELS),
+  getInfluencerTier: () => getTierInfo(get().influencerXP, INF_TIER_LABELS),
 
   getMilitaryBonuses: () => {
     const t = getTierInfo(get().militaryXP, MIL_TIER_LABELS).tier
@@ -443,6 +528,16 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
     return {
       abroadDamagePercent: t * 3,
       lootChancePercent: t >= 5 ? 3 : t >= 3 ? 2 : 0,
+    }
+  },
+  getInfluencerBonuses: () => {
+    const t = getTierInfo(get().influencerXP, INF_TIER_LABELS).tier
+    // T1: +1 friend, T2: -5% gift tax, T3: +1 mentee, T4: -10% tax +5% pact XP, T5: +2 mentee -15% tax +10% pact XP
+    return {
+      extraFriendSlots: t >= 1 ? t : 0,
+      giftingTaxReduction: t >= 5 ? 15 : t >= 4 ? 10 : t >= 2 ? 5 : 0,
+      extraMenteeSlots: t >= 5 ? 3 : t >= 3 ? 2 : 1,
+      bloodPactXPBonus: t >= 5 ? 10 : t >= 4 ? 5 : 0,
     }
   },
 }))

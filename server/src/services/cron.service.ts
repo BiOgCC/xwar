@@ -14,6 +14,7 @@
  * All operations use batch SQL for O(1) scaling regardless of player count.
  */
 import cron from 'node-cron'
+import { logger } from '../utils/logger.js'
 import { runFastCombatPipeline } from './tick/fast-combat.pipeline.js'
 import { runMediumSimPipeline } from './tick/medium-sim.pipeline.js'
 import { runSlowEconomyPipeline } from './tick/slow-economy.pipeline.js'
@@ -24,7 +25,7 @@ import { runDailyJobsPipeline } from './tick/daily-jobs.pipeline.js'
  * Call this once at server startup.
  */
 export function initCronJobs() {
-  console.log('[CRON] Initializing tick pipelines...')
+  logger.info('[CRON] Initializing tick pipelines...')
 
   // ═══════════════════════════════════════════════
   //  FAST COMBAT — every 15 seconds
@@ -33,7 +34,7 @@ export function initCronJobs() {
     try {
       await runFastCombatPipeline()
     } catch (err) {
-      console.error('[CRON][FAST-COMBAT] Pipeline error:', err)
+      logger.error(err, '[CRON][FAST-COMBAT] Pipeline error:')
     }
   })
 
@@ -44,7 +45,7 @@ export function initCronJobs() {
     try {
       await runMediumSimPipeline()
     } catch (err) {
-      console.error('[CRON][MEDIUM-SIM] Pipeline error:', err)
+      logger.error(err, '[CRON][MEDIUM-SIM] Pipeline error:')
     }
   })
 
@@ -55,7 +56,7 @@ export function initCronJobs() {
     try {
       await runSlowEconomyPipeline()
     } catch (err) {
-      console.error('[CRON][SLOW-ECONOMY] Pipeline error:', err)
+      logger.error(err, '[CRON][SLOW-ECONOMY] Pipeline error:')
     }
   })
 
@@ -68,7 +69,7 @@ export function initCronJobs() {
     try {
       await runDailyJobsPipeline('full_refill')
     } catch (err) {
-      console.error('[CRON][DAILY] full_refill error:', err)
+      logger.error(err, '[CRON][DAILY] full_refill error:')
     }
   })
 
@@ -77,7 +78,7 @@ export function initCronJobs() {
     try {
       await runDailyJobsPipeline('auto_income')
     } catch (err) {
-      console.error('[CRON][DAILY] auto_income error:', err)
+      logger.error(err, '[CRON][DAILY] auto_income error:')
     }
   })
 
@@ -86,7 +87,7 @@ export function initCronJobs() {
     try {
       await runDailyJobsPipeline('maintenance')
     } catch (err) {
-      console.error('[CRON][DAILY] maintenance error:', err)
+      logger.error(err, '[CRON][DAILY] maintenance error:')
     }
   })
 
@@ -95,7 +96,7 @@ export function initCronJobs() {
     try {
       await runDailyJobsPipeline('fund_snapshot')
     } catch (err) {
-      console.error('[CRON][DAILY] fund_snapshot error:', err)
+      logger.error(err, '[CRON][DAILY] fund_snapshot error:')
     }
   })
 
@@ -104,18 +105,48 @@ export function initCronJobs() {
     try {
       await runDailyJobsPipeline('expire_bounties')
     } catch (err) {
-      console.error('[CRON][DAILY] expire_bounties error:', err)
+      logger.error(err, '[CRON][DAILY] expire_bounties error:')
     }
   })
 
-  console.log('[CRON] All pipelines initialized:')
-  console.log('  ⚔️  Fast Combat     — every 15s  (training, recovery)')
-  console.log('  📈 Medium Sim      — every 60s  (stocks, bonds)')
-  console.log('  🏭 Slow Economy    — every 30m  (bars, companies, market, salary)')
-  console.log('  📅 Daily Jobs:')
-  console.log('      • Full bar refill   — every 12h')
-  console.log('      • Country income    — every 8h')
-  console.log('      • Maintenance       — daily at 00:00 UTC')
-  console.log('      • Fund snapshot     — every 1h')
-  console.log('      • Bounty expiry     — every 30m')
+  // Election tally — every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+  cron.schedule('0 */6 * * *', async () => {
+    try {
+      await runDailyJobsPipeline('tally_elections')
+    } catch (err) {
+      logger.error(err, '[CRON][DAILY] tally_elections error:')
+    }
+  })
+
+  // Region ownership resolve — every 60 seconds
+  cron.schedule('* * * * *', async () => {
+    try {
+      await runDailyJobsPipeline('resolve_regions')
+    } catch (err) {
+      logger.error(err, '[CRON][DAILY] resolve_regions error:')
+    }
+  })
+
+  // Cyber effects restoration — every 30 minutes
+  cron.schedule('*/30 * * * *', async () => {
+    try {
+      await runDailyJobsPipeline('restore_cyber')
+    } catch (err) {
+      logger.error(err, '[CRON][DAILY] restore_cyber error:')
+    }
+  })
+
+  logger.info('[CRON] All pipelines initialized:')
+  logger.info('  ⚔️  Fast Combat     — every 15s  (training, recovery)')
+  logger.info('  📈 Medium Sim      — every 60s  (stocks, bonds)')
+  logger.info('  🏭 Slow Economy    — every 30m  (bars, companies, market, salary)')
+  logger.info('  📅 Daily Jobs:')
+  logger.info('      • Full bar refill   — every 12h')
+  logger.info('      • Country income    — every 8h')
+  logger.info('      • Maintenance       — daily at 00:00 UTC')
+  logger.info('      • Fund snapshot     — every 1h')
+  logger.info('      • Bounty expiry     — every 30m')
+  logger.info('      • Election tally    — every 6h')
+  logger.info('      • Region resolve    — every 60s')
+  logger.info('      • Cyber restore     — every 30m')
 }

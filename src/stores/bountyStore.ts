@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { api } from '../api/client'
 import { usePlayerStore } from './playerStore'
 import { useNewsStore } from './newsStore'
 import { rateLimiter } from '../engine/AntiExploit'
@@ -49,27 +50,19 @@ const NPC_TEMPLATES = [
 const BOUNTY_MIN = 10_000
 const BOUNTY_EXPIRE_MS = 24 * 60 * 60 * 1000 // 24 hours
 
-/** Returns known player names for bounty search.
- *  TODO: Backend will provide a real player list endpoint. */
-export function getAllKnownPlayers(): { name: string; country: string }[] {
-  const player = usePlayerStore.getState()
-  // Only returns the current player until backend provides a player list
-  if (player.name) {
-    return [{ name: player.name, country: player.countryCode || 'US' }]
-  }
-  return []
-}
+
 
 export interface BountyState {
   bounties: Bounty[]
   claimedHistory: Bounty[]
   npcTargets: NPCTarget[]
   lastNPCRotationAt: number
-  placeBounty: (targetPlayer: string, targetCountry: string, amount: number, reason: string) => { success: boolean; message: string }
-  claimBounty: (bountyId: string, claimedBy: string) => { success: boolean; message: string }
-  subscribeToBounty: (bountyId: string) => { success: boolean; message: string }
-  unsubscribeFromBounty: (bountyId: string) => { success: boolean; message: string }
-  expireBounties: () => void
+
+  fetchActiveBounties: () => Promise<void>
+  placeBounty: (targetPlayer: string, targetCountry: string, amount: number, reason: string) => Promise<{ success: boolean; message: string }>
+  claimBounty: (bountyId: string, claimedBy: string) => Promise<{ success: boolean; message: string }>
+  subscribeToBounty: (bountyId: string) => Promise<{ success: boolean; message: string }>
+  unsubscribeFromBounty: (bountyId: string) => Promise<{ success: boolean; message: string }>
   getActiveBounties: () => Bounty[]
   rotateNPCBounties: () => void
   attackNPC: (npcId: string, damage: number) => { success: boolean; message: string; moneyEarned: number }
@@ -81,115 +74,91 @@ export const useBountyStore = create<BountyState>((set, get) => ({
   npcTargets: [],
   lastNPCRotationAt: 0,  // Will trigger on first check
 
-  placeBounty: (targetPlayer, targetCountry, amount, reason) => {
-    const player = usePlayerStore.getState()
-
-    if (amount < BOUNTY_MIN) {
-      return { success: false, message: `Minimum bounty is $${BOUNTY_MIN.toLocaleString()}` }
+  fetchActiveBounties: async () => {
+    try {
+      const res: any = await api.get('/bounty/active')
+      if (res.success && res.bounties) {
+        set({ bounties: res.bounties })
+      }
+    } catch (err) {
+      console.error('Failed to fetch bounties:', err)
     }
-    if (player.money < amount) {
-      return { success: false, message: 'Insufficient funds' }
-    }
-    if (targetPlayer === player.name) {
-      return { success: false, message: "You can't bounty yourself" }
-    }
-
-    // Deduct money
-    player.spendMoney(amount)
-
-    const newBounty: Bounty = {
-      id: `bounty_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      targetPlayer,
-      targetCountry,
-      placedBy: player.name,
-      amount,
-      reason: reason || 'Wanted dead or alive',
-      createdAt: Date.now(),
-      expiresAt: Date.now() + BOUNTY_EXPIRE_MS,
-      claimed: false,
-      hunters: [],
-    }
-
-    set(s => ({ bounties: [newBounty, ...s.bounties] }))
-
-    // Push to news ticker
-    useNewsStore.getState().pushEvent('bounty',
-      `${player.name} placed a $${amount.toLocaleString()} bounty on ${targetPlayer}`
-    )
-
-    return { success: true, message: `Bounty placed on ${targetPlayer}!` }
   },
 
-  claimBounty: (bountyId, claimedBy) => {
-    const state = get()
-    const bounty = state.bounties.find(b => b.id === bountyId && !b.claimed)
-
-    if (!bounty) {
-      return { success: false, message: 'Bounty not found or already claimed' }
-    }
-
-    // ── Fix 2: Verification ──
-    if (bounty.placedBy === claimedBy) {
-      return { success: false, message: "Can't claim your own bounty" }
-    }
-    if (!bounty.hunters.includes(claimedBy)) {
-      return { success: false, message: 'You must be hunting this target to claim the bounty' }
-    }
-
-    // Pay the bounty reward
+  placeBounty: async (targetPlayer, targetCountry, amount, reason) => {
     const player = usePlayerStore.getState()
-    player.earnMoney(bounty.amount)
 
-    const claimedBounty: Bounty = {
-      ...bounty,
-      claimed: true,
-      claimedBy,
-      claimedAt: Date.now(),
+    if (amount < BOUNTY_MIN) return { success: false, message: `Minimum bounty is $${BOUNTY_MIN.toLocaleString()}` }
+    if (player.money < amount) return { success: false, message: 'Insufficient funds' }
+    if (targetPlayer === player.name) return { success: false, message: "You can't bounty yourself" }
+
+    try {
+      const res: any = await api.post('/bounty/place', { targetName: targetPlayer, reward: amount, reason })
+      
+      if (!res.success) return { success: false, message: res.error || 'Failed to place bounty' }
+
+      // Deduct locally and refresh to see newly placed bounty
+      player.spendMoney(amount)
+      get().fetchActiveBounties()
+      
+      return { success: true, message: `Bounty placed on ${targetPlayer}!` }
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Error placing bounty' }
     }
-
-    set(s => ({
-      bounties: s.bounties.filter(b => b.id !== bountyId),
-      claimedHistory: [claimedBounty, ...s.claimedHistory].slice(0, 20),
-    }))
-
-    // Push to news ticker
-    useNewsStore.getState().pushEvent('bounty',
-      `${claimedBy} collected $${bounty.amount.toLocaleString()} bounty on ${bounty.targetPlayer}!`
-    )
-
-    return { success: true, message: `Bounty claimed! $${bounty.amount.toLocaleString()} collected.` }
   },
 
-  subscribeToBounty: (bountyId) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const bounty = state.bounties.find(b => b.id === bountyId && !b.claimed)
-    if (!bounty) return { success: false, message: 'Bounty not found' }
-    if (bounty.targetPlayer === player.name) return { success: false, message: "Can't hunt yourself" }
-    if (bounty.hunters.includes(player.name)) return { success: false, message: 'Already hunting this target' }
-    set(s => ({
-      bounties: s.bounties.map(b =>
-        b.id === bountyId ? { ...b, hunters: [...b.hunters, player.name] } : b
-      ),
-    }))
-    return { success: true, message: `You are now hunting ${bounty.targetPlayer}!` }
+  claimBounty: async (bountyId, claimedBy) => {
+    try {
+      const res: any = await api.post('/bounty/claim', { bountyId })
+      if (!res.success) return { success: false, message: res.error || 'Failed to claim' }
+
+      // Success
+      const player = usePlayerStore.getState()
+      player.earnMoney(res.reward)
+
+      // Move into claimed history locally
+      const state = get()
+      const bounty = state.bounties.find(b => b.id === bountyId)
+      if (bounty) {
+        const claimedBounty: Bounty = { ...bounty, claimed: true, claimedBy, claimedAt: Date.now() }
+        set(s => ({
+          bounties: s.bounties.filter(b => b.id !== bountyId),
+          claimedHistory: [claimedBounty, ...s.claimedHistory].slice(0, 20),
+        }))
+        // Push to news ticker
+        useNewsStore.getState().pushEvent('bounty', `${claimedBy} collected $${res.reward.toLocaleString()} bounty on ${bounty.targetPlayer}!`)
+      }
+
+      return { success: true, message: res.message }
+    } catch (e: any) { return { success: false, message: e.message || 'Error claiming bounty' } }
   },
 
-  unsubscribeFromBounty: (bountyId) => {
-    const player = usePlayerStore.getState()
-    set(s => ({
-      bounties: s.bounties.map(b =>
-        b.id === bountyId ? { ...b, hunters: b.hunters.filter(h => h !== player.name) } : b
-      ),
-    }))
-    return { success: true, message: 'No longer hunting this target' }
+  subscribeToBounty: async (bountyId) => {
+    try {
+      const res: any = await api.post(`/bounty/subscribe/${bountyId}`)
+      if (res.success) {
+        const player = usePlayerStore.getState()
+        set(s => ({
+          bounties: s.bounties.map(b => b.id === bountyId ? { ...b, hunters: [...b.hunters, player.name] } : b),
+        }))
+        return { success: true, message: res.message }
+      }
+      return { success: false, message: res.error || 'Failed to subscribe' }
+    } catch (e: any) { return { success: false, message: e.message } }
   },
 
-  expireBounties: () => {
-    const now = Date.now()
-    set(s => ({
-      bounties: s.bounties.filter(b => b.expiresAt > now),
-    }))
+  unsubscribeFromBounty: async (bountyId) => {
+    try {
+      const res: any = await api.post(`/bounty/unsubscribe/${bountyId}`)
+      if (res.success) {
+        const player = usePlayerStore.getState()
+        set(s => ({
+          bounties: s.bounties.map(b => b.id === bountyId ? { ...b, hunters: b.hunters.filter(h => h !== player.name) } : b),
+        }))
+        return { success: true, message: res.message }
+      }
+      return { success: false, message: res.error || 'Failed to unsubscribe' }
+    } catch (e: any) { return { success: false, message: e.message } }
   },
 
   getActiveBounties: () => {

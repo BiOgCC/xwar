@@ -3,7 +3,7 @@
 // Shared between frontend stores and backend
 // ══════════════════════════════════════════════
 
-export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike'
+export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike' | 'quick_battle'
 
 export interface CombatLogEntry {
   tick: number
@@ -69,6 +69,8 @@ export interface Battle {
   attackerId: string
   defenderId: string
   regionName: string
+  /** Region ID from regionRegistry (e.g. "US-WA"). Undefined for legacy battles. */
+  regionId?: string
   startedAt: number
   ticksElapsed: number
   status: 'active' | 'attacker_won' | 'defender_won'

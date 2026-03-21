@@ -9,97 +9,22 @@ import { useNewsStore } from '../stores/newsStore'
 import { useBountyStore } from '../stores/bountyStore'
 import { usePlayerStore } from '../stores/playerStore'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { register, login } from '../api/client'
 
 /**
  * Initialize mock/test data for development.
  * Call once on mount — seeds all subsystems that need representative data.
  */
 export function initMockData() {
+  const playerName = usePlayerStore.getState().name || 'Commander'
   const cyberState = useCyberStore.getState()
   const bs = useBattleStore.getState()
-  const playerName = usePlayerStore.getState().name || 'Commander'
 
   // ═══════════════════════════════════════════
   //  1. CYBER OPERATIONS (3)
   // ═══════════════════════════════════════════
-  import('../stores/militaryStore').then(mod => {
-    const ms = mod.useMilitaryStore.getState()
-
-    if (Object.keys(cyberState.campaigns).length === 0) {
-      const now = Date.now()
-      useCyberStore.setState(s => ({
-        campaigns: {
-          ...s.campaigns,
-          'mock_cyber_1': {
-            id: 'mock_cyber_1', initiatorPlayer: playerName, countryId: 'US',
-            invitedPlayers: ['Player2', 'Player3'], operationType: 'company_sabotage' as any,
-            targetCountry: 'RU', scrapCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
-            successChance: 70, detectionChance: 30, duration: 1800000,
-            status: 'deploying' as any, deploymentStartTime: now,
-            deploymentAcceleratedMs: 0, wasDetected: false,
-            createdAt: now, expiresAt: 0, contestState: null, contestResult: 'pending' as any,
-          },
-          'mock_cyber_2': {
-            id: 'mock_cyber_2', initiatorPlayer: playerName, countryId: 'US',
-            invitedPlayers: [], operationType: 'resource_intel' as any,
-            targetCountry: 'CN', scrapCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
-            successChance: 80, detectionChance: 30, duration: 1800000,
-            status: 'active' as any, deploymentStartTime: now - 600000,
-            deploymentAcceleratedMs: 0, wasDetected: false,
-            createdAt: now - 600000, expiresAt: now + 1200000, contestState: null, contestResult: 'pending' as any,
-          },
-          'mock_cyber_3': {
-            id: 'mock_cyber_3', initiatorPlayer: playerName, countryId: 'US',
-            invitedPlayers: ['HackerX'], operationType: 'power_grid_attack' as any,
-            targetCountry: 'DE', scrapCost: 0, materialXCost: 0, oilCost: 0, bitcoinCost: 0,
-            successChance: 60, detectionChance: 40, duration: 1800000,
-            status: 'deploying' as any, deploymentStartTime: now,
-            deploymentAcceleratedMs: 0, wasDetected: false,
-            createdAt: now, expiresAt: 0, contestState: null, contestResult: 'pending' as any,
-          },
-        },
-      }))
-    }
-
-    // ═══════════════════════════════════════════
-    //  2. MILITARY OPERATIONS (3)
-    // ═══════════════════════════════════════════
-    if (Object.keys(ms.campaigns).length === 0) {
-      const now = Date.now()
-      mod.useMilitaryStore.setState({
-        campaigns: {
-          'mock_mil_1': {
-            id: 'mock_mil_1', operationId: 'assault', initiator: playerName,
-            originCountry: 'US', targetCountry: 'CA', playersJoined: [playerName, 'General_Y'],
-            invitedPlayers: [], createdAt: now, launchedAt: now, battleId: null,
-            phase: 'detection_window' as any, detectionWindowStart: now,
-            wasDetected: false, contestState: null, result: 'pending',
-          },
-          'mock_mil_2': {
-            id: 'mock_mil_2', operationId: 'invasion', initiator: playerName,
-            originCountry: 'US', targetCountry: 'MX', playersJoined: [playerName],
-            invitedPlayers: [], createdAt: now, launchedAt: now, battleId: null,
-            phase: 'contest' as any, detectionWindowStart: now - 900000,
-            wasDetected: true,
-            contestState: {
-              contestType: 'damage' as any, threshold: 1000,
-              startedAt: now - 300000, expiresAt: now + 1800000,
-              attackerProgress: 320, defenderProgress: 180,
-              attackerContributors: [{ playerId: playerName, contributed: 320 }],
-              defenderContributors: [{ playerId: 'Defender_1', contributed: 180 }],
-            },
-            result: 'pending',
-          },
-          'mock_mil_3': {
-            id: 'mock_mil_3', operationId: 'sabotage', initiator: playerName,
-            originCountry: 'US', targetCountry: 'RU', playersJoined: [playerName, 'Ace_Pilot'],
-            invitedPlayers: ['SoldierZ'], createdAt: now, launchedAt: null, battleId: null,
-            phase: 'deploying' as any, detectionWindowStart: null,
-            wasDetected: false, contestState: null, result: 'pending',
-          },
-        },
-      })
-    }
+  import('../stores/militaryStore').then(_mod => {
+    // Military is now lobby-based (quick battles) — no need for mock campaigns
   })
 
   // ═══════════════════════════════════════════

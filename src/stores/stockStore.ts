@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { api } from '../api/client'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
 import { useNewsStore } from './newsStore'
@@ -101,8 +102,10 @@ export interface StockState {
   lastSessionBoundaryAt: number // timestamp of last 12h session boundary
   lastResetBandAt: number       // timestamp of last 24h price correction
 
-  buyShares: (code: string, qty: number) => { success: boolean; message: string }
-  sellShares: (code: string, qty: number) => { success: boolean; message: string }
+  fetchStocks: () => Promise<void>
+  fetchHoldings: () => Promise<void>
+  buyShares: (code: string, qty: number) => Promise<{ success: boolean; message: string }>
+  sellShares: (holdingId: string) => Promise<{ success: boolean; message: string }>
   openBond: (code: string, direction: BondDirection, betAmount: number, durationIdx: number) => { success: boolean; message: string }
   closeBond: (bondId: string) => { success: boolean; message: string }
   resolveExpiredBonds: () => void
@@ -126,120 +129,70 @@ export const useStockStore = create<StockState>((set, get) => {
     lastSessionBoundaryAt: Date.now(),
     lastResetBandAt: Date.now(),
 
-    buyShares: (code, qty) => {
+    // Fetch data from backend
+    fetchStocks: async () => {
+      try {
+        const res: any = await api.get('/stock/prices')
+        if (res.success && res.stocks) {
+          // Map DB models to frontend format
+          const mapped = res.stocks.map((s: any) => ({
+            ...s,
+            price: parseFloat(s.price),
+            prevPrice: parseFloat(s.prevPrice || s.price),
+            history: typeof s.history === 'string' ? JSON.parse(s.history) : (s.history || [{ price: parseFloat(s.price), timestamp: Date.now() }])
+          }))
+          set({ stocks: mapped })
+        }
+      } catch (e) { console.error('Error fetching stocks:', e) }
+    },
+    fetchHoldings: async () => {
+      try {
+        const res: any = await api.get('/stock/my-holdings')
+        if (res.success && res.holdings) {
+          const mapped = res.holdings.map((h: any) => ({
+            id: h.id,
+            code: h.countryCode,
+            shares: h.shares,
+            avgBuyPrice: parseFloat(h.buyPrice)
+          }))
+          set({ portfolio: mapped })
+        }
+      } catch (e) { console.error('Error fetching holdings:', e) }
+    },
+
+    buyShares: async (code, qty) => {
       if (!rateLimiter.check('stock.buy')) return { success: false, message: 'Too fast! Wait a moment.' }
       if (qty <= 0) return { success: false, message: 'Invalid quantity' }
 
-      const stock = get().stocks.find(s => s.code === code)
-      if (!stock) return { success: false, message: 'Stock not found' }
-
-      const totalCost = stock.price * qty
-
-      const player = usePlayerStore.getState()
-      if (player.money < totalCost) {
-        return { success: false, message: `Need $${totalCost.toLocaleString()}` }
-      }
-
-      // Player pays
-      player.spendMoney(totalCost)
-
-      // 1% to country treasury, 99% to market pool
-      const toCountry = Math.floor(totalCost * 0.01)
-      const toPool = totalCost - toCountry
-      useWorldStore.getState().addTreasuryTax(code, toCountry)
-
-      const tx: Transaction = {
-        id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        type: 'buy', code, qty, price: stock.price, total: totalCost,
-        timestamp: Date.now(), playerName: player.name,
-      }
-
-      set(s => {
-        const existing = s.portfolio.find(h => h.code === code)
-        let newPortfolio: Holding[]
-        if (existing) {
-          const totalShares = existing.shares + qty
-          const avgPrice = Math.floor((existing.avgBuyPrice * existing.shares + stock.price * qty) / totalShares)
-          newPortfolio = s.portfolio.map(h => h.code === code ? { ...h, shares: totalShares, avgBuyPrice: avgPrice } : h)
-        } else {
-          newPortfolio = [...s.portfolio, { code, shares: qty, avgBuyPrice: stock.price }]
+      try {
+        const res: any = await api.post('/stock/buy', { countryCode: code, shares: qty })
+        if (res.success) {
+          await get().fetchStocks()
+          await get().fetchHoldings()
+          usePlayerStore.setState({ money: res.newBalance })
+          return { success: true, message: res.message }
         }
-
-        return {
-          portfolio: newPortfolio,
-          stocks: s.stocks.map(st => st.code === code
-            ? { ...st, volume: st.volume + qty, netBuyVolume: st.netBuyVolume + qty }
-            : st),
-          totalInvested: s.totalInvested + totalCost,
-          marketPool: s.marketPool + toPool,
-          transactions: [tx, ...s.transactions].slice(0, 50),
-        }
-      })
-
-      if (qty >= 50) {
-        useNewsStore.getState().pushEvent('economy', `${player.name} bought ${qty} shares of ${stock.name} at $${stock.price}/share`)
+        return { success: false, message: 'Could not buy shares' }
+      } catch (e: any) {
+        return { success: false, message: e.message || 'Error buying shares' }
       }
-
-      return { success: true, message: `Bought ${qty} ${code} @ $${stock.price}` }
     },
 
-    sellShares: (code, qty) => {
+    sellShares: async (holdingId) => {
       if (!rateLimiter.check('stock.sell')) return { success: false, message: 'Too fast! Wait a moment.' }
-      if (qty <= 0) return { success: false, message: 'Invalid quantity' }
 
-      const holding = get().portfolio.find(h => h.code === code)
-      if (!holding || holding.shares < qty) return { success: false, message: 'Insufficient shares' }
-
-      const stock = get().stocks.find(s => s.code === code)
-      if (!stock) return { success: false, message: 'Stock not found' }
-
-      const totalRevenue = stock.price * qty
-
-      // Pool pays the sell (liquidity provider)
-      if (get().marketPool < totalRevenue) {
-        return { success: false, message: 'Market pool has insufficient liquidity. Try fewer shares.' }
-      }
-
-      // 1% sell tax to country treasury
-      const sellTax = Math.floor(totalRevenue * 0.01)
-      useWorldStore.getState().addTreasuryTax(code, sellTax)
-
-      // Pay player from pool (minus tax)
-      const netRevenue = totalRevenue - sellTax
-      usePlayerStore.getState().earnMoney(netRevenue)
-
-      const pnl = (stock.price - holding.avgBuyPrice) * qty
-
-      const tx: Transaction = {
-        id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        type: 'sell', code, qty, price: stock.price, total: totalRevenue,
-        pnl, timestamp: Date.now(), playerName: usePlayerStore.getState().name,
-      }
-
-      set(s => {
-        let newPortfolio: Holding[]
-        if (holding.shares === qty) {
-          newPortfolio = s.portfolio.filter(h => h.code !== code)
-        } else {
-          newPortfolio = s.portfolio.map(h => h.code === code ? { ...h, shares: h.shares - qty } : h)
+      try {
+        const res: any = await api.post('/stock/sell', { holdingId })
+        if (res.success) {
+          await get().fetchStocks()
+          await get().fetchHoldings()
+          usePlayerStore.setState(s => ({ money: s.money + res.proceeds }))
+          return { success: true, message: res.message }
         }
-
-        return {
-          portfolio: newPortfolio,
-          stocks: s.stocks.map(st => st.code === code
-            ? { ...st, volume: st.volume + qty, netBuyVolume: st.netBuyVolume - qty }
-            : st),
-          totalRealized: s.totalRealized + totalRevenue,
-          marketPool: s.marketPool - totalRevenue,
-          transactions: [tx, ...s.transactions].slice(0, 50),
-        }
-      })
-
-      if (qty >= 50) {
-        useNewsStore.getState().pushEvent('economy', `${usePlayerStore.getState().name} sold ${qty} shares of ${stock.name}`)
+        return { success: false, message: 'Could not sell shares' }
+      } catch (e: any) {
+        return { success: false, message: e.message || 'Error selling shares' }
       }
-
-      return { success: true, message: `Sold ${qty} ${code} @ $${stock.price} (P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString()})` }
     },
 
     // ── Binary Options Bonds ──

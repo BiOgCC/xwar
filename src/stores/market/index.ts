@@ -14,6 +14,8 @@ import { useInventoryStore } from '../inventoryStore'
 import { useArmyStore } from '../army'
 import { useWorldStore } from '../worldStore'
 import { useGovernmentStore } from '../governmentStore'
+import { useMissionStore } from '../missionStore'
+import { api } from '../../api/client'
 import {
   type MarketState, type ResourceId, type MarketOrder,
   RESOURCE_DEFS, STALE_CLEANUP_AGE_MS,
@@ -165,39 +167,109 @@ export const useMarketStore = create<MarketState>((set, get) => {
     orders: [],
     trades: [],
 
+    fetchListings: async () => {
+      try {
+        const res: any = await api.get('/market/listings')
+        if (res.success) set({ orders: res.listings })
+      } catch (err) { console.error('Market fetchListings err:', err) }
+    },
+
+    fetchMyOrders: async () => {
+      try {
+        const res: any = await api.get('/market/my-orders')
+        if (res.success) {
+          set(s => {
+            const openOrders = s.orders.filter(o => o.playerId !== usePlayerStore.getState().name)
+            return { orders: [...openOrders, ...res.orders] }
+          })
+        }
+      } catch (e) { console.error(e) }
+    },
+
     // Resource trading
-    placeResourceOrder: (type, resourceId, amount, pricePerUnit) =>
-      placeResourceOrder(set, get, type, resourceId, amount, pricePerUnit),
-    matchResourceOrders: (resourceId) =>
-      matchResourceOrders(set, get, resourceId),
+    placeResourceOrder: async (type, resourceId, amount, pricePerUnit) => {
+      if (type === 'sell') {
+        try {
+          const res: any = await api.post('/market/sell', { itemType: resourceId, amount, pricePerUnit })
+          useMissionStore.getState().trackMarket()
+          return { success: true, message: res.message }
+        } catch (e: any) { return { success: false, message: e.message } }
+      } else {
+        // Auto-match buys with existing asks from the API
+        const asks = get().orders.filter(o => o.itemType === 'resource' && o.resourceId === resourceId && o.type === 'sell' && o.pricePerUnit <= pricePerUnit).sort((a,b) => a.pricePerUnit - b.pricePerUnit)
+        let remaining = amount
+        let filled = 0
+        for (const ask of asks) {
+          if (remaining <= 0) break
+          const available = ask.amount - ask.filledAmount
+          const buyAmt = Math.min(available, remaining)
+          try {
+            const res: any = await api.post('/market/buy', { orderId: ask.id, amount: buyAmt })
+            if (res.success) { remaining -= buyAmt; filled += buyAmt }
+          } catch (e) { break }
+        }
+        if (filled > 0) {
+          useMissionStore.getState().trackMarket()
+          return { success: true, message: `Bought ${filled} ${resourceId}` }
+        }
+        return { success: false, message: 'No matching sellers found at that price.' }
+      }
+    },
+    matchResourceOrders: (resourceId) => {}, // Deprecated locally
 
     // Equipment
-    placeEquipmentSellOrder: (equipItemId, price) =>
-      placeEquipmentSellOrder(set, get, equipItemId, price),
-    buyEquipment: (orderId) =>
-      buyEquipment(set, get, orderId),
+    placeEquipmentSellOrder: async (equipItemId, price) => {
+      try {
+        const res: any = await api.post('/market/sell', { itemType: 'equipment', resourceId: equipItemId, amount: 1, pricePerUnit: price })
+        return { success: true, message: res.message }
+      } catch (e: any) { return { success: false, message: e.message } }
+    },
+    buyEquipment: async (orderId) => {
+      try {
+        const res: any = await api.post('/market/buy', { orderId })
+        useMissionStore.getState().trackMarket()
+        return { success: true, message: res.message }
+      } catch (e: any) { return { success: false, message: e.message } }
+    },
 
     // Divisions
-    placeDivisionSellOrder: (divisionId, price) =>
-      placeDivisionSellOrder(set, get, divisionId, price),
-    placeVaultDivisionSellOrder: (armyId, divisionId, price) =>
-      placeVaultDivisionSellOrder(set, get, armyId, divisionId, price),
-    placeCountryDivisionSellOrder: (countryCode, divisionId, price) =>
-      placeCountryDivisionSellOrder(set, get, countryCode, divisionId, price),
-    buyDivision: (orderId) =>
-      buyDivision(set, get, orderId),
+    placeDivisionSellOrder: async (divisionId, price) => {
+      try {
+        const res: any = await api.post('/market/sell', { itemType: 'division', resourceId: divisionId, amount: 1, pricePerUnit: price })
+        return { success: true, message: res.message }
+      } catch (e: any) { return { success: false, message: e.message } }
+    },
+    placeVaultDivisionSellOrder: async (armyId, divisionId, price) => {
+      return { success: false, message: 'Vault sales API not implemented yet' }
+    },
+    placeCountryDivisionSellOrder: async (countryCode, divisionId, price) => {
+      return { success: false, message: 'Country sales API not implemented yet' }
+    },
+    buyDivision: async (orderId) => {
+      try {
+        const res: any = await api.post('/market/buy', { orderId })
+        useMissionStore.getState().trackMarket()
+        return { success: true, message: res.message }
+      } catch (e: any) { return { success: false, message: e.message } }
+    },
 
     // Force vault fund
-    placeForceVaultOrder: (armyId, type, resourceId, amount, pricePerUnit) =>
-      placeForceVaultOrder(set, get, armyId, type, resourceId, amount, pricePerUnit),
+    placeForceVaultOrder: async (armyId, type, resourceId, amount, pricePerUnit) => {
+      return { success: false, message: 'Vault orders API not implemented yet' }
+    },
 
     // Country fund
-    placeCountryOrder: (type, resourceId, amount, pricePerUnit) =>
-      placeCountryOrder(set, get, type, resourceId, amount, pricePerUnit),
+    placeCountryOrder: async (type, resourceId, amount, pricePerUnit) => {
+      return { success: false, message: 'Country orders API not implemented yet' }
+    },
 
     // Cancel (any type)
-    cancelOrder: (orderId) =>
-      cancelOrderFn(set, get, orderId),
+    cancelOrder: async (orderId) => {
+      try {
+        const res: any = await api.post('/market/cancel', { orderId })
+        return { success: true, message: res.message }
+      } catch (e: any) { return { success: false, message: e.message } }
+    },
 
     // Maintenance
     tickPrices: () => tickPrices(set, get),

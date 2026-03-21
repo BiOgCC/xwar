@@ -5,6 +5,7 @@
 import { db } from '../db/connection.js'
 import { players, items } from '../db/schema.js'
 import { eq, sql } from 'drizzle-orm'
+import { warCardEmitter } from './warCard.service.js'
 
 // ── XP per level tier ──
 function xpForLevel(level: number): number {
@@ -174,6 +175,9 @@ export async function calculateAttackDamage(playerId: string): Promise<{
       damage_done = damage_done + ${finalDamage}
     WHERE id = ${playerId}
   `)
+
+  // Trigger War Card validation asynchronously
+  warCardEmitter.emit('player_action', playerId)
 
   return { damage: finalDamage, isCrit, isDodged, xpGain }
 }

@@ -47,7 +47,7 @@ export default function ProfileGearSection({ onPickSlot, onPickAmmo }: GearSecti
                 const allItems = inv.items.filter(i => i.location === 'inventory')
                 const armorSlots = ['helmet', 'chest', 'legs', 'gloves', 'boots'] as const
                 armorSlots.forEach(slot => {
-                  const candidates = allItems.filter(i => i.slot === slot && i.durability > 0)
+                  const candidates = allItems.filter(i => i.slot === slot && Number(i.durability) > 0)
                   if (candidates.length === 0) return
                   const best = candidates.reduce((a, b) => {
                     const aT = (a.stats.damage || 0) + (a.stats.armor || 0) + (a.stats.critRate || 0) + (a.stats.critDamage || 0) + (a.stats.dodge || 0) + (a.stats.precision || 0)
@@ -56,7 +56,7 @@ export default function ProfileGearSection({ onPickSlot, onPickAmmo }: GearSecti
                   })
                   inv.equipItem(best.id)
                 })
-                const weapons = allItems.filter(i => i.slot === 'weapon' && i.durability > 0)
+                const weapons = allItems.filter(i => i.slot === 'weapon' && Number(i.durability) > 0)
                 if (weapons.length > 0) {
                   const bestWep = weapons.reduce((a, b) => {
                     const aT = (a.stats.damage || 0) + (a.stats.critRate || 0) + (a.stats.critDamage || 0)
@@ -103,7 +103,7 @@ export default function ProfileGearSection({ onPickSlot, onPickAmmo }: GearSecti
             const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
             const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
             const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
-            const dur = item.durability ?? 100
+            const dur = Number(item.durability ?? 100)
             const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
             const statEntries: { label: string; val: string; color: string }[] = []
             if (item.stats.damage)    statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
@@ -198,7 +198,7 @@ export default function ProfileGearSection({ onPickSlot, onPickAmmo }: GearSecti
             const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
             const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
             const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
-            const dur = item.durability ?? 100
+            const dur = Number(item.durability ?? 100)
             const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
             return (
               <div key={item.id} className="ptab-gear-card" style={{ borderColor: `${tierColor}30`, '--card-tier-color': tierColor } as React.CSSProperties} onClick={() => onPickSlot(item.slot)}>

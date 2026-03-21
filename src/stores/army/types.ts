@@ -2,7 +2,7 @@ import { usePlayerStore } from '../playerStore'
 
 // ====== DIVISION TYPES ======
 
-export type DivisionType = 'recon' | 'assault' | 'sniper' | 'rpg' | 'jeep' | 'tank' | 'jet' | 'warship'
+export type DivisionType = 'recon' | 'assault' | 'sniper' | 'rpg' | 'jeep' | 'tank' | 'jet' | 'warship' | 'submarine'
 
 export type DivisionCategory = 'land' | 'air' | 'naval'
 
@@ -125,6 +125,16 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     popCost: 2, seats: 5,
     attackSpeed: 0.4,
   },
+  submarine: {
+    id: 'submarine', name: 'Submarine Fleet', icon: '/assets/divisions/warship.png', category: 'naval', group: 'mechanized',
+    description: 'Deep sea stealth. Colossal hit rate and armor.',
+    atkDmgMult: 0.35, hitRate: 0.85, critRateMult: 1.50, critDmgMult: 2.50,
+    healthMult: 50.0, dodgeMult: 1.20, armorMult: 3.00,
+    manpowerCost: 300, trainingTime: 80,
+    recruitCost: { money: 500000, oil: 6000, materialX: 2500, scrap: 1200 },
+    popCost: 2, seats: 6,
+    attackSpeed: 0.3,
+  },
 }
 
 // ====== STAR QUALITY SYSTEM ======
@@ -211,6 +221,7 @@ export const WEAPON_DIVISION_MAP: Record<WeaponSubtype, DivisionType> = {
   tank: 'tank',
   jet: 'jet',
   warship: 'warship',
+  submarine: 'submarine',
 }
 
 export interface DivEquipBonus {
@@ -246,6 +257,7 @@ export function getDivisionEquipBonus(div: Division): DivEquipBonus {
       case 'tank': bonus.bonusArmor += Math.floor(dmg * 0.4); bonus.bonusHP += Math.floor(dmg * 2); break
       case 'jet': bonus.bonusDodge += Math.floor(dmg * 0.25); bonus.bonusSpeed += 0.2; break
       case 'warship': bonus.bonusArmor += Math.floor(dmg * 0.35); bonus.bonusAtk += Math.floor(dmg * 0.8); break
+      case 'submarine': bonus.bonusArmor += Math.floor(dmg * 0.50); bonus.bonusDodge += Math.floor(dmg * 0.3); bonus.bonusAtk += Math.floor(dmg * 0.9); break
     }
   })
   return bonus

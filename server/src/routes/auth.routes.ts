@@ -42,7 +42,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       name,
       passwordHash,
       countryCode,
-      money: 5000,
+      money: 5000000,
       wheat: 100,
       fish: 100,
       steak: 100,

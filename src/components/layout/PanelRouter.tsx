@@ -17,6 +17,7 @@ import CasinoPanel from '../panels/CasinoPanel'
 import BountyPanel from '../panels/BountyPanel'
 import StockMarketPanel from '../panels/StockMarketPanel'
 import AlliancePanel from '../panels/AlliancePanel'
+import SocialClubPanel from '../panels/SocialClubPanel'
 
 export default function PanelRouter() {
   const { activePanel, togglePanel, panelFullscreen, setPanelFullscreen, selectedForeignCountry, resourceViewMode, cycleResourceView } = useUIStore()
@@ -32,7 +33,9 @@ export default function PanelRouter() {
           {activePanel === 'government'
             ? `COUNTRY — ${getCountryName(player.countryCode || 'US').toUpperCase()}`
             : activePanel === 'missions'
-            ? 'MISSIONS: ENABLE OPERATIONS BY COMPLETING THEM'
+            ? 'DAILY OPS — COMPLETE MISSIONS FOR COSMETIC REWARDS'
+            : activePanel === 'social_club'
+            ? 'SOCIAL CLUB'
             : activePanel === 'foreign_country' && selectedForeignCountry
             ? <><CountryFlag iso={selectedForeignCountry} size={18} style={{ marginRight: '6px' }} />{getCountryName(selectedForeignCountry).toUpperCase()}</>
             : activePanel?.toUpperCase()}
@@ -148,14 +151,7 @@ export default function PanelRouter() {
         {activePanel === 'cyberwarfare' && <CyberwarfarePanel />}
         {activePanel === 'missions' && <MissionsPanel />}
         {activePanel === 'prestige' && <PrestigePanel />}
-        {activePanel === 'chat' && (
-          <div className="hud-card">
-            <div className="hud-card__title">💬 AI ADVISOR</div>
-            <div className="hud-chat">
-              <div className="hud-chat__bubble hud-chat__bubble--ai">Welcome Commander. What's your role — Military, Business, or Politics?</div>
-            </div>
-          </div>
-        )}
+        {activePanel === 'social_club' && <SocialClubPanel />}
       </div>
     </aside>
   )

@@ -3,6 +3,7 @@ import { type DivisionType, type StarQuality, type StatModifiers, DIVISION_TEMPL
 import { useWorldStore, type NationalFund, type NationalFundKey } from './worldStore'
 import { usePlayerStore } from './playerStore'
 import { useArmyStore } from './army'
+import { api } from '../api/client'
 
 import type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government } from '../types/government.types'
 export type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government }
@@ -83,8 +84,13 @@ export interface GovernmentState {
   militaryContracts: MilitaryContract[]
   nextElectionAt: number
 
+  fetchGovernment: (countryCode: string) => Promise<void>
+  setTaxRate: (countryCode: string, taxRate: number) => Promise<{success: boolean, message: string}>
+  buildInfrastructure: (countryCode: string, building: 'port'|'airport'|'military_base'|'bunker') => Promise<{success: boolean, message: string}>
+  nationalizeCompany: (countryCode: string, companyId: string) => Promise<{success: boolean, message: string}>
+
   registerCandidate: (countryId: string, citizenId: string, name: string) => void
-  voteForCandidate: (countryId: string, voterId: string, candidateId: string) => void
+  voteForCandidate: (countryCode: string, candidateName: string) => Promise<{success: boolean, message: string}>
   proposeLaw: (law: Omit<Law, 'id' | 'votesFor' | 'votesAgainst' | 'status' | 'proposedAt' | 'expiresAt'>) => void
   voteOnLaw: (lawId: string, voterId: string, vote: 'for' | 'against') => void
   resolveElections: () => void
@@ -190,24 +196,69 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     }
   }),
 
-  voteForCandidate: (countryId, voterId, candidateId) => set((state) => {
-    const gov = state.governments[countryId]
-    if (!gov) return state
-    // Prevent duplicate votes: check if this voter already voted for ANY candidate
-    const alreadyVoted = gov.candidates.some(c => (c as any).voters?.includes(voterId))
-    if (alreadyVoted) return state
-    return {
-      governments: {
-        ...state.governments,
-        [countryId]: {
-          ...gov,
-          candidates: gov.candidates.map(c =>
-            c.id === candidateId ? { ...c, votes: c.votes + 1, voters: [...((c as any).voters || []), voterId] } : c
-          )
-        }
+  fetchGovernment: async (countryCode) => {
+    try {
+      const res: any = await api.get(`/gov/country/${countryCode}`)
+      if (res.government) {
+        set(s => ({
+          governments: {
+            ...s.governments,
+            [countryCode]: res.government
+          }
+        }))
       }
+    } catch (err) {
+      console.error('[Government] Fetch failed', err)
     }
-  }),
+  },
+
+  setTaxRate: async (countryCode, taxRate) => {
+    try {
+      const res: any = await api.post('/gov/set-tax', { countryCode, taxRate })
+      set(s => {
+        const gov = s.governments[countryCode]
+        if (!gov) return s
+        return {
+          governments: {
+            ...s.governments,
+            [countryCode]: { ...gov, taxRate }
+          }
+        }
+      })
+      return { success: true, message: res.message || 'Tax rate updated' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to set tax rate' }
+    }
+  },
+
+  buildInfrastructure: async (countryCode, building) => {
+    try {
+      const res: any = await api.post('/gov/build-infra', { countryCode, building })
+      // The state of infrastructure is kept in country/worldStore.
+      // A global refresh or websocket event should update the UI.
+      return { success: true, message: res.message || `${building} built` }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Build failed' }
+    }
+  },
+
+  nationalizeCompany: async (countryCode, companyId) => {
+    try {
+      const res: any = await api.post('/gov/nationalize', { countryCode, companyId })
+      return { success: true, message: res.message || 'Company nationalized' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Nationalize failed' }
+    }
+  },
+
+  voteForCandidate: async (countryCode, candidateName) => {
+    try {
+      const res: any = await api.post('/gov/vote', { countryCode, candidateName })
+      return { success: true, message: res.message || 'Vote cast' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Vote failed' }
+    }
+  },
 
   proposeLaw: (lawData) => set((state) => {
     const gov = state.governments[lawData.countryId]

@@ -10,8 +10,19 @@ import './styles/war.css'
 import './styles/combat.css'
 import './styles/map.css'
 import './styles/animations.css'
+import './styles/actionbar.css'
 import './styles/antibot.css'
+import './styles/auth.css'
+import './styles/social-club.css'
+import './styles/missions.css'
+import './styles/world-news.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { getAuthToken } from './api/client'
+import { socketManager } from './api/socket'
+
+if (getAuthToken()) {
+  socketManager.connect()
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

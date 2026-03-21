@@ -58,6 +58,11 @@ export default function StockMarketPanel() {
     return () => clearInterval(interval)
   }, [tab])
 
+  useEffect(() => {
+    stockStore.fetchStocks()
+    stockStore.fetchHoldings()
+  }, [])
+
   const selected: CountryStock | undefined = selectedStock ? stockStore.getStock(selectedStock) : undefined
   const holding = selectedStock ? stockStore.getHolding(selectedStock) : undefined
   const portfolioValue = stockStore.getPortfolioValue()
@@ -156,13 +161,13 @@ export default function StockMarketPanel() {
               <div className="stock-trade__actions">
                 <button className="stock-trade__btn stock-trade__btn--buy"
                   disabled={player.money < selected.price * qty}
-                  onClick={() => { const r = stockStore.buyShares(selected.code, qty); showMsg(r.message, r.success ? 'success' : 'error') }}>
+                  onClick={async () => { const r = await stockStore.buyShares(selected.code, qty); showMsg(r.message, r.success ? 'success' : 'error') }}>
                   BUY {qty}
                 </button>
                 <button className="stock-trade__btn stock-trade__btn--sell"
-                  disabled={!holding || holding.shares < qty}
-                  onClick={() => { const r = stockStore.sellShares(selected.code, qty); showMsg(r.message, r.success ? 'success' : 'error') }}>
-                  SELL {qty}
+                  disabled={!holding}
+                  onClick={async () => { const r = await stockStore.sellShares(holding!.id!); showMsg(r.message, r.success ? 'success' : 'error') }}>
+                  SELL ALL ({holding?.shares || 0})
                 </button>
               </div>
             </div>

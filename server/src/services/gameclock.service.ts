@@ -7,6 +7,7 @@
  */
 
 import type { Server as SocketServer } from 'socket.io'
+import { logger } from '../utils/logger.js'
 
 // ═══════════════════════════════════════════════
 //  TICK PHASES & CADENCE
@@ -67,7 +68,7 @@ class ServerGameClock {
   /** Start the global clock. Call once at server boot. */
   start(): void {
     if (this.intervalId !== null) return
-    console.log('[GameClock] Server clock started — combat tick every 15s')
+    logger.info('[GameClock] Server clock started — combat tick every 15s')
 
     this.intervalId = setInterval(() => {
       this.tickNumber++
@@ -88,7 +89,7 @@ class ServerGameClock {
     if (this.intervalId !== null) {
       clearInterval(this.intervalId)
       this.intervalId = null
-      console.log('[GameClock] Server clock stopped')
+      logger.info('[GameClock] Server clock stopped')
     }
   }
 
@@ -121,7 +122,7 @@ class ServerGameClock {
       try {
         handler()
       } catch (e) {
-        console.error(`[GameClock] ${phase} handler error:`, e)
+        logger.error(e, `[GameClock] ${phase} handler error:`)
       }
     }
   }

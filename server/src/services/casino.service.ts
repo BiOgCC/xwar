@@ -202,7 +202,7 @@ export async function crashBet(playerId: string, betAmount: number) {
   const crashPoint = generateCrashPoint()
   crashSessions.set(playerId, { bet: betAmount, crashPoint, startedAt: Date.now() })
   const hash = crypto.createHash('sha256').update(`${crashPoint}-${playerId}-${Date.now()}`).digest('hex').slice(0, 12)
-  return { hash, bet: betAmount }
+  return { hash, bet: betAmount, crashPoint }
 }
 
 export async function crashCashout(playerId: string, clientMultiplier: number) {

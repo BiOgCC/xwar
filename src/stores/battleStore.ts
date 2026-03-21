@@ -8,6 +8,7 @@ import { useInventoryStore } from './inventoryStore'
 import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, type Division } from './army'
 import { useWarCardsStore } from './warCardsStore'
 import { getCountryName, getCountryFlag, getCountryFlagUrl } from '../data/countries'
+import { useRegionStore } from './regionStore'
 
 // Re-export for backwards compatibility — consumers importing from battleStore still work
 export { getCountryName, getCountryFlag, getCountryFlagUrl }
@@ -68,6 +69,10 @@ export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; desc: strin
 const POINTS_TO_WIN_ROUND = 600
 const ROUNDS_TO_WIN_BATTLE = 2
 
+// Quick battle: lower thresholds for pure PvP
+const QB_POINTS_TO_WIN_ROUND = 200
+const QB_ROUNDS_TO_WIN_BATTLE = 1
+
 function getPointIncrement(totalGroundPoints: number): number {
   if (totalGroundPoints < 100) return 1
   if (totalGroundPoints < 200) return 2
@@ -90,9 +95,10 @@ function createEmptyBattleSide(countryCode: string): BattleSide {
   }
 }
 
-function mkBattle(id: string, attackerId: string, defenderId: string, regionName: string, type: BattleType = 'invasion'): Battle {
+function mkBattle(id: string, attackerId: string, defenderId: string, regionName: string, type: BattleType = 'invasion', regionId?: string): Battle {
   return {
     id, type, attackerId, defenderId, regionName,
+    regionId,
     startedAt: Date.now(),
     ticksElapsed: 0,
     status: 'active',
@@ -117,7 +123,7 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
 export interface BattleState {
   battles: Record<string, Battle>
 
-  launchAttack: (attackerId: string, defenderId: string, regionName: string, type?: BattleType) => void
+  launchAttack: (attackerId: string, defenderId: string, regionName: string, type?: BattleType, regionId?: string) => void
   addDamage: (battleId: string, side: 'attacker' | 'defender', amount: number, isCrit: boolean, isDodged: boolean, playerName: string) => void
   resolveTicksAndRounds: () => void
 
@@ -168,12 +174,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   }),
 
   // ====== LEGACY LAUNCH ======
-  launchAttack: (attackerId, defenderId, regionName, type = 'invasion') => set((state) => {
+  launchAttack: (attackerId, defenderId, regionName, type = 'invasion', regionId?) => set((state) => {
     const existing = Object.values(state.battles).find(b => b.regionName === regionName && b.status === 'active')
     if (existing) return state
 
     const id = `battle_${Date.now()}_${regionName.replace(/\s+/g, '_')}`
-    const battle = mkBattle(id, attackerId, defenderId, regionName, type)
+    const battle = mkBattle(id, attackerId, defenderId, regionName, type, regionId)
 
     return { battles: { ...state.battles, [id]: battle } }
   }),
@@ -320,28 +326,95 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       }
     }
 
+    // --- Quick Battle: award ground points + check victory on every player hit ---
+    const updatedBattle = {
+      ...battle,
+      attacker: side === 'attacker' ? {
+        ...battle.attacker,
+        damageDealt: (battle.attacker.damageDealt || 0) + finalAmount,
+      } : battle.attacker,
+      defender: side === 'defender' ? {
+        ...battle.defender,
+        damageDealt: (battle.defender.damageDealt || 0) + finalAmount,
+      } : battle.defender,
+      attackerDamageDealers: newAttackerDealers,
+      defenderDamageDealers: newDefenderDealers,
+      damageFeed: newFeed,
+      currentTick: {
+        ...currentTick,
+        attackerDamage: side === 'attacker' ? currentTick.attackerDamage + finalAmount : currentTick.attackerDamage,
+        defenderDamage: side === 'defender' ? currentTick.defenderDamage + finalAmount : currentTick.defenderDamage,
+      },
+    }
+
+    // For quick battles: award ground points per hit and check victory
+    if (battle.type === 'quick_battle') {
+      const roundIdx = updatedBattle.rounds.length - 1
+      const round = { ...updatedBattle.rounds[roundIdx] }
+      // Award 1-3 points per hit based on damage dealt
+      const pts = finalAmount >= 500 ? 3 : finalAmount >= 200 ? 2 : 1
+      if (side === 'attacker') round.attackerPoints += pts
+      else round.defenderPoints += pts
+
+      const winPts = QB_POINTS_TO_WIN_ROUND
+      let newStatus = updatedBattle.status
+      let atkRounds = updatedBattle.attackerRoundsWon
+      let defRounds = updatedBattle.defenderRoundsWon
+
+      if (round.attackerPoints >= winPts || round.defenderPoints >= winPts) {
+        round.endedAt = now
+        if (round.attackerPoints >= winPts) { atkRounds++; round.status = 'attacker_won' }
+        else { defRounds++; round.status = 'defender_won' }
+        if (atkRounds >= QB_ROUNDS_TO_WIN_BATTLE) newStatus = 'attacker_won'
+        else if (defRounds >= QB_ROUNDS_TO_WIN_BATTLE) newStatus = 'defender_won'
+      }
+
+      updatedBattle.rounds = [...updatedBattle.rounds.slice(0, -1), round]
+      updatedBattle.status = newStatus
+      updatedBattle.attackerRoundsWon = atkRounds
+      updatedBattle.defenderRoundsWon = defRounds
+
+      // Award rewards when quick battle resolves
+      if (newStatus !== 'active') {
+        try {
+          const ps = usePlayerStore.getState()
+          const playerCountry = ps.countryCode || 'US'
+          const isAttacker = playerCountry === updatedBattle.attackerId
+          const isDefender = playerCountry === updatedBattle.defenderId
+          const playerWon = (newStatus === 'attacker_won' && isAttacker) || (newStatus === 'defender_won' && isDefender)
+
+          // Check if player participated
+          const playerDmgAtk = updatedBattle.attackerDamageDealers[ps.name] || 0
+          const playerDmgDef = updatedBattle.defenderDamageDealers[ps.name] || 0
+          const myDmg = playerDmgAtk + playerDmgDef
+
+          if (myDmg > 0) {
+            if (playerWon) {
+              // Winner: 1 bitcoin + 1 military case
+              set((s) => {
+                const p = usePlayerStore.getState()
+                usePlayerStore.setState({
+                  bitcoin: p.bitcoin + 1,
+                  militaryBoxes: p.militaryBoxes + 1,
+                })
+                return s
+              })
+            } else {
+              // Loser consolation: small money from damage dealt
+              const consolation = Math.floor(myDmg * 0.05)
+              if (consolation > 0) ps.earnMoney(consolation)
+            }
+          }
+        } catch (e) {
+          console.warn('[QuickBattle] Error awarding rewards:', e)
+        }
+      }
+    }
+
     return {
       battles: {
         ...state.battles,
-        [battleId]: {
-          ...battle,
-          attacker: side === 'attacker' ? {
-            ...battle.attacker,
-            damageDealt: (battle.attacker.damageDealt || 0) + finalAmount,
-          } : battle.attacker,
-          defender: side === 'defender' ? {
-            ...battle.defender,
-            damageDealt: (battle.defender.damageDealt || 0) + finalAmount,
-          } : battle.defender,
-          attackerDamageDealers: newAttackerDealers,
-          defenderDamageDealers: newDefenderDealers,
-          damageFeed: newFeed,
-          currentTick: {
-            ...currentTick,
-            attackerDamage: side === 'attacker' ? currentTick.attackerDamage + finalAmount : currentTick.attackerDamage,
-            defenderDamage: side === 'defender' ? currentTick.defenderDamage + finalAmount : currentTick.defenderDamage,
-          },
-        },
+        [battleId]: updatedBattle,
       },
     }
   }),
@@ -366,6 +439,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     Object.values(newBattles).forEach(battle => {
       if (battle.status !== 'active') return
+      // Quick battles are pure PvP — skip division combat entirely
+      if (battle.type === 'quick_battle') return
 
       hasChanges = true
       const tick = battle.ticksElapsed + 1
@@ -783,6 +858,16 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           newStatus = 'attacker_won'
           const world = useWorldStore.getState()
           if (battle.type === 'invasion') world.occupyCountry(battle.defenderId, battle.attackerId, false)
+          // Flip region control if battle targets a specific region
+          if (battle.regionId) {
+            const regionStore = useRegionStore.getState()
+            const regionIdx = regionStore.regions.findIndex(r => r.id === battle.regionId)
+            if (regionIdx >= 0) {
+              useRegionStore.setState(s => ({
+                regions: s.regions.map((r, i) => i === regionIdx ? { ...r, controlledBy: battle.attackerId } : r)
+              }))
+            }
+          }
           newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}!` })
         } else if (defRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
           newStatus = 'defender_won'

@@ -16,7 +16,7 @@ type Phase = 'idle' | 'anticipation' | 'impact' | 'reveal' | 'done'
 interface LootBoxOpenerProps {
   isOpen: boolean
   onClose: () => void
-  onOpenBox: () => LootBoxResult | null
+  onOpenBox: () => Promise<LootBoxResult | null>
   boxType?: 'civilian' | 'military'
 }
 
@@ -56,11 +56,11 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
     // Phase 1: Anticipation
     setPhase('anticipation')
 
-    setTimeout(() => {
+    setTimeout(async () => {
       // Phase 2: Impact — actually open the box
       setPhase('impact')
 
-      const result = onOpenBox()
+      const result = await onOpenBox()
       if (!result) {
         setPhase('idle')
         return

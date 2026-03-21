@@ -154,27 +154,31 @@ export interface MarketState {
   trades: TradeRecord[]
 
   // Resource trading
-  placeResourceOrder: (type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => { success: boolean; message: string }
+  placeResourceOrder: (type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => Promise<{ success: boolean; message: string }>
   matchResourceOrders: (resourceId: ResourceId) => void
 
   // Equipment
-  placeEquipmentSellOrder: (equipItemId: string, price: number) => { success: boolean; message: string }
-  buyEquipment: (orderId: string) => { success: boolean; message: string }
+  placeEquipmentSellOrder: (equipItemId: string, price: number) => Promise<{ success: boolean; message: string }>
+  buyEquipment: (orderId: string) => Promise<{ success: boolean; message: string }>
 
   // Divisions
-  placeDivisionSellOrder: (divisionId: string, price: number) => { success: boolean; message: string }
-  placeVaultDivisionSellOrder: (armyId: string, divisionId: string, price: number) => { success: boolean; message: string }
-  placeCountryDivisionSellOrder: (countryCode: string, divisionId: string, price: number) => { success: boolean; message: string }
-  buyDivision: (orderId: string) => { success: boolean; message: string }
+  placeDivisionSellOrder: (divisionId: string, price: number) => Promise<{ success: boolean; message: string }>
+  placeVaultDivisionSellOrder: (armyId: string, divisionId: string, price: number) => Promise<{ success: boolean; message: string }>
+  placeCountryDivisionSellOrder: (countryCode: string, divisionId: string, price: number) => Promise<{ success: boolean; message: string }>
+  buyDivision: (orderId: string) => Promise<{ success: boolean; message: string }>
 
   // Force vault fund
-  placeForceVaultOrder: (armyId: string, type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => { success: boolean; message: string }
+  placeForceVaultOrder: (armyId: string, type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => Promise<{ success: boolean; message: string }>
 
   // Country fund
-  placeCountryOrder: (type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => { success: boolean; message: string }
+  placeCountryOrder: (type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => Promise<{ success: boolean; message: string }>
 
   // Shared
-  cancelOrder: (orderId: string) => { success: boolean; message: string }
+  cancelOrder: (orderId: string) => Promise<{ success: boolean; message: string }>
+  
+  // API Fetching
+  fetchListings: () => Promise<void>
+  fetchMyOrders: () => Promise<void>
 
   // Maintenance
   tickPrices: () => void

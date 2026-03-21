@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useWorldStore } from '../../stores/worldStore'
+import { useAuthStore } from '../../stores/authStore'
 
 interface TopBarProps {
   timeLeft: number
@@ -98,8 +99,8 @@ export default function TopBar({ timeLeft, onManualTick }: TopBarProps) {
             ₿ {player.bitcoin.toLocaleString()}
           </span>
         </div>
-        <button className="hud-btn-outline">
-          <span className="hud-btn-icon">⚡</span> SIGN IN
+        <button className="hud-btn-outline" onClick={() => useAuthStore.getState().logout()}>
+          <span className="hud-btn-icon">⚡</span> LOGOUT
         </button>
         <span className="hud-topbar__time">TURN {world.turn} • {player.name}</span>
       </div>

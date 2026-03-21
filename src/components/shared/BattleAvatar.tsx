@@ -4,7 +4,7 @@ import { type TerrainType } from '../../data/terrainMap'
 import { getCountryFlagUrl } from '../../stores/battleStore'
 import '../../styles/battle-avatar.css'
 
-type TracerStyle = 'infantry' | 'tank' | 'jet' | 'warship'
+type TracerStyle = 'infantry' | 'tank' | 'jet' | 'warship' | 'submarine'
 
 interface BattleAvatarProps {
   attackerFlag: string
@@ -275,6 +275,7 @@ export default function BattleAvatar({
         case 'tank': spawnTankShell(side); break
         case 'jet': spawnJetStrafe(side); break
         case 'warship': spawnWarshipArc(side); break
+        case 'submarine': spawnWarshipArc(side); break
         default: spawnInfantryBullet(side); break
       }
       // Muzzle sparks (all types)

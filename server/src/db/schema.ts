@@ -101,7 +101,13 @@ export const players = pgTable('players', {
 
   createdAt:     timestamp('created_at').defaultNow(),
   lastLogin:     timestamp('last_login').defaultNow(),
-})
+  lastRewardClaimed: timestamp('last_reward_claimed'),
+  loginStreak:   integer('login_streak').default(0),
+}, (table) => ({
+  countryIdx: index('idx_players_country').on(table.countryCode),
+  armyIdx: index('idx_players_army').on(table.enlistedArmyId),
+  roleIdx: index('idx_players_role').on(table.role),
+}))
 
 // ═══════════════════════════════════════════════
 //  PLAYER SKILLS
@@ -130,11 +136,28 @@ export const playerSkills = pgTable('player_skills', {
 // ═══════════════════════════════════════════════
 
 export const playerSpecialization = pgTable('player_specialization', {
-  playerId:     uuid('player_id').primaryKey().references(() => players.id, { onDelete: 'cascade' }),
-  militaryXp:   integer('military_xp').default(0),
-  militaryTier: integer('military_tier').default(0),
-  economicXp:   integer('economic_xp').default(0),
-  economicTier: integer('economic_tier').default(0),
+  playerId:       uuid('player_id').primaryKey().references(() => players.id, { onDelete: 'cascade' }),
+  militaryXp:     integer('military_xp').default(0),
+  militaryTier:   integer('military_tier').default(0),
+  economicXp:     integer('economic_xp').default(0),
+  economicTier:   integer('economic_tier').default(0),
+  politicianXp:   integer('politician_xp').default(0),
+  politicianTier: integer('politician_tier').default(0),
+  mercenaryXp:    integer('mercenary_xp').default(0),
+  mercenaryTier:  integer('mercenary_tier').default(0),
+  influencerXp:   integer('influencer_xp').default(0),
+  influencerTier: integer('influencer_tier').default(0),
+})
+
+// ═══════════════════════════════════════════════
+//  DAILY REWARDS
+// ═══════════════════════════════════════════════
+
+export const dailyRewards = pgTable('daily_rewards', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  playerId:       uuid('player_id').unique().references(() => players.id, { onDelete: 'cascade' }),
+  loginStreak:    integer('login_streak').default(0),
+  lastClaimedAt:  timestamp('last_claimed_at'),
 })
 
 // ═══════════════════════════════════════════════
@@ -171,7 +194,11 @@ export const wars = pgTable('wars', {
   defenderCode: varchar('defender_code', { length: 4 }).references(() => countries.code),
   startedAt:    timestamp('started_at').defaultNow(),
   status:       varchar('status', { length: 16 }).default('active'),
-})
+}, (table) => ({
+  attackerIdx: index('idx_wars_attacker').on(table.attackerCode),
+  defenderIdx: index('idx_wars_defender').on(table.defenderCode),
+  statusIdx: index('idx_wars_status').on(table.status),
+}))
 
 // ═══════════════════════════════════════════════
 //  REGIONAL DEPOSITS
@@ -201,7 +228,10 @@ export const armies = pgTable('armies', {
   salaryIntervalHours: integer('salary_interval_hours').default(24),
   lastSalaryAt:  timestamp('last_salary_at').defaultNow(),
   createdAt:     timestamp('created_at').defaultNow(),
-})
+}, (table) => ({
+  countryIdx: index('idx_armies_country').on(table.countryCode),
+  commanderIdx: index('idx_armies_commander').on(table.commanderId),
+}))
 
 // ═══════════════════════════════════════════════
 //  ARMY MEMBERS
@@ -247,7 +277,11 @@ export const divisions = pgTable('divisions', {
   battlesSurvived: integer('battles_survived').default(0),
   starQuality:   integer('star_quality').default(1),
   statModifiers: jsonb('stat_modifiers').default({}),
-})
+}, (table) => ({
+  ownerIdx: index('idx_divisions_owner').on(table.ownerId),
+  countryIdx: index('idx_divisions_country').on(table.countryCode),
+  statusIdx: index('idx_divisions_status').on(table.status),
+}))
 
 // ═══════════════════════════════════════════════
 //  BATTLES
@@ -269,10 +303,14 @@ export const battles = pgTable('battles', {
   finishedAt:     timestamp('finished_at'),
   winner:         varchar('winner', { length: 4 }),
   battleLog:      jsonb('battle_log').default([]),
-})
+}, (table) => ({
+  attackerIdx: index('idx_battles_attacker').on(table.attackerId),
+  defenderIdx: index('idx_battles_defender').on(table.defenderId),
+  statusIdx: index('idx_battles_status').on(table.status),
+}))
 
 // ═══════════════════════════════════════════════
-//  COMPANIES
+//  COMPANIES & JOBS
 // ═══════════════════════════════════════════════
 
 export const companies = pgTable('companies', {
@@ -285,6 +323,29 @@ export const companies = pgTable('companies', {
   productionMax:    integer('production_max').default(100),
   location:         varchar('location', { length: 4 }).references(() => countries.code),
   disabledUntil:    timestamp('disabled_until'),
+}, (table) => ({
+  ownerIdx: index('idx_companies_owner').on(table.ownerId),
+  locationIdx: index('idx_companies_location').on(table.location),
+}))
+
+export const jobs = pgTable('jobs', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  companyId:       uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  employerName:    varchar('employer_name', { length: 32 }),
+  companyType:     varchar('company_type', { length: 32 }),
+  companyLevel:    integer('company_level').default(1),
+  payPerPP:        numeric('pay_per_pp', { precision: 10, scale: 2 }).notNull(),
+  productionBonus: integer('production_bonus').default(0),
+  location:        varchar('location', { length: 4 }).references(() => countries.code),
+  createdAt:       timestamp('created_at').defaultNow(),
+})
+
+export const companyTransactions = pgTable('company_transactions', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  playerId:  uuid('player_id').notNull().references(() => players.id, { onDelete: 'cascade' }),
+  companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  message:   text('message').notNull(),
+  timestamp: timestamp('timestamp').defaultNow(),
 })
 
 // ═══════════════════════════════════════════════
@@ -307,7 +368,11 @@ export const marketOrders = pgTable('market_orders', {
   countryCode:   varchar('country_code', { length: 4 }),
   status:        varchar('status', { length: 16 }).default('open'),
   createdAt:     timestamp('created_at').defaultNow(),
-})
+}, (table) => ({
+  playerIdx: index('idx_market_orders_player').on(table.playerId),
+  itemTypeIdx: index('idx_market_orders_item_type').on(table.itemType),
+  statusIdx: index('idx_market_orders_status').on(table.status),
+}))
 
 // ═══════════════════════════════════════════════
 //  TRADE HISTORY
@@ -324,7 +389,12 @@ export const tradeHistory = pgTable('trade_history', {
   totalPrice:    numeric('total_price', { precision: 14, scale: 2 }),
   tax:           numeric('tax', { precision: 14, scale: 2 }).default('0'),
   timestamp:     timestamp('timestamp').defaultNow(),
-})
+}, (table) => ({
+  buyerIdx: index('idx_trade_history_buyer').on(table.buyerId),
+  sellerIdx: index('idx_trade_history_seller').on(table.sellerId),
+  itemTypeIdx: index('idx_trade_history_item_type').on(table.itemType),
+  timestampIdx: index('idx_trade_history_time').on(table.timestamp),
+}))
 
 // ═══════════════════════════════════════════════
 //  GOVERNMENTS
@@ -408,7 +478,10 @@ export const casinoSessions = pgTable('casino_sessions', {
   gameState:    jsonb('game_state').notNull(),
   status:       varchar('status', { length: 16 }).default('active'),
   createdAt:    timestamp('created_at').defaultNow(),
-})
+}, (table) => ({
+  playerIdx: index('idx_casino_sessions_player').on(table.playerId),
+  statusIdx: index('idx_casino_sessions_status').on(table.status),
+}))
 
 // ═══════════════════════════════════════════════
 //  BOUNTIES
@@ -422,7 +495,9 @@ export const bounties = pgTable('bounties', {
   reason:      text('reason'),
   status:      varchar('status', { length: 16 }).default('active'),
   claimedBy:   uuid('claimed_by').references(() => players.id),
+  hunters:     jsonb('hunters').default([]),
   createdAt:   timestamp('created_at').defaultNow(),
+  expiresAt:   timestamp('expires_at'),
 })
 
 // ═══════════════════════════════════════════════
@@ -453,6 +528,8 @@ export const bonds = pgTable('bonds', {
   playerId:     uuid('player_id').references(() => players.id),
   countryCode:  varchar('country_code', { length: 4 }).references(() => countries.code),
   amount:       bigint('amount', { mode: 'number' }).notNull(),
+  direction:    varchar('direction', { length: 4 }).default('up'),  // 'up' or 'down'
+  openPrice:    numeric('open_price', { precision: 14, scale: 2 }), // price at bond creation
   interestRate: numeric('interest_rate', { precision: 5, scale: 2 }),
   maturityAt:   timestamp('maturity_at').notNull(),
   status:       varchar('status', { length: 16 }).default('active'),
@@ -473,19 +550,73 @@ export const alliances = pgTable('alliances', {
 })
 
 // ═══════════════════════════════════════════════
-//  MISSIONS
+//  MISSION BOARDS (per-country contribution board)
 // ═══════════════════════════════════════════════
 
-export const missions = pgTable('missions', {
-  id:                uuid('id').primaryKey().defaultRandom(),
-  operationId:       varchar('operation_id', { length: 32 }),
-  operationType:     varchar('operation_type', { length: 16 }),
-  countryCode:       varchar('country_code', { length: 4 }).references(() => countries.code),
-  startedBy:         uuid('started_by').references(() => players.id),
-  requiredResources: jsonb('required_resources').notNull(),
-  contributedResources: jsonb('contributed_resources').default({}),
-  contributors:      jsonb('contributors').default({}),
-  status:            varchar('status', { length: 16 }).default('active'),
-  startedAt:         timestamp('started_at').defaultNow(),
-  expiresAt:         timestamp('expires_at').notNull(),
-})
+export const missionBoards = pgTable('mission_boards', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  countryCode:    varchar('country_code', { length: 4 }).references(() => countries.code).notNull(),
+  operationType:  varchar('operation_type', { length: 32 }).notNull(), // which cyber op this board is for
+  cycle:          integer('cycle').default(1),
+  status:         varchar('status', { length: 16 }).default('filling'),  // filling | ready | expired
+  slotsRequired:  integer('slots_required').default(5),
+  slotsFilled:    integer('slots_filled').default(0),
+  charges:        integer('charges').default(0),
+  // Array of { playerId, playerName, contributedAt (ISO string) }
+  contributors:   jsonb('contributors').default([]),
+  createdAt:      timestamp('created_at').defaultNow(),
+}, (table) => ({
+  countryOpIdx: index('idx_mission_boards_country_op').on(table.countryCode, table.operationType),
+  statusIdx: index('idx_mission_boards_status').on(table.status),
+}))
+
+// ═══════════════════════════════════════════════
+//  CYBER OPS (launched operations from charges)
+// ═══════════════════════════════════════════════
+
+export const cyberOps = pgTable('cyber_ops', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  boardId:        uuid('board_id').references(() => missionBoards.id),
+  operationId:    varchar('operation_id', { length: 32 }).notNull(),
+  pillar:         varchar('pillar', { length: 16 }).notNull(), // espionage | sabotage | propaganda
+  countryCode:    varchar('country_code', { length: 4 }).references(() => countries.code),
+  launchedBy:     uuid('launched_by').references(() => players.id),
+  targetCountry:  varchar('target_country', { length: 4 }),
+  targetRegion:   varchar('target_region', { length: 64 }),
+  targetPlayer:   varchar('target_player', { length: 32 }),
+  status:         varchar('status', { length: 16 }).default('deploying'), // deploying | completed | failed | detected | expired
+  result:         jsonb('result').default({}),
+  deployedAt:     timestamp('deployed_at').defaultNow(),
+  expiresAt:      timestamp('expires_at'),
+}, (table) => ({
+  countryIdx: index('idx_cyber_ops_country').on(table.countryCode),
+  statusIdx: index('idx_cyber_ops_status').on(table.status),
+}))
+
+// ═══════════════════════════════════════════════
+//  BREACH ATTEMPTS (puzzle minigame records)
+// ═══════════════════════════════════════════════
+
+export const breachAttempts = pgTable('breach_attempts', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  cyberOpId:     uuid('cyber_op_id').references(() => cyberOps.id),
+  playerId:      uuid('player_id').references(() => players.id).notNull(),
+  side:          varchar('side', { length: 8 }).notNull(),  // 'attacker' or 'defender'
+  gridSeed:      varchar('grid_seed', { length: 64 }).notNull(),
+  gridSize:      integer('grid_size').default(6),
+  moves:         jsonb('moves').default([]),       // array of { x, y, tool? }
+  toolsUsed:     jsonb('tools_used').default({}),  // { scan: N, bypass: N, decrypt: N }
+  integrity:     integer('integrity').default(5),
+  nodesCollected: integer('nodes_collected').default(0),
+  won:           boolean('won').default(false),
+  completedAt:   timestamp('completed_at'),
+  startedAt:     timestamp('started_at').defaultNow(),
+}, (table) => ({
+  opIdx: index('idx_breach_attempts_op').on(table.cyberOpId),
+  playerIdx: index('idx_breach_attempts_player').on(table.playerId),
+}))
+
+// Keep old missions export for backward compatibility during migration
+export const missions = missionBoards
+
+

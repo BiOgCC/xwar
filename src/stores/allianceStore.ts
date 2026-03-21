@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useNewsStore } from './newsStore'
 import { useWorldStore } from './worldStore'
+import { api } from '../api/client'
 
 /* ══════════════════════════════════════════════
    XWAR — Alliance Wars Store
@@ -118,10 +119,12 @@ export interface AllianceState {
   lastTreatySnapshotAt: number  // timestamp of last 12h snapshot
   fundProposals: AllianceFundProposal[]
 
-  createAlliance: (name: string, tag: string) => { success: boolean; message: string }
-  joinAlliance: (allianceId: string) => { success: boolean; message: string }
+  fetchAlliances: () => Promise<void>
+  createAlliance: (name: string, tag: string) => Promise<{ success: boolean; message: string }>
+  joinAlliance: (allianceId: string) => Promise<{ success: boolean; message: string }>
   leaveAlliance: () => { success: boolean; message: string }
-  contribute: (amount: number) => { success: boolean; message: string }
+  contribute: (amount: number) => Promise<{ success: boolean; message: string }>
+  withdraw: (amount: number) => Promise<{ success: boolean; message: string }>
   declareWar: (targetAllianceId: string) => { success: boolean; message: string }
   voteWar: (warId: string, vote: 'for' | 'against') => { success: boolean; message: string }
   resolveWars: () => void
@@ -141,95 +144,71 @@ export const useAllianceStore = create<AllianceState>((set, get) => ({
   lastTreatySnapshotAt: Date.now(),
   fundProposals: [],
 
-  createAlliance: (name, tag) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-
-    if (state.playerAllianceId) {
-      return { success: false, message: 'You must leave your current alliance first' }
+  fetchAlliances: async () => {
+    try {
+      const res: any = await api.get('/alliance')
+      set({ alliances: res.alliances || [] })
+      
+      // Attempt to determine playerAllianceId locally if we need to sync 
+      // This might be better handled by the player fetching their own alliance ID.
+      // For now, assume player data keeps track or we do it from the alliances list:
+      const player = usePlayerStore.getState()
+      const myAlliance = res.alliances?.find((a: Alliance) => 
+        a.members.some(m => m.name === player.name)
+      )
+      if (myAlliance) set({ playerAllianceId: myAlliance.id })
+    } catch (err: any) {
+      console.error('[Alliance] fetch error', err)
     }
-    if (name.length < 3 || name.length > 24) {
-      return { success: false, message: 'Name must be 3-24 characters' }
-    }
-    if (tag.length < 2 || tag.length > 4) {
-      return { success: false, message: 'Tag must be 2-4 characters' }
-    }
-    if (state.alliances.find(a => a.tag.toUpperCase() === tag.toUpperCase())) {
-      return { success: false, message: 'Tag already taken' }
-    }
-
-    // Creation costs $500K
-    if (player.money < 500_000) {
-      return { success: false, message: 'Need $500,000 to create an alliance' }
-    }
-    player.spendMoney(500_000)
-
-    const newAlliance: Alliance = {
-      id: `alliance_${Date.now()}`,
-      name,
-      tag: tag.toUpperCase(),
-      leader: player.name,
-      members: [{
-        name: player.name,
-        countryCode: player.countryCode,
-        role: 'leader',
-        joinedAt: Date.now(),
-        contributed: 0,
-      }],
-      treasury: 0,
-      createdAt: Date.now(),
-      wars: [],
-      maxMembers: MAX_ALLIANCE_SIZE,
-      wins: 0,
-      losses: 0,
-    }
-
-    set(s => ({
-      alliances: [...s.alliances, newAlliance],
-      playerAllianceId: newAlliance.id,
-    }))
-
-    useNewsStore.getState().pushEvent('alliance',
-      `${player.name} founded the alliance [${tag.toUpperCase()}] ${name}`
-    )
-
-    return { success: true, message: `Alliance [${tag.toUpperCase()}] ${name} created!` }
   },
 
-  joinAlliance: (allianceId) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-
-    if (state.playerAllianceId) {
-      return { success: false, message: 'Leave your current alliance first' }
+  createAlliance: async (name, tag) => {
+    try {
+      const res: any = await api.post('/alliance/create', { name, tag })
+      usePlayerStore.getState().spendMoney(500_000)
+      
+      set(s => ({
+        alliances: [...s.alliances, res.alliance],
+        playerAllianceId: res.alliance.id,
+      }))
+      
+      const p = usePlayerStore.getState()
+      useNewsStore.getState().pushEvent('alliance', `${p.name} founded the alliance [${tag}] ${name}`)
+      
+      return { success: true, message: `Alliance [${tag}] ${name} created!` }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to create alliance' }
     }
+  },
 
-    const alliance = state.alliances.find(a => a.id === allianceId)
-    if (!alliance) return { success: false, message: 'Alliance not found' }
-    if (alliance.members.length >= alliance.maxMembers) {
-      return { success: false, message: 'Alliance is full' }
+  joinAlliance: async (allianceId) => {
+    try {
+      const res: any = await api.post('/alliance/join', { allianceId })
+      const state = get()
+      const alliance = state.alliances.find(a => a.id === allianceId)
+      
+      if (alliance) {
+        const player = usePlayerStore.getState()
+        const newMember: AllianceMember = {
+          name: player.name,
+          countryCode: player.countryCode,
+          role: 'member',
+          joinedAt: Date.now(),
+          contributed: 0,
+        }
+        set(s => ({
+          alliances: s.alliances.map(a =>
+            a.id === allianceId ? { ...a, members: [...a.members, newMember] } : a
+          ),
+          playerAllianceId: allianceId,
+        }))
+        useNewsStore.getState().pushEvent('alliance', `${player.name} joined [${alliance.tag}] ${alliance.name}`)
+      }
+      
+      return { success: true, message: res.message || 'Joined alliance!' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to join alliance' }
     }
-
-    const newMember: AllianceMember = {
-      name: player.name,
-      countryCode: player.countryCode,
-      role: 'member',
-      joinedAt: Date.now(),
-      contributed: 0,
-    }
-
-    set(s => ({
-      alliances: s.alliances.map(a =>
-        a.id === allianceId ? { ...a, members: [...a.members, newMember] } : a
-      ),
-      playerAllianceId: allianceId,
-    }))
-
-    useNewsStore.getState().pushEvent('alliance',
-      `${player.name} joined [${alliance.tag}] ${alliance.name}`
-    )
-
-    return { success: true, message: `Joined [${alliance.tag}] ${alliance.name}!` }
   },
 
   leaveAlliance: () => {
@@ -280,30 +259,54 @@ export const useAllianceStore = create<AllianceState>((set, get) => ({
     return { success: true, message: `Left [${alliance.tag}]` }
   },
 
-  contribute: (amount) => {
-    const player = usePlayerStore.getState()
-    const state = get()
+  contribute: async (amount) => {
+    try {
+      const res: any = await api.post('/alliance/donate', { amount })
+      const state = get()
+      const player = usePlayerStore.getState()
+      
+      player.spendMoney(amount)
+      
+      set(s => ({
+        alliances: s.alliances.map(a => {
+          if (a.id !== state.playerAllianceId) return a
+          return {
+            ...a,
+            treasury: Number(a.treasury) + amount,
+          }
+        }),
+      }))
+      
+      return { success: true, message: res.message || `Contributed $${amount.toLocaleString()}` }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Contribution failed' }
+    }
+  },
 
-    if (!state.playerAllianceId) return { success: false, message: 'Not in an alliance' }
-    if (amount < MIN_CONTRIBUTION) return { success: false, message: `Minimum contribution: $${MIN_CONTRIBUTION.toLocaleString()}` }
-    if (player.money < amount) return { success: false, message: 'Insufficient funds' }
-
-    player.spendMoney(amount)
-
-    set(s => ({
-      alliances: s.alliances.map(a => {
-        if (a.id !== state.playerAllianceId) return a
-        return {
-          ...a,
-          treasury: a.treasury + amount,
-          members: a.members.map(m =>
-            m.name === player.name ? { ...m, contributed: m.contributed + amount } : m
-          ),
-        }
-      }),
-    }))
-
-    return { success: true, message: `Contributed $${amount.toLocaleString()} to alliance treasury` }
+  withdraw: async (amount) => {
+    try {
+      const res: any = await api.post('/alliance/withdraw', { amount })
+      const state = get()
+      const player = usePlayerStore.getState()
+      
+      const tax = Math.floor(amount * 0.02)
+      const afterTax = amount - tax
+      player.earnMoney(afterTax)
+      
+      set(s => ({
+        alliances: s.alliances.map(a => {
+          if (a.id !== state.playerAllianceId) return a
+          return {
+            ...a,
+            treasury: Math.max(0, Number(a.treasury) - amount),
+          }
+        }),
+      }))
+      
+      return { success: true, message: res.message || `Withdrew $${amount.toLocaleString()}` }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Withdrawal failed' }
+    }
   },
 
   declareWar: (targetAllianceId) => {

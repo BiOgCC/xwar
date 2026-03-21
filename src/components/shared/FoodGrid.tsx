@@ -26,7 +26,7 @@ export default function FoodGrid() {
           <button
             key={f.key}
             onClick={() => player.consumeFood(f.key)}
-            disabled={f.count <= 0}
+            disabled={f.count <= 0 || Math.floor(player.hunger) <= 0}
             style={{
               flex: 1, padding: '6px 4px', fontSize: '10px', fontWeight: 700,
               background: f.count > 0 ? 'rgba(34,211,138,0.06)' : 'rgba(255,255,255,0.02)',

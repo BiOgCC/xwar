@@ -113,6 +113,37 @@ router.post('/dismantle/:id', async (req, res) => {
   }
 })
 
+// ── POST /api/inventory/sell/:id ── Sell for money
+router.post('/sell/:id', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const itemId = req.params.id
+
+    const [item] = await db.select().from(items)
+      .where(and(eq(items.id, itemId), eq(items.ownerId, playerId)))
+      .limit(1)
+
+    if (!item) { res.status(404).json({ error: 'Item not found' }); return }
+    if (item.equipped) { res.status(400).json({ error: 'Cannot sell equipped item' }); return }
+    if (item.location !== 'inventory') { res.status(400).json({ error: 'Item not in inventory' }); return }
+
+    const TIER_SELL_PRICE: Record<string, number> = {
+      t1: 1200, t2: 5000, t3: 25000, t4: 90000, t5: 280000, t6: 830000, t7: 2500000
+    }
+    const moneyGain = TIER_SELL_PRICE[item.tier] || 1200
+
+    await db.delete(items).where(eq(items.id, itemId))
+    await db.update(players).set({
+      money: (await db.select({ money: players.money }).from(players).where(eq(players.id, playerId)))[0].money! + moneyGain,
+    }).where(eq(players.id, playerId))
+
+    res.json({ success: true, moneyGained: moneyGain })
+  } catch (err) {
+    console.error('[INVENTORY] Sell error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // ── POST /api/inventory/open-box ── Open a loot box (server-side RNG)
 router.post('/open-box', async (req, res) => {
   try {

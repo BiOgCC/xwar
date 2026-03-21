@@ -22,7 +22,7 @@ import {
 } from '../../stores/inventoryStore'
 
 const TIER_SELL_PRICE: Record<EquipTier, number> = {
-  t1: 1200, t2: 5000, t3: 25000, t4: 90000, t5: 280000, t6: 830000
+  t1: 1200, t2: 5000, t3: 25000, t4: 90000, t5: 280000, t6: 830000, t7: 2500000
 }
 
 export default function InventoryTab() {
@@ -38,6 +38,7 @@ export default function InventoryTab() {
   const [showMilitaryBox, setShowMilitaryBox] = useState(false)
 
   useEffect(() => {
+    inventory.fetchInventory()
     const onClose = () => { setSelectedItem(null); setPickerSlot(null); setShowAmmoPicker(false) }
     window.addEventListener('xwar-close-modal', onClose)
     return () => window.removeEventListener('xwar-close-modal', onClose)
@@ -46,17 +47,19 @@ export default function InventoryTab() {
   const handleLootBoxOpen = useCallback(() => inventory.openLootBox(), [inventory])
   const handleMilitaryBoxOpen = useCallback(() => inventory.openMilitaryBox(), [inventory])
 
-  const handleEquipToggle = () => {
+  const handleEquipToggle = async () => {
     if (!selectedItem) return
-    if (selectedItem.equipped) inventory.unequipItem(selectedItem.id)
-    else inventory.equipItem(selectedItem.id)
+    if (selectedItem.equipped) await inventory.unequipItem(selectedItem.id)
+    else await inventory.equipItem(selectedItem.id)
     setSelectedItem(null); setPickerSlot(null)
   }
 
-  const handleDisarm = () => {
+  const handleDisarm = async () => {
     if (!selectedItem || selectedItem.equipped) return
-    const scrapGain = inventory.dismantleItem(selectedItem.id)
-    player.addScrap(scrapGain)
+    const r = await inventory.dismantleItem(selectedItem.id)
+    if (r.success) {
+      ui.addFloatingText(`+${r.scrapGained} SCRAP`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+    }
     setSelectedItem(null)
   }
 
@@ -74,7 +77,7 @@ export default function InventoryTab() {
             const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
             const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
             const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
-            const dur = item.durability ?? 100
+            const dur = Number(item.durability ?? 100)
             const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
             const statEntries: { label: string; val: string; color: string }[] = []
             if (item.stats.damage) statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
@@ -89,11 +92,12 @@ export default function InventoryTab() {
                 '--card-tier-color': tierColor,
                 boxShadow: item.equipped ? '0 0 8px rgba(132,204,22,0.15)' : undefined,
               } as React.CSSProperties}
-              onClick={() => {
+              onClick={async () => {
                 if (mode === 'disarm' && !item.equipped) {
-                  const scrapGain = inventory.dismantleItem(item.id)
-                  player.addScrap(scrapGain)
-                  ui.addFloatingText(`+${scrapGain} SCRAP`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+                  const r = await inventory.dismantleItem(item.id)
+                  if (r.success) {
+                    ui.addFloatingText(`+${r.scrapGained} SCRAP`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+                  }
                 } else { setSelectedItem(item) }
               }}
               title={item.equipped ? `${item.name} (EQUIPPED)` : item.name}
@@ -246,7 +250,7 @@ export default function InventoryTab() {
             }}>{selectedItem.equipped ? 'UNEQUIP' : 'EQUIP'}</button>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button style={{ flex: 1, padding: '8px', fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'rgba(59,130,246,0.12)', color: selectedItem.equipped ? '#334155' : '#3b82f6', border: `1px solid ${selectedItem.equipped ? '#1e293b' : 'rgba(59,130,246,0.3)'}`, borderRadius: '4px', cursor: selectedItem.equipped ? 'not-allowed' : 'pointer', opacity: selectedItem.equipped ? 0.4 : 1 }} disabled={selectedItem.equipped}
-                onClick={() => { if (selectedItem.equipped) return; const gain = TIER_SELL_PRICE[selectedItem.tier]; inventory.removeItem(selectedItem.id); usePlayerStore.getState().earnMoney(gain); ui.addFloatingText(`SOLD +$${gain.toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b'); setSelectedItem(null) }}
+                onClick={async () => { if (selectedItem.equipped) return; const r = await inventory.sellItem(selectedItem.id); if (r.success) { ui.addFloatingText(`SOLD +$${r.moneyGained.toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b'); setSelectedItem(null) } }}
               >SELL ${TIER_SELL_PRICE[selectedItem.tier].toLocaleString()}</button>
               <button style={{ flex: 1, padding: '8px', fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'rgba(245,158,11,0.1)', color: selectedItem.equipped ? '#334155' : '#f59e0b', border: `1px solid ${selectedItem.equipped ? '#1e293b' : 'rgba(245,158,11,0.3)'}`, borderRadius: '4px', cursor: selectedItem.equipped ? 'not-allowed' : 'pointer', opacity: selectedItem.equipped ? 0.4 : 1 }} disabled={selectedItem.equipped} onClick={handleDisarm}
               >DISARM (+{SCRAP_VALUES[selectedItem.tier]} SCRAP)</button>

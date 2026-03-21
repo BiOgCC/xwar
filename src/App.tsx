@@ -22,10 +22,17 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useGameLoop } from './hooks/useGameLoop'
 import { useAttack } from './hooks/useAttack'
 import { initMockData } from './dev/mockData'
+import AuthScreen from './components/auth/AuthScreen'
+import { useCompanyStore } from './stores/companyStore'
+import { useAuthStore } from './stores/authStore'
+import ActionBar from './components/layout/ActionBar'
+import NewsSlideshow from './components/layout/NewsSlideshow'
+import WorldNewsWidget from './components/layout/WorldNewsWidget'
 import './styles/ticker.css'
 
 
 function App() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const player = usePlayerStore()
   const world = useWorldStore()
   const { floatingTexts, setActivePanel, setForeignCountry } = useUIStore()
@@ -38,7 +45,18 @@ function App() {
   useKeyboardShortcuts()
   const { timeLeft, handleManualTick } = useGameLoop()
   const attack = useAttack(mapRef)
-  useEffect(() => { initMockData() }, [])
+  
+  useEffect(() => { 
+    initMockData() 
+  }, [])
+
+  // Sync player data from backend on mount if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      usePlayerStore.getState().fetchPlayer()
+      useCompanyStore.getState().fetchAll()
+    }
+  }, [isAuthenticated])
 
   const handleMouseMove = useCallback((lat: string, lng: string) => {
     setMousePos({ lat, lng })
@@ -50,8 +68,12 @@ function App() {
 
   return (
     <div className="xwar-root">
-      <TopBar timeLeft={timeLeft} onManualTick={handleManualTick} />
-      <NewsTicker />
+      {!isAuthenticated && <AuthScreen />}
+      
+      {isAuthenticated && (
+        <>
+          <TopBar timeLeft={timeLeft} onManualTick={handleManualTick} />
+          <NewsTicker />
 
       {/* ====== MAP AREA ====== */}
       <div className="hud-map">
@@ -83,7 +105,10 @@ function App() {
           <span className="hud-search__slash">/</span>
         </div>
 
+        <ActionBar />
         <Sidebar />
+        <NewsSlideshow />
+        <WorldNewsWidget />
 
         {/* Right Controls */}
         <div className="hud-controls">
@@ -110,10 +135,6 @@ function App() {
         <RegionPopup
           region={selectedRegion}
           onClose={() => setSelectedRegion(null)}
-          onAttack={(e?: React.MouseEvent) => {
-            attack(selectedRegion.name, e)
-            setSelectedRegion(null)
-          }}
         />
       )}
 
@@ -168,6 +189,8 @@ function App() {
           </div>
         ))}
       </div>
+        </>
+      )}
     </div>
   )
 }

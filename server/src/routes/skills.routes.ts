@@ -1,11 +1,11 @@
 /**
- * Skills Routes — Upgrade player skills.
+ * Skills Routes — Upgrade player skills + specialization XP.
  */
 import { Router } from 'express'
 import { z } from 'zod'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { players, playerSkills } from '../db/schema.js'
+import { players, playerSkills, playerSpecialization } from '../db/schema.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 
@@ -109,4 +109,83 @@ router.get('/my-skills', requireAuth as any, async (req, res) => {
   }
 })
 
+// ═══════════════════════════════════════════════
+//  GET /api/skills/specialization — Get all specialization XP + tiers
+// ═══════════════════════════════════════════════
+
+router.get('/specialization', requireAuth as any, async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    let [spec] = await db.select().from(playerSpecialization).where(eq(playerSpecialization.playerId, playerId)).limit(1)
+    if (!spec) {
+      const [newSpec] = await db.insert(playerSpecialization).values({ playerId }).returning()
+      spec = newSpec
+    }
+    res.json({ success: true, specialization: spec })
+  } catch (err) {
+    console.error('[SKILLS] Specialization get error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
+//  POST /api/skills/specialization/grant — Grant XP (server-side only)
+// ═══════════════════════════════════════════════
+
+const SPEC_TYPES = ['military', 'economic', 'politician', 'mercenary', 'influencer'] as const
+const TIER_THRESHOLDS = [0, 500, 2000, 6000, 15000, 35000, 70000, 120000, 200000, 350000, 500000]
+
+const grantSchema = z.object({
+  specType: z.enum(SPEC_TYPES),
+  xp: z.number().int().positive().max(50000),
+})
+
+router.post('/specialization/grant', requireAuth as any, validate(grantSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { specType, xp } = req.body
+
+    const xpCol = `${specType}_xp` as const
+    const tierCol = `${specType}_tier` as const
+
+    // Ensure row exists
+    let [spec] = await db.select().from(playerSpecialization).where(eq(playerSpecialization.playerId, playerId)).limit(1)
+    if (!spec) {
+      const [newSpec] = await db.insert(playerSpecialization).values({ playerId }).returning()
+      spec = newSpec
+    }
+
+    const currentXp = (spec as any)[`${specType}Xp`] ?? 0
+    const newXp = currentXp + xp
+
+    // Calculate new tier
+    let newTier = 0
+    for (let i = TIER_THRESHOLDS.length - 1; i >= 0; i--) {
+      if (newXp >= TIER_THRESHOLDS[i]) {
+        newTier = i
+        break
+      }
+    }
+
+    await db.execute(sql`
+      UPDATE player_specialization SET
+        ${sql.raw(xpCol)} = ${newXp},
+        ${sql.raw(tierCol)} = ${newTier}
+      WHERE player_id = ${playerId}
+    `)
+
+    res.json({
+      success: true,
+      specType,
+      xp: newXp,
+      tier: newTier,
+      message: `+${xp} ${specType} XP (Tier ${newTier})`,
+    })
+  } catch (err) {
+    console.error('[SKILLS] Specialization grant error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 export default router
+

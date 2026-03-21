@@ -30,13 +30,17 @@ export const DAILY_REWARDS: DailyReward[] = [
   { day: 7, label: 'Day 7', icon: '🏆', money: 500_000, t5Item: true },
 ]
 
-const GRACE_WINDOW_MS = 24 * 60 * 60 * 1000 // 24 hours
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+
+function getDayStartUTC(timestamp = Date.now()): number {
+  const d = new Date(timestamp)
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+}
 
 export interface DailyRewardState {
   loginStreak: number        // 0-7 (0 = never claimed)
   lastClaimedAt: number      // timestamp of last claim
   showPopup: boolean         // whether to show the reward popup
-  todayClaimed: boolean      // whether today's reward was already claimed
 
   // Actions
   checkLoginReward: () => void
@@ -51,20 +55,18 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
   loginStreak: 0,
   lastClaimedAt: 0,
   showPopup: false,
-  todayClaimed: false,
 
   checkLoginReward: () => {
     const state = get()
-    if (state.todayClaimed) return
+    const nowUTC = getDayStartUTC()
+    const lastUTC = getDayStartUTC(state.lastClaimedAt)
 
-    const now = Date.now()
-    const timeSinceLast = now - state.lastClaimedAt
+    // First time or missed a day or more
+    if (state.lastClaimedAt === 0 || nowUTC > lastUTC) {
+      const daysMissed = (nowUTC - lastUTC) / ONE_DAY_MS
 
-    // If never claimed or within grace window, show popup
-    if (state.lastClaimedAt === 0 || timeSinceLast >= GRACE_WINDOW_MS) {
-      // Check if streak should reset (missed the grace window — more than 48h)
-      if (state.lastClaimedAt > 0 && timeSinceLast > GRACE_WINDOW_MS * 2) {
-        // Streak broken — reset
+      // If more than 1 day missed, reset streak
+      if (state.lastClaimedAt > 0 && daysMissed > 1) {
         set({ loginStreak: 0, showPopup: true })
       } else {
         set({ showPopup: true })
@@ -74,20 +76,19 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
 
   claimReward: () => {
     const state = get()
-    if (state.todayClaimed) return { success: false, message: 'Already claimed today!' }
+    const nowUTC = getDayStartUTC()
+    const lastUTC = getDayStartUTC(state.lastClaimedAt)
 
-    const now = Date.now()
-    const timeSinceLast = now - state.lastClaimedAt
-
-    // Check grace window (allow if never claimed, or enough time passed)
-    if (state.lastClaimedAt > 0 && timeSinceLast < GRACE_WINDOW_MS) {
+    if (state.lastClaimedAt > 0 && nowUTC <= lastUTC) {
       return { success: false, message: 'Come back tomorrow!' }
     }
 
-    // Determine if streak continues or resets
+    const daysMissed = (nowUTC - lastUTC) / ONE_DAY_MS
     let newStreak = state.loginStreak
-    if (state.lastClaimedAt > 0 && timeSinceLast > GRACE_WINDOW_MS * 2) {
-      newStreak = 0 // Streak broken
+
+    // Reset if missed a day
+    if (state.lastClaimedAt > 0 && daysMissed > 1) {
+      newStreak = 0
     }
 
     // Advance streak (wraps after day 7)
@@ -136,8 +137,7 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
 
     set({
       loginStreak: newStreak,
-      lastClaimedAt: now,
-      todayClaimed: true,
+      lastClaimedAt: Date.now(),
       showPopup: false,
     })
 
@@ -148,16 +148,15 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
 
   canClaim: () => {
     const state = get()
-    if (state.todayClaimed) return false
     if (state.lastClaimedAt === 0) return true
-    return Date.now() - state.lastClaimedAt >= GRACE_WINDOW_MS
+    return getDayStartUTC() > getDayStartUTC(state.lastClaimedAt)
   },
 
   getCurrentReward: () => {
     const state = get()
     let nextDay = state.loginStreak % 7
     // Check if streak would be broken
-    if (state.lastClaimedAt > 0 && Date.now() - state.lastClaimedAt > GRACE_WINDOW_MS * 2) {
+    if (state.lastClaimedAt > 0 && getDayStartUTC() - getDayStartUTC(state.lastClaimedAt) > ONE_DAY_MS) {
       nextDay = 0 // Would reset
     }
     return DAILY_REWARDS[nextDay]
@@ -166,14 +165,21 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
   getStreakStatus: () => {
     const state = get()
     let streak = state.loginStreak
-    if (state.lastClaimedAt > 0 && Date.now() - state.lastClaimedAt > GRACE_WINDOW_MS * 2) {
+    const nowUTC = getDayStartUTC()
+    const lastUTC = getDayStartUTC(state.lastClaimedAt)
+
+    if (state.lastClaimedAt > 0 && (nowUTC - lastUTC) > ONE_DAY_MS) {
       streak = 0
     }
     const nextDay = (streak % 7)
+    
+    // Grace expires tonight at next 00:00 (i.e. if today is missed entirely, tomorrow is broken)
+    const graceExpires = state.lastClaimedAt > 0 ? lastUTC + (ONE_DAY_MS * 2) : null
+    
     return {
       streak,
       nextReward: DAILY_REWARDS[nextDay],
-      graceExpires: state.lastClaimedAt > 0 ? state.lastClaimedAt + GRACE_WINDOW_MS * 2 : null,
+      graceExpires,
     }
   },
 }))

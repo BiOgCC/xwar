@@ -1,7 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSlotsStore, SLOTS_BETS, SLOT_SYMBOLS, SYMBOL_INFO, PAYOUTS } from '../../stores/slotsStore'
+import { useSlotsStore, SLOTS_BETS, SLOT_SYMBOLS, SYMBOL_INFO } from '../../stores/slotsStore'
 import type { SlotSymbol } from '../../stores/slotsStore'
 import { usePlayerStore } from '../../stores/playerStore'
+
+const PAYOUTS: Record<SlotSymbol, number> = {
+  rifle: 2,
+  grenade: 3,
+  medal: 5,
+  swords: 10,
+  shield: 20,
+  skull: 50,
+  badge: 100,
+  star: 250
+}
 
 // Pay table for display
 const PAY_TABLE = SLOT_SYMBOLS
@@ -71,8 +82,13 @@ export default function SlotsGame() {
   const resolveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    if (slots.phase === 'spinning') {
+      resolveRef.current = setTimeout(() => {
+        useSlotsStore.getState().resolveResult()
+      }, Math.max(...SPIN_DELAYS) + 400)
+    }
     return () => { if (resolveRef.current) clearTimeout(resolveRef.current) }
-  }, [])
+  }, [slots.phase])
 
   const handleSpin = useCallback(() => {
     if (slots.phase === 'spinning') return
@@ -82,12 +98,7 @@ export default function SlotsGame() {
       useSlotsStore.getState().reset()
     }
 
-    setTimeout(() => {
-      useSlotsStore.getState().spin(selectedBet)
-      resolveRef.current = setTimeout(() => {
-        useSlotsStore.getState().resolveResult()
-      }, SPIN_DELAYS[2] + 400)
-    }, 10)
+    useSlotsStore.getState().spin(selectedBet)
   }, [slots.phase, selectedBet, player.money])
 
   return (

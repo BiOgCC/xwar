@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { api } from '../api/client'
+import { usePlayerStore } from './playerStore'
 
 import type { CardCategory, CardRarity, CardConditionContext, WarCardDefinition, EarnedWarCard, NFTMintState, NFTStatus, WeeklyTracking } from '../types/war.types'
 export type { CardCategory, CardRarity, CardConditionContext, WarCardDefinition, EarnedWarCard, NFTMintState, NFTStatus, WeeklyTracking }
@@ -298,7 +300,9 @@ export interface WarCardsState {
   highestSingleHit: { playerId: string; playerName: string; damage: number } | null
 
   // ── Actions ──
-  /** Main check routine — call after key game events */
+  fetchAllCards: () => Promise<void>
+  fetchMyCards: () => Promise<void>
+  /** Deprecated: Evaluation is now handled asynchronously on the backend */
   checkAndAwardCards: (playerId: string, playerName: string, ctx: Partial<CardConditionContext>, battleId?: string) => EarnedWarCard[]
   /** Get all cards earned by a player */
   getPlayerCards: (playerId: string) => EarnedWarCard[]
@@ -325,7 +329,7 @@ export interface WarCardsState {
 
   // ── NFT ──
   /** Request minting for an earned card */
-  requestMint: (earnedCardId: string, network: string) => { success: boolean; message: string }
+  requestMint: (earnedCardId: string, network: string) => Promise<{ success: boolean; message: string }>
   /** Callback when minting completes (from external service) */
   confirmMint: (earnedCardId: string, tokenId: string, txHash: string, metadataCID: string) => void
   /** Mark a mint as failed */
@@ -347,60 +351,60 @@ export const useWarCardsStore = create<WarCardsState>((set, get) => ({
   weeklyTracking: { weekNumber: currentWeek, damageByPlayer: {}, moneyByPlayer: {} },
   highestSingleHit: null,
 
+  // ── API Fetchers ──
+  fetchAllCards: async () => {
+    try {
+      const res: any = await api.get('/warcards/all')
+      if (res.success && res.cards) {
+        set(s => {
+          const fetched = res.cards.map((c: any) => ({
+            id: c.id,
+            cardDefId: c.cardDefId,
+            playerId: c.playerId,
+            playerName: c.playerName || 'Unknown',
+            earnedAt: new Date(c.earnedAt).getTime(),
+            nft: { mintState: c.minted ? 'minted' : 'unminted' } as NFTStatus,
+          }))
+
+          const myPlayerName = usePlayerStore.getState().name
+          const existingMyCards = s.earnedCards.filter(e => e.playerName === myPlayerName)
+          const fetchedOthers = fetched.filter((e: EarnedWarCard) => e.playerName !== myPlayerName)
+
+          return { earnedCards: [...existingMyCards, ...fetchedOthers] }
+        })
+      }
+    } catch (e) { console.error('Error fetching war cards', e) }
+  },
+
+  fetchMyCards: async () => {
+    try {
+      const res: any = await api.get('/warcards')
+      if (res.success && res.cards) {
+        const playerName = usePlayerStore.getState().name
+        const myMapped = res.cards.map((c: any) => ({
+          id: c.id,
+          cardDefId: c.cardDefId,
+          playerId: c.playerId,
+          playerName,
+          earnedAt: new Date(c.earnedAt).getTime(),
+          nft: { mintState: c.minted ? 'minted' : 'unminted' } as NFTStatus,
+        }))
+        // Only override my cards, keeping others for Hall of Fame if they exist
+        set(s => ({
+          earnedCards: [
+            ...s.earnedCards.filter(e => e.playerName !== playerName),
+            ...myMapped
+          ]
+        }))
+      }
+    } catch (e) { console.error('Error fetching my cards', e) }
+  },
+
   // ── Check & Award ──
   checkAndAwardCards: (playerId, playerName, partialCtx, battleId) => {
-    const state = get()
-    const weekly = state.weeklyTracking
-    const awarded: EarnedWarCard[] = []
-
-    // Build full context with defaults
-    const ctx: CardConditionContext = {
-      totalDamageDone: 0,
-      totalMoney: 0,
-      totalItemsProduced: 0,
-      playerLevel: 0,
-      totalCasesOpened: 0,
-      totalItemsCrafted: 0,
-      totalItemsDismantled: 0,
-      weeklyDamage: weekly.damageByPlayer[playerId] ?? 0,
-      weeklyMoney: weekly.moneyByPlayer[playerId] ?? 0,
-      consecutiveWeeksTopDamage: 0,
-      consecutiveWeeksTopEconomy: 0,
-      ...partialCtx,
-    }
-
-    for (const def of state.cardDefinitions) {
-      // Skip weekly cards (handled by rolloverWeek)
-      if (def.weekly) continue
-
-      // Skip first-only cards that are already claimed
-      if (def.firstOnly && state.earnedCards.some(e => e.cardDefId === def.id)) continue
-
-      // Skip cards this player already has (non-first-only, non-weekly)
-      if (!def.firstOnly && state.earnedCards.some(e => e.cardDefId === def.id && e.playerId === playerId)) continue
-
-      // Check condition
-      if (!def.condition(ctx)) continue
-
-      // Award!
-      const earned: EarnedWarCard = {
-        id: `wc_${++earnedCardCounter}_${Date.now()}`,
-        cardDefId: def.id,
-        playerId,
-        playerName,
-        earnedAt: Date.now(),
-        recordValue: getRecordValue(def, ctx),
-        battleId,
-        nft: emptyNFT(),
-      }
-      awarded.push(earned)
-    }
-
-    if (awarded.length > 0) {
-      set(s => ({ earnedCards: [...s.earnedCards, ...awarded] }))
-    }
-
-    return awarded
+    // Deprecated in favor of backend asynchronous event emitting
+    // The backend now listens to 'player_action' via warCardEmitter and mints cards
+    return []
   },
 
   getPlayerCards: (playerId) => get().earnedCards.filter(e => e.playerId === playerId),
@@ -500,15 +504,13 @@ export const useWarCardsStore = create<WarCardsState>((set, get) => ({
     return true
   },
 
-  // ── NFT Scaffolding ──
-  requestMint: (earnedCardId, network) => {
+  requestMint: async (earnedCardId, network) => {
     const state = get()
     const card = state.earnedCards.find(e => e.id === earnedCardId)
     if (!card) return { success: false, message: 'Card not found.' }
     if (card.nft.mintState === 'minted') return { success: false, message: 'Already minted.' }
     if (card.nft.mintState === 'pending') return { success: false, message: 'Mint already in progress.' }
 
-    // Mark as pending
     set(s => ({
       earnedCards: s.earnedCards.map(e =>
         e.id === earnedCardId
@@ -517,11 +519,20 @@ export const useWarCardsStore = create<WarCardsState>((set, get) => ({
       ),
     }))
 
-    // TODO: In production, call external minting service here
-    // e.g., fetch('/api/mint', { method: 'POST', body: JSON.stringify(metadata) })
-    console.log(`[WarCards NFT] Mint requested for card ${earnedCardId} on ${network}`)
-
-    return { success: true, message: 'Minting initiated. This may take a few minutes.' }
+    try {
+      // Call backend route to verify and execute mock mint
+      const res: any = await api.post(`/warcards/mint/${earnedCardId}`)
+      if (res.success) {
+        get().confirmMint(earnedCardId, 'mock_token', 'mock_tx', 'mock_cid')
+        return { success: true, message: res.message }
+      } else {
+        get().failMint(earnedCardId)
+        return { success: false, message: res.error || 'Failed to mint' }
+      }
+    } catch (err: any) {
+      get().failMint(earnedCardId)
+      return { success: false, message: err.message || 'Error executing request' }
+    }
   },
 
   confirmMint: (earnedCardId, tokenId, txHash, metadataCID) => {

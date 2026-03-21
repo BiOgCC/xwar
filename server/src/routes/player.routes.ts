@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { players, playerSkills, playerSpecialization, items } from '../db/schema.js'
+import { v4 as uuidv4 } from 'uuid'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { calculateAttackDamage, grantXP, spendMoney, earnMoney, consumeBar } from '../services/player.service.js'
 
@@ -34,6 +35,22 @@ router.get('/', async (req, res) => {
     })
   } catch (err) {
     console.error('[PLAYER] Get error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── GET /api/player/all ── Lightweight player directory
+router.get('/all', async (req, res) => {
+  try {
+    // Return all players (name, countryCode) for searching
+    const allPlayers = await db.select({
+      name: players.name,
+      country: players.countryCode,
+    }).from(players)
+
+    res.json({ success: true, players: allPlayers })
+  } catch (err) {
+    console.error('[PLAYER] Get all error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -299,6 +316,117 @@ router.patch('/country', async (req, res) => {
     res.json({ success: true, countryCode })
   } catch (err) {
     console.error('[PLAYER] Country switch error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/player/daily-reward ── Claim escalating daily reward
+router.post('/daily-reward', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+
+    if (!player) {
+      res.status(404).json({ error: 'Player not found' })
+      return
+    }
+
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000
+    const getDayStartUTC = (timestamp = Date.now()) => {
+      const d = new Date(timestamp)
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+    }
+
+    const nowUTC = getDayStartUTC()
+    const lastClaimedAt = player.lastRewardClaimed ? player.lastRewardClaimed.getTime() : 0
+    const lastUTC = getDayStartUTC(lastClaimedAt)
+
+    if (lastClaimedAt > 0 && nowUTC <= lastUTC) {
+      res.status(400).json({ error: 'Come back tomorrow!' })
+      return
+    }
+
+    const daysMissed = (nowUTC - lastUTC) / ONE_DAY_MS
+    let newStreak = player.loginStreak ?? 0
+
+    if (lastClaimedAt > 0 && daysMissed > 1) {
+      newStreak = 0
+    }
+
+    newStreak = (newStreak % 7) + 1
+
+    // Build Reward
+    const updates: Partial<typeof players.$inferInsert> = {
+      loginStreak: newStreak,
+      lastRewardClaimed: new Date(),
+    }
+    
+    let grantedMoney = 0
+    let message = `Day ${newStreak} reward claimed!`
+
+    if (newStreak === 1) {
+      grantedMoney = 50_000
+      updates.bread = (player.bread ?? 0) + 5
+    } else if (newStreak === 2) {
+      grantedMoney = 75_000
+      updates.sushi = (player.sushi ?? 0) + 5
+    } else if (newStreak === 3) {
+      grantedMoney = 100_000
+      updates.wagyu = (player.wagyu ?? 0) + 5
+      updates.lootBoxes = (player.lootBoxes ?? 0) + 1
+    } else if (newStreak === 4) {
+      grantedMoney = 150_000
+      updates.staminaPills = (player.staminaPills ?? 0) + 2
+    } else if (newStreak === 5) {
+      grantedMoney = 200_000
+      updates.militaryBoxes = (player.militaryBoxes ?? 0) + 1
+    } else if (newStreak === 6) {
+      grantedMoney = 300_000
+      updates.bitcoin = (player.bitcoin ?? 0) + 3
+    } else if (newStreak === 7) {
+      grantedMoney = 500_000
+      // Grant T5 Item
+      const slots = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots'] as const
+      const slot = slots[Math.floor(Math.random() * slots.length)]
+      const category = slot === 'weapon' ? 'weapon' : 'armor'
+      
+      const WEAPON_SUBTYPES = ['assault_rifle', 'sniper', 'shotgun', 'smg', 'lmg', 'pistol', 'melee']
+      const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[Math.floor(Math.random() * WEAPON_SUBTYPES.length)] : null
+
+      // Simplified stats for server generation (client can format it)
+      const newDmg = slot === 'weapon' ? 200 + Math.floor(Math.random() * 50) : 0
+      const newArmor = slot !== 'weapon' ? 40 + Math.floor(Math.random() * 20) : 0
+
+      await db.insert(items).values({
+        id: uuidv4(),
+        ownerId: playerId,
+        name: `🎁 Daily ${tierText(slot)}`,
+        slot,
+        category,
+        tier: 't5',
+        weaponSubtype: subtype,
+        stats: { damage: newDmg, armor: newArmor },
+        equipped: false,
+        durability: '100',
+        location: 'inventory'
+      })
+    }
+
+    function tierText(slot: string) {
+      return slot.charAt(0).toUpperCase() + slot.slice(1)
+    }
+
+    if (grantedMoney > 0) {
+      updates.money = (Number(player.money) || 0) + grantedMoney
+      // Track economy ledger
+      await earnMoney(playerId, grantedMoney)
+    }
+
+    await db.update(players).set(updates).where(eq(players.id, playerId))
+
+    res.json({ success: true, message, streak: newStreak, grantedMoney })
+  } catch (err) {
+    console.error('[PLAYER] Daily reward error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

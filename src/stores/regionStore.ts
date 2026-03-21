@@ -15,6 +15,11 @@ export interface Region {
   position: [number, number]
   adjacent: string[]
   defense: number
+  isOcean?: boolean
+  fishingBonus: number
+  oilYield: number
+  tradeRouteValue: number
+  isBlockaded: boolean
 }
 
 // ====== NAMED REGION DEFINITIONS ======
@@ -23,10 +28,12 @@ interface RegionDef {
   id: string; name: string; countryCode: string
   offsetX: number; offsetY: number
   adjacent: string[]; defense: number
+  isOcean?: boolean
+  fishingBonus?: number; oilYield?: number; tradeRouteValue?: number
 }
 
-const R = (id: string, name: string, cc: string, ox: number, oy: number, adj: string[], def: number): RegionDef =>
-  ({ id, name, countryCode: cc, offsetX: ox, offsetY: oy, adjacent: adj, defense: def })
+const R = (id: string, name: string, cc: string, ox: number, oy: number, adj: string[], def: number, isOcean: boolean = false, fishingBonus = 0, oilYield = 0, tradeRouteValue = 0): RegionDef =>
+  ({ id, name, countryCode: cc, offsetX: ox, offsetY: oy, adjacent: adj, defense: def, isOcean, fishingBonus, oilYield, tradeRouteValue })
 
 const REGION_DEFS: RegionDef[] = [
   // ── United States (50 States) ──
@@ -253,8 +260,16 @@ const REGION_DEFS: RegionDef[] = [
   R('CU-SG','Santiago','CU',0.80,0.42,['CU-HA','CU-CT'],35),
 
   // ── Bahamas (2 Regions) ──
-  R('BS-NP','Nassau','BS',0.40,0.45,['BS-GI','CU-HA','US-FL'],25),
+  R('BS-NP','Nassau','BS',0.40,0.45,['BS-GI','CU-HA','US-FL','OC-ATL-W'],25),
   R('BS-GI','Grand Island','BS',0.60,0.60,['BS-NP'],15),
+
+  // ── Oceans (Strategic Naval Blocks) ──
+  R('OC-ATL-W','West Atlantic','OC',0.20,0.50,['US-NY','US-MA','US-FL','CA-NS','BS-NP','OC-ATL-C'],0,true, 50, 100, 500),
+  R('OC-ATL-C','Central Atlantic','OC',0.50,0.50,['OC-ATL-W','OC-ATL-E'],0,true, 100, 200, 1000),
+  R('OC-ATL-E','East Atlantic','OC',0.80,0.50,['OC-ATL-C','GB-SW','GB-WA','FR-BRE','ES-GAL','PT-LIS'],0,true, 80, 150, 800),
+  R('OC-PAC','Pacific Ocean','OC',4.231,0.50,['US-CA','US-OR','MX-BC','JP-KT','JP-HK','CN-JS','CN-GD','CA-BC'],0,true, 150, 250, 1500),
+  R('OC-IND','Indian Ocean','OC',2.3077,-0.875,['IN-TN','IN-GJ','IN-WB','NG-SE'],0,true, 120, 300, 900),
+  R('OC-MED','Mediterranean Sea','OC',1.323,0.4925,['TR-AE','TR-MD','TR-MA','DE-BY'],0,true, 60, 50, 1200),
 ]
 
 // ====== COUNTRY BOUNDING BOXES ======
@@ -266,6 +281,7 @@ const COUNTRY_BOUNDS: Record<string, [number, number, number, number]> = {
   'IN': [68, 7, 97, 36], 'NG': [3, 4, 15, 14],
   'TR': [26, 36, 45, 42], 'MX': [-118, 14, -87, 33],
   'CU': [-85, 19, -74, 23], 'BS': [-80, 22, -73, 28],
+  'OC': [-75, 20, -10, 60] // North Atlantic approx bounds
 }
 
 function computeRegions(): Region[] {
@@ -279,6 +295,11 @@ function computeRegions(): Region[] {
       attackedBy: null, assignedArmyId: null,
       position: [lng, lat] as [number, number],
       adjacent: def.adjacent, defense: def.defense,
+      isOcean: def.isOcean,
+      fishingBonus: def.fishingBonus || 0,
+      oilYield: def.oilYield || 0,
+      tradeRouteValue: def.tradeRouteValue || 0,
+      isBlockaded: false,
     }
   })
 }
@@ -296,6 +317,7 @@ export interface RegionState {
   tickCapture: () => void
   resetCountryRegions: (cc: string) => void
   updateBoundsFromGeoJSON: (geojson: any, isoKey?: string) => void
+  processOceanIncome: () => void
 }
 
 const ISO3_TO_ISO2: Record<string, string> = {
@@ -369,11 +391,11 @@ export const useRegionStore = create<RegionState>((set, get) => ({
   },
 
   attackRegion: (regionId, attackerIso, armyId) => set(s => ({
-    regions: s.regions.map(r => r.id === regionId ? { ...r, attackedBy: attackerIso, assignedArmyId: armyId || null } : r)
+    regions: s.regions.map(r => r.id === regionId ? { ...r, attackedBy: attackerIso, assignedArmyId: armyId || null, isBlockaded: r.isOcean ? true : r.isBlockaded } : r)
   })),
 
   stopAttack: (regionId) => set(s => ({
-    regions: s.regions.map(r => r.id === regionId ? { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null } : r)
+    regions: s.regions.map(r => r.id === regionId ? { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null, isBlockaded: r.isOcean ? false : r.isBlockaded } : r)
   })),
 
   tickCapture: () => {
@@ -385,6 +407,20 @@ export const useRegionStore = create<RegionState>((set, get) => ({
       if (r.assignedArmyId) {
         const army = armyState.armies[r.assignedArmyId]
         if (army) {
+          const hasNaval = army.divisionIds.some(id => armyState.divisions[id]?.category === 'naval')
+          if (r.isOcean && !hasNaval) {
+             // Ocean blocks require naval divisions to capture
+             return { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null }
+          }
+          if (!r.isOcean && hasNaval) {
+             // Naval fleets cannot directly capture land without marines/infantry!
+             // For now, if an army is PURELY naval, it can't capture land.
+             const hasLand = army.divisionIds.some(id => armyState.divisions[id]?.category !== 'naval')
+             if (!hasLand) {
+                return { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null }
+             }
+          }
+
           divIds = army.divisionIds
           divIds.forEach(id => {
             const d = armyState.divisions[id]
@@ -395,7 +431,7 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           })
         }
       }
-      if (totalMp <= 0) return { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null }
+      if (totalMp <= 0) return { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null, isBlockaded: r.isOcean ? false : r.isBlockaded }
       const rate = Math.max(2, Math.min(20, (totalAtk / Math.max(1, r.defense * 10)) * 8))
       const prog = Math.min(100, r.captureProgress + rate)
       const dmg = Math.max(50, r.defense * 15)
@@ -409,14 +445,14 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           }}}))
         }
       })
-      if (prog >= 100) return { ...r, controlledBy: r.attackedBy, captureProgress: 0, attackedBy: null, assignedArmyId: null }
+      if (prog >= 100) return { ...r, controlledBy: r.attackedBy, captureProgress: 0, attackedBy: null, assignedArmyId: null, isBlockaded: false }
       return { ...r, captureProgress: prog }
     })
     set({ regions: updated })
   },
 
   resetCountryRegions: (cc) => set(s => ({
-    regions: s.regions.map(r => r.countryCode === cc ? { ...r, controlledBy: cc, captureProgress: 0, attackedBy: null, assignedArmyId: null } : r)
+    regions: s.regions.map(r => r.countryCode === cc ? { ...r, controlledBy: cc, captureProgress: 0, attackedBy: null, assignedArmyId: null, isBlockaded: false } : r)
   })),
 
   updateBoundsFromGeoJSON: (geojson: any, isoKey = 'ISO3166-1-Alpha-3') => {
@@ -517,7 +553,8 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           
         generatedRegionObjs.push({
           id, name: stateName, countryCode: cc, controlledBy, captureProgress: 0,
-          attackedBy: null, assignedArmyId: null, position: [cLng, cLat], adjacent: [], defense
+          attackedBy: null, assignedArmyId: null, position: [cLng, cLat], adjacent: [], defense,
+          isOcean: false, fishingBonus: 0, oilYield: 0, tradeRouteValue: 0, isBlockaded: false
         })
       })
        
@@ -529,5 +566,25 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     })
     
     set({ regions: nextRegions })
+  },
+
+  processOceanIncome: () => {
+    const { regions } = get()
+    const worldStore = useWorldStore.getState()
+    
+    const yieldsByCountry: Record<string, { money: number; oil: number }> = {}
+    
+    regions.forEach(r => {
+      if (r.isOcean && !r.isBlockaded && r.controlledBy !== 'OC') {
+        if (!yieldsByCountry[r.controlledBy]) yieldsByCountry[r.controlledBy] = { money: 0, oil: 0 }
+        yieldsByCountry[r.controlledBy].money += r.tradeRouteValue || 0
+        yieldsByCountry[r.controlledBy].oil += r.oilYield || 0
+      }
+    })
+    
+    Object.entries(yieldsByCountry).forEach(([cc, yields]) => {
+      if (yields.money > 0) worldStore.addToFund(cc, 'money', yields.money)
+      if (yields.oil > 0) worldStore.addToFund(cc, 'oil', yields.oil)
+    })
   },
 }))

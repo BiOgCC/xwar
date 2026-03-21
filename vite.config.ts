@@ -6,5 +6,14 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    proxy: {
+      '/api/worldmonitor': {
+        target: 'https://api.worldmonitor.app',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/worldmonitor/, '/api'),
+        secure: true,
+      },
+    },
   },
 })
+ 

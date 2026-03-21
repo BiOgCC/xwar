@@ -56,7 +56,7 @@ function RewardBadge({ reward, isActive, isClaimed }: { reward: DailyReward; isA
 }
 
 export default function DailyRewardPopup() {
-  const { showPopup, loginStreak, todayClaimed, claimReward, dismissPopup, canClaim, checkLoginReward } = useDailyRewardStore()
+  const { showPopup, loginStreak, claimReward, dismissPopup, canClaim, checkLoginReward } = useDailyRewardStore()
 
   // Check on mount
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function DailyRewardPopup() {
         </div>
 
         {/* Claim Button */}
-        {canClaim() && !todayClaimed ? (
+        {canClaim() ? (
           <button
             onClick={() => claimReward()}
             style={{
@@ -159,13 +159,13 @@ export default function DailyRewardPopup() {
           </button>
         ) : (
           <div style={{ fontFamily: 'var(--font-display)', fontSize: '11px', color: '#64748b' }}>
-            {todayClaimed ? '✅ Reward claimed! See you tomorrow.' : 'Come back later to claim!'}
+            ✅ Reward claimed today! Come back tomorrow.
           </div>
         )}
 
         {/* Grace note */}
         <div style={{ fontFamily: 'var(--font-display)', fontSize: '9px', color: '#475569', marginTop: '8px' }}>
-          24h grace window • Missing 48h resets streak
+          Resets daily at 00:00 UTC • Missing a full day resets your streak
         </div>
       </div>
     </GameModal>

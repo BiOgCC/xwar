@@ -19,9 +19,11 @@ export interface CountryStock {
 }
 
 export interface Holding {
+  id?: string
   code: string
   shares: number
   avgBuyPrice: number
+  buyPrice?: string
 }
 
 export interface StockTransaction {

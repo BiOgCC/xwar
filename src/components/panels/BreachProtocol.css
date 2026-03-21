@@ -1,0 +1,291 @@
+/* ═══════════════════════════════════════════════
+   BREACH PROTOCOL — Hacking Puzzle UI
+   ═══════════════════════════════════════════════ */
+
+.breach-protocol {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 20px;
+  background: linear-gradient(145deg, #0a0f1a 0%, #0d1926 50%, #0a1218 100%);
+  border: 1px solid #00ff8820;
+  border-radius: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  position: relative;
+  box-shadow:
+    0 0 40px rgba(0, 255, 136, 0.05),
+    inset 0 0 60px rgba(0, 0, 0, 0.4);
+}
+
+/* Header */
+.breach-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #00ff8830;
+}
+
+.breach-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #00ff88;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+}
+
+.breach-icon {
+  font-size: 22px;
+}
+
+.breach-side {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.breach-side.attacker {
+  background: rgba(255, 68, 68, 0.2);
+  color: #ff6666;
+  border: 1px solid #ff444440;
+}
+
+.breach-side.defender {
+  background: rgba(68, 136, 255, 0.2);
+  color: #6699ff;
+  border: 1px solid #4488ff40;
+}
+
+.breach-timer {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffcc00;
+  text-shadow: 0 0 8px rgba(255, 204, 0, 0.4);
+}
+
+/* Status Bar */
+.breach-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  background: rgba(0, 255, 136, 0.05);
+  border-radius: 8px;
+  border: 1px solid #00ff8815;
+}
+
+.status-item {
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.status-item.integrity {
+  font-size: 16px;
+}
+
+.status-item.nodes {
+  color: #00cc88;
+  font-weight: 600;
+}
+
+/* Tool Bar */
+.breach-tools {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.tool-btn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  border: 1px solid #00ff8830;
+  border-radius: 6px;
+  background: rgba(0, 255, 136, 0.05);
+  color: #88ccaa;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.tool-btn:hover:not(:disabled) {
+  background: rgba(0, 255, 136, 0.15);
+  color: #00ff88;
+  border-color: #00ff8860;
+  transform: translateY(-1px);
+}
+
+.tool-btn.active {
+  background: rgba(0, 255, 136, 0.2);
+  color: #00ff88;
+  border-color: #00ff88;
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+}
+
+.tool-btn.depleted {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tool-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Grid */
+.breach-grid {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 14px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid #00ff8815;
+}
+
+.grid-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #00ff8820;
+  border-radius: 4px;
+  background: #0d1926;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 18px;
+  padding: 0;
+  font-family: inherit;
+}
+
+.grid-cell.hidden {
+  background: linear-gradient(135deg, #141e2e, #1a2838);
+}
+
+.grid-cell.hidden:hover:not(.disabled) {
+  background: rgba(0, 255, 136, 0.1);
+  border-color: #00ff8850;
+  transform: scale(1.05);
+}
+
+.grid-cell.revealed {
+  cursor: default;
+  opacity: 0.9;
+}
+
+.grid-cell.collected {
+  opacity: 0.4;
+}
+
+.grid-cell.flash {
+  animation: cellFlash 0.6s ease-out;
+}
+
+.grid-cell.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.cell-icon {
+  line-height: 1;
+}
+
+.hidden-icon {
+  color: #1a3044;
+  font-size: 14px;
+}
+
+@keyframes cellFlash {
+  0% {
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.8);
+    transform: scale(1.15);
+  }
+  100% {
+    box-shadow: none;
+    transform: scale(1);
+  }
+}
+
+/* Game Over Overlay */
+.breach-result {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  padding: 24px 40px;
+  border-radius: 12px;
+  z-index: 10;
+  animation: resultPop 0.4s ease-out;
+}
+
+.breach-result.won {
+  background: rgba(0, 204, 136, 0.15);
+  border: 2px solid #00cc88;
+  box-shadow: 0 0 40px rgba(0, 204, 136, 0.3);
+}
+
+.breach-result.lost {
+  background: rgba(255, 68, 68, 0.15);
+  border: 2px solid #ff4444;
+  box-shadow: 0 0 40px rgba(255, 68, 68, 0.3);
+}
+
+.result-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.result-text {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+.breach-result.won .result-text { color: #00ff88; }
+.breach-result.lost .result-text { color: #ff6666; }
+
+@keyframes resultPop {
+  0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* Log */
+.breach-log {
+  max-height: 100px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  border: 1px solid #00ff8810;
+  font-size: 11px;
+  color: #668899;
+}
+
+.log-entry {
+  padding: 2px 0;
+  border-bottom: 1px solid #ffffff08;
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+  color: #99bbcc;
+}
+
+/* Scrollbar */
+.breach-log::-webkit-scrollbar { width: 4px; }
+.breach-log::-webkit-scrollbar-track { background: transparent; }
+.breach-log::-webkit-scrollbar-thumb {
+  background: #00ff8830;
+  border-radius: 2px;
+}

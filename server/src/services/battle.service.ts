@@ -10,6 +10,7 @@
  */
 
 import type { Server as SocketServer } from 'socket.io'
+import { logger } from '../utils/logger.js'
 import { eq, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
@@ -295,7 +296,7 @@ class BattleService {
       regionName, atkDivCount: atkDivIds.length, defDivCount: defDivIds.length,
     })
 
-    console.log(`[Battle] Launched: ${attackerCode} → ${defenderCode} (${regionName}), ${atkDivIds.length} vs ${defDivIds.length} divs`)
+    logger.info(`[Battle] Launched: ${attackerCode} → ${defenderCode} (${regionName}), ${atkDivIds.length} vs ${defDivIds.length} divs`)
     return { success: true, message: `Battle for ${regionName} has begun!`, battleId: id }
   }
 
@@ -534,13 +535,13 @@ class BattleService {
       try {
         await this.processSingleBattleTick(battle)
       } catch (e) {
-        console.error(`[Battle] Error processing tick for ${battle.id}:`, e)
+        logger.error(e, `[Battle] Error processing tick for ${battle.id}:`)
       }
     }
 
     const elapsed = Date.now() - tickStart
     if (elapsed > 5000) {
-      console.warn(`[Battle] Combat tick took ${elapsed}ms for ${activeBattles.length} battles — consider optimization`)
+      logger.warn(`[Battle] Combat tick took ${elapsed}ms for ${activeBattles.length} battles — consider optimization`)
     }
   }
 
@@ -864,7 +865,7 @@ class BattleService {
       },
     })
 
-    console.log(`[Battle] ${battle.id} ended: ${battle.status} (ATK ${battle.attacker.damageDealt} / DEF ${battle.defender.damageDealt})`)
+    logger.info(`[Battle] ${battle.id} ended: ${battle.status} (ATK ${battle.attacker.damageDealt} / DEF ${battle.defender.damageDealt})`)
   }
 
   // ── Internal helpers ──
@@ -910,7 +911,7 @@ class BattleService {
         health: 0,
         manpower: div.manpower,
       }).where(eq(divisionsTable.id, divisionId)).catch(e => {
-        console.error(`[Battle] Failed to persist destroyed division ${divisionId}:`, e)
+        logger.error(e, `[Battle] Failed to persist destroyed division ${divisionId}:`)
       })
     }
   }

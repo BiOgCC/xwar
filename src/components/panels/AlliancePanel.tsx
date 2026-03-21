@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useAllianceStore } from '../../stores/allianceStore'
 import type { Alliance, AllianceFundProposal } from '../../stores/allianceStore'
@@ -8,6 +8,10 @@ export default function AlliancePanel() {
   const player = usePlayerStore()
   const allianceStore = useAllianceStore()
   const myAlliance = allianceStore.getPlayerAlliance()
+
+  useEffect(() => {
+    allianceStore.fetchAlliances()
+  }, [])
 
   const [tab, setTab] = useState<'overview' | 'wars' | 'congress' | 'browse'>('overview')
   const [createName, setCreateName] = useState('')
@@ -44,8 +48,8 @@ export default function AlliancePanel() {
           <button
             className="alliance-btn alliance-btn--create"
             disabled={player.money < 500_000 || createName.length < 3 || createTag.length < 2}
-            onClick={() => {
-              const r = allianceStore.createAlliance(createName, createTag)
+            onClick={async () => {
+              const r = await allianceStore.createAlliance(createName, createTag)
               showMsg(r.message, r.success ? 'success' : 'error')
             }}
           >
@@ -57,8 +61,8 @@ export default function AlliancePanel() {
         <div className="alliance-browse">
           <div className="alliance-browse__title">EXISTING ALLIANCES</div>
           {allianceStore.alliances.map(a => (
-            <AllianceCard key={a.id} alliance={a} onJoin={() => {
-              const r = allianceStore.joinAlliance(a.id)
+            <AllianceCard key={a.id} alliance={a} onJoin={async () => {
+              const r = await allianceStore.joinAlliance(a.id)
               showMsg(r.message, r.success ? 'success' : 'error')
             }} />
           ))}
@@ -119,13 +123,24 @@ export default function AlliancePanel() {
               <button
                 className="alliance-btn alliance-btn--contribute"
                 disabled={player.money < contributeAmt}
-                onClick={() => {
-                  const r = allianceStore.contribute(contributeAmt)
+                onClick={async () => {
+                  const r = await allianceStore.contribute(contributeAmt)
                   showMsg(r.message, r.success ? 'success' : 'error')
                 }}
               >
                 CONTRIBUTE ${contributeAmt.toLocaleString()}
               </button>
+              {myAlliance.leader === player.name && (
+                <button
+                  className="alliance-btn alliance-btn--leave" style={{marginTop: '8px'}}
+                  onClick={async () => {
+                    const r = await allianceStore.withdraw(contributeAmt)
+                    showMsg(r.message, r.success ? 'success' : 'error')
+                  }}
+                >
+                  WITHDRAW ${contributeAmt.toLocaleString()}
+                </button>
+              )}
             </div>
           </div>
 

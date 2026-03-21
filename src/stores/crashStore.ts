@@ -1,21 +1,11 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
-import { useWorldStore } from './worldStore'
 import { useNewsStore } from './newsStore'
+import { casinoApi } from '../api/casino'
 
 /* ══════════════════════════════════════════════
    XWAR Crash — "Missile Launch" — INSTANT
-   
-   Simple single-player crash:
-   1. Pick a bet amount → click BET
-   2. Missile launches INSTANTLY
-   3. Multiplier climbs — cash out anytime
-   4. If it crashes before you cash out, you lose
-   5. Repeat immediately
-   
-   No rounds, no waiting, no bots.
-   15% of each bet → country treasury
-   House edge ~9% (EV ≈ 0.91)
+   Now server-authoritative.
    ══════════════════════════════════════════════ */
 
 export const CRASH_BETS = [10_000, 50_000, 100_000, 250_000, 500_000]
@@ -34,27 +24,18 @@ export interface CrashState {
   playerCashedOut: boolean
   playerPayout: number
   history: number[]
-  // Stats
   totalRounds: number
   wins: number
   losses: number
-  // Internal
+  isRequesting: boolean
+  
   _tickInterval: ReturnType<typeof setInterval> | null
   _resetTimer: ReturnType<typeof setTimeout> | null
-  // Actions
-  placeBet: (amount: number) => void
-  cashOut: () => void
+
+  placeBet: (amount: number) => Promise<void>
+  cashOut: () => Promise<void>
   _tick: () => void
   _cleanup: () => void
-}
-
-function generateCrashPoint(): number {
-  const houseEdge = 0.09
-  const r = Math.random()
-  if (r < 0.01) return 100  // rare moon shot
-  let crashAt = (1 - houseEdge) / r
-  crashAt = Math.max(1.10, crashAt)
-  return Math.min(100, Math.round(crashAt * 100) / 100)
 }
 
 export const useCrashStore = create<CrashState>((set, get) => ({
@@ -68,74 +49,115 @@ export const useCrashStore = create<CrashState>((set, get) => ({
   totalRounds: 0,
   wins: 0,
   losses: 0,
+  isRequesting: false,
   _tickInterval: null,
   _resetTimer: null,
 
-  placeBet: (amount: number) => {
+  placeBet: async (amount: number) => {
     const s = get()
-    if (s.phase !== 'idle') return
+    if (s.phase !== 'idle' || s.isRequesting) return
 
-    const player = usePlayerStore.getState()
-    if (player.money < amount) return
+    set({ isRequesting: true })
+    try {
+      const res = await casinoApi.crashBet(amount)
+      
+      set({
+        phase: 'flying',
+        playerBet: res.bet,
+        playerCashedOut: false,
+        playerPayout: 0,
+        currentMultiplier: 1.00,
+        crashPoint: res.crashPoint,
+        isRequesting: false,
+      })
 
-    // Deduct money and tax
-    player.spendMoney(amount)
-    const tax = Math.floor(amount * 0.15)
-    useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
-    player.incrementCasinoSpins()
+      // Start the multiplier tick locally to visualize flight
+      get()._cleanup()
+      const tickInterval = setInterval(() => get()._tick(), TICK_MS)
+      set({ _tickInterval: tickInterval })
+      
+      // Snappy UI deduction locally (backend already deducted it)
+      usePlayerStore.getState().spendMoney(amount)
+      usePlayerStore.getState().incrementCasinoSpins()
 
-    // Generate crash point and LAUNCH IMMEDIATELY
-    const crashPoint = generateCrashPoint()
-
-    set({
-      phase: 'flying',
-      playerBet: amount,
-      playerCashedOut: false,
-      playerPayout: 0,
-      currentMultiplier: 1.00,
-      crashPoint,
-    })
-
-    // Start the multiplier tick
-    const tickInterval = setInterval(() => get()._tick(), TICK_MS)
-    set({ _tickInterval: tickInterval })
+    } catch (err: any) {
+      console.error('Crash bet failed', err)
+      set({ isRequesting: false })
+    }
   },
 
-  cashOut: () => {
+  cashOut: async () => {
     const s = get()
-    if (s.phase !== 'flying') return
-    if (s.playerCashedOut) return
+    if (s.phase !== 'flying' || s.playerCashedOut || s.isRequesting) return
 
-    // Stop the game
-    if (s._tickInterval) { clearInterval(s._tickInterval); }
+    set({ isRequesting: true })
+    try {
+      // we freeze the local multiplier for UI, but server is authoritative
+      const freezeMult = s.currentMultiplier
+      
+      // Stop the game tick locally
+      if (s._tickInterval) { clearInterval(s._tickInterval); }
+      
+      const res = await casinoApi.crashCashout(freezeMult)
+      
+      if (res.crashed) {
+        // We actually crashed before our request hit!
+        usePlayerStore.getState().addCasinoLoss(s.playerBet)
+        
+        set({
+          phase: 'crashed',
+          currentMultiplier: res.crashPoint,
+          _tickInterval: null,
+          losses: s.losses + 1,
+          totalRounds: s.totalRounds + 1,
+          history: [res.crashPoint, ...s.history].slice(0, 20),
+          isRequesting: false
+        })
+      } else {
+        // We won
+        usePlayerStore.getState().earnMoney(res.payout)
+        
+        if (res.cashoutMultiplier! >= 5) {
+          const name = usePlayerStore.getState().name
+          useNewsStore.getState().pushEvent(
+            'casino',
+            `🚀 ${name} cashed out at ×${res.cashoutMultiplier!.toFixed(2)} on Crash — +$${res.payout.toLocaleString()}!`
+          )
+        }
 
-    const payout = Math.floor(s.playerBet * s.currentMultiplier)
-    usePlayerStore.getState().earnMoney(payout)
+        set({
+          phase: 'won',
+          playerCashedOut: true,
+          playerPayout: res.payout,
+          currentMultiplier: res.cashoutMultiplier!,
+          wins: s.wins + 1,
+          totalRounds: s.totalRounds + 1,
+          history: [res.cashoutMultiplier!, ...s.history].slice(0, 20),
+          _tickInterval: null,
+          isRequesting: false
+        })
+      }
 
-    // News for big wins
-    if (s.currentMultiplier >= 5) {
-      const name = usePlayerStore.getState().name
-      useNewsStore.getState().pushEvent(
-        'casino',
-        `🚀 ${name} cashed out at ×${s.currentMultiplier.toFixed(2)} on Crash — +$${payout.toLocaleString()}!`
-      )
+      // Auto-reset to idle after displaying result
+      const resetTimer = setTimeout(() => {
+        set({ phase: 'idle', _resetTimer: null })
+      }, CRASH_DISPLAY_MS)
+      set({ _resetTimer: resetTimer })
+
+    } catch (err: any) {
+      console.error('Crash cashout failed', err)
+      set({ isRequesting: false })
+      
+      // If it failed, we assume it crashed server-side and report it
+      // Actually we just let it resume ticking if it was a network error
+      // or we can call backend to check state.
+      if (err.message?.includes('active crash')) {
+        // If "no active crash", it crashed. Let the local tick finish it.
+        if (s._tickInterval) { clearInterval(s._tickInterval); }
+        const tickInterval = setInterval(() => get()._tick(), TICK_MS)
+        set({ _tickInterval: tickInterval })
+      }
     }
-
-    set({
-      phase: 'won',
-      playerCashedOut: true,
-      playerPayout: payout,
-      wins: s.wins + 1,
-      totalRounds: s.totalRounds + 1,
-      history: [s.currentMultiplier, ...s.history].slice(0, 20),
-      _tickInterval: null,
-    })
-
-    // Auto-reset to idle after displaying result
-    const resetTimer = setTimeout(() => {
-      set({ phase: 'idle', _resetTimer: null })
-    }, CRASH_DISPLAY_MS)
-    set({ _resetTimer: resetTimer })
   },
 
   _tick: () => {
@@ -145,7 +167,7 @@ export const useCrashStore = create<CrashState>((set, get) => ({
     const newMult = Math.round((s.currentMultiplier * (1 + GROWTH_RATE)) * 1000) / 1000
 
     if (newMult >= s.crashPoint) {
-      // CRASH!
+      // Crash Point reached locally
       if (s._tickInterval) { clearInterval(s._tickInterval) }
 
       usePlayerStore.getState().addCasinoLoss(s.playerBet)
@@ -159,16 +181,17 @@ export const useCrashStore = create<CrashState>((set, get) => ({
         history: [s.crashPoint, ...s.history].slice(0, 20),
       })
 
-      // News for spectacular crashes
       if (s.crashPoint >= 15) {
         useNewsStore.getState().pushEvent('casino', `🚀 Crash missile survived to ×${s.crashPoint.toFixed(2)}!`)
       }
 
-      // Auto-reset to idle after showing crash
       const resetTimer = setTimeout(() => {
         set({ phase: 'idle', _resetTimer: null })
       }, CRASH_DISPLAY_MS)
       set({ _resetTimer: resetTimer })
+      
+      // Cleanup server session (ignore result since we handled it visually)
+      casinoApi.crashReport().catch(console.error)
     } else {
       set({ currentMultiplier: newMult })
     }

@@ -16,7 +16,7 @@ export default function GovHomeTab() {
 
   const activeWars = world.wars.filter(w => w.status === 'active' && (w.attacker === (myCountry?.name || '') || w.defender === (myCountry?.name || '')))
   const alliances = gov?.alliances || []
-  const activeMilCampaigns = Object.values(useMilitaryStore.getState().campaigns).filter((c: any) => c.status === 'launched' || c.status === 'recruiting')
+  const activeMilLobbies = Object.values(useMilitaryStore.getState().activeDuels).filter((id: any) => id)
   const activeCyberCampaigns = Object.values(useCyberStore.getState().campaigns).filter((c: any) => c.status === 'active' || c.status === 'in_progress')
 
   const armyStore = useArmyStore.getState()
@@ -97,13 +97,13 @@ export default function GovHomeTab() {
 
       {/* Operations */}
       <div className="gov-section">
-        <div className="gov-section__title gov-section__title--purple">🔒 ACTIVE OPS ({activeMilCampaigns.length + activeCyberCampaigns.length})</div>
-        {activeMilCampaigns.length + activeCyberCampaigns.length === 0
+        <div className="gov-section__title gov-section__title--purple">🔒 ACTIVE OPS ({activeMilLobbies.length + activeCyberCampaigns.length})</div>
+        {activeMilLobbies.length + activeCyberCampaigns.length === 0
           ? <div style={{ fontSize: '9px', color: '#3e4a5c' }}>No active operations.</div>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {activeMilCampaigns.map((c: any) => (
-                <div key={c.id} style={{ fontSize: '9px', padding: '3px 6px', background: 'rgba(239,68,68,0.04)', borderRadius: '3px', border: '1px solid rgba(239,68,68,0.1)', color: '#fca5a5' }}>
-                  🎖️ {(c.operationId || '').replace(/_/g, ' ').toUpperCase()}
+              {activeMilLobbies.map((c: any) => (
+                <div key={c.operationId} style={{ fontSize: '9px', padding: '3px 6px', background: 'rgba(239,68,68,0.04)', borderRadius: '3px', border: '1px solid rgba(239,68,68,0.1)', color: '#fca5a5' }}>
+                  🎖️ {(c.operationId || '').replace(/_/g, ' ').toUpperCase()} ({c.slotsFilled} players)
                 </div>
               ))}
               {activeCyberCampaigns.map((c: any) => (
