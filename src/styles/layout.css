@@ -272,140 +272,229 @@
   pointer-events: all;
 }
 
-/* ── Collapsible Nav Drawer (left of the panel) ── */
+/* ══════════════════════════════════════════════
+   Collapsible Nav Drawer (left of the panel)
+   ══════════════════════════════════════════════ */
 .hud-panel-nav {
   width: 0;
   overflow: hidden;
-  background: rgba(7, 11, 17, 0.96);
+  background:
+    linear-gradient(180deg,
+      rgba(7, 11, 17, 0.98) 0%,
+      rgba(10, 16, 24, 0.97) 40%,
+      rgba(7, 11, 17, 0.98) 100%);
   border-left: 1px solid transparent;
-  transition: width 250ms cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 250ms ease;
+  border-right: 1px solid transparent;
+  transition: width 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 280ms ease,
+              box-shadow 280ms ease;
   display: flex;
   flex-direction: column;
+  box-shadow: none;
 }
 
 .hud-panel-nav--open {
-  width: 155px;
-  border-left-color: rgba(34, 211, 138, 0.12);
+  width: 168px;
+  border-left-color: rgba(34, 211, 138, 0.08);
+  border-right-color: rgba(34, 211, 138, 0.06);
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(34, 211, 138, 0.15) transparent;
+  scrollbar-color: rgba(34, 211, 138, 0.12) transparent;
+  box-shadow:
+    -8px 0 24px rgba(0, 0, 0, 0.4),
+    inset 1px 0 0 rgba(34, 211, 138, 0.04);
 }
 
-/* ── Toggle Tab (between nav and panel) ── */
+/* ── Toggle Tab ── */
 .hud-panel-nav__toggle {
   align-self: center;
-  width: 24px;
-  height: 64px;
+  width: 22px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 2px;
-  background: rgba(7, 11, 17, 0.95);
-  border: 1px solid rgba(34, 211, 138, 0.12);
+  gap: 3px;
+  background:
+    linear-gradient(180deg,
+      rgba(10, 16, 24, 0.95) 0%,
+      rgba(7, 11, 17, 0.98) 100%);
+  border: 1px solid rgba(34, 211, 138, 0.1);
   border-right: none;
-  border-radius: 6px 0 0 6px;
+  border-radius: 5px 0 0 5px;
   cursor: pointer;
   backdrop-filter: blur(14px);
-  transition: all 200ms ease;
+  transition: all 220ms ease;
   flex-shrink: 0;
   margin-left: -1px;
 }
 
 .hud-panel-nav__toggle:hover {
-  background: rgba(34, 211, 138, 0.08);
-  border-color: rgba(34, 211, 138, 0.35);
-  box-shadow: -2px 0 12px rgba(34, 211, 138, 0.08);
+  background:
+    linear-gradient(180deg,
+      rgba(34, 211, 138, 0.06) 0%,
+      rgba(34, 211, 138, 0.02) 100%);
+  border-color: rgba(34, 211, 138, 0.3);
+  box-shadow: -3px 0 16px rgba(34, 211, 138, 0.06);
 }
 
 .hud-panel-nav__toggle-icon {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--accent-primary);
+  opacity: 0.8;
+  transition: opacity 150ms ease;
+}
+
+.hud-panel-nav__toggle:hover .hud-panel-nav__toggle-icon {
+  opacity: 1;
 }
 
 .hud-panel-nav__toggle-label {
   font-family: var(--font-display);
-  font-size: 7px;
-  font-weight: 600;
+  font-size: 6px;
+  font-weight: 700;
   color: var(--text-muted);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.15em;
   writing-mode: vertical-lr;
   text-orientation: mixed;
+  opacity: 0.6;
 }
 
-/* ── Sidebar content (items, drag panels, reset) ── */
+/* ══════════════════════════════════════════════
+   Sidebar Content (items, drag panels, reset)
+   ══════════════════════════════════════════════ */
+
+/* ── Nav Drawer Header ── */
+.hud-panel-nav__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(34, 211, 138, 0.06);
+  flex-shrink: 0;
+  min-width: 150px;
+}
+
+.hud-panel-nav__header-icon {
+  font-size: 11px;
+  color: var(--accent-primary);
+  opacity: 0.6;
+}
+
+.hud-panel-nav__header-text {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.15em;
+  opacity: 0.5;
+}
+
+/* ── Group Labels ── */
+.hud-sidebar__group-label {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 700;
+  color: rgba(148, 163, 184, 0.3);
+  letter-spacing: 0.18em;
+  padding: 4px 10px 2px;
+  margin-top: 2px;
+}
+
 .hud-sidebar__content {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
-  padding: 8px 6px;
-  min-width: 140px;
+  padding: 10px 8px;
+  min-width: 150px;
 }
 
+/* ── Nav Items ── */
 .hud-sidebar__item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  transition: all 150ms ease;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  transition: all 170ms ease;
   position: relative;
   min-width: 120px;
   white-space: nowrap;
+  border: 1px solid transparent;
 }
 
 .hud-sidebar__item:hover {
-  background: rgba(34, 211, 138, 0.06);
+  background: rgba(34, 211, 138, 0.05);
+  border-color: rgba(34, 211, 138, 0.08);
 }
 
 .hud-sidebar__item--active {
-  background: rgba(34, 211, 138, 0.1);
+  background:
+    linear-gradient(135deg,
+      rgba(34, 211, 138, 0.1) 0%,
+      rgba(34, 211, 138, 0.04) 100%);
+  border-color: rgba(34, 211, 138, 0.18);
+  box-shadow:
+    0 0 8px rgba(34, 211, 138, 0.04),
+    inset 0 0 8px rgba(34, 211, 138, 0.02);
 }
 
 .hud-sidebar__item--active .hud-sidebar__label {
   color: var(--accent-primary);
+  text-shadow: 0 0 12px rgba(34, 211, 138, 0.25);
+}
+
+.hud-sidebar__item--active .hud-sidebar__icon {
+  filter: drop-shadow(0 0 4px rgba(34, 211, 138, 0.3));
 }
 
 .hud-sidebar__icon {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
   width: 18px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .hud-sidebar__label {
   font-family: var(--font-display);
   font-size: 9px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: rgba(148, 163, 184, 0.7);
   letter-spacing: 0.1em;
+  transition: color 150ms ease, text-shadow 150ms ease;
+}
+
+.hud-sidebar__item:hover .hud-sidebar__label {
+  color: rgba(148, 163, 184, 0.95);
 }
 
 .hud-sidebar__dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   background: #ef4444;
   border-radius: 50%;
   position: absolute;
-  top: 6px;
+  top: 7px;
   right: 8px;
   animation: pulse-glow 2s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
 }
 
-/* ---- Sidebar Drag & Drop Panels ---- */
+/* ── Drag & Drop Panel Groups ── */
 .hud-sidebar__panel {
   border: 1px solid;
-  border-radius: 8px;
-  padding: 4px 0;
-  margin-bottom: 6px;
+  border-radius: 6px;
+  padding: 3px 0;
+  margin-bottom: 5px;
   position: relative;
   transition: border-color 200ms ease, box-shadow 200ms ease;
+  background: rgba(255, 255, 255, 0.01);
 }
 
 .hud-sidebar--dragging .hud-sidebar__panel {
-  box-shadow: inset 0 0 12px rgba(34, 211, 138, 0.04);
+  box-shadow: inset 0 0 16px rgba(34, 211, 138, 0.04);
 }
 
 .hud-sidebar__drag-wrapper {
@@ -441,8 +530,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 8px;
-  border: 1px dashed rgba(34, 211, 138, 0.2);
+  padding: 14px 8px;
+  border: 1px dashed rgba(34, 211, 138, 0.15);
   border-radius: 4px;
   margin: 4px 6px;
 }
@@ -452,15 +541,16 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 4px 0;
-  font-size: 14px;
+  padding: 5px 0;
+  margin-top: 2px;
+  font-size: 13px;
   color: var(--text-muted);
   background: transparent;
   border: none;
   cursor: pointer;
   border-radius: 4px;
   transition: all 150ms ease;
-  opacity: 0.4;
+  opacity: 0.3;
 }
 
 .hud-sidebar__reset:hover {
@@ -469,16 +559,20 @@
   background: rgba(34, 211, 138, 0.06);
 }
 
-/* =============================================
-   QUICK-NAV FOOTER (bottom of panel)
-   ============================================= */
+/* ══════════════════════════════════════════════
+   Quick-Nav Dock (bottom of panel)
+   ══════════════════════════════════════════════ */
 .hud-panel__quicknav {
   display: flex;
   align-items: center;
-  justify-content: space-around;
-  padding: 6px 8px;
-  border-top: 1px solid rgba(34, 211, 138, 0.1);
-  background: rgba(7, 11, 17, 0.6);
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 10px 6px;
+  border-top: 1px solid rgba(34, 211, 138, 0.08);
+  background:
+    linear-gradient(180deg,
+      rgba(7, 11, 17, 0.4) 0%,
+      rgba(7, 11, 17, 0.7) 100%);
   flex-shrink: 0;
 }
 
@@ -486,40 +580,57 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 5px 8px;
-  border-radius: 4px;
-  transition: all 150ms ease;
+  gap: 3px;
+  padding: 6px 10px 4px;
+  border-radius: 5px;
+  transition: all 170ms ease;
   cursor: pointer;
   background: transparent;
   border: 1px solid transparent;
+  flex: 1;
+  max-width: 56px;
 }
 
 .hud-panel__quicknav-btn:hover {
-  background: rgba(34, 211, 138, 0.06);
-  border-color: rgba(34, 211, 138, 0.15);
+  background: rgba(34, 211, 138, 0.05);
+  border-color: rgba(34, 211, 138, 0.12);
 }
 
 .hud-panel__quicknav-btn--active {
-  background: rgba(34, 211, 138, 0.1);
-  border-color: rgba(34, 211, 138, 0.25);
+  background:
+    linear-gradient(180deg,
+      rgba(34, 211, 138, 0.1) 0%,
+      rgba(34, 211, 138, 0.03) 100%);
+  border-color: rgba(34, 211, 138, 0.2);
+  box-shadow: 0 -1px 8px rgba(34, 211, 138, 0.06);
+}
+
+.hud-panel__quicknav-btn--active .hud-panel__quicknav-icon {
+  filter: drop-shadow(0 0 4px rgba(34, 211, 138, 0.3));
 }
 
 .hud-panel__quicknav-btn--active .hud-panel__quicknav-label {
   color: var(--accent-primary);
+  text-shadow: 0 0 8px rgba(34, 211, 138, 0.2);
 }
 
 .hud-panel__quicknav-icon {
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1;
+  transition: filter 150ms ease;
 }
 
 .hud-panel__quicknav-label {
   font-family: var(--font-display);
   font-size: 7px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: rgba(148, 163, 184, 0.5);
   letter-spacing: 0.1em;
+  transition: color 150ms ease, text-shadow 150ms ease;
+}
+
+.hud-panel__quicknav-btn:hover .hud-panel__quicknav-label {
+  color: rgba(148, 163, 184, 0.8);
 }
 
 /* =============================================

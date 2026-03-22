@@ -173,16 +173,22 @@ export default function PanelRouter() {
     <div className="hud-panel-wrap">
       {/* ── Collapsible sidebar drawer (attached to panel left edge) ── */}
       <nav className={`hud-panel-nav ${navOpen ? 'hud-panel-nav--open' : ''} ${dragState ? 'hud-sidebar--dragging' : ''}`}>
+        <div className="hud-panel-nav__header">
+          <span className="hud-panel-nav__header-icon">☰</span>
+          <span className="hud-panel-nav__header-text">NAVIGATOR</span>
+        </div>
         <div className="hud-sidebar__content">
+          <div className="hud-sidebar__group-label">GENERAL</div>
           <SidebarPanel
-            panelId="top" items={topItems} borderColor="rgba(59,130,246,0.35)"
+            panelId="top" items={topItems} borderColor="rgba(59,130,246,0.25)"
             dragState={dragState} dropTarget={dropTarget}
             onDragStart={handleDragStart} onDragOver={handleDragOver}
             onDrop={handleDrop} onDragEnd={handleDragEnd} onDragLeave={handleDragLeave}
             renderItem={renderItem}
           />
+          <div className="hud-sidebar__group-label">OPERATIONS</div>
           <SidebarPanel
-            panelId="bottom" items={bottomItems} borderColor="rgba(239,68,68,0.35)"
+            panelId="bottom" items={bottomItems} borderColor="rgba(239,68,68,0.25)"
             dragState={dragState} dropTarget={dropTarget}
             onDragStart={handleDragStart} onDragOver={handleDragOver}
             onDrop={handleDrop} onDragEnd={handleDragEnd} onDragLeave={handleDragLeave}
