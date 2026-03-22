@@ -997,7 +997,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           if (playerCC === battle.attackerId && myAtkDmg > 0) {
             const myShare = getWarRewardShare(winnerRewards.totalMoney, myAtkDmg, totalAtkDmg)
             ps.earnMoney(myShare)
-            ps.addResource('badgesOfHonor', 1, 'battle_win')
+            const milB = useSpecializationStore.getState().getMilitaryBonuses()
+            ps.addResource('badgesOfHonor', 1 + (milB?.bohWinBonus || 0), 'battle_win')
           } else if (playerCC === battle.defenderId) {
             // Loser consolation is also damage-weighted
             const myDefDmg = battle.defenderDamageDealers[ps.name] || 0
@@ -1026,7 +1027,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           if (dPlayerCC === battle.defenderId && dMyDefDmg > 0) {
             const dMyShare = getWarRewardShare(dWinnerRewards.totalMoney, dMyDefDmg, dTotalDefDmg)
             dPs.earnMoney(dMyShare)
-            dPs.addResource('badgesOfHonor', 1, 'battle_win')
+            const milB = useSpecializationStore.getState().getMilitaryBonuses()
+            dPs.addResource('badgesOfHonor', 1 + (milB?.bohWinBonus || 0), 'battle_win')
           } else if (dPlayerCC === battle.attackerId) {
             // Loser consolation is also damage-weighted
             const dMyAtkDmg = battle.attackerDamageDealers[dPs.name] || 0
@@ -1296,6 +1298,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       }
     } catch (e) { console.warn('[Hit Loot] Error', e) }
 
+    // ── 5% chance to drop a Badge of Honor per hit (plus Military bonus) ──
+    const milB = useSpecializationStore.getState().getMilitaryBonuses()
+    const bohDropChance = 5 + (milB?.bohDropPercent || 0)
+    if (Math.random() * 100 < bohDropChance) {
+      usePlayerStore.getState().addResource('badgesOfHonor', 1, 'battle_hit_drop')
+      dropMsg += ' [🎖️+1]'
+    }
+
     // Persist to backend (fire-and-forget)
     import('../api/client').then(({ battleAttack }) => battleAttack(battleId).catch(() => {}))
     return {
@@ -1385,6 +1395,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         }
       }
     } catch (e) { console.warn('[Hit Loot] Error', e) }
+
+    // ── 5% chance to drop a Badge of Honor per hit (plus Military bonus) ──
+    const milB = useSpecializationStore.getState().getMilitaryBonuses()
+    const bohDropChance = 5 + (milB?.bohDropPercent || 0)
+    if (Math.random() * 100 < bohDropChance) {
+      usePlayerStore.getState().addResource('badgesOfHonor', 1, 'battle_hit_drop')
+      dropMsg += ' [🎖️+1]'
+    }
 
     set(s => ({
       battles: {

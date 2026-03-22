@@ -20,7 +20,9 @@ export interface RegionalDeposit {
   id: string
   type: DepositType
   countryCode: string
-  bonus: number
+  regionId: string          // Region inside the country where the deposit was found
+  bonus: number             // 25–33% production bonus
+  expiresAt: number         // Timestamp when the deposit expires (0 = not yet discovered)
   discoveredBy: string | null
   active: boolean
 }

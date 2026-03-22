@@ -134,7 +134,7 @@ export interface SpecializationState {
   getPoliticianTier: () => TierInfo
   getMercenaryTier: () => TierInfo
   getInfluencerTier: () => TierInfo
-  getMilitaryBonuses: () => { damagePercent: number; critRatePercent: number }
+  getMilitaryBonuses: () => { damagePercent: number; critRatePercent: number; bohDropPercent: number; bohWinBonus: number }
   getEconomicBonuses: () => { extraCompanySlots: number; productionPercent: number }
   getPoliticianBonuses: () => { countryDamage: number; countryProduction: number; countryProspection: number; countryIndustrialist: number; countryDodge: number }
   getMercenaryBonuses: () => { abroadDamagePercent: number; lootChancePercent: number }
@@ -506,7 +506,12 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
 
   getMilitaryBonuses: () => {
     const t = getTierInfo(get().militaryXP, MIL_TIER_LABELS).tier
-    return { damagePercent: t * 3, critRatePercent: t >= 5 ? 5 : 0 }
+    return {
+      damagePercent: t * 3,
+      critRatePercent: t >= 5 ? 5 : 0,
+      bohDropPercent: t >= 5 ? 5 : t >= 4 ? 3 : t >= 3 ? 2 : t >= 2 ? 1 : 0,
+      bohWinBonus: t >= 5 ? 2 : t >= 4 ? 1 : 0,
+    }
   },
   getEconomicBonuses: () => {
     const t = getTierInfo(get().economicXP, ECO_TIER_LABELS).tier

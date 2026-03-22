@@ -1,7 +1,34 @@
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useSpecializationStore } from '../../../stores/specializationStore'
 
-/** Specialization bars (4 tracks) + Donate section */
+const RADAR_SIZE = 160
+const CX = RADAR_SIZE / 2
+const CY = RADAR_SIZE / 2
+const MAX_R = 55
+const MAX_TIER = 5
+
+function getPoint(tierObj: { tier: number, percent: number }, angleDeg: number) {
+  const effTier = Math.min(MAX_TIER, tierObj.tier + (tierObj.tier === 5 ? 0 : tierObj.percent / 100))
+  const r = (effTier / MAX_TIER) * MAX_R
+  const angleRad = (angleDeg - 90) * (Math.PI / 180)
+  return { x: CX + r * Math.cos(angleRad), y: CY + r * Math.sin(angleRad) }
+}
+
+function getBgPoint(tier: number, angleDeg: number) {
+  const r = (tier / MAX_TIER) * MAX_R
+  const angleRad = (angleDeg - 90) * (Math.PI / 180)
+  return { x: CX + r * Math.cos(angleRad), y: CY + r * Math.sin(angleRad) }
+}
+
+const AXISES = [
+  { key: 'mil', icon: '⚔️', angle: 0, color: '#f87171' },
+  { key: 'eco', icon: '💼', angle: 72, color: '#38bdf8' },
+  { key: 'mer', icon: '🪖', angle: 144, color: '#22d38a' },
+  { key: 'inf', icon: '🌟', angle: 216, color: '#eab308' },
+  { key: 'pol', icon: '🏛️', angle: 288, color: '#a855f7' },
+]
+
+/** Specialization bars + Radar chart + Donate section */
 export default function ProfileSpecBars() {
   const player = usePlayerStore()
   const ss = useSpecializationStore.getState()
@@ -18,7 +45,7 @@ export default function ProfileSpecBars() {
 
   const bars = [
     { key: 'mil', icon: '⚔️', name: 'Military', tier: mil, color: '#f87171', trackClass: 'ptab-spec-card__mil', border: 'rgba(239,68,68,0.2)',
-      bonus: milB.damagePercent > 0 ? `+${milB.damagePercent}% DMG${milB.critRatePercent > 0 ? `, +${milB.critRatePercent}% CRIT` : ''}` : '' },
+      bonus: milB.damagePercent > 0 ? `+${milB.damagePercent}% DMG${milB.critRatePercent > 0 ? `, +${milB.critRatePercent}% CRIT` : ''}${milB.bohDropPercent > 0 ? `, +${milB.bohDropPercent}% 🎖️ Drop` : ''}${milB.bohWinBonus > 0 ? ` (+${milB.bohWinBonus}/win)` : ''}` : '' },
     { key: 'eco', icon: '💼', name: 'Economic', tier: eco, color: '#38bdf8', trackClass: 'ptab-spec-card__eco', border: 'rgba(56,189,248,0.2)',
       bonus: ecoB.extraCompanySlots > 0 ? `+${ecoB.extraCompanySlots} Companies${ecoB.productionPercent > 0 ? `, +${ecoB.productionPercent}% Prod` : ''}` : '' },
     { key: 'pol', icon: '🏛️', name: 'Politician', tier: pol, color: '#a855f7', trackClass: 'ptab-spec-card__mil', border: 'rgba(168,85,247,0.2)',
@@ -29,10 +56,59 @@ export default function ProfileSpecBars() {
       bonus: infB.extraFriendSlots > 0 ? `+${infB.extraFriendSlots} Friends${infB.giftingTaxReduction > 0 ? `, -${infB.giftingTaxReduction}% Gift Tax` : ''}${infB.bloodPactXPBonus > 0 ? `, +${infB.bloodPactXPBonus}% Pact XP` : ''}` : '' },
   ]
 
+  const playerPoints = [
+    getPoint(mil, 0),
+    getPoint(eco, 72),
+    getPoint(mer, 144),
+    getPoint(inf, 216),
+    getPoint(pol, 288),
+  ].map(p => `${p.x},${p.y}`).join(' ')
+
   return (
     <>
+      {/* Radar Chart */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px', marginTop: '16px' }}>
+        <svg width={RADAR_SIZE} height={RADAR_SIZE} style={{ overflow: 'visible' }}>
+          {/* Background Rays */}
+          {AXISES.map(a => {
+            const p = getBgPoint(MAX_TIER, a.angle)
+            return <line key={a.key} x1={CX} y1={CY} x2={p.x} y2={p.y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+          })}
+          
+          {/* Background Pentagons */}
+          {[1,2,3,4,5].map(t => {
+            const pts = AXISES.map(a => getBgPoint(t, a.angle)).map(p => `${p.x},${p.y}`).join(' ')
+            return <polygon key={t} points={pts} fill={t % 2 === 0 ? "rgba(255,255,255,0.02)" : "none"} stroke="rgba(255,255,255,0.08)" strokeWidth={t === MAX_TIER ? 1 : 0.5} />
+          })}
+
+          {/* Player Progress Polygon */}
+          <polygon points={playerPoints} fill="rgba(99, 102, 241, 0.2)" stroke="#818cf8" strokeWidth="2" style={{ filter: 'drop-shadow(0 0 6px rgba(99,102,241,0.5))' }} />
+          
+          {/* Player Progress Dots */}
+          {[
+            { p: getPoint(mil, 0), c: '#f87171' },
+            { p: getPoint(eco, 72), c: '#38bdf8' },
+            { p: getPoint(mer, 144), c: '#22d38a' },
+            { p: getPoint(inf, 216), c: '#eab308' },
+            { p: getPoint(pol, 288), c: '#a855f7' },
+          ].map((pt, i) => (
+            <circle key={`dot-${i}`} cx={pt.p.x} cy={pt.p.y} r="3" fill={pt.c} />
+          ))}
+
+          {/* Labels */}
+          {AXISES.map(a => {
+            const p = getBgPoint(MAX_TIER + 1.25, a.angle)
+            return (
+              <text key={a.key} x={p.x} y={p.y} fill={a.color} fontSize="14" textAnchor="middle" dominantBaseline="central" style={{ textShadow: `0 0 8px ${a.color}80` }}>
+                {a.icon}
+              </text>
+            )
+          })}
+        </svg>
+      </div>
+
       {/* Spec Bars */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '16px' }}>
         {bars.map(b => (
           <div key={b.key} className="ptab-spec-card" style={{ borderColor: b.border, padding: '8px 10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>

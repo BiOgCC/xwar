@@ -581,8 +581,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   produce: (industrialistLevel: number) =>
     set((s) => {
       if (s.productionBar < s.productionBarMax) return {}
-      const chance = industrialistLevel * 0.05
+      const chance = industrialistLevel * 0.02
       const foundBitcoin = Math.random() < chance
+      // Industrialist scrap: 1% per PP consumed per level → roll per level
+      const scrapChance = industrialistLevel * 0.01  // 1% per level, max 10%
+      const bonusScrap = Math.random() < scrapChance ? (100 + industrialistLevel * 50) : 0
       const medianLevel = useWorldStore.getState().serverMedianLevel
       const xpGain = applyCatchUpXP(30, s.level, medianLevel)
       let newXP = s.experience + xpGain
@@ -596,6 +599,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         nextXP = xpForLevel(newLevel)
       }
       useSpecializationStore.getState().recordProduce()
+      if (bonusScrap > 0 && _econFlowHook) _econFlowHook('produce_scrap', bonusScrap, 'created', 'scrap')
       // War Cards: check items produced milestone
       setTimeout(() => {
         const ps = usePlayerStore.getState()
@@ -610,6 +614,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         productionBar: 0,
         itemsProduced: s.itemsProduced + 1,
         bitcoin: foundBitcoin ? s.bitcoin + 1 : s.bitcoin,
+        scrap: s.scrap + bonusScrap,
         experience: newXP,
         level: newLevel,
         skillPoints: newSP,

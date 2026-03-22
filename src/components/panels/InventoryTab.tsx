@@ -76,7 +76,7 @@ export default function InventoryTab() {
           {items.map(item => {
             const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
             const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
-            const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+            const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
             const dur = Number(item.durability ?? 100)
             const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
             const statEntries: { label: string; val: string; color: string }[] = []
@@ -216,7 +216,7 @@ export default function InventoryTab() {
         <GameModal isOpen={true} onClose={() => setSelectedItem(null)} size="sm" glowColor={TIER_COLORS[selectedItem.tier]}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0 12px', marginBottom: '12px', background: `radial-gradient(ellipse at center, ${TIER_COLORS[selectedItem.tier]}10 0%, transparent 70%)` }}>
             {(() => {
-              const imgUrl = getItemImagePath(selectedItem.tier, selectedItem.slot, selectedItem.category, selectedItem.weaponSubtype);
+              const imgUrl = getItemImagePath(selectedItem.tier, selectedItem.slot, selectedItem.category, selectedItem.weaponSubtype, selectedItem.superforged);
               return imgUrl ? <img src={imgUrl} alt={selectedItem.name} style={{ width: '72px', height: '72px', objectFit: 'contain', filter: `drop-shadow(0 4px 16px ${TIER_COLORS[selectedItem.tier]}40)`, marginBottom: '8px' }} onError={e => { e.currentTarget.style.display = 'none' }} />
                 : <div style={{ fontSize: '48px', marginBottom: '8px', opacity: 0.5 }}>{selectedItem.slot === 'helmet' ? '\u2302' : selectedItem.slot === 'chest' ? '\u2666' : '\u2694'}</div>;
             })()}

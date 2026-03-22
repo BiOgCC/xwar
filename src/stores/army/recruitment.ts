@@ -117,6 +117,7 @@ export function createRecruitmentSlice(
         battlesSurvived: 0,
         starQuality: star,
         statModifiers: modifiers,
+        deployedToPMC: false,
       }
 
       set(state => ({
@@ -256,6 +257,7 @@ export function createRecruitmentSlice(
         autoTrainingEnabled: false,
         killCount: 0, battlesSurvived: 0,
         starQuality: sStar, statModifiers: sMods,
+        deployedToPMC: false,
       }
 
       const contributions = [...army.contributions]

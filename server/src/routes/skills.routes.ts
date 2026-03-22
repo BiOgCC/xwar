@@ -12,7 +12,7 @@ import { validate } from '../middleware/validate.js'
 const router = Router()
 
 const MILITARY_SKILLS = ['attack', 'critRate', 'critDamage', 'armor', 'dodge', 'precision'] as const
-const ECONOMIC_SKILLS = ['production', 'prospection', 'industrialist', 'trade', 'investor', 'espionage'] as const
+const ECONOMIC_SKILLS = ['work', 'entrepreneurship', 'production', 'prospection', 'industrialist', 'trade', 'investor', 'espionage'] as const
 const ALL_SKILLS = [...MILITARY_SKILLS, ...ECONOMIC_SKILLS]
 
 // Skill column name mapping (camelCase → snake_case)
@@ -23,6 +23,8 @@ const SKILL_COL_MAP: Record<string, string> = {
   armor: 'armor',
   dodge: 'dodge',
   precision: 'precision_',
+  work: 'work',
+  entrepreneurship: 'entrepreneurship',
   production: 'production',
   prospection: 'prospection',
   industrialist: 'industrialist',

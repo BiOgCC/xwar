@@ -339,6 +339,10 @@ export interface Division {
 
   // Cooldowns
   lastHealedAt?: number    // Timestamp when the division was last healed
+
+  // PMC lending: when true, the PMC commander can use this division offensively/defensively
+  // Owner retains ownership and can recall at any time
+  deployedToPMC: boolean
 }
 
 // ====== MILITARY FORCE ======
@@ -358,6 +362,7 @@ export interface ArmyVault {
   jets: number
   tanks: number
   oil: number
+  materialX: number
   money: number
   equipmentIds: string[]
 }
@@ -496,7 +501,7 @@ export interface ArmyState {
   donateEquipmentToVault: (armyId: string, itemId: string) => { success: boolean; message: string }
   sponsorDivision: (armyId: string, divisionType: DivisionType, targetPlayer: string) => { success: boolean; message: string }
   buyArmyBuff: (armyId: string, stat: ArmyBuff['stat'], percentage: number, durationMs: number, cost: number) => { success: boolean; message: string }
-  distributeVaultToMembers: (armyId: string, resource: 'money' | 'oil', amount: number) => { success: boolean; message: string }
+  distributeVaultToMembers: (armyId: string, resource: 'money' | 'oil' | 'materialX', amount: number) => { success: boolean; message: string }
 
   // Deployment & Aura
   deployArmyToBattle: (armyId: string, battleId: string) => { success: boolean; message: string }
@@ -504,6 +509,7 @@ export interface ArmyState {
   recallArmy: (armyId: string) => { success: boolean; message: string }
   getArmyAV: (armyId: string) => { air: number; ground: number; tanks: number; navy: number; total: number }
   getCompositionAura: (armyId: string) => { critDmgPct: number; dodgePct: number; attackPct: number; precisionPct: number }
+  getPMCCompositionAura: (armyId: string) => { air: number; ground: number; tanks: number; navy: number; total: number; critDmgPct: number; dodgePct: number; attackPct: number; precisionPct: number }
 
   // Battle Orders
   issueOrder: (armyId: string, orderType: BattleOrder['orderType'], targetRegion: string, bountyPool: number, durationMs: number, damageMultiplier: number) => { success: boolean; message: string }
@@ -518,4 +524,8 @@ export interface ArmyState {
   depositBattleReward: (armyId: string, playerId: string, amount: number) => void
   recordMemberDamage: (armyId: string, playerId: string, damage: number) => void
   processEconomyUpkeepTick: () => void
+
+  // PMC lending: casuals lend divisions to PMC commander for use while AFK
+  lendDivisionToPMC: (divisionId: string) => { success: boolean; message: string }
+  recallDivisionFromPMC: (divisionId: string) => { success: boolean; message: string }
 }

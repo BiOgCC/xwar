@@ -263,7 +263,7 @@ export default function RouletteGame() {
         {casino.phase === 'result' && casino.lastWonItem && !wonItemDismissed && (() => {
           const item = casino.lastWonItem!
           const tierColor = TIER_COLORS[item.tier]
-          const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+          const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
           const statEntries = Object.entries(item.stats).filter(([, v]) => v !== undefined && v !== 0)
           return (
             <motion.div

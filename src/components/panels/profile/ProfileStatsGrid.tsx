@@ -63,7 +63,7 @@ export default function ProfileStatsGrid() {
   const finalWork     = 100 + eco.work * 20
   const finalEnt      = 100 + eco.entrepreneurship * 15
   const finalProspect = eco.prospection * 5
-  const finalInd      = eco.industrialist * 5
+  const finalInd      = eco.industrialist
 
   return (
     <div className="ptab-stats-duo">
@@ -103,7 +103,7 @@ export default function ProfileStatsGrid() {
           { label: 'Work Capacity',   val: `${finalWork} pts`, color: '#38bdf8' },
           { label: 'Enterprise Cap',  val: `${finalEnt} pts`,  color: '#c084fc' },
           { label: 'Prospect Chance', val: `${finalProspect}%`,color: '#38bdf8' },
-          { label: 'Industrialist',   val: `${finalInd}%`,     color: '#fbbf24' },
+          { label: 'Industrialist',   val: `${finalInd}% scrap (${finalInd > 0 ? 100 + finalInd * 50 : 0}) | ${finalInd * 2}% 🔴`,  color: '#fbbf24' },
         ].map(r => (
           <div key={r.label} className="ptab-stat-row">
             <span className="ptab-stat-row__label">{r.label}</span>

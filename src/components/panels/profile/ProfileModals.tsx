@@ -34,7 +34,7 @@ export function SlotPickerModal({ slot, onClose }: SlotPickerProps) {
           }}>
             <div style={{ width: '40px', height: '40px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {(() => {
-                const imgUrl = getItemImagePath(currentlyEquipped.tier, currentlyEquipped.slot, currentlyEquipped.category, currentlyEquipped.weaponSubtype)
+                const imgUrl = getItemImagePath(currentlyEquipped.tier, currentlyEquipped.slot, currentlyEquipped.category, currentlyEquipped.weaponSubtype, currentlyEquipped.superforged)
                 return imgUrl ? (
                   <img src={imgUrl} alt={currentlyEquipped.name} style={{ width: '56px', height: '56px', objectFit: 'contain', filter: `drop-shadow(0 2px 6px ${TIER_COLORS[currentlyEquipped.tier]}40)` }} onError={(e) => { e.currentTarget.style.display = 'none' }} />
                 ) : (
@@ -65,7 +65,7 @@ export function SlotPickerModal({ slot, onClose }: SlotPickerProps) {
             <div style={{ color: '#475569', textAlign: 'center', padding: '20px', fontSize: '10px' }}>No other items for this slot.</div>
           )}
           {availableItems.filter(i => !i.equipped).map(item => {
-            const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+            const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
             return (
               <div
                 key={item.id}

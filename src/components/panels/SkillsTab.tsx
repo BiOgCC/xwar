@@ -44,7 +44,7 @@ export default function SkillsTab() {
       case 'entrepreneurship': return `${100 + level * 15}`
       case 'production': return `+${20 + level * 2} fill`
       case 'prospection': return `${level * 3}%`
-      case 'industrialist': return `${level * 5}%`
+      case 'industrialist': return `${level}% 🔧scrap | ${level * 2}% 🔴bullet`
       default: return ''
     }
   }

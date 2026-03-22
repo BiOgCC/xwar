@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import { api } from '../api/client'
+import { getActiveRaid, raidAttack, raidFund } from '../api/client'
 import { usePlayerStore } from './playerStore'
 import { useNewsStore } from './newsStore'
 import { rateLimiter } from '../engine/AntiExploit'
+import { getPlayerCombatStats } from './battleStore'
 
 /* ══════════════════════════════════════════════
    XWAR — Bounty Board Store
@@ -24,57 +26,66 @@ export interface Bounty {
   hunters: string[]      // players publicly hunting this target
 }
 
-// ── NPC Bounty Hunt System ──
-// Fixed bounty pot divided among all damage contributors on elimination
-export interface NPCTarget {
-  id: string
-  name: string
-  countryCode: string   // current country they're in
-  health: number
-  maxHealth: number
-  totalBounty: number     // Fixed total $ pot for this NPC
-  rank: 'grunt' | 'elite' | 'boss'
-  active: boolean
-  damageDealers: Record<string, number>  // playerName → total damage dealt
-}
+// ── NPC Raid Boss System ──
+// Tick-based self-balancing combat: Fighters vs Eco
+import {
+  type RaidBossEvent,
+  type PlayerAction,
+  createRaidBossEvent,
+  getMomentumStatus,
+  TICK_DURATION_MS,
+} from '../engine/raidBoss'
+export type { RaidBossEvent, PlayerAction }
+export { getMomentumStatus }
 
 const NPC_TEMPLATES = [
-  { name: 'Rogue Operative', maxHealth: 500, totalBounty: 25_000, rank: 'grunt' as const },
-  { name: 'Shadow Agent', maxHealth: 800, totalBounty: 40_000, rank: 'grunt' as const },
-  { name: 'Desert Phantom', maxHealth: 1200, totalBounty: 75_000, rank: 'elite' as const },
-  { name: 'Iron Viper', maxHealth: 1500, totalBounty: 100_000, rank: 'elite' as const },
-  { name: 'The Butcher', maxHealth: 3000, totalBounty: 300_000, rank: 'boss' as const },
-  { name: 'Ghost of Kyiv', maxHealth: 2000, totalBounty: 200_000, rank: 'boss' as const },
-  { name: 'Crimson Jackal', maxHealth: 600, totalBounty: 30_000, rank: 'grunt' as const },
-  { name: 'Steel Cobra', maxHealth: 1000, totalBounty: 80_000, rank: 'elite' as const },
+  { name: 'Rogue Operative', rank: 'grunt' as const },
+  { name: 'Shadow Agent', rank: 'grunt' as const },
+  { name: 'Desert Phantom', rank: 'elite' as const },
+  { name: 'Iron Viper', rank: 'elite' as const },
+  { name: 'The Butcher', rank: 'boss' as const },
+  { name: 'Ghost of Kyiv', rank: 'boss' as const },
+  { name: 'Crimson Jackal', rank: 'grunt' as const },
+  { name: 'Steel Cobra', rank: 'elite' as const },
 ]
 
 const BOUNTY_MIN = 10_000
-const BOUNTY_EXPIRE_MS = 24 * 60 * 60 * 1000 // 24 hours
-
-
+const BOUNTY_EXPIRE_MS = 24 * 60 * 60 * 1000
 
 export interface BountyState {
   bounties: Bounty[]
   claimedHistory: Bounty[]
-  npcTargets: NPCTarget[]
+
+  // Raid Boss system
+  raidEvents: RaidBossEvent[]
+  actionBuffer: Record<string, PlayerAction[]>  // eventId → buffered actions
   lastNPCRotationAt: number
 
   fetchActiveBounties: () => Promise<void>
+  fetchActiveRaid: () => Promise<void>
   placeBounty: (targetPlayer: string, targetCountry: string, amount: number, reason: string) => Promise<{ success: boolean; message: string }>
   claimBounty: (bountyId: string, claimedBy: string) => Promise<{ success: boolean; message: string }>
   subscribeToBounty: (bountyId: string) => Promise<{ success: boolean; message: string }>
   unsubscribeFromBounty: (bountyId: string) => Promise<{ success: boolean; message: string }>
   getActiveBounties: () => Bounty[]
   rotateNPCBounties: () => void
-  attackNPC: (npcId: string, damage: number) => { success: boolean; message: string; moneyEarned: number }
+  processRaidTicks: () => void
+  attackRaidBoss: (eventId: string) => Promise<{ success: boolean; message: string }>
+  fundRaidBoss: (eventId: string, amount: number) => Promise<{ success: boolean; message: string }>
+
+  // Legacy compat (used by BountyBattleCard/slider)
+  npcTargets: never[]  // deprecated, use raidEvents
+  attackNPC: (id: string, dmg: number) => { success: boolean; message: string; moneyEarned: number }
+  supportNPC: (id: string, amt: number) => { success: boolean; message: string }
 }
 
 export const useBountyStore = create<BountyState>((set, get) => ({
   bounties: [],
   claimedHistory: [],
-  npcTargets: [],
-  lastNPCRotationAt: 0,  // Will trigger on first check
+  raidEvents: [],  // populated from server via fetchActiveRaid
+  actionBuffer: {},
+  lastNPCRotationAt: 0,
+  npcTargets: [] as never[],  // deprecated
 
   fetchActiveBounties: async () => {
     try {
@@ -84,6 +95,66 @@ export const useBountyStore = create<BountyState>((set, get) => ({
       }
     } catch (err) {
       console.error('Failed to fetch bounties:', err)
+    }
+  },
+
+  fetchActiveRaid: async () => {
+    try {
+      const res = await getActiveRaid()
+      if (!res.success) return
+
+      if (!res.event) {
+        // No active raid — clear local state
+        set(s => ({ raidEvents: s.raidEvents.filter(e => e.status !== 'active') }))
+        return
+      }
+
+      const evt = res.event
+      const participants = res.participants || []
+
+      // Build fighters/supporters maps from participants
+      const fighters: Record<string, { totalDmg: number; ticksActive: number }> = {}
+      const supporters: Record<string, { totalFunded: number }> = {}
+      for (const p of participants) {
+        if (p.side === 'fighter') {
+          fighters[p.playerName] = { totalDmg: p.totalDmg || 0, ticksActive: p.hits || 0 }
+        } else {
+          supporters[p.playerName] = { totalFunded: p.totalFunded || 0 }
+        }
+      }
+
+      const grandTotal = (evt.totalHunterDmg || 0) + (evt.totalBossDmg || 0)
+      const momentum = grandTotal > 0 ? (evt.totalHunterDmg || 0) / grandTotal : 0.5
+
+      const raidEvent: RaidBossEvent = {
+        id: evt.id,
+        name: evt.name,
+        rank: evt.rank,
+        countryCode: evt.countryCode || 'US',
+        status: evt.status as RaidBossEvent['status'],
+        baseBounty: evt.baseBounty || 0,
+        supportPool: evt.supportPool || 0,
+        totalHunterDmg: evt.totalHunterDmg || 0,
+        totalBossDmg: evt.totalBossDmg || 0,
+        momentum,
+        currentTick: evt.currentTick || 0,
+        maxTicks: 120,
+        bossStaggered: false,
+        startedAt: evt.startedAt || Date.now(),
+        expiresAt: evt.expiresAt,
+        lastTickAt: Date.now(),
+        fighters,
+        supporters,
+        tickHistory: [],
+      }
+
+      // Replace or add the active event
+      set(s => {
+        const otherEvents = s.raidEvents.filter(e => e.id !== evt.id && e.status !== 'active')
+        return { raidEvents: [...otherEvents, raidEvent] }
+      })
+    } catch (err) {
+      console.error('Failed to fetch active raid:', err)
     }
   },
 
@@ -169,100 +240,209 @@ export const useBountyStore = create<BountyState>((set, get) => ({
   },
 
   rotateNPCBounties: () => {
-    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000
     const now = Date.now()
     const state = get()
-    if (now - state.lastNPCRotationAt < TWELVE_HOURS_MS) return
-
-    // Get available country codes
+    const player = usePlayerStore.getState()
     const countries = ['US', 'RU', 'CN', 'DE', 'BR', 'GB', 'FR', 'JP', 'IN', 'AU', 'KR', 'TR', 'MX', 'AR']
 
-    // Pick 3 random NPCs and assign to random countries
-    const shuffled = [...NPC_TEMPLATES].sort(() => Math.random() - 0.5)
-    const selected = shuffled.slice(0, 3)
+    // ── Pay out supporters of expired events that boss survived ──
+    state.raidEvents.forEach(evt => {
+      if (evt.status === 'boss_survives' || (evt.status === 'active' && now > evt.expiresAt)) {
+        const myEntry = evt.supporters[player.name]
+        if (myEntry && myEntry.totalFunded > 0) {
+          const myPayout = myEntry.totalFunded * 2
+          player.earnMoney(myPayout)
+          useNewsStore.getState().pushEvent('bounty',
+            `🛡️ ${evt.name} survived! ${player.name} earned $${myPayout.toLocaleString()} (x2 support return)`
+          )
+        }
+      }
+    })
 
-    const newTargets: NPCTarget[] = selected.map((tmpl, i) => ({
-      id: `npc_${now}_${i}`,
-      name: tmpl.name,
-      countryCode: countries[Math.floor(Math.random() * countries.length)],
-      health: tmpl.maxHealth,
-      maxHealth: tmpl.maxHealth,
-      totalBounty: tmpl.totalBounty,
-      rank: tmpl.rank,
-      active: true,
-      damageDealers: {},
-    }))
+    // Clean up ended/expired events
+    const activeEvents = state.raidEvents.filter(e =>
+      e.status === 'active' && now < e.expiresAt
+    )
 
-    set({ npcTargets: newTargets, lastNPCRotationAt: now })
+    // Only 1 raid boss at a time — skip if one is already active
+    if (activeEvents.length > 0) {
+      // Just clean stale events, keep the active one
+      if (activeEvents.length !== state.raidEvents.length) {
+        set({ raidEvents: activeEvents, lastNPCRotationAt: now })
+      }
+      return
+    }
 
-    const names = newTargets.map(t => `${t.name} (${t.countryCode})`).join(', ')
-    useNewsStore.getState().pushEvent('bounty', `🎯 NPC Bounty Hunt: ${names} spotted!`)
+    // 15% chance to spawn a new boss
+    if (Math.random() > 0.15) {
+      set({ raidEvents: [], lastNPCRotationAt: now })
+      return
+    }
+
+    // Spawn 1 random boss
+    const tmpl = NPC_TEMPLATES[Math.floor(Math.random() * NPC_TEMPLATES.length)]
+    const newEvent = createRaidBossEvent(
+      tmpl.name,
+      tmpl.rank,
+      countries[Math.floor(Math.random() * countries.length)],
+    )
+
+    set({ raidEvents: [newEvent], actionBuffer: {}, lastNPCRotationAt: now })
+    useNewsStore.getState().pushEvent('bounty', `🎯 Raid Boss Hunt: ${newEvent.name} (${newEvent.countryCode}) spotted!`)
   },
 
-  attackNPC: (npcId, damage) => {
-    // ── Rate limit, stamina cost, damage cap, country check ──
-    if (!rateLimiter.check('attackNPC')) return { success: false, message: 'Too fast! Wait a moment.', moneyEarned: 0 }
-
-    const player = usePlayerStore.getState()
-    if (player.stamina < 5) return { success: false, message: 'Not enough stamina (need 5)', moneyEarned: 0 }
-
+  processRaidTicks: () => {
     const state = get()
-    const npc = state.npcTargets.find(t => t.id === npcId && t.active)
-    if (!npc) return { success: false, message: 'Target not found or already eliminated', moneyEarned: 0 }
+    const now = Date.now()
+    let changed = false
+    const updatedEvents: RaidBossEvent[] = []
+    const player = usePlayerStore.getState()
 
-    // Must be in the same country as the NPC
-    if (player.countryCode !== npc.countryCode) {
-      return { success: false, message: `Target is in ${npc.countryCode} — you must be there to attack`, moneyEarned: 0 }
+    // Boss base damage per hit by rank (like a PvP division auto-attacking)
+    const BOSS_BASE_DMG: Record<string, number> = { grunt: 200, elite: 500, boss: 1200 }
+    const BOSS_ATTACKS_PER_TICK: Record<string, number> = { grunt: 2, elite: 3, boss: 5 }
+
+    for (const evt of state.raidEvents) {
+      if (evt.status !== 'active') {
+        updatedEvents.push(evt)
+        continue
+      }
+
+      // Check if it's time for a new tick
+      if (now - evt.lastTickAt < TICK_DURATION_MS) {
+        updatedEvents.push(evt)
+        continue
+      }
+
+      changed = true
+      const newTick = evt.currentTick + 1
+
+      // ── Boss auto-attacks: multiple hits per tick, each with own variance ──
+      const bossBase = BOSS_BASE_DMG[evt.rank] || 200
+      const attacks = BOSS_ATTACKS_PER_TICK[evt.rank] || 2
+      let bossDmg = 0
+      for (let i = 0; i < attacks; i++) {
+        const v = 0.85 + Math.random() * 0.30  // ±15% per hit
+        bossDmg += Math.round(bossBase * v)
+      }
+      const newBossTotal = evt.totalBossDmg + bossDmg
+      const grandTotal = evt.totalHunterDmg + newBossTotal
+      const momentum = grandTotal > 0 ? evt.totalHunterDmg / grandTotal : 0.5
+
+      // Check win/lose — ONLY when timer expires (damage race)
+      let status: RaidBossEvent['status'] = evt.status
+      if (now >= evt.expiresAt || newTick >= evt.maxTicks) {
+        // Timer expired — whoever dealt more damage wins
+        status = evt.totalHunterDmg > newBossTotal ? 'hunters_win' : 'boss_survives'
+      }
+
+      const tickEntry: RaidBossEvent['tickHistory'][number] = {
+        tick: newTick,
+        timestamp: now,
+        hunterDmg: 0,
+        bossDmg,
+        fundedDmg: 0,
+        momentum,
+        bossStaggered: false,
+        playerActions: [],
+      }
+
+      const updated: RaidBossEvent = {
+        ...evt,
+        currentTick: newTick,
+        lastTickAt: now,
+        totalBossDmg: newBossTotal,
+        momentum,
+        status,
+        tickHistory: [...evt.tickHistory.slice(-29), tickEntry],
+      }
+
+      // ── Payouts on end ──
+      if (status !== 'active') {
+        const totalPot = updated.baseBounty + updated.supportPool
+
+        if (status === 'hunters_win') {
+          // Hunters get x2 pot split by damage contribution
+          const totalFighterDmg = Object.values(updated.fighters).reduce((s, f) => s + f.totalDmg, 0)
+          if (totalFighterDmg > 0 && updated.fighters[player.name]) {
+            const myShare = Math.floor(totalPot * 2 * (updated.fighters[player.name].totalDmg / totalFighterDmg))
+            if (myShare > 0) player.earnMoney(myShare)
+            useNewsStore.getState().pushEvent('bounty',
+              `💀 ${updated.name} eliminated! Hunters win x2! ${player.name} earned $${myShare.toLocaleString()}`
+            )
+          }
+        } else if (status === 'boss_survives' || status === 'boss_dominates') {
+          // Supporters get x2 return on their investment
+          if (updated.supporters[player.name]) {
+            const myPayout = updated.supporters[player.name].totalFunded * 2
+            if (myPayout > 0) player.earnMoney(myPayout)
+            useNewsStore.getState().pushEvent('bounty',
+              `🛡️ ${updated.name} survived! ${player.name} earned $${myPayout.toLocaleString()} (x2 return)`
+            )
+          }
+        }
+      }
+
+      updatedEvents.push(updated)
     }
 
-    // Consume stamina
-    player.consumeBar('stamina', 5)
-
-    // Cap damage to player's attack stat (fallback 10 if undefined)
-    const maxDmg = Math.max(1, (player as any).attack || 10)
-    const effectiveDamage = Math.min(damage, npc.health, maxDmg)
-    const newHealth = npc.health - effectiveDamage
-    const eliminated = newHealth <= 0
-
-    // Track damage dealt — payout happens only on elimination
-    const updatedDealers = { ...npc.damageDealers }
-    updatedDealers[player.name] = (updatedDealers[player.name] || 0) + effectiveDamage
-
-    let moneyEarned = 0
-
-    if (eliminated) {
-      // ── Pot-based payout: divide total bounty among all damage contributors ──
-      const totalDamage = Object.values(updatedDealers).reduce((s, d) => s + d, 0)
-      const playerDamage = updatedDealers[player.name] || 0
-      const playerShare = Math.floor(npc.totalBounty * (playerDamage / Math.max(1, totalDamage)))
-      moneyEarned = playerShare
-
-      // Pay this player their share
-      if (playerShare > 0) usePlayerStore.getState().earnMoney(playerShare)
-
-      // In multiplayer, other contributors would get paid server-side.
-      // For now, log the split for the news ticker.
-      const dealerCount = Object.keys(updatedDealers).length
-      useNewsStore.getState().pushEvent('bounty',
-        `💀 ${npc.name} eliminated! $${npc.totalBounty.toLocaleString()} bounty split among ${dealerCount} hunter${dealerCount > 1 ? 's' : ''}. ${player.name} earned $${playerShare.toLocaleString()}`
-      )
+    if (changed) {
+      set({ raidEvents: updatedEvents })
     }
+  },
 
-    set(s => ({
-      npcTargets: s.npcTargets.map(t =>
-        t.id === npcId
-          ? { ...t, health: Math.max(0, newHealth), active: !eliminated, damageDealers: updatedDealers }
-          : t
-      ),
-    }))
+  attackRaidBoss: async (eventId) => {
+    if (!rateLimiter.check('attackNPC')) return { success: false, message: 'Too fast! Wait a moment.' }
 
-    return {
-      success: true,
-      message: eliminated
-        ? `${npc.name} eliminated! Your share: $${moneyEarned.toLocaleString()} of $${npc.totalBounty.toLocaleString()}`
-        : `Hit ${npc.name} for ${effectiveDamage} damage! (${npc.health - effectiveDamage > 0 ? npc.health - effectiveDamage : 0} HP left)`,
-      moneyEarned,
+    try {
+      const res = await raidAttack(eventId)
+      // Update local state immediately with response data
+      if (res.success) {
+        set(s => ({
+          raidEvents: s.raidEvents.map(e =>
+            e.id === eventId
+              ? { ...e, totalHunterDmg: res.totalHunterDmg, totalBossDmg: res.totalBossDmg }
+              : e
+          ),
+        }))
+        // Also deduct stamina locally
+        usePlayerStore.getState().consumeBar('stamina', 5)
+      }
+      return { success: res.success, message: res.message }
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Attack failed' }
     }
+  },
+
+  fundRaidBoss: async (eventId, amount) => {
+    try {
+      const res = await raidFund(eventId, amount)
+      if (res.success) {
+        set(s => ({
+          raidEvents: s.raidEvents.map(e =>
+            e.id === eventId
+              ? { ...e, totalBossDmg: res.totalBossDmg, supportPool: res.supportPool }
+              : e
+          ),
+        }))
+        // Money was deducted server-side; refresh player balance locally
+        usePlayerStore.getState().spendMoney(amount)
+      }
+      return { success: res.success, message: res.message }
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Fund failed' }
+    }
+  },
+
+  // ── Legacy compatibility shims ──
+  attackNPC: (id, _dmg) => {
+    // Legacy shim: fire and forget, return sync result
+    get().attackRaidBoss(id)
+    return { success: true, message: 'Attacking...', moneyEarned: 0 }
+  },
+  supportNPC: (id, amt) => {
+    get().fundRaidBoss(id, amt)
+    return { success: true, message: 'Funding...' }
   },
 }))
 

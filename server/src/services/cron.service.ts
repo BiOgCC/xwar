@@ -136,10 +136,34 @@ export function initCronJobs() {
     }
   })
 
+  // ═══════════════════════════════════════════════
+  //  RAID BOSS — Tick every 10 seconds
+  // ═══════════════════════════════════════════════
+  cron.schedule('*/10 * * * * *', async () => {
+    try {
+      await processRaidBossTick()
+    } catch (err) {
+      logger.error(err, '[CRON][RAID] Boss tick error:')
+    }
+  })
+
+  // ═══════════════════════════════════════════════
+  //  RAID BOSS — Spawn check every 30 minutes
+  // ═══════════════════════════════════════════════
+  cron.schedule('*/30 * * * *', async () => {
+    try {
+      await trySpawnRaidBoss()
+    } catch (err) {
+      logger.error(err, '[CRON][RAID] Boss spawn error:')
+    }
+  })
+
   logger.info('[CRON] All pipelines initialized:')
   logger.info('  ⚔️  Fast Combat     — every 15s  (training, recovery)')
   logger.info('  📈 Medium Sim      — every 60s  (stocks, bonds)')
   logger.info('  🏭 Slow Economy    — every 30m  (bars, companies, market, salary)')
+  logger.info('  🎯 Raid Boss Tick  — every 10s  (boss auto-damage, timer)')
+  logger.info('  🎯 Raid Boss Spawn — every 30m  (15% chance)')
   logger.info('  📅 Daily Jobs:')
   logger.info('      • Full bar refill   — every 12h')
   logger.info('      • Country income    — every 8h')
@@ -150,3 +174,138 @@ export function initCronJobs() {
   logger.info('      • Region resolve    — every 60s')
   logger.info('      • Cyber restore     — every 30m')
 }
+
+// ═══════════════════════════════════════════════
+//  Raid Boss Tick Logic
+// ═══════════════════════════════════════════════
+
+import { eq, sql } from 'drizzle-orm'
+import { db } from '../db/connection.js'
+import { raidEvents, raidParticipants, players } from '../db/schema.js'
+
+const BOSS_BASE_DMG: Record<string, number> = { grunt: 200, elite: 500, boss: 1200 }
+
+async function processRaidBossTick() {
+  // Find active event
+  const [event] = await db.select().from(raidEvents)
+    .where(eq(raidEvents.status, 'active'))
+    .limit(1)
+  if (!event) return
+
+  const now = new Date()
+  const bossDmg = BOSS_BASE_DMG[event.rank] || 200
+
+  // Boss auto-attacks
+  const [updated] = await db.update(raidEvents).set({
+    totalBossDmg: sql`${raidEvents.totalBossDmg} + ${bossDmg}`,
+    currentTick: sql`${raidEvents.currentTick} + 1`,
+  }).where(eq(raidEvents.id, event.id)).returning({
+    totalHunterDmg: raidEvents.totalHunterDmg,
+    totalBossDmg: raidEvents.totalBossDmg,
+  })
+
+  // Check timer expiry
+  if (now >= event.expiresAt) {
+    const hunterDmg = updated.totalHunterDmg || 0
+    const totalBossDmg = updated.totalBossDmg || 0
+    const status = hunterDmg > totalBossDmg ? 'hunters_win' : 'boss_survives'
+
+    await db.update(raidEvents).set({
+      status,
+      finishedAt: now,
+    }).where(eq(raidEvents.id, event.id))
+
+    // Pay out winners
+    const participants = await db.select().from(raidParticipants)
+      .where(eq(raidParticipants.eventId, event.id))
+
+    const totalPot = (event.baseBounty || 0) + (event.supportPool || 0)
+
+    if (status === 'hunters_win') {
+      // Fighters get x2 pot split by damage %
+      const fighters = participants.filter(p => p.side === 'fighter')
+      const totalFighterDmg = fighters.reduce((s, f) => s + (f.totalDmg || 0), 0)
+      if (totalFighterDmg > 0) {
+        for (const f of fighters) {
+          const share = Math.floor(totalPot * 2 * ((f.totalDmg || 0) / totalFighterDmg))
+          if (share > 0) {
+            await db.update(players).set({
+              money: sql`${players.money} + ${share}`,
+            }).where(eq(players.id, f.playerId))
+          }
+        }
+      }
+      logger.info(`[RAID] ${event.name} eliminated! Hunters win. Pot: $${totalPot * 2}`)
+    } else {
+      // Supporters get x2 return on their funding
+      const supporters = participants.filter(p => p.side === 'supporter')
+      for (const s of supporters) {
+        const payout = (s.totalFunded || 0) * 2
+        if (payout > 0) {
+          await db.update(players).set({
+            money: sql`${players.money} + ${payout}`,
+          }).where(eq(players.id, s.playerId))
+        }
+      }
+      logger.info(`[RAID] ${event.name} survived! Eco wins. Supporters paid x2.`)
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  Raid Boss Spawn Logic
+// ═══════════════════════════════════════════════
+
+const NPC_TEMPLATES = [
+  { name: 'Rogue Operative', rank: 'grunt' },
+  { name: 'Shadow Agent', rank: 'grunt' },
+  { name: 'Desert Phantom', rank: 'elite' },
+  { name: 'Iron Viper', rank: 'elite' },
+  { name: 'The Butcher', rank: 'boss' },
+  { name: 'Ghost of Kyiv', rank: 'boss' },
+  { name: 'Crimson Jackal', rank: 'grunt' },
+  { name: 'Steel Cobra', rank: 'elite' },
+]
+
+const BOUNTY_RANGES: Record<string, [number, number]> = {
+  grunt: [25_000, 50_000],
+  elite: [75_000, 150_000],
+  boss:  [200_000, 500_000],
+}
+
+const COUNTRIES = ['US', 'RU', 'CN', 'DE', 'BR', 'GB', 'FR', 'JP', 'IN', 'AU', 'KR', 'TR', 'MX', 'AR']
+
+async function trySpawnRaidBoss() {
+  // Check if there's already an active boss
+  const [existing] = await db.select({ id: raidEvents.id }).from(raidEvents)
+    .where(eq(raidEvents.status, 'active'))
+    .limit(1)
+  if (existing) return
+
+  // 15% chance to spawn
+  if (Math.random() > 0.15) return
+
+  const tmpl = NPC_TEMPLATES[Math.floor(Math.random() * NPC_TEMPLATES.length)]
+  const country = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)]
+  const [lo, hi] = BOUNTY_RANGES[tmpl.rank] || [25_000, 50_000]
+  const bounty = lo + Math.floor(Math.random() * (hi - lo))
+
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + 20 * 60 * 1000) // 20 minutes
+
+  await db.insert(raidEvents).values({
+    name: tmpl.name,
+    rank: tmpl.rank,
+    countryCode: country,
+    status: 'active',
+    baseBounty: bounty,
+    supportPool: 0,
+    totalHunterDmg: 0,
+    totalBossDmg: 0,
+    currentTick: 0,
+    expiresAt,
+  })
+
+  logger.info(`[RAID] 🎯 Boss spawned: ${tmpl.name} (${tmpl.rank}) in ${country}, bounty: $${bounty.toLocaleString()}`)
+}
+

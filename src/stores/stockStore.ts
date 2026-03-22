@@ -134,13 +134,21 @@ export const useStockStore = create<StockState>((set, get) => {
       try {
         const res: any = await api.get('/stock/prices')
         if (res.success && res.stocks) {
-          // Map DB models to frontend format
-          const mapped = res.stocks.map((s: any) => ({
-            ...s,
-            price: parseFloat(s.price),
-            prevPrice: parseFloat(s.prevPrice || s.price),
-            history: typeof s.history === 'string' ? JSON.parse(s.history) : (s.history || [{ price: parseFloat(s.price), timestamp: Date.now() }])
-          }))
+          const world = useWorldStore.getState()
+          // Map DB models to frontend format (DB uses countryCode, frontend uses code)
+          const mapped: CountryStock[] = res.stocks.map((s: any) => {
+            const price = parseFloat(s.price)
+            const country = world.getCountry(s.countryCode)
+            return {
+              code: s.countryCode,
+              name: country?.name || s.countryCode,
+              price,
+              prevPrice: parseFloat(s.prevPrice || s.openPrice || s.price),
+              history: typeof s.history === 'string' ? JSON.parse(s.history) : (s.history || [{ price, timestamp: Date.now() }]),
+              volume: s.volume || 0,
+              netBuyVolume: 0,
+            }
+          })
           set({ stocks: mapped })
         }
       } catch (e) { console.error('Error fetching stocks:', e) }

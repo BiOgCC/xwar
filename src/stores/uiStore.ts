@@ -37,6 +37,8 @@ export interface UIState {
   floatingTexts: FloatingText[]
   profileDefaultTab: string | null
   warDefaultTab: string | null
+  bountyDefaultTab: string | null
+  afDefaultTab: string | null
   resourceViewMode: ResourceViewMode
   selectedForeignCountry: string | null
   setActivePanel: (panel: PanelType) => void
@@ -45,6 +47,8 @@ export interface UIState {
   setPanelFullscreen: (v: boolean) => void
   setProfileDefaultTab: (tab: string | null) => void
   setWarDefaultTab: (tab: string | null) => void
+  setBountyDefaultTab: (tab: string | null) => void
+  setAfDefaultTab: (tab: string | null) => void
   cycleResourceView: () => void
   setForeignCountry: (code: string | null) => void
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void
@@ -71,6 +75,8 @@ export const useUIStore = create<UIState>((set) => ({
   floatingTexts: [],
   profileDefaultTab: null,
   warDefaultTab: null,
+  bountyDefaultTab: null,
+  afDefaultTab: null,
   resourceViewMode: 'political' as ResourceViewMode,
   chatMessages: [
     {
@@ -113,6 +119,8 @@ export const useUIStore = create<UIState>((set) => ({
 
   setProfileDefaultTab: (tab) => set({ profileDefaultTab: tab }),
   setWarDefaultTab: (tab) => set({ warDefaultTab: tab }),
+  setBountyDefaultTab: (tab) => set({ bountyDefaultTab: tab }),
+  setAfDefaultTab: (tab) => set({ afDefaultTab: tab }),
 
   setForeignCountry: (code) => set({ selectedForeignCountry: code }),
 

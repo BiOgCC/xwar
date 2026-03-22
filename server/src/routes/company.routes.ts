@@ -192,10 +192,11 @@ router.post('/prospect', requireAuth as any, validate(upgradeSchema), async (req
 
     const [skills] = await db.select().from(playerSkills).where(eq(playerSkills.playerId, playerId)).limit(1)
     const prospectionLevel = skills?.prospection || 0
-    const chance = (company.level || 1) * 0.05 + prospectionLevel * 0.05
+    // 2% per level (company + prospection skill)
+    const chance = (company.level || 1) * 0.02 + prospectionLevel * 0.02
 
     let foundDeposit = null
-    const btcReward = 3 + (company.level || 1) * 2
+    const btcReward = 5
 
     if (Math.random() < chance) {
       const resources = ['oil', 'materialx'] as const
@@ -209,15 +210,17 @@ router.post('/prospect', requireAuth as any, validate(upgradeSchema), async (req
         active: true
       }).returning()
 
-      const bonusAmount = 100 * (company.level || 1)
-      const matXBonus = Math.floor(bonusAmount / 10)
+      const lvl = company.level || 1
+      const oilReward = (2875 + Math.floor(Math.random() * 1113)) * lvl   // (2875-3987) × level
+      const matXReward = (78 + Math.floor(Math.random() * 282)) * lvl     // (78-359) × level
+      const cashReward = (4597 + Math.floor(Math.random() * 1991)) * lvl  // (4597-6587) × level
 
       await db.update(players).set({
         bitcoin: sql`${players.bitcoin} + ${btcReward}`,
-        money: sql`${players.money} + 5000`,
-        oil: resource === 'oil' ? sql`${players.oil} + ${bonusAmount}` : players.oil,
-        materialX: resource === 'materialx' ? sql`${players.materialX} + ${matXBonus}` : players.materialX,
-        experience: sql`${players.experience} + 85` // Extra XP
+        money: sql`${players.money} + ${cashReward}`,
+        oil: resource === 'oil' ? sql`${players.oil} + ${oilReward}` : players.oil,
+        materialX: resource === 'materialx' ? sql`${players.materialX} + ${matXReward}` : players.materialX,
+        experience: sql`${players.experience} + 85`
       }).where(eq(players.id, playerId))
 
       foundDeposit = newDeposit[0]
@@ -258,8 +261,15 @@ router.post('/enterprise', requireAuth as any, validate(upgradeSchema), async (r
     const prodSkill = skills?.production || 0
     const baseProd = 10 + (prodSkill * 5) + (company.level || 1)
 
-    // Base contribution
-    const contribution = baseProd // Simplifying without RNG variance for consistent backend
+    let contribution = baseProd
+
+    // Enterprise skill: 1% per level chance for double PP
+    const entLevel = skills?.entrepreneurship || 0
+    let isDoubleProduction = false
+    if (entLevel > 0 && Math.random() < entLevel * 0.01) {
+      contribution *= 2
+      isDoubleProduction = true
+    }
 
     await db.update(players).set({
       entrepreneurship: sql`${players.entrepreneurship} - 10`,
@@ -270,11 +280,12 @@ router.post('/enterprise', requireAuth as any, validate(upgradeSchema), async (r
       productionProgress: sql`${companies.productionProgress} + ${contribution}`
     }).where(eq(companies.id, companyId))
 
+    const doubleMsg = isDoubleProduction ? ' ⚡ DOUBLE PP!' : ''
     await db.insert(companyTransactions).values({
-      playerId, companyId, message: `Owner worked: +${contribution} PP.`
+      playerId, companyId, message: `Owner worked: +${contribution} PP.${doubleMsg}`
     })
 
-    res.json({ success: true, contribution, message: `Worked for +${contribution} PP!` })
+    res.json({ success: true, contribution, isDoubleProduction, message: `Worked for +${contribution} PP!${doubleMsg}` })
   } catch (err) {
     console.error('[COMPANY] Enterprise error:', err)
     res.status(500).json({ error: 'Internal server error' })
@@ -402,10 +413,16 @@ router.post('/produce', requireAuth as any, validate(upgradeSchema), async (req,
         updateData.greenBullets = sql`${players.greenBullets} + ${count}`
         result = `+${count} Green Bullets`
         usedPoints = count * 1
-        const indBonus = Math.min(0.40, ((skills?.industrialist || 0) * 0.05))
-        if (points >= (company.productionMax || 100) && Math.random() < (0.10 + indBonus)) {
-          updateData.redBullets = sql`${players.redBullets} + 1`
-          result += ' & 1 🔴 RED BULLET!'
+        // Industrialist: 1% per level per PP consumed → roll each PP independently
+        const indLevel = skills?.industrialist || 0
+        const chancePerPP = indLevel * 0.01
+        if (chancePerPP > 0) {
+          let redBullets = 0
+          for (let i = 0; i < usedPoints; i++) { if (Math.random() < chancePerPP) redBullets++ }
+          if (redBullets > 0) {
+            updateData.redBullets = sql`${players.redBullets} + ${redBullets}`
+            result += ` & ${redBullets} 🔴 RED BULLET${redBullets > 1 ? 'S' : ''}!`
+          }
         }
         break
       }
@@ -418,10 +435,16 @@ router.post('/produce', requireAuth as any, validate(upgradeSchema), async (req,
         updateData.blueBullets = sql`${players.blueBullets} + ${count}`
         result = `+${count} Blue Bullets`
         usedPoints = count * 3
-        const indBonus = Math.min(0.40, ((skills?.industrialist || 0) * 0.05))
-        if (points >= (company.productionMax || 100) && Math.random() < (0.10 + indBonus)) {
-          updateData.redBullets = sql`${players.redBullets} + 1`
-          result += ' & 1 🔴 RED BULLET!'
+        // Industrialist: 1% per level per PP consumed → roll each PP independently
+        const indLevel2 = skills?.industrialist || 0
+        const chancePerPP2 = indLevel2 * 0.01
+        if (chancePerPP2 > 0) {
+          let redBullets = 0
+          for (let i = 0; i < usedPoints; i++) { if (Math.random() < chancePerPP2) redBullets++ }
+          if (redBullets > 0) {
+            updateData.redBullets = sql`${players.redBullets} + ${redBullets}`
+            result += ` & ${redBullets} 🔴 RED BULLET${redBullets > 1 ? 'S' : ''}!`
+          }
         }
         break
       }
@@ -434,10 +457,16 @@ router.post('/produce', requireAuth as any, validate(upgradeSchema), async (req,
         updateData.purpleBullets = sql`${players.purpleBullets} + ${count}`
         result = `+${count} Purple Bullets`
         usedPoints = count * 9
-        const indBonus = Math.min(0.40, ((skills?.industrialist || 0) * 0.05))
-        if (points >= (company.productionMax || 100) && Math.random() < (0.10 + indBonus)) {
-          updateData.redBullets = sql`${players.redBullets} + 1`
-          result += ' & 1 🔴 RED BULLET!'
+        // Industrialist: 1% per level per PP consumed → roll each PP independently
+        const indLevel3 = skills?.industrialist || 0
+        const chancePerPP3 = indLevel3 * 0.01
+        if (chancePerPP3 > 0) {
+          let redBullets = 0
+          for (let i = 0; i < usedPoints; i++) { if (Math.random() < chancePerPP3) redBullets++ }
+          if (redBullets > 0) {
+            updateData.redBullets = sql`${players.redBullets} + ${redBullets}`
+            result += ` & ${redBullets} 🔴 RED BULLET${redBullets > 1 ? 'S' : ''}!`
+          }
         }
         break
       }
@@ -455,6 +484,24 @@ router.post('/produce', requireAuth as any, validate(upgradeSchema), async (req,
       }
       default:
         res.status(400).json({ error: 'Invalid company type for production' }); return
+    }
+
+    // Industrialist scrap bonus: 1% per level, 100-600 scrap
+    const indLevelScrap = skills?.industrialist || 0
+    const scrapChance = indLevelScrap * 0.01
+    if (scrapChance > 0 && Math.random() < scrapChance) {
+      const bonusScrap = 100 + Math.floor(Math.random() * 501)
+      updateData.scrap = sql`${players.scrap} + ${bonusScrap}`
+      result += ` & +${bonusScrap} 🔧 SCRAP!`
+    }
+    // Industrialist matX bonus: 1% per level, 20-80 matX
+    const matXChance = indLevelScrap * 0.01
+    if (matXChance > 0 && Math.random() < matXChance) {
+      const bonusMatX = 20 + Math.floor(Math.random() * 61)
+      updateData.materialX = updateData.materialX
+        ? sql`${updateData.materialX} + ${bonusMatX}`
+        : sql`${players.materialX} + ${bonusMatX}`
+      result += ` & +${bonusMatX} ⚛️ MatX!`
     }
 
     // Apply player updates
@@ -624,8 +671,16 @@ router.post('/work', requireAuth as any, validate(workSchema), async (req, res) 
     const totalTax = Math.floor(grossPay * TAX_RATE)
     const employeeTax = Math.floor(totalTax / 2)
     const employerTax = totalTax - employeeTax
-    const netPay = grossPay - employeeTax
+    let netPay = grossPay - employeeTax
     const totalEmployerCost = grossPay + employerTax
+
+    // Work skill: 1% per level chance for double pay
+    const workLevel = skills?.work || 0
+    let isDoublePay = false
+    if (workLevel > 0 && Math.random() < workLevel * 0.01) {
+      netPay *= 2
+      isDoublePay = true
+    }
 
     if (employer.money! < totalEmployerCost) {
       res.status(400).json({ error: 'Employer cannot afford wages and taxes' }); return
@@ -652,16 +707,18 @@ router.post('/work', requireAuth as any, validate(workSchema), async (req, res) 
       }
     }
 
+    const doubleMsg = isDoublePay ? ' ⚡ DOUBLE PAY!' : ''
+
     // Add TX for Employer
     await db.insert(companyTransactions).values({
       playerId: employer.id, companyId: company.id, message: `Paid $${totalEmployerCost} total to ${employee.name} for ${contribution} PP.`
     })
     // Add TX for Employee
     await db.insert(companyTransactions).values({
-      playerId, companyId: company.id, message: `Worked for ${employer.name}, earned $${netPay}.`
+      playerId, companyId: company.id, message: `Worked for ${employer.name}, earned $${netPay}.${doubleMsg}`
     })
 
-    res.json({ success: true, netPay, contribution, employerCost: totalEmployerCost, message: `Worked! Earned $${netPay}` })
+    res.json({ success: true, netPay, contribution, employerCost: totalEmployerCost, isDoublePay, message: `Worked! Earned $${netPay}${doubleMsg}` })
   } catch (err) {
     console.error('[COMPANY] Work error:', err)
     res.status(500).json({ error: 'Internal server error' })

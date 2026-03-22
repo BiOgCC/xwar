@@ -57,6 +57,7 @@ export function placeEquipmentSellOrder(
       name: item.name, tier: item.tier, slot: item.slot,
       category: item.category, stats: { ...item.stats },
       durability: item.durability, weaponSubtype: item.weaponSubtype,
+      superforged: item.superforged,
     },
   }
 
@@ -105,6 +106,7 @@ export function buyEquipment(
       durability: order.equipSnapshot.durability,
       stats: { ...order.equipSnapshot.stats } as EquipItem['stats'],
       weaponSubtype: order.equipSnapshot.weaponSubtype as EquipItem['weaponSubtype'],
+      superforged: order.equipSnapshot.superforged,
       location: 'inventory',
     }
     useInventoryStore.getState().addItem(newItem)

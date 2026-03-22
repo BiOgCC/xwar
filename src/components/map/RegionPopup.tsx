@@ -173,6 +173,46 @@ export default function RegionPopup({ region, onClose }: RegionPopupProps) {
           )}
         </div>
 
+        {/* Active Deposits on this region */}
+        {(() => {
+          const DEPOSIT_ICONS: Record<string, string> = { wheat: '🌾', fish: '🐟', steak: '🥩', oil: '🛢️', materialx: '⚛️' }
+          const DEPOSIT_COLORS: Record<string, string> = { wheat: '#facc15', fish: '#38bdf8', steak: '#f87171', oil: '#a855f7', materialx: '#ec4899' }
+          const regionDeposits = world.deposits.filter(d => d.regionId === region.id && d.active)
+          if (regionDeposits.length === 0) return null
+          return (
+            <div style={{
+              margin: '8px 0', padding: '8px 12px', borderRadius: 8,
+              background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(236,72,153,0.15))',
+              border: '1px solid rgba(168,85,247,0.3)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#a855f7', marginBottom: 4, letterSpacing: 1 }}>
+                ⛏️ RESOURCE DEPOSITS
+              </div>
+              {regionDeposits.map(dep => {
+                const ms = dep.expiresAt - Date.now()
+                const hours = Math.max(0, Math.floor(ms / 3600000))
+                const days = Math.floor(hours / 24)
+                const timeLeft = days > 0 ? `${days}d ${hours % 24}h` : `${hours}h`
+                return (
+                  <div key={dep.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 14 }}>{DEPOSIT_ICONS[dep.type] || '⛏️'}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: DEPOSIT_COLORS[dep.type] || '#e2e8f0', textTransform: 'uppercase' }}>{dep.type}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#22d38a' }}>+{dep.bonus}%</span>
+                      <span style={{ fontSize: 9, color: '#94a3b8' }}>⏳ {timeLeft}</span>
+                    </div>
+                  </div>
+                )
+              })}
+              {regionDeposits[0].discoveredBy && (
+                <div style={{ fontSize: 8, color: '#64748b', marginTop: 2 }}>Discovered by {regionDeposits[0].discoveredBy}</div>
+              )}
+            </div>
+          )
+        })()}
+
         {/* 🔥 Revolt / Homeland Bonus section */}
         {isOccupied && (
           <div style={{

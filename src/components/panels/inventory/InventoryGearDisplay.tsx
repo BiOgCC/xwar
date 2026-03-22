@@ -28,7 +28,7 @@ export default function InventoryGearDisplay({ onPickSlot, onPickAmmo }: Props) 
     )
     const tc = TIER_COLORS[item.tier as keyof typeof TIER_COLORS]||'#94a3b8'
     const tl = TIER_LABELS[item.tier as keyof typeof TIER_LABELS]||item.tier.toUpperCase()
-    const img = getItemImagePath(item.tier,item.slot,item.category,item.weaponSubtype)
+    const img = getItemImagePath(item.tier,item.slot,item.category,item.weaponSubtype,item.superforged)
     const dur = Number(item.durability??100), dc = dur<30?'#ef4444':dur<60?'#f59e0b':'#22d38a'
     const se:{label:string;val:string;color:string}[] = []
     if(item.stats.damage) se.push({label:'DMG',val:String(item.stats.damage),color:'#f87171'})

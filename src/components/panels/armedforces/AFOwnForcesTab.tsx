@@ -22,13 +22,14 @@ export default function AFOwnForcesTab({ iso }: { iso: string }) {
   const [weaponPickerDivId, setWeaponPickerDivId] = useState<string | null>(null)
   const [showDonateForArmy, setShowDonateForArmy] = useState<string | null>(null)
   const [showDistribute, setShowDistribute] = useState<string | null>(null)
-  const [distResource, setDistResource] = useState<'money' | 'oil'>('money')
+  const [distResource, setDistResource] = useState<'money' | 'oil' | 'materialX'>('money')
   const [distAmount, setDistAmount] = useState(10000)
   const [newArmyName, setNewArmyName] = useState('')
 
   const myArmies = Object.values(armyStore.armies).filter(a => a.countryCode === iso)
   const currentArmy = myArmies.find(a => a.members.some(m => m.playerId === player.name))
-  const allDivisions = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
+  const myDivisionIds = currentArmy ? new Set(currentArmy.divisionIds) : new Set<string>()
+  const allDivisions = Object.values(armyStore.divisions).filter(d => d.ownerId === player.name || myDivisionIds.has(d.id))
   const unassignedDivs = allDivisions.filter(d => !myArmies.some(a => a.divisionIds.includes(d.id)))
   const adjacentCountries = ADJACENCY_MAP[iso] || []
   const myRank = getMilitaryRank(player.level)
@@ -47,8 +48,7 @@ export default function AFOwnForcesTab({ iso }: { iso: string }) {
     setTimeout(() => setFeedback(''), 3000)
   }
 
-  // Compute current army's aura for the top section
-  const currentArmyAura = currentArmy ? armyStore.getCompositionAura(currentArmy.id) : null
+  // Compute current army's AV for the top section
   const currentArmyAV = currentArmy ? armyStore.getArmyAV(currentArmy.id) : null
 
   // ── Player-scoped stats (matching Country AF) ──
@@ -246,42 +246,7 @@ export default function AFOwnForcesTab({ iso }: { iso: string }) {
       </div>
 
 
-      {currentArmy && currentArmyAura && currentArmyAV && (
-        <div style={{
-          padding: '8px',
-          background: 'linear-gradient(135deg, rgba(167,139,250,0.06) 0%, rgba(0,0,0,0.2) 100%)',
-          borderRadius: '6px', border: '1px solid rgba(167,139,250,0.2)',
-        }}>
-          <div style={{ fontSize: '9px', fontWeight: 900, color: '#a78bfa', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '6px' }}>
-            ✨ COMPOSITION AURAS — {currentArmy.name}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
-            {[
-              { icon: '✈️', label: 'AIR', val: currentArmyAV.air, buff: `+${currentArmyAura.critDmgPct}%`, stat: 'CRIT DMG', color: '#60a5fa' },
-              { icon: '🚶', label: 'GROUND', val: currentArmyAV.ground, buff: `+${currentArmyAura.dodgePct}%`, stat: 'DODGE', color: '#3b82f6' },
-              { icon: '🪖', label: 'ARMOR', val: currentArmyAV.tanks, buff: `+${currentArmyAura.attackPct}%`, stat: 'ATK', color: '#f59e0b' },
-              { icon: '🚢', label: 'NAVY', val: currentArmyAV.navy, buff: `+${currentArmyAura.precisionPct}%`, stat: 'PREC', color: '#a78bfa' },
-            ].map(cat => (
-              <div key={cat.label} style={{
-                textAlign: 'center', padding: '6px 4px',
-                background: `${cat.color}08`, borderRadius: '4px',
-                border: `1px solid ${cat.color}20`,
-              }}>
-                <div style={{ fontSize: '14px' }}>{cat.icon}</div>
-                <div style={{ fontSize: '10px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{cat.val}</div>
-                <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700, marginBottom: '2px' }}>{cat.label}</div>
-                <div style={{
-                  fontSize: '9px', fontWeight: 900, color: cat.color,
-                  padding: '1px 4px', borderRadius: '3px',
-                  background: `${cat.color}15`,
-                }}>
-                  {cat.buff} {cat.stat}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {/* ═══════ SECTION 2: INVENTORY / VAULT ═══════ */}
       {currentArmy && (() => {
@@ -300,6 +265,7 @@ export default function AFOwnForcesTab({ iso }: { iso: string }) {
               {[
                 { icon: '💰', val: currentArmy.vault.money },
                 { icon: '🛢️', val: currentArmy.vault.oil },
+                { icon: '🧪', val: currentArmy.vault.materialX || 0 },
                 { icon: '🔫', val: currentArmy.vault.ammo },
                 { icon: '✈️', val: currentArmy.vault.jets },
                 { icon: '🪖', val: currentArmy.vault.tanks },
@@ -321,6 +287,7 @@ export default function AFOwnForcesTab({ iso }: { iso: string }) {
                 { resource: 'money' as const, amount: 10000, label: '💰 $10K' },
                 { resource: 'money' as const, amount: 50000, label: '💰 $50K' },
                 { resource: 'oil' as const, amount: 100, label: '🛢️ 100' },
+                { resource: 'materialX' as const, amount: 50, label: '🧪 50' },
               ].map(d => (
                 <button key={d.label} className="war-btn war-btn--small"
                   style={{ fontSize: '7px', padding: '2px 5px' }}
@@ -362,6 +329,10 @@ export default function AFOwnForcesTab({ iso }: { iso: string }) {
                           style={{ fontSize: '7px', padding: '2px 5px' }}
                           onClick={() => setDistResource('oil')}
                         >🛢️ Oil</button>
+                        <button className={`war-btn war-btn--small ${distResource === 'materialX' ? 'war-btn--primary' : ''}`}
+                          style={{ fontSize: '7px', padding: '2px 5px' }}
+                          onClick={() => setDistResource('materialX')}
+                        >🧪 MatX</button>
                       </div>
                       <div style={{ display: 'flex', gap: '3px', marginBottom: '4px' }}>
                         {(distResource === 'money' ? [10000, 50000, 100000] : [50, 100, 500]).map(a => (
@@ -473,11 +444,14 @@ export default function AFOwnForcesTab({ iso }: { iso: string }) {
                     }
 
                     return (
-                      <div className={`war-div-row war-div-row--${div.status}`} key={div.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px', padding: '6px 8px' }}>
-                        {/* Header: icon, name, level, status */}
+                      <div className={`war-div-row war-div-row--${div.status}`} key={div.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px', padding: '6px 8px', border: div.deployedToPMC ? '1px solid rgba(168,85,247,0.25)' : undefined, background: div.deployedToPMC ? 'rgba(168,85,247,0.04)' : undefined }}>
+                        {/* Header: icon, name, level, status, PMC badge */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <img src={template?.icon} alt="div" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
                           <span className="war-div-row__name" style={{ flex: 1 }}>{div.name}</span>
+                          {div.deployedToPMC && (
+                            <span style={{ fontSize: '6px', fontWeight: 800, color: '#a855f7', background: 'rgba(168,85,247,0.2)', padding: '1px 4px', borderRadius: '2px', letterSpacing: '0.5px' }}>🏴 LENT</span>
+                          )}
                           <span style={{ fontSize: '8px', fontWeight: 800, color: '#f59e0b', background: 'rgba(245,158,11,0.15)', padding: '1px 5px', borderRadius: '3px' }}>
                             LV{divLevel}
                           </span>
@@ -619,16 +593,37 @@ export default function AFOwnForcesTab({ iso }: { iso: string }) {
                             </div>
                           )
                         })()}
-                        {/* Disband Button */}
-                        {div.ownerId === player.name && div.status !== 'in_combat' && (
-                          <button
-                            style={{ fontSize: '7px', padding: '2px 6px', marginTop: '3px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '3px', cursor: 'pointer' }}
-                            onClick={() => {
-                              const r = armyStore.disbandDivision(div.id)
-                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
-                            }}
-                          >🗑️ DISBAND</button>
-                        )}
+                        {/* Lend / Recall + Disband */}
+                        <div style={{ display: 'flex', gap: '3px', marginTop: '3px' }}>
+                          {div.ownerId === player.name && div.status !== 'in_combat' && div.status !== 'destroyed' && (
+                            div.deployedToPMC ? (
+                              <button
+                                style={{ fontSize: '8px', padding: '3px 8px', background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)', borderRadius: '3px', cursor: 'pointer', fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}
+                                onClick={() => {
+                                  const r = armyStore.recallDivisionFromPMC(div.id)
+                                  ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#a855f7' : '#ef4444')
+                                }}
+                              >⬅ RECALL FROM PMC</button>
+                            ) : (
+                              <button
+                                style={{ fontSize: '8px', padding: '3px 8px', background: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '3px', cursor: 'pointer', fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}
+                                onClick={() => {
+                                  const r = armyStore.lendDivisionToPMC(div.id)
+                                  ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#a855f7' : '#ef4444')
+                                }}
+                              >🏴 LEND TO PMC ➜</button>
+                            )
+                          )}
+                          {div.ownerId === player.name && div.status !== 'in_combat' && (
+                            <button
+                              style={{ fontSize: '7px', padding: '2px 6px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '3px', cursor: 'pointer' }}
+                              onClick={() => {
+                                const r = armyStore.disbandDivision(div.id)
+                                ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
+                              }}
+                            >🗑️ DISBAND</button>
+                          )}
+                        </div>
                       </div>
                     )
                   })}

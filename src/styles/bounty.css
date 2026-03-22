@@ -386,3 +386,957 @@
   font-weight: 900;
   color: #22c55e;
 }
+
+/* ══════════════════════════════════════════════
+   NPC HUNTS Tab
+   ══════════════════════════════════════════════ */
+
+.bounty-tab--npc {
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+.bounty-tab--npc.bounty-tab--active {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+  color: #f59e0b !important;
+}
+
+.bounty-npc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* ══════════════════════════════════════════════
+   Bounty Battle Card
+   ══════════════════════════════════════════════ */
+
+.bounty-bc {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.7));
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 200ms, box-shadow 200ms;
+}
+
+.bounty-bc::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--rank-clr, #94a3b8), transparent);
+  opacity: 0.7;
+}
+
+.bounty-bc:hover {
+  border-color: var(--rank-glow, rgba(148,163,184,0.4));
+  box-shadow: 0 0 16px var(--rank-glow, rgba(148,163,184,0.1));
+}
+
+.bounty-bc--dead {
+  opacity: 0.5;
+  filter: grayscale(0.5);
+}
+
+/* ── Compact variant (for future use) ── */
+.bounty-bc--compact {
+  padding: 8px 10px;
+}
+
+.bounty-bc--compact .bounty-bc__header {
+  margin-bottom: 4px;
+}
+
+/* ── Header ── */
+.bounty-bc__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.bounty-bc__identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bounty-bc__rank-badge {
+  font-size: 16px;
+  filter: drop-shadow(0 0 4px var(--rank-glow, rgba(148,163,184,0.5)));
+}
+
+.bounty-bc__name {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 900;
+  color: #e2e8f0;
+  letter-spacing: 0.03em;
+}
+
+.bounty-bc__rank-label {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bounty-bc__location {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bounty-bc__country-code {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+/* ── Eliminated badge ── */
+.bounty-bc__eliminated {
+  text-align: center;
+  padding: 8px;
+  margin-bottom: 8px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 900;
+  color: #ef4444;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 4px;
+}
+
+/* ── HP Section ── */
+.bounty-bc__hp-section {
+  margin-bottom: 8px;
+}
+
+.bounty-bc__hp-label {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+
+.bounty-bc__hp-bar {
+  position: relative;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bounty-bc__hp-fill {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  border-radius: 4px;
+  transition: width 0.4s ease, background 0.4s ease;
+}
+
+/* ── Money Section ── */
+.bounty-bc__money-section {
+  margin-bottom: 10px;
+}
+
+.bounty-bc__money-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.15);
+  border-radius: 6px;
+}
+
+.bounty-bc__money-icon {
+  font-size: 16px;
+}
+
+.bounty-bc__money-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 900;
+  color: #22c55e;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
+  animation: bounty-money-glow 2s ease-in-out infinite;
+}
+
+.bounty-bc__money-total {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.04em;
+}
+
+.bounty-bc__money-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.bounty-bc__money {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 900;
+  color: #22c55e;
+}
+
+.bounty-bc__pot {
+  font-size: 8px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+@keyframes bounty-money-glow {
+  0%, 100% { text-shadow: 0 0 12px rgba(34, 197, 94, 0.3); }
+  50% { text-shadow: 0 0 20px rgba(34, 197, 94, 0.5); }
+}
+
+/* ── Contributors ── */
+.bounty-bc__contributors {
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+.bounty-bc__contrib-title {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 800;
+  color: #475569;
+  letter-spacing: 0.12em;
+  margin-bottom: 4px;
+}
+
+.bounty-bc__contrib-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 9px;
+}
+
+.bounty-bc__contrib-row--me {
+  background: rgba(34, 197, 94, 0.06);
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+}
+
+.bounty-bc__contrib-name {
+  flex: 1;
+  font-weight: 700;
+  color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bounty-bc__contrib-dmg {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #64748b;
+}
+
+.bounty-bc__contrib-pct {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 900;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* ── Attack Button ── */
+.bounty-bc__attack {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 200ms;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.bounty-bc__attack:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.35);
+  transform: translateY(-1px);
+}
+
+.bounty-bc__attack:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bounty-bc__attack--cooldown {
+  animation: bounty-attack-flash 0.3s ease;
+}
+
+@keyframes bounty-attack-flash {
+  0% { transform: scale(0.97); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* ── Fund HIT Button (battle-card style, uses money) ── */
+.bounty-bc__fund-hit {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 200ms;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.bounty-bc__fund-hit:hover:not(:disabled) {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.35);
+  transform: translateY(-1px);
+}
+
+.bounty-bc__fund-hit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bounty-bc__fund-hit--committed {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  border-color: #2563eb;
+}
+
+.bounty-bc__fund-hit--locked {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: rgba(100, 116, 139, 0.2);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  color: #64748b;
+}
+
+/* ── Quick-bet Amount Pills ── */
+.bounty-bc__bet-pills {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.bounty-bc__bet-pill {
+  flex: 1;
+  padding: 3px 0;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms;
+}
+
+.bounty-bc__bet-pill:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.bounty-bc__bet-pill--active {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+  color: #60a5fa;
+}
+
+/* ── Countdown Timer (big, central) ── */
+.bounty-bc__countdown {
+  text-align: center;
+  padding: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 900;
+  color: #f59e0b;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
+}
+
+/* ── Damage Race Scoreboard ── */
+.bounty-bc__race-board {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 4px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bounty-bc__race-side {
+  flex: 1;
+  padding: 8px 10px;
+  text-align: center;
+  transition: all 300ms;
+}
+
+.bounty-bc__race-side--hunter {
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.bounty-bc__race-side--eco {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.bounty-bc__race-side--leading {
+  box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.05);
+}
+
+.bounty-bc__race-side--leading .bounty-bc__race-dmg {
+  text-shadow: 0 0 12px currentColor;
+}
+
+.bounty-bc__race-label {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+
+.bounty-bc__race-dmg {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 900;
+  transition: all 200ms;
+}
+
+.bounty-bc__race-side--hunter .bounty-bc__race-dmg {
+  color: #22c55e;
+}
+
+.bounty-bc__race-side--eco .bounty-bc__race-dmg {
+  color: #3b82f6;
+}
+
+.bounty-bc__race-vs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  min-width: 80px;
+}
+
+.bounty-bc__race-vs span:first-child {
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+
+.bounty-bc__race-gap {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+/* ── Compact race mini row ── */
+.bounty-bc__race-mini {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+/* ── Feedback ── */
+.bounty-bc__feedback {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+  animation: bounty-pop 300ms ease;
+}
+
+.bounty-bc__feedback--success {
+  background: rgba(34, 197, 94, 0.10);
+  border: 1px solid rgba(34, 197, 94, 0.30);
+  color: #22c55e;
+}
+
+.bounty-bc__feedback--error {
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.30);
+  color: #ef4444;
+}
+
+/* ── Expand / Collapse Button ── */
+.bounty-expand-btn {
+  width: 100%;
+  padding: 8px 0;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px dashed rgba(245, 158, 11, 0.25);
+  border-radius: 6px;
+  color: #f59e0b;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 200ms;
+}
+
+.bounty-expand-btn:hover {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.1);
+}
+
+/* ── Timer ── */
+.bounty-bc__timer {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: #fbbf24;
+  letter-spacing: 0.03em;
+}
+
+/* ── Stakes display ── */
+.bounty-bc__stakes {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.bounty-bc__stake {
+  flex: 1;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.bounty-bc__stake--fighter {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+.bounty-bc__stake--eco {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+}
+
+/* ── Supporters section variant ── */
+.bounty-bc__supporters-section {
+  border-color: rgba(59, 130, 246, 0.12);
+  background: rgba(59, 130, 246, 0.03);
+}
+
+.bounty-bc__contrib-row--me-support {
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+}
+
+/* ── Action buttons row ── */
+.bounty-bc__actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.bounty-bc__actions .bounty-bc__attack {
+  flex: 1;
+}
+
+/* ── Support toggle button ── */
+.bounty-bc__support-toggle {
+  flex: 1;
+  padding: 10px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 200ms;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.bounty-bc__support-toggle:hover {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.35);
+  transform: translateY(-1px);
+}
+
+.bounty-bc__support-toggle--active {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* ── Support panel (expanded) ── */
+.bounty-bc__support-panel {
+  margin-top: 8px;
+  padding: 10px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 6px;
+  animation: bounty-pop 250ms ease;
+}
+
+.bounty-bc__support-title {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  color: #60a5fa;
+  letter-spacing: 0.08em;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.bounty-bc__support-info {
+  font-size: 9px;
+  color: #94a3b8;
+  text-align: center;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.bounty-bc__support-info strong {
+  color: #22c55e;
+}
+
+.bounty-bc__support-amounts {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.bounty-bc__support-amt {
+  flex: 1;
+  padding: 5px 0;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 4px;
+  color: rgba(226, 232, 240, 0.5);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms;
+  text-align: center;
+}
+
+.bounty-bc__support-amt:hover {
+  background: rgba(59, 130, 246, 0.1);
+  color: #93c5fd;
+}
+
+.bounty-bc__support-amt--active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.bounty-bc__support-submit {
+  width: 100%;
+  padding: 8px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: 1px solid #3b82f6;
+  border-radius: 5px;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 200ms;
+}
+
+.bounty-bc__support-submit:hover:not(:disabled) {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+}
+
+.bounty-bc__support-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bounty-bc__support-invested {
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-radius: 4px;
+  font-size: 9px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.bounty-bc__support-invested strong {
+  color: #60a5fa;
+}
+
+/* ═══════════════════════════════════════
+   MOMENTUM BAR — replaces HP bar
+   ═══════════════════════════════════════ */
+
+.bounty-bc__momentum-section {
+  margin-bottom: 10px;
+}
+
+.bounty-bc__momentum-labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.bounty-bc__momentum-bar {
+  position: relative;
+  height: 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 7px;
+  overflow: hidden;
+  display: flex;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bounty-bc__momentum-bar--mini {
+  height: 6px;
+  border-radius: 3px;
+  margin-bottom: 2px;
+}
+
+.bounty-bc__momentum-boss {
+  background: linear-gradient(90deg, #ef444488, #ef4444);
+  transition: width 0.6s ease;
+}
+
+.bounty-bc__momentum-hunter {
+  background: linear-gradient(90deg, #22c55e, #22c55e88);
+  transition: width 0.6s ease;
+}
+
+.bounty-bc__momentum-divider {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+  transition: left 0.6s ease;
+  z-index: 1;
+}
+
+.bounty-bc__tick-info {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: #475569;
+  text-align: center;
+  margin-top: 3px;
+}
+
+/* ═══════════════════════════════════════
+   DAMAGE WAVE CHART
+   ═══════════════════════════════════════ */
+
+.bounty-bc__wave-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 32px;
+  padding: 4px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.bounty-bc__wave-tick {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  justify-content: flex-end;
+}
+
+.bounty-bc__wave-bar {
+  width: 100%;
+  border-radius: 1px;
+  transition: height 0.3s ease;
+}
+
+.bounty-bc__wave-bar--hunter {
+  background: #22c55e;
+}
+
+.bounty-bc__wave-bar--boss {
+  background: #ef4444;
+}
+
+/* ═══════════════════════════════════════
+   STAGGERED & END STATUS
+   ═══════════════════════════════════════ */
+
+.bounty-bc--staggered {
+  animation: stagger-pulse 1s ease infinite;
+}
+
+@keyframes stagger-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+  50% { box-shadow: 0 0 20px 3px rgba(255, 255, 255, 0.15); }
+}
+
+.bounty-bc__end-status {
+  padding: 8px;
+  border-radius: 5px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.bounty-bc__end-status--hunters_win {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.bounty-bc__end-status--boss_survives {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+
+.bounty-bc__end-status--boss_dominates {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+/* ═══════════════════════════════════════
+   SIDE COMMITMENT BADGE
+   ═══════════════════════════════════════ */
+
+.bounty-bc__my-side {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+}
+
+.bounty-bc__my-side--fighter {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.bounty-bc__my-side--supporter {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+/* ── Committed variant (slightly more vibrant) ── */
+.bounty-bc__attack--committed {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  border-color: #d97706;
+}
+
+.bounty-bc__attack--locked,
+.bounty-bc__support-toggle--locked {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: rgba(100, 116, 139, 0.2);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+  color: #64748b;
+}
+
+.bounty-bc__support-toggle--committed {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  border-color: #2563eb;
+}
+
+/* ── Status label in compact card ── */
+.bounty-bc__status-label {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+/* ── Slider momentum bar fills ── */
+.battle-slider__bar--momentum {
+  display: flex;
+  overflow: hidden;
+}
+
+.battle-slider__bar-fill--boss {
+  background: linear-gradient(90deg, #ef444488, #ef4444);
+  transition: width 0.5s ease;
+}
+
+.battle-slider__bar-fill--hunter {
+  background: linear-gradient(90deg, #22c55e, #22c55e88);
+  transition: width 0.5s ease;
+}

@@ -46,22 +46,24 @@ export const SLOT_ICONS: Record<EquipSlot, string> = {
 }
 
 // Map generated image assets
-export function getItemImagePath(tier: EquipTier, slot: EquipSlot, category: EquipCategory, weaponSubtype?: WeaponSubtype): string | null {
+export function getItemImagePath(tier: EquipTier, slot: EquipSlot, category: EquipCategory, weaponSubtype?: WeaponSubtype, superforged?: boolean): string | null {
+  const prefix = superforged ? 'reinforced_' : ''
+
   // Weapon subtypes with their own icons
-  if (category === 'weapon' && weaponSubtype === 'rpg') return '/assets/items/t5_weapon_rpg.png'
-  if (category === 'weapon' && weaponSubtype === 'warship') return '/assets/items/t6_weapon_warship.png'
-  if (weaponSubtype === 'submarine') return '/assets/items/t6_weapon_warship.png'
+  if (category === 'weapon' && weaponSubtype === 'rpg') return `/assets/items/${prefix}t5_weapon_rpg.png`
+  if (category === 'weapon' && weaponSubtype === 'warship') return `/assets/items/${prefix}t6_weapon_warship.png`
+  if (weaponSubtype === 'submarine') return `/assets/items/${prefix ? '' : ''}t6_weapon_warship.png`
 
   if (tier === 't6') {
-    if (category === 'vehicle') return '/assets/items/t6_weapon_warship.png'
-    if (category === 'weapon') return '/assets/items/t6_weapon_jet.png'
+    if (category === 'vehicle') return `/assets/items/${prefix}t6_weapon_warship.png`
+    if (category === 'weapon') return `/assets/items/${prefix}t6_weapon_jet.png`
   }
   
   if (tier === 't7') {
-    return '/assets/items/t6_weapon_warship.png' // Fallback for T7
+    return '/assets/items/t6_weapon_warship.png' // Fallback for T7 (no reinforced variant)
   }
   
-  return `/assets/items/${tier}_${slot}.png`
+  return `/assets/items/${prefix}${tier}_${slot}.png`
 }
 
 // Scrap returns per tier
@@ -317,12 +319,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         set(s => ({ items: [...s.items, item] }))
       }
 
-      // 15% chance to drop a Badge of Honor
-      const badgeDrop = Math.random() < 0.15 ? 1 : 0
-      if (badgeDrop > 0) {
-        usePlayerStore.getState().addResource('badgesOfHonor', badgeDrop, 'lootbox_drop')
-      }
-
       // Track case opens
       set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
       const inv = get()
@@ -340,7 +336,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       if (!item && bonusMoney > 0 && bonusScrap === 0) rewardType = 'money'
       else if (!item) rewardType = 'resources'
 
-      return { rewardType, item, money: bonusMoney || 0, scrap: bonusScrap || 0, oil: 0, badgesOfHonor: badgeDrop }
+      return { rewardType, item, money: bonusMoney || 0, scrap: bonusScrap || 0, oil: 0, badgesOfHonor: 0 }
     } catch(e) { console.error('Lootbox err', e); return null }
   },
 
@@ -357,12 +353,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       usePlayerStore.getState().removeResource('militaryBoxes', 1, 'milbox_open')
       if (item) set(s => ({ items: [...s.items, item] }))
 
-      // 25% chance to drop a Badge of Honor
-      const badgeDrop = Math.random() < 0.25 ? 1 : 0
-      if (badgeDrop > 0) {
-        usePlayerStore.getState().addResource('badgesOfHonor', badgeDrop, 'milbox_drop')
-      }
-
       set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
       const inv = get()
       const ps = usePlayerStore.getState()
@@ -375,7 +365,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         totalItemsDismantled: inv.totalItemsDismantled,
       })
 
-      return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0, badgesOfHonor: badgeDrop }
+      return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0, badgesOfHonor: 0 }
     } catch(e) { console.error('Milbox err', e); return null }
   },
 

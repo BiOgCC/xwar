@@ -42,11 +42,16 @@ export function useGameLoop() {
     // ── Subscribe phase handlers ──
     const unsubs: (() => void)[] = []
 
-    // COMBAT (15s) — battle resolution + revolt pressure
+    // COMBAT (15s) — battle resolution + revolt pressure + raid boss ticks
     unsubs.push(gameClock.subscribe('combat', () => {
       try { useBattleStore.getState().resolveTicksAndRounds() } catch (e) { console.warn('[Combat] resolveTicksAndRounds:', e) }
       try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
       try { useRegionStore.getState().processRevoltTick() } catch (e) { console.warn('[Revolt] processRevoltTick:', e) }
+      try {
+        import('../stores/bountyStore').then(m => {
+          m.useBountyStore.getState().processRaidTicks()
+        })
+      } catch (e) { console.warn('[RaidBoss] processRaidTicks:', e) }
     }))
 
     // MILITARY — no longer needs a tick (lobby-based quick battles now)
@@ -104,6 +109,7 @@ export function useGameLoop() {
       // World timers: auto-income (8h), daily reset (24h), alliance treaty (12h)
       try {
         checkTimeSanity() // Fix 5: detect clock manipulation
+        useWorldStore.getState().expireDeposits()
         useWorldStore.getState().processAutoIncome()
         useWorldStore.getState().processDailyReset()
       } catch (e) { console.warn('[Economy] world timers:', e) }

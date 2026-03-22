@@ -46,6 +46,7 @@ function makeMockDiv(
     autoTrainingEnabled: false,
     killCount: 0, battlesSurvived: 0,
     starQuality: star, statModifiers: modifiers,
+    deployedToPMC: false,
   }
 }
 
@@ -102,9 +103,9 @@ export const useArmyStore = create<ArmyState>((set, get) => {
   }
 
   const armies: Record<string, Army> = {
-    army_us_1: mkArmy('army_us_1', 'US Army Group Alpha', playerName, 'US', 'div_us_', { ammo: 0, jets: 0, tanks: 0, oil: 0, money: 0, equipmentIds: [] }),
-    army_ru_1: mkArmy('army_ru_1', 'Russian Western Front', 'AI_Commander_Putin', 'RU', 'div_ru_', { ammo: 500, jets: 2, tanks: 3, oil: 5000, money: 100000, equipmentIds: [] }),
-    army_cn_1: mkArmy('army_cn_1', 'PLA Northern Command', 'AI_Commander_Xi', 'CN', 'div_cn_', { ammo: 600, jets: 3, tanks: 5, oil: 8000, money: 200000, equipmentIds: [] }),
+    army_us_1: mkArmy('army_us_1', 'US Army Group Alpha', playerName, 'US', 'div_us_', { ammo: 0, jets: 0, tanks: 0, oil: 0, materialX: 0, money: 0, equipmentIds: [] }),
+    army_ru_1: mkArmy('army_ru_1', 'Russian Western Front', 'AI_Commander_Putin', 'RU', 'div_ru_', { ammo: 500, jets: 2, tanks: 3, oil: 5000, materialX: 2000, money: 100000, equipmentIds: [] }),
+    army_cn_1: mkArmy('army_cn_1', 'PLA Northern Command', 'AI_Commander_Xi', 'CN', 'div_cn_', { ammo: 600, jets: 3, tanks: 5, oil: 8000, materialX: 3000, money: 200000, equipmentIds: [] }),
   }
   armyCounter = Object.keys(armies).length
 
@@ -177,7 +178,7 @@ export const useArmyStore = create<ArmyState>((set, get) => {
           divisionIds: [],
           members: [{ playerId: player.name, role: getMilitaryRank(player.level).rank, joinedAt: Date.now(), contributedPower: 0, totalDamageThisPeriod: 0 }],
           maxSquadSize: 12,
-          vault: { ammo: 0, jets: 0, tanks: 0, oil: 0, money: 0, equipmentIds: [] },
+          vault: { ammo: 0, jets: 0, tanks: 0, oil: 0, materialX: 0, money: 0, equipmentIds: [] },
           contributions: [], activeBuffs: [], activeOrders: [],
           deployedToBattleId: null,
           deployedProvince: province,
@@ -549,6 +550,66 @@ export const useArmyStore = create<ArmyState>((set, get) => {
 
   processEconomyUpkeepTick: () => {
     // Upkeep removed — no-op
+  },
+
+  // ====== PMC LENDING ======
+  // Casuals lend divisions to the PMC commander for use while they're AFK.
+  // The commander can deploy these divisions offensively/defensively.
+  // The owner retains ownership and can recall at any time (unless in combat).
+
+  lendDivisionToPMC: (divisionId) => {
+    const player = usePlayerStore.getState()
+    const state = get()
+    const div = state.divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (div.deployedToPMC) return { success: false, message: 'Already lent to PMC.' }
+    if (div.status === 'in_combat') return { success: false, message: 'Cannot lend a division in combat.' }
+    if (div.status === 'destroyed') return { success: false, message: 'Cannot lend a destroyed division.' }
+
+    // Find the player's army
+    const myArmy = Object.values(state.armies).find(a => a.members.some(m => m.playerId === player.name))
+    if (!myArmy) return { success: false, message: 'You must be enlisted in a PMC first.' }
+
+    // Check ownership: player owns it OR div is in their army
+    const isInMyArmy = myArmy.divisionIds.includes(divisionId)
+    if (div.ownerId !== player.name && !isInMyArmy) return { success: false, message: 'Not your division.' }
+
+    // Assign to army if not already
+    if (!isInMyArmy) {
+      get().assignDivisionToArmy(divisionId, myArmy.id)
+    }
+
+    set(s => ({
+      divisions: {
+        ...s.divisions,
+        [divisionId]: { ...s.divisions[divisionId], deployedToPMC: true },
+      },
+    }))
+
+    return { success: true, message: `${div.name} lent to ${myArmy.name}. Commander can now deploy it!` }
+  },
+
+  recallDivisionFromPMC: (divisionId) => {
+    const player = usePlayerStore.getState()
+    const state = get()
+    const div = state.divisions[divisionId]
+    if (!div) return { success: false, message: 'Division not found.' }
+    if (!div.deployedToPMC) return { success: false, message: 'Division is not lent to PMC.' }
+    if (div.status === 'in_combat') return { success: false, message: 'Cannot recall a division in combat. Wait for battle to end.' }
+
+    // Check ownership: player owns it OR div is in their army
+    const myArmy = Object.values(state.armies).find(a => a.members.some(m => m.playerId === player.name))
+    const isInMyArmy = myArmy?.divisionIds.includes(divisionId)
+    if (div.ownerId !== player.name && !isInMyArmy) return { success: false, message: 'Not your division.' }
+
+    set(s => ({
+      divisions: {
+        ...s.divisions,
+        [divisionId]: { ...s.divisions[divisionId], deployedToPMC: false },
+      },
+    }))
+
+    return { success: true, message: `${div.name} recalled to your personal forces.` }
   },
 }})
 

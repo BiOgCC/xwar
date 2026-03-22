@@ -32,6 +32,7 @@ export interface EquipItem {
   durability: number
   stats: EquipStats
   weaponSubtype?: WeaponSubtype
+  superforged?: boolean
   location: ItemLocation
   vaultArmyId?: string
   assignedToDivision?: string

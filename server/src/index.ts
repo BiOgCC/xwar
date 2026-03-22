@@ -25,6 +25,7 @@ import warcardsRoutes from './routes/warcards.routes.js'
 import dailyRoutes from './routes/daily.routes.js'
 import navalRoutes from './routes/naval.routes.js'
 import researchRoutes from './routes/research.routes.js'
+import raidRoutes from './routes/raid.routes.js'
 
 import { generalLimiter, authLimiter, casinoLimiter } from './middleware/rateLimit.js'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -86,6 +87,7 @@ if (runApi) {
   app.use('/api/daily', dailyRoutes)
   app.use('/api/naval', navalRoutes)
   app.use('/api/research', researchRoutes)
+  app.use('/api/raid', raidRoutes)
 
   // ── Global error handler (must be AFTER routes) ──
   app.use(errorHandler)

@@ -49,7 +49,7 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
                 {items.sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)).map(item => {
                   const tierColor = TIER_COLORS[item.tier] || '#94a3b8'
                   const tierLabel = TIER_LABELS[item.tier] || item.tier.toUpperCase()
-                  const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+                  const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
                   const dur = Number(item.durability ?? 100)
                   const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
                   const statEntries: { label: string; val: string; color: string }[] = []
@@ -116,7 +116,7 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
         const item = sellPopupItem
         const tierColor = TIER_COLORS[item.tier] || '#94a3b8'
         const tierLabel = TIER_LABELS[item.tier] || item.tier.toUpperCase()
-        const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+        const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
         const dur = Number(item.durability ?? 100)
         const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
         return (
@@ -251,7 +251,7 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
               const snap = order.equipSnapshot
               const tierColor = TIER_COLORS[snap.tier as EquipTier] || '#94a3b8'
               const tierLabel = TIER_LABELS[snap.tier as EquipTier] || snap.tier
-              const imgUrl = getItemImagePath(snap.tier as any, snap.slot as any, snap.category as any, snap.weaponSubtype as any)
+              const imgUrl = getItemImagePath(snap.tier as any, snap.slot as any, snap.category as any, snap.weaponSubtype as any, snap.superforged)
               const isMine = order.playerId === player.name
               const canBuy = !isMine && player.money >= order.totalPrice
               const dur = Number(snap.durability ?? 100)

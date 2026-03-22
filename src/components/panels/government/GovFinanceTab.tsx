@@ -2,6 +2,7 @@ import { usePlayerStore } from '../../../stores/playerStore'
 import { useGovernmentStore } from '../../../stores/governmentStore'
 import { useWorldStore } from '../../../stores/worldStore'
 import { useArmyStore } from '../../../stores/army'
+import { useRegionStore } from '../../../stores/regionStore'
 
 /** FINANCE tab — Income/spending breakdown, military stats */
 export default function GovFinanceTab() {
@@ -33,6 +34,25 @@ export default function GovFinanceTab() {
   const totalInvested = contracts.reduce((s, c) => s + (c.status === 'locked' ? c.investedAmount : 0), 0)
   const activeWars = world.wars.filter(w => w.status === 'active' && (w.attacker === iso || w.defender === iso))
 
+  // Active deposits for this country
+  const activeDeposits = world.deposits.filter(d => d.countryCode === iso && d.active)
+  const DEPOSIT_ICONS: Record<string, string> = { wheat: '🌾', fish: '🐟', steak: '🥩', oil: '🛢️', materialx: '⚛️' }
+  const DEPOSIT_COLORS: Record<string, string> = { wheat: '#facc15', fish: '#38bdf8', steak: '#f87171', oil: '#a855f7', materialx: '#ec4899' }
+
+  const getTimeLeft = (expiresAt: number) => {
+    const ms = expiresAt - Date.now()
+    if (ms <= 0) return 'Expired'
+    const hours = Math.floor(ms / 3600000)
+    const days = Math.floor(hours / 24)
+    const remainingHours = hours % 24
+    return days > 0 ? `${days}d ${remainingHours}h` : `${remainingHours}h`
+  }
+
+  const getRegionName = (regionId: string) => {
+    const region = useRegionStore.getState().regions.find(r => r.id === regionId)
+    return region?.name || regionId
+  }
+
   return (
     <>
       {/* Income */}
@@ -40,10 +60,35 @@ export default function GovFinanceTab() {
         <div className="gov-section__title gov-section__title--green">📥 INCOME SOURCES</div>
         <div className="gov-stat-row"><span className="gov-stat-row__label">💰 Tax Revenue (per tick)</span><span className="gov-stat-row__value" style={{ color: '#22d38a' }}>${Math.floor(fund.money * 0.001).toLocaleString()}</span></div>
         <div className="gov-stat-row"><span className="gov-stat-row__label">🏭 Auto Income (8h)</span><span className="gov-stat-row__value" style={{ color: '#22d38a' }}>${Math.floor(country?.population ? country.population * 2 : 0).toLocaleString()}</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label">⛏️ Deposit Bonuses</span><span className="gov-stat-row__value" style={{ color: '#3b82f6' }}>{country?.activeDepositBonus ? `+${country.activeDepositBonus.bonus}%` : 'None'}</span></div>
         <div className="gov-stat-row"><span className="gov-stat-row__label">📜 Military Contracts</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>${totalInvested.toLocaleString()} ({activeContracts.length})</span></div>
         <div className="gov-stat-row"><span className="gov-stat-row__label">👑 Empire Tribute</span><span className="gov-stat-row__value" style={{ color: '#a855f7' }}>{country?.empire ? 'Active' : 'None'}</span></div>
         <div className="gov-stat-row"><span className="gov-stat-row__label">🏪 Division Sales</span><span className="gov-stat-row__value" style={{ color: '#60a5fa' }}>{divsOnSale} listed</span></div>
+      </div>
+
+      {/* Active Deposits */}
+      <div className="gov-section" style={{ borderLeft: '3px solid #a855f7' }}>
+        <div className="gov-section__title" style={{ color: '#a855f7' }}>⛏️ ACTIVE DEPOSITS ({activeDeposits.length}/3)</div>
+        {activeDeposits.length === 0 ? (
+          <div style={{ color: '#64748b', fontSize: '9px', padding: '4px 0' }}>No active deposits. Use a Prospection Center to discover deposits.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {activeDeposits.map(dep => (
+              <div key={dep.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', background: 'rgba(0,0,0,0.25)', borderRadius: '4px', borderLeft: `3px solid ${DEPOSIT_COLORS[dep.type] || '#a855f7'}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '13px' }}>{DEPOSIT_ICONS[dep.type] || '⛏️'}</span>
+                  <div>
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: DEPOSIT_COLORS[dep.type] || '#e2e8f0', textTransform: 'uppercase' }}>{dep.type}</div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8' }}>📍 {getRegionName(dep.regionId)}</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#22d38a' }}>+{dep.bonus}%</div>
+                  <div style={{ fontSize: '8px', color: '#94a3b8' }}>⏳ {getTimeLeft(dep.expiresAt)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Spending */}

@@ -31,54 +31,77 @@ const getProductionContribution = (prodSkill: number, companyLevel: number = 1) 
   return Math.floor(minProd + Math.random() * (maxProd - minProd + 1))
 }
 
-const triggerEconomicModifiers = (): string => {
+const triggerEconomicModifiers = (triggerSource: 'work' | 'enterprise' | 'produce'): string => {
   const skills = useSkillsStore.getState()
   const worldStore = useWorldStore.getState()
   let msg = ''
   
-  // Prospection (5% per level) – discover a regional deposit
-  const prospChance = skills.economic.prospection * 0.05
-  if (Math.random() < prospChance) {
-    const undiscovered = worldStore.deposits.filter(d => !d.discoveredBy)
-    if (undiscovered.length > 0) {
-      const deposit = undiscovered[Math.floor(Math.random() * undiscovered.length)]
-      const player = usePlayerStore.getState()
-      
-      // Reward: 100-166 items, 3 BTC, $100-166
-      const itemAmount = 100 + Math.floor(Math.random() * 67)
-      const cashAmount = 100 + Math.floor(Math.random() * 67)
-      
-      // Grant items based on deposit type
-      const resKey = deposit.type === 'materialx' ? 'materialX' : deposit.type
-      usePlayerStore.getState().addResource(resKey, itemAmount, 'deposit_discovery')
-      usePlayerStore.getState().addResource('bitcoin', 2, 'deposit_discovery')
-      usePlayerStore.getState().earnMoney(cashAmount)
-      
-      // Discover it in worldStore
-      worldStore.discoverDeposit(deposit.id, player.name)
-      
-      const country = worldStore.getCountry(deposit.countryCode)
-      msg += ` 🎉 Discovered ${deposit.type} deposit in ${country?.name || deposit.countryCode}! +${itemAmount} ${deposit.type}, +2₿, +$${cashAmount}`
-    } else {
-      // Fallback: small resource bonus
-      const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
-      const resource = resources[Math.floor(Math.random() * resources.length)]
-      const bonusAmount = 50
-      if (resource === 'Oil') {
-        usePlayerStore.getState().addResource('oil', bonusAmount, 'prospection_fallback')
-      } else {
-        usePlayerStore.getState().addResource('materialX', Math.floor(bonusAmount / 5), 'prospection_fallback')
+  // Prospection deposit discovery — only on Work/Enterprise AND requires owning a Prospection Center
+  if (triggerSource === 'work' || triggerSource === 'enterprise') {
+    const companies = useCompanyStore.getState().companies
+    const ownsProspector = companies.some(c => c.type === 'prospection_center')
+    
+    if (ownsProspector) {
+      const prospChance = skills.economic.prospection * 0.02  // 2% per level, max 20%
+      if (Math.random() < prospChance) {
+        const undiscovered = worldStore.deposits.filter(d => !d.discoveredBy)
+        if (undiscovered.length > 0) {
+          const deposit = undiscovered[Math.floor(Math.random() * undiscovered.length)]
+          const player = usePlayerStore.getState()
+          
+          // Reward: oil 2000-4000 / matX 150-300, 2 BTC, $5000-10000
+          const oilAmount = 2000 + Math.floor(Math.random() * 2001)
+          const matXAmount = 150 + Math.floor(Math.random() * 151)
+          const cashAmount = 5000 + Math.floor(Math.random() * 5001)
+          
+          // Grant items based on deposit type
+          if (deposit.type === 'materialx') {
+            usePlayerStore.getState().addResource('materialX', matXAmount, 'deposit_discovery')
+          } else {
+            usePlayerStore.getState().addResource(deposit.type, oilAmount, 'deposit_discovery')
+          }
+          usePlayerStore.getState().addResource('bitcoin', 2, 'deposit_discovery')
+          usePlayerStore.getState().earnMoney(cashAmount)
+          
+          // Discover it in worldStore
+          worldStore.discoverDeposit(deposit.id, player.name)
+          
+          const country = worldStore.getCountry(deposit.countryCode)
+          const itemLabel = deposit.type === 'materialx' ? `+${matXAmount} matX` : `+${oilAmount} ${deposit.type}`
+          msg += ` 🎉 Discovered ${deposit.type} deposit in ${country?.name || deposit.countryCode}! ${itemLabel}, +2₿, +$${cashAmount.toLocaleString()}`
+        } else {
+          // Fallback: small resource bonus
+          const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
+          const resource = resources[Math.floor(Math.random() * resources.length)]
+          const bonusAmount = 50
+          if (resource === 'Oil') {
+            usePlayerStore.getState().addResource('oil', bonusAmount, 'prospection_fallback')
+          } else {
+            usePlayerStore.getState().addResource('materialX', Math.floor(bonusAmount / 5), 'prospection_fallback')
+          }
+          msg += ` 🎉 Found ${resource}!`
+        }
       }
-      msg += ` 🎉 Found ${resource}!`
     }
   }
 
-  // Industrialist: chance to find red bullets on any produce (5% per level, max 50%)
+  // Industrialist: scrap + matX bonuses on produce/enterprise
   const indLevel = skills.economic.industrialist || 0
-  const redBulletChance = Math.min(0.50, indLevel * 0.05)
-  if (redBulletChance > 0 && Math.random() < redBulletChance) {
-    usePlayerStore.getState().addResource('redBullets', 1, 'industrialist_find')
-    msg += ` 🔴 Industrialist found a RED BULLET!`
+  if (indLevel > 0) {
+    // Scrap: 1% per level chance, 100-600 scrap
+    const scrapChance = indLevel * 0.01
+    if (Math.random() < scrapChance) {
+      const scrapAmount = 100 + Math.floor(Math.random() * 501)
+      usePlayerStore.getState().addResource('scrap', scrapAmount, 'industrialist_scrap')
+      msg += ` 🔧 Industrialist found ${scrapAmount} scrap!`
+    }
+    // MatX: 1% per level chance, 20-80 matX
+    const matXChance = indLevel * 0.01
+    if (Math.random() < matXChance) {
+      const matXAmount = 20 + Math.floor(Math.random() * 61)
+      usePlayerStore.getState().addResource('materialX', matXAmount, 'industrialist_matx')
+      msg += ` ⚛️ Industrialist refined ${matXAmount} matX!`
+    }
   }
   
   return msg
@@ -182,13 +205,13 @@ export function getLocationBonus(company: Company): number {
   // Add country conquered resource bonus
   bonus += getCountryResourceBonus(country.conqueredResources)
 
-  // Add deposit bonus (30%) if there's an active deposit matching this company type
+  // Add deposit bonus if there's an active deposit matching this company type
   const depositType = COMPANY_DEPOSIT_MAP[company.type]
   if (depositType) {
-    const hasDeposit = worldStore.deposits.some(
+    const matchingDeposit = worldStore.deposits.find(
       d => d.countryCode === company.location && d.type === depositType && d.active
     )
-    if (hasDeposit) bonus += 30
+    if (matchingDeposit) bonus += matchingDeposit.bonus
   }
 
   // Add citizen deposit bonus (10%) if player is citizen and country has any active deposit
@@ -364,7 +387,6 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const state = get()
     const company = state.companies.find((c) => c.id === companyId)
     if (!company) return null
-    if (company.type === 'prospection_center') return null
 
     let res;
     try {
@@ -383,7 +405,16 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       specialization: { ...s.specialization, economic: s.specialization.economic + 1 },
     }))
 
-    const fill = res.contribution
+    let fill = res.contribution
+
+    // Enterprise skill: 1% per level chance for double PP
+    const entLevel = useSkillsStore.getState().economic.entrepreneurship || 0
+    const doubleChance = entLevel * 0.01
+    let isDouble = false
+    if (doubleChance > 0 && Math.random() < doubleChance) {
+      fill *= 2
+      isDouble = true
+    }
 
     set((s) => ({
       companies: s.companies.map((c) =>
@@ -394,10 +425,11 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     }))
 
     usePlayerStore.getState().gainXP(10)
-    const bonusMsg = triggerEconomicModifiers()
+    const bonusMsg = triggerEconomicModifiers('enterprise')
+    const doubleMsg = isDouble ? ' ⚡ DOUBLE PP!' : ''
 
     return { 
-      message: `+${Math.floor(fill)} production${bonusMsg}`,
+      message: `+${Math.floor(fill)} production${doubleMsg}${bonusMsg}`,
       type: 'enterprise' 
     }
   },
@@ -418,7 +450,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     await usePlayerStore.getState().fetchPlayer()
     await state.fetchAll()
 
-    const bonusMsg = triggerEconomicModifiers()
+    const bonusMsg = triggerEconomicModifiers('produce')
     const finalMessage = (res.message || 'Produced goods!') + bonusMsg
 
     const tx: CompanyTransaction = {
@@ -461,7 +493,16 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     // Apply Economic Theory research bonus to work earnings
     const { useResearchStore } = await import('./researchStore')
     const ecoBonuses = useResearchStore.getState().getEconomyBonuses(player.countryCode || 'US')
-    const boostedPay = Math.floor(res.netPay * ecoBonuses.workEarningsBonus * ecoBonuses.allEconomyBonus)
+    let boostedPay = Math.floor(res.netPay * ecoBonuses.workEarningsBonus * ecoBonuses.allEconomyBonus)
+
+    // Work skill: 1% per level chance for double pay
+    const workLevel = useSkillsStore.getState().economic.work || 0
+    const doubleChance = workLevel * 0.01
+    let isDouble = false
+    if (doubleChance > 0 && Math.random() < doubleChance) {
+      boostedPay *= 2
+      isDouble = true
+    }
 
     // Add contribution to the employer's company production (if it's a player company and local player owns it)
     const employerCompany = state.companies.find(c => c.id === job.companyId)
@@ -482,12 +523,13 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       usePlayerStore.getState().spendMoney(res.employerCost)
     }
 
-    const bonusMsg = triggerEconomicModifiers()
+    const bonusMsg = triggerEconomicModifiers('work')
+    const doubleMsg = isDouble ? ' ⚡ DOUBLE PAY!' : ''
 
     return {
-      message: res.message + bonusMsg,
+      message: res.message + doubleMsg + bonusMsg,
       type: 'work',
-      cashFound: res.netPay
+      cashFound: boostedPay
     }
   },
 
@@ -516,37 +558,66 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const skills = useSkillsStore.getState()
     const prospectionLevel = skills.economic.prospection || 0
 
-    // Base chance from company level (5% per level) + prospection skill bonus (5% per level), capped at 50%
-    const chance = Math.min(0.50, company.level * 0.05 + prospectionLevel * 0.05)
+    // Base chance from company level (2% per level) + prospection skill bonus (2% per level)
+    const chance = company.level * 0.02 + prospectionLevel * 0.02
     const found = Math.random() < chance
 
     if (found) {
-      const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
-      const resource = resources[Math.floor(Math.random() * resources.length)]
-      const btcReward = 5  // Reduced from 3+8=11 to 5
+      // Try to find an undiscovered world deposit (preferring player's country)
+      const worldState = useWorldStore.getState()
+      const undiscovered = worldState.deposits.filter(d => !d.discoveredBy)
+      const inCountry = undiscovered.filter(d => d.countryCode === player.countryCode)
+      const deposit = inCountry.length > 0
+        ? inCountry[Math.floor(Math.random() * inCountry.length)]
+        : undiscovered.length > 0
+          ? undiscovered[Math.floor(Math.random() * undiscovered.length)]
+          : null
 
+      const btcReward = 5
+      const oilReward = (2875 + Math.floor(Math.random() * 1113)) * company.level   // (2875-3987) × level
+      const matXReward = (78 + Math.floor(Math.random() * 282)) * company.level      // (78-359) × level
+      const cashReward = (4597 + Math.floor(Math.random() * 1991)) * company.level   // (4597-6587) × level
       usePlayerStore.getState().addResource('bitcoin', btcReward, 'prospection_reward')
-      usePlayerStore.getState().earnMoney(5000)
+      usePlayerStore.getState().earnMoney(cashReward)
 
-      const bonusAmount = 100 * company.level
-      if (resource === 'Oil') {
-        usePlayerStore.getState().addResource('oil', bonusAmount, 'prospection_reward')
+      if (deposit) {
+        // Discover the deposit in worldStore (region assignment, bonus, expiry all handled)
+        worldState.discoverDeposit(deposit.id, player.name)
+        if (deposit.type === 'materialx') {
+          usePlayerStore.getState().addResource('materialX', matXReward, 'prospection_reward')
+        } else {
+          usePlayerStore.getState().addResource(deposit.type, oilReward, 'prospection_reward')
+        }
+
+        const localDeposit: DepositEvent = {
+          id: deposit.id,
+          resource: deposit.type === 'oil' ? 'Oil' : 'MaterialX',
+          country: player.country,
+          bitcoinReward: btcReward,
+          timestamp: Date.now(),
+        }
+        set((s) => ({ deposits: [...s.deposits, localDeposit] }))
       } else {
-        usePlayerStore.getState().addResource('materialX', Math.floor(bonusAmount / 10), 'prospection_reward')
+        // Fallback: no undiscovered deposits left, just give resources
+        const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
+        const resource = resources[Math.floor(Math.random() * resources.length)]
+        if (resource === 'Oil') {
+          usePlayerStore.getState().addResource('oil', oilReward, 'prospection_reward')
+        } else {
+          usePlayerStore.getState().addResource('materialX', matXReward, 'prospection_reward')
+        }
+        const localDeposit: DepositEvent = {
+          id: `dep-${Date.now()}`,
+          resource: 'Oil',
+          country: player.country,
+          bitcoinReward: btcReward,
+          timestamp: Date.now(),
+        }
+        set((s) => ({ deposits: [...s.deposits, localDeposit] }))
       }
 
-      const deposit: DepositEvent = {
-        id: `dep-${Date.now()}`,
-        resource,
-        country: player.country,
-        bitcoinReward: btcReward,
-        timestamp: Date.now(),
-      }
-
-      set((s) => ({ deposits: [...s.deposits, deposit] }))
       player.gainXP(100)
-
-      return deposit
+      return { id: `dep-${Date.now()}`, resource: 'Oil' as const, country: player.country, bitcoinReward: btcReward, timestamp: Date.now() }
     }
 
     player.gainXP(15)

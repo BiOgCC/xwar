@@ -547,6 +547,145 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             })
           }
 
+          // ── 9.5 DEPOSIT MARKERS — colored dots on regions with active deposits ──
+          const activeDeposits = useWorldStore.getState().deposits.filter(d => d.active)
+          if (activeDeposits.length > 0) {
+            const DEPOSIT_COLORS: Record<string, string> = {
+              wheat: '#facc15', fish: '#38bdf8', steak: '#f87171', oil: '#a855f7', materialx: '#ec4899'
+            }
+            const DEPOSIT_ICONS: Record<string, string> = {
+              wheat: '🌾', fish: '🐟', steak: '🥩', oil: '🛢️', materialx: '⚛️'
+            }
+            const depositFeatures = activeDeposits.map(dep => {
+              const region = allRegions.find(r => r.id === dep.regionId)
+              if (!region) return null
+              return {
+                type: 'Feature' as const,
+                properties: {
+                  depositType: dep.type,
+                  bonus: dep.bonus,
+                  color: DEPOSIT_COLORS[dep.type] || '#facc15',
+                  icon: DEPOSIT_ICONS[dep.type] || '⛏️',
+                  label: `${DEPOSIT_ICONS[dep.type] || '⛏️'} ${dep.type.toUpperCase()} +${dep.bonus}%`,
+                },
+                geometry: {
+                  type: 'Point' as const,
+                  coordinates: region.position,
+                }
+              }
+            }).filter(Boolean)
+
+            if (depositFeatures.length > 0) {
+              m.addSource('xwar-deposits', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: depositFeatures as any[] }
+              })
+
+              // Glow ring
+              m.addLayer({
+                id: 'xwar-deposit-glow',
+                type: 'circle',
+                source: 'xwar-deposits',
+                paint: {
+                  'circle-radius': 18,
+                  'circle-color': ['get', 'color'],
+                  'circle-opacity': 0.15,
+                  'circle-blur': 1,
+                },
+              })
+
+              // Main dot
+              m.addLayer({
+                id: 'xwar-deposit-markers',
+                type: 'circle',
+                source: 'xwar-deposits',
+                paint: {
+                  'circle-radius': 8,
+                  'circle-color': ['get', 'color'],
+                  'circle-opacity': 0.9,
+                  'circle-stroke-color': '#000000',
+                  'circle-stroke-width': 1.5,
+                },
+              })
+
+              // Label
+              m.addLayer({
+                id: 'xwar-deposit-labels',
+                type: 'symbol',
+                source: 'xwar-deposits',
+                minzoom: 3,
+                layout: {
+                  'text-field': ['get', 'label'],
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-size': 11,
+                  'text-offset': [0, 1.8],
+                  'text-allow-overlap': true,
+                },
+                paint: {
+                  'text-color': ['get', 'color'],
+                  'text-halo-color': 'rgba(0, 0, 0, 0.9)',
+                  'text-halo-width': 1.5,
+                },
+              })
+            }
+          }
+
+          // ── 9.6 DEBRIS MARKERS ──
+          const debrisFeatures = allRegions.filter(r => r.debris.scrap > 0 || r.debris.materialX > 0 || r.debris.militaryBoxes > 0).map(r => ({
+            type: 'Feature' as const,
+            properties: { color: '#9ca3af', label: '⚙️ DEBRIS' },
+            geometry: { type: 'Point' as const, coordinates: r.position }
+          }))
+          
+          m.addSource('xwar-debris', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: debrisFeatures as any[] }
+          })
+
+          m.addLayer({
+            id: 'xwar-debris-glow',
+            type: 'circle',
+            source: 'xwar-debris',
+            paint: {
+              'circle-radius': 15,
+              'circle-color': ['get', 'color'],
+              'circle-opacity': 0.2,
+              'circle-blur': 1,
+            },
+          })
+
+          m.addLayer({
+            id: 'xwar-debris-markers',
+            type: 'circle',
+            source: 'xwar-debris',
+            paint: {
+              'circle-radius': 6,
+              'circle-color': ['get', 'color'],
+              'circle-opacity': 0.9,
+              'circle-stroke-color': '#000000',
+              'circle-stroke-width': 1.5,
+            },
+          })
+
+          m.addLayer({
+            id: 'xwar-debris-labels',
+            type: 'symbol',
+            source: 'xwar-debris',
+            minzoom: 3,
+            layout: {
+              'text-field': ['get', 'label'],
+              'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+              'text-size': 10,
+              'text-offset': [0, 1.8],
+              'text-allow-overlap': true,
+            },
+            paint: {
+              'text-color': ['get', 'color'],
+              'text-halo-color': 'rgba(0, 0, 0, 0.9)',
+              'text-halo-width': 1.5,
+            },
+          })
+
           // ── Hover interactions (rAF-debounced to avoid thrashing the GPU) ──
           let hoveredStateName: string | null = null
           let hoverRaf: number | null = null
@@ -649,6 +788,60 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
     map.current = m
 
+    // ── Reactive deposit layer: update GeoJSON when deposits change ──
+    const DEPOSIT_COLORS_RX: Record<string, string> = {
+      wheat: '#facc15', fish: '#38bdf8', steak: '#f87171', oil: '#a855f7', materialx: '#ec4899'
+    }
+    const DEPOSIT_ICONS_RX: Record<string, string> = {
+      wheat: '🌾', fish: '🐟', steak: '🥩', oil: '🛢️', materialx: '⚛️'
+    }
+    let prevDeposits = useWorldStore.getState().deposits
+    const unsubDeposits = useWorldStore.subscribe((state) => {
+      if (state.deposits === prevDeposits) return
+      prevDeposits = state.deposits
+      if (!map.current) return
+      const src = map.current.getSource('xwar-deposits') as any
+      if (!src) return
+      const allRegions = useRegionStore.getState().regions
+      const features = state.deposits
+        .filter(d => d.active)
+        .map(dep => {
+          const region = allRegions.find(r => r.id === dep.regionId)
+          if (!region) return null
+          return {
+            type: 'Feature' as const,
+            properties: {
+              depositType: dep.type,
+              bonus: dep.bonus,
+              color: DEPOSIT_COLORS_RX[dep.type] || '#facc15',
+              icon: DEPOSIT_ICONS_RX[dep.type] || '⛏️',
+              label: `${DEPOSIT_ICONS_RX[dep.type] || '⛏️'} ${dep.type.toUpperCase()} +${dep.bonus}%`,
+            },
+            geometry: { type: 'Point' as const, coordinates: region.position },
+          }
+        })
+        .filter(Boolean)
+      src.setData({ type: 'FeatureCollection', features })
+    })
+
+    // ── Reactive debris layer ──
+    let prevRegionsForDebris = useRegionStore.getState().regions
+    const unsubDebris = useRegionStore.subscribe((state) => {
+      if (state.regions === prevRegionsForDebris) return
+      prevRegionsForDebris = state.regions
+      if (!map.current) return
+      const srcDebris = map.current.getSource('xwar-debris') as any
+      if (!srcDebris) return
+      const featuresDebris = state.regions
+        .filter(r => r.debris.scrap > 0 || r.debris.materialX > 0 || r.debris.militaryBoxes > 0)
+        .map(r => ({
+          type: 'Feature' as const,
+          properties: { color: '#9ca3af', label: '⚙️ DEBRIS' },
+          geometry: { type: 'Point' as const, coordinates: r.position },
+        }))
+      srcDebris.setData({ type: 'FeatureCollection', features: featuresDebris })
+    })
+
     // Force resize once after layout settles (single timeout is enough)
     const resizeObserver = new ResizeObserver(() => {
       map.current?.resize()
@@ -658,6 +851,8 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
     setTimeout(() => { map.current?.resize() }, 150)
 
     return () => {
+      unsubDeposits()
+      unsubDebris()
       resizeObserver.disconnect()
       if (map.current) {
         map.current.remove()

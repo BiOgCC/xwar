@@ -311,7 +311,7 @@ function computeRegions(): Region[] {
       oilYield: def.oilYield || 0,
       tradeRouteValue: def.tradeRouteValue || 0,
       isBlockaded: false,
-      debris: { scrap: 0, materialX: 0, militaryBoxes: 0 },
+      debris: (def.countryCode === 'MX' || def.countryCode === 'CU') ? { scrap: 500000, materialX: 100000, militaryBoxes: 500 } : { scrap: 0, materialX: 0, militaryBoxes: 0 },
       scavengeCount: 0,
       revoltPressure: 0,
       revoltCooldownUntil: 0,
@@ -740,7 +740,7 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           id, name: stateName, countryCode: cc, controlledBy, captureProgress: 0,
           attackedBy: null, assignedArmyId: null, position: [cLng, cLat], adjacent: [], defense,
           isOcean: false, fishingBonus: 0, oilYield: 0, tradeRouteValue: 0, isBlockaded: false,
-          debris: { scrap: 0, materialX: 0, militaryBoxes: 0 }, scavengeCount: 0,
+          debris: (cc === 'MX' || cc === 'CU') ? { scrap: 500000, materialX: 100000, militaryBoxes: 500 } : { scrap: 0, materialX: 0, militaryBoxes: 0 }, scavengeCount: 0,
           revoltPressure: 0, revoltCooldownUntil: 0, noDefenderTicks: 0,
           revoltBattleId: null, revoltTriggerType: null,
         })

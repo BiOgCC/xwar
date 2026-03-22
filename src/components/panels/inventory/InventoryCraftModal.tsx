@@ -31,18 +31,20 @@ const costTable: Record<string, { scrap: number; bitcoin: number }> = {
   t4: { scrap: 1350, bitcoin: 1 },
   t5: { scrap: 4050, bitcoin: 1 },
   t6: { scrap: 12150, bitcoin: 1 },
+  t7: { scrap: 36450, bitcoin: 1 },
 }
 
 const statPreview: Record<string, Record<string, string>> = {
   weapon: {
     t1: 'DMG 20-49 / CRIT 5%', t2: 'DMG 50-80 / CRIT 6-10%', t3: 'DMG 81-120 / CRIT 11-15%',
     t4: 'DMG 121-150 / CRIT 16-20%', t5: 'DMG 151-199 / CRIT 21-30%', t6: 'DMG 200-300 / CRIT 31-49%',
+    t7: 'DMG 350-500 / CRIT 40-60%',
   },
-  helmet: { t1: 'CDMG 12-20%', t2: 'CDMG 32-40%', t3: 'CDMG 52-60%', t4: 'CDMG 72-80%', t5: 'CDMG 92-100%', t6: 'CDMG 112-120%' },
-  chest: { t1: 'ARM 2-5%', t2: 'ARM 7-10%', t3: 'ARM 12-15%', t4: 'ARM 17-20%', t5: 'ARM 22-25%', t6: 'ARM 27-30%' },
-  legs: { t1: 'ARM 2-5%', t2: 'ARM 7-10%', t3: 'ARM 12-15%', t4: 'ARM 17-20%', t5: 'ARM 22-25%', t6: 'ARM 27-30%' },
-  gloves: { t1: 'ACC 1-5%', t2: 'ACC 6-10%', t3: 'ACC 11-15%', t4: 'ACC 16-20%', t5: 'ACC 21-25%', t6: 'ACC 26-30%' },
-  boots: { t1: 'EVA 2-5%', t2: 'EVA 7-10%', t3: 'EVA 12-15%', t4: 'EVA 17-20%', t5: 'EVA 22-25%', t6: 'EVA 27-30%' },
+  helmet: { t1: 'CDMG 12-20%', t2: 'CDMG 32-40%', t3: 'CDMG 52-60%', t4: 'CDMG 72-80%', t5: 'CDMG 92-100%', t6: 'CDMG 112-120%', t7: 'CDMG 132-140%' },
+  chest: { t1: 'ARM 2-5%', t2: 'ARM 7-10%', t3: 'ARM 12-15%', t4: 'ARM 17-20%', t5: 'ARM 22-25%', t6: 'ARM 27-30%', t7: 'ARM 32-35%' },
+  legs: { t1: 'ARM 2-5%', t2: 'ARM 7-10%', t3: 'ARM 12-15%', t4: 'ARM 17-20%', t5: 'ARM 22-25%', t6: 'ARM 27-30%', t7: 'ARM 32-35%' },
+  gloves: { t1: 'ACC 1-5%', t2: 'ACC 6-10%', t3: 'ACC 11-15%', t4: 'ACC 16-20%', t5: 'ACC 21-25%', t6: 'ACC 26-30%', t7: 'ACC 31-35%' },
+  boots: { t1: 'EVA 2-5%', t2: 'EVA 7-10%', t3: 'EVA 12-15%', t4: 'EVA 17-20%', t5: 'EVA 22-25%', t6: 'EVA 27-30%', t7: 'EVA 32-35%' },
 }
 
 const slotTabs: { slot: EquipSlot; label: string }[] = [
@@ -72,12 +74,13 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
     const result = generateStats(category, slot, tier, subtype)
 
     const indLevel = useSkillsStore.getState().economic.industrialist || 0
-    const superforgeChance = Math.min(0.50, indLevel * 0.05)
+    const superforgeChance = Math.min(0.20, indLevel * 0.02)
     const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
+    const sfBonus = 1.09 + Math.random() * 0.07 // +9% to +16%
     if (isSuperforged) {
       for (const key of Object.keys(result.stats) as Array<keyof typeof result.stats>) {
         if (typeof result.stats[key] === 'number') {
-          (result.stats as any)[key] = Math.ceil(result.stats[key]! * 1.10)
+          (result.stats as any)[key] = Math.ceil(result.stats[key]! * sfBonus)
         }
       }
     }
@@ -87,6 +90,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
       name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
       slot, category, tier, equipped: false, durability: 100,
       location: 'inventory', stats: result.stats, weaponSubtype: result.weaponSubtype,
+      superforged: isSuperforged || undefined,
     }
     inventory.addItem(newItem)
     const entry = { item: newItem, superforged: isSuperforged }
@@ -146,7 +150,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                 const tc = costTable[entry.tier]
                 const canAfford = player.scrap >= tc.scrap && player.bitcoin >= tc.bitcoin
                 const preview = statPreview[craftSlot]?.[entry.tier] || ''
-                const imgUrl = getItemImagePath(entry.tier, craftSlot, craftSlot === 'weapon' ? 'weapon' : 'armor', entry.subtype)
+                const imgUrl = getItemImagePath(entry.tier, craftSlot, craftSlot === 'weapon' ? 'weapon' : 'armor', entry.subtype, false)
 
                 return (
                   <div key={`${entry.tier}-${entry.subtype || idx}`} style={{
@@ -181,12 +185,13 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                           player.spendScrap(cost.scrap)
                           const result = generateStats('weapon', 'weapon', entry.tier, entry.subtype)
                           const indLevel = useSkillsStore.getState().economic.industrialist || 0
-                          const superforgeChance = Math.min(0.50, indLevel * 0.05)
+                          const superforgeChance = Math.min(0.20, indLevel * 0.02)
                           const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
+                          const sfBonus = 1.09 + Math.random() * 0.07 // +9% to +16%
                           if (isSuperforged) {
                             for (const key of Object.keys(result.stats) as Array<keyof typeof result.stats>) {
                               if (typeof result.stats[key] === 'number') {
-                                (result.stats as any)[key] = Math.ceil(result.stats[key]! * 1.10)
+                                (result.stats as any)[key] = Math.ceil(result.stats[key]! * sfBonus)
                               }
                             }
                           }
@@ -195,6 +200,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                             name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
                             slot: 'weapon', category: 'weapon', tier: entry.tier, equipped: false, durability: 100,
                             location: 'inventory', stats: result.stats, weaponSubtype: result.weaponSubtype,
+                            superforged: isSuperforged || undefined,
                           }
                           inventory.addItem(newItem)
                           const histEntry = { item: newItem, superforged: isSuperforged }
@@ -266,7 +272,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                 {craftHistory.map((entry, idx) => {
                   const ci = entry.item
                   const tc = TIER_COLORS[ci.tier]
-                  const img = getItemImagePath(ci.tier, ci.slot, ci.category, ci.weaponSubtype)
+                  const img = getItemImagePath(ci.tier, ci.slot, ci.category, ci.weaponSubtype, ci.superforged)
                   const mainStat = ci.stats.damage
                     ? `DMG ${ci.stats.damage}`
                     : ci.stats.armor
@@ -383,7 +389,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
               {(() => {
                 const item = craftedItem.item
                 const tierColor = TIER_COLORS[item.tier]
-                const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype)
+                const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
                 return (
                   <>
                     <div style={{
@@ -469,7 +475,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                           fontFamily: 'var(--font-display)', color: '#fbbf24',
                           letterSpacing: '0.12em',
                         }}
-                      >⚡ SUPERFORGED +10% ALL STATS</motion.div>
+                      >⚡ SUPERFORGED +9–16% ALL STATS</motion.div>
                     )}
 
                     <motion.div

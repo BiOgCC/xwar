@@ -35,7 +35,7 @@ export default function MarketOrdersTab({ showFb }: MarketOrdersTabProps) {
                 : <span style={{ fontSize: 22 }}>{def.icon}</span>
               itemName = def.name
             } else if (o.itemType === 'equipment' && o.equipSnapshot) {
-              const imgUrl = getItemImagePath(o.equipSnapshot.tier as any, o.equipSnapshot.slot as any, o.equipSnapshot.category as any, o.equipSnapshot.weaponSubtype as any)
+              const imgUrl = getItemImagePath(o.equipSnapshot.tier as any, o.equipSnapshot.slot as any, o.equipSnapshot.category as any, o.equipSnapshot.weaponSubtype as any, o.equipSnapshot.superforged)
               icon = imgUrl
                 ? <img src={imgUrl} alt={o.equipSnapshot.name} style={{ width: 28, height: 28, objectFit: 'contain' }} />
                 : <span style={{ fontSize: 22 }}>{SLOT_ICONS[o.equipSnapshot.slot as EquipSlot]}</span>

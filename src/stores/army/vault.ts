@@ -20,9 +20,11 @@ export function createVaultSlice(
 
       if (resource === 'money' && player.money < amount) return { success: false, message: 'Not enough money.' }
       if (resource === 'oil' && player.oil < amount) return { success: false, message: 'Not enough oil.' }
+      if (resource === 'materialX' && player.materialX < amount) return { success: false, message: 'Not enough Material X.' }
 
       if (resource === 'money') usePlayerStore.getState().spendMoney(amount)
       else if (resource === 'oil') usePlayerStore.getState().spendOil(amount)
+      else if (resource === 'materialX') usePlayerStore.getState().spendMaterialX(amount)
 
       const newVault = { ...army.vault }
       if (resource in newVault && resource !== 'equipmentIds') {
@@ -204,7 +206,7 @@ export function createVaultSlice(
       return { success: true, message: 'Equipment returned to vault.' }
     },
 
-    distributeVaultToMembers: (armyId: string, resource: 'money' | 'oil', amount: number) => {
+    distributeVaultToMembers: (armyId: string, resource: 'money' | 'oil' | 'materialX', amount: number) => {
       const player = usePlayerStore.getState()
       const state = get()
       const army = state.armies[armyId]
@@ -244,12 +246,12 @@ export function createVaultSlice(
           },
         }))
       } else {
-        // Non-money resources: only oil goes directly to each member's player store
+        // Non-money resources (oil, materialX): credit directly to each member's player store
         // We can only credit the local player in single-client mode
         // In multiplayer, this would need server coordination
         army.members.forEach(m => {
           if (m.playerId === player.name) {
-            usePlayerStore.getState().addResource('oil', perMember, 'vault_distribution')
+            usePlayerStore.getState().addResource(resource, perMember, 'vault_distribution')
           }
           // Other players would receive their share when they log in (server-side)
         })

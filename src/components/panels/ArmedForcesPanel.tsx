@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useArmyStore } from '../../stores/army'
 import { useUIStore } from '../../stores/uiStore'
@@ -22,6 +22,15 @@ export default function ArmedForcesPanel() {
   const [tab, setTab] = useState<AFTab>('own')
   const [feedback, setFeedback] = useState('')
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('own')
+
+  // Consume afDefaultTab from uiStore
+  useEffect(() => {
+    const defaultTab = useUIStore.getState().afDefaultTab
+    if (defaultTab && ['country', 'pmc', 'own', 'recruit', 'market', 'fight'].includes(defaultTab)) {
+      setTab(defaultTab as AFTab)
+      useUIStore.getState().setAfDefaultTab(null)
+    }
+  }, [])
 
   const myDivisions = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
   const myArmies = Object.values(armyStore.armies).filter(a => a.countryCode === iso)

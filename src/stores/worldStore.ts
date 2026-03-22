@@ -209,23 +209,29 @@ export const ADJACENCY_MAP: Record<string, string[]> = {
 
 // Seed some undiscovered deposits across countries
 const INITIAL_DEPOSITS: RegionalDeposit[] = [
-  { id: 'dep-1',  type: 'wheat',     countryCode: 'US', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-2',  type: 'oil',       countryCode: 'US', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-3',  type: 'fish',      countryCode: 'JP', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-4',  type: 'steak',     countryCode: 'BR', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-5',  type: 'materialx', countryCode: 'RU', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-6',  type: 'oil',       countryCode: 'RU', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-7',  type: 'wheat',     countryCode: 'IN', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-8',  type: 'fish',      countryCode: 'GB', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-9',  type: 'materialx', countryCode: 'CN', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-10', type: 'steak',     countryCode: 'DE', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-11', type: 'oil',       countryCode: 'NG', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-12', type: 'wheat',     countryCode: 'CA', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-13', type: 'fish',      countryCode: 'MX', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-14', type: 'materialx', countryCode: 'TR', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-15', type: 'steak',     countryCode: 'CU', bonus: 30, discoveredBy: null, active: false },
-  { id: 'dep-16', type: 'oil',       countryCode: 'BS', bonus: 30, discoveredBy: null, active: false },
+  { id: 'dep-1',  type: 'wheat',     countryCode: 'US', regionId: 'US-KS', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-2',  type: 'oil',       countryCode: 'US', regionId: 'US-TX', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-3',  type: 'fish',      countryCode: 'JP', regionId: 'JP-HK', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-4',  type: 'steak',     countryCode: 'BR', regionId: 'BR-RS', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-5',  type: 'materialx', countryCode: 'RU', regionId: 'RU-UR', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-6',  type: 'oil',       countryCode: 'RU', regionId: 'RU-TY', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-7',  type: 'wheat',     countryCode: 'IN', regionId: 'IN-PB', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-8',  type: 'fish',      countryCode: 'GB', regionId: 'GB-SW', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-9',  type: 'materialx', countryCode: 'CN', regionId: 'CN-XJ', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-10', type: 'steak',     countryCode: 'DE', regionId: 'DE-BY', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-11', type: 'oil',       countryCode: 'NG', regionId: 'NG-SS', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-12', type: 'wheat',     countryCode: 'CA', regionId: 'CA-SK', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-13', type: 'fish',      countryCode: 'MX', regionId: 'MX-YU', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-14', type: 'materialx', countryCode: 'TR', regionId: 'TR-EA', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-15', type: 'steak',     countryCode: 'CU', regionId: 'CU-CT', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
+  { id: 'dep-16', type: 'oil',       countryCode: 'BS', regionId: 'BS-NP', bonus: 30, expiresAt: 0, discoveredBy: null, active: false },
 ]
+
+const MAX_DEPOSITS_PER_COUNTRY = 3
+const DEPOSIT_MIN_DAYS = 2
+const DEPOSIT_MAX_DAYS = 5
+const DEPOSIT_MIN_BONUS = 25
+const DEPOSIT_MAX_BONUS = 33
 
 const makeCountry = (name: string, code: string, controller: string, empire: string | null, population: number, regions: number, military: number, fundTier: FundTier, color: string, conqueredResources: ConqueredResourceType[] = []): Country => ({
   name, code, controller, empire, population, regions, military, fund: getFundForTier(fundTier), forceVault: { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }, color, conqueredResources, activeDepositBonus: null, portLevel: 1, airportLevel: 1, bunkerLevel: 1, militaryBaseLevel: 1, hasPort: true, hasAirport: true, taxExempt: false,
@@ -305,6 +311,8 @@ export interface WorldState {
   transferToForceVault: (countryCode: string, resource: NationalFundKey, amount: number) => boolean
   spendFromForceVault: (countryCode: string, costs: Partial<Record<NationalFundKey, number>>) => boolean
   discoverDeposit: (depositId: string, playerName: string) => void
+  expireDeposits: () => void
+  getActiveDepositsForCountry: (countryCode: string) => RegionalDeposit[]
   getCountry: (code: string) => Country | undefined
   occupyCountry: (targetIso: string, conquerorIso: string, taxExempt: boolean) => void
   getTimeUntilDailyReset: () => number
@@ -602,17 +610,83 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     return true
   },
 
-  discoverDeposit: (depositId, playerName) => set((s) => ({
-    deposits: s.deposits.map(d =>
-      d.id === depositId ? { ...d, discoveredBy: playerName, active: true } : d
-    ),
-    // Set country active deposit bonus (non-cumulative, replaces any existing)
-    countries: s.countries.map(c => {
-      const dep = s.deposits.find(d => d.id === depositId)
-      if (!dep || c.code !== dep.countryCode) return c
-      return { ...c, activeDepositBonus: { type: dep.type, bonus: 10 } }
-    })
-  })),
+  discoverDeposit: (depositId, playerName) => {
+    const s = get()
+    const dep = s.deposits.find(d => d.id === depositId)
+    if (!dep) return
+
+    // Enforce max 3 active deposits per country (different types)
+    const activeInCountry = s.deposits.filter(d => d.countryCode === dep.countryCode && d.active)
+    if (activeInCountry.length >= MAX_DEPOSITS_PER_COUNTRY) {
+      // Replace the oldest (earliest expiresAt)
+      const oldest = activeInCountry.reduce((a, b) => a.expiresAt < b.expiresAt ? a : b)
+      set(ss => ({ deposits: ss.deposits.map(d => d.id === oldest.id ? { ...d, active: false } : d) }))
+    }
+    // Don't allow two active deposits of the same type in the same country
+    const sameType = activeInCountry.find(d => d.type === dep.type && d.id !== depositId)
+    if (sameType) {
+      set(ss => ({ deposits: ss.deposits.map(d => d.id === sameType.id ? { ...d, active: false } : d) }))
+    }
+
+    // Randomize bonus 25–33% and duration 2–5 days
+    const bonus = DEPOSIT_MIN_BONUS + Math.floor(Math.random() * (DEPOSIT_MAX_BONUS - DEPOSIT_MIN_BONUS + 1))
+    const durationDays = DEPOSIT_MIN_DAYS + Math.floor(Math.random() * (DEPOSIT_MAX_DAYS - DEPOSIT_MIN_DAYS + 1))
+    const expiresAt = Date.now() + durationDays * 24 * 60 * 60 * 1000
+
+    // Assign region: pick a random land region from this country
+    let regionId = dep.regionId
+    try {
+      const { useRegionStore } = require('./regionStore') as typeof import('./regionStore')
+      const regions = useRegionStore.getState().regions.filter(
+        r => r.countryCode === dep.countryCode && !r.isOcean
+      )
+      if (regions.length > 0) {
+        regionId = regions[Math.floor(Math.random() * regions.length)].id
+      }
+    } catch {}
+
+    set(ss => ({
+      deposits: ss.deposits.map(d =>
+        d.id === depositId ? { ...d, discoveredBy: playerName, active: true, bonus, expiresAt, regionId } : d
+      ),
+      // Update country deposit bonus — sum of all active deposits
+      countries: ss.countries.map(c => {
+        if (c.code !== dep.countryCode) return c
+        const allActive = ss.deposits
+          .map(d => d.id === depositId ? { ...d, active: true, bonus } : d)
+          .filter(d => d.countryCode === c.code && d.active)
+        const totalBonus = allActive.reduce((sum, d) => sum + d.bonus, 0)
+        return { ...c, activeDepositBonus: allActive.length > 0 ? { type: allActive[0].type, bonus: totalBonus } : null }
+      })
+    }))
+  },
+
+  expireDeposits: () => {
+    const now = Date.now()
+    const s = get()
+    const expired = s.deposits.filter(d => d.active && d.expiresAt > 0 && now > d.expiresAt)
+    if (expired.length === 0) return
+
+    const expiredIds = new Set(expired.map(d => d.id))
+    const affectedCountries = new Set(expired.map(d => d.countryCode))
+
+    set(ss => ({
+      deposits: ss.deposits.map(d => expiredIds.has(d.id) ? { ...d, active: false } : d),
+      countries: ss.countries.map(c => {
+        if (!affectedCountries.has(c.code)) return c
+        const remaining = ss.deposits.filter(
+          d => d.countryCode === c.code && d.active && !expiredIds.has(d.id)
+        )
+        if (remaining.length === 0) return { ...c, activeDepositBonus: null }
+        const totalBonus = remaining.reduce((sum, d) => sum + d.bonus, 0)
+        return { ...c, activeDepositBonus: { type: remaining[0].type, bonus: totalBonus } }
+      })
+    }))
+  },
+
+  getActiveDepositsForCountry: (countryCode) => {
+    return get().deposits.filter(d => d.countryCode === countryCode && d.active)
+  },
 
   canAttack: (attackerIso, defenderIso) => {
     if (defenderIso === 'OC' || attackerIso === 'OC') return true // Ocean blocks are always attackable
@@ -691,6 +765,9 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   processDailyReset: () => {
     const state = get()
     if (Date.now() < state.dailyResetAt) return
+
+    // Expire deposits that have passed their expiresAt
+    get().expireDeposits()
 
     // Distribute war fund before resetting
     get().distributeWarFund()

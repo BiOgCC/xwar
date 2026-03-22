@@ -29,10 +29,10 @@ import DiplomacyPanel from '../panels/DiplomacyPanel'
 
 /* ── 4 quick-access icons shown at the bottom of the panel ── */
 const QUICK_NAV = [
-  { id: 'inventory',    icon: '🎒', label: 'INV' },
-  { id: 'armed_forces', icon: '🪖', label: 'AF' },
-  { id: 'market',       icon: '📊', label: 'MKT' },
-  { id: 'companies',    icon: '🏭', label: 'COMP' },
+  { id: 'profile',      icon: '👤', label: 'PROFILE' },
+  { id: 'companies',    icon: '🏭', label: 'COMPS' },
+  { id: 'government',   icon: '🏛️', label: 'COUNTRY' },
+  { id: 'social_club',  icon: '🏛️', label: 'SOCIAL' },
 ]
 
 /* ── Sidebar panel sub-component (reused for top & bottom drag groups) ── */
@@ -366,7 +366,7 @@ export default function PanelRouter() {
           {QUICK_NAV.map(q => (
             <button
               key={q.id}
-              className={`hud-panel__quicknav-btn ${(q.id === 'inventory' || q.id === 'companies') ? (activePanel === 'profile' ? 'hud-panel__quicknav-btn--active' : '') : (activePanel === q.id ? 'hud-panel__quicknav-btn--active' : '')}`}
+              className={`hud-panel__quicknav-btn ${(q.id === 'profile' || q.id === 'companies') ? (activePanel === 'profile' ? 'hud-panel__quicknav-btn--active' : '') : (activePanel === q.id ? 'hud-panel__quicknav-btn--active' : '')}`}
               onClick={() => handleQuickNav(q.id)}
               title={q.label}
             >

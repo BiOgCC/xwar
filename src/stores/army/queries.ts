@@ -101,10 +101,41 @@ export function createQueriesSlice(
     getCompositionAura: (armyId: string) => {
       const av = get().getArmyAV(armyId)
       return {
-        critDmgPct: Math.floor(av.air / 1000) * 2,
-        dodgePct: Math.floor(av.ground / 1000) * 1,
-        attackPct: Math.floor(av.tanks / 1000) * 2,
-        precisionPct: Math.floor(av.navy / 1000) * 5,
+        critDmgPct: Math.floor(av.air / 300),
+        dodgePct: Math.floor(av.ground / 300),
+        attackPct: Math.floor(av.tanks / 300),
+        precisionPct: Math.floor(av.navy / 300),
+      }
+    },
+
+    /** Total composition aura from ALL shared (lent) divisions in the army */
+    getPMCCompositionAura: (armyId: string) => {
+      const state = get()
+      const army = state.armies[armyId]
+      if (!army) return { air: 0, ground: 0, tanks: 0, navy: 0, total: 0, critDmgPct: 0, dodgePct: 0, attackPct: 0, precisionPct: 0 }
+
+      let air = 0, ground = 0, tanks = 0, navy = 0
+      for (const divId of army.divisionIds) {
+        const div = state.divisions[divId]
+        if (!div || div.status === 'destroyed' || !div.deployedToPMC) continue
+        const template = DIVISION_TEMPLATES[div.type]
+        const av = div.manpower * template.atkDmgMult * 10
+        switch (div.category) {
+          case 'air': air += av; break
+          case 'naval': navy += av; break
+          case 'land':
+            if (div.type === 'tank' || div.type === 'jeep') tanks += av
+            else ground += av
+            break
+        }
+      }
+      const total = air + ground + tanks + navy
+      return {
+        air, ground, tanks, navy, total,
+        critDmgPct: Math.floor(air / 300),
+        dodgePct: Math.floor(ground / 300),
+        attackPct: Math.floor(tanks / 300),
+        precisionPct: Math.floor(navy / 300),
       }
     },
   }

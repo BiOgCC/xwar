@@ -7,30 +7,31 @@
   bottom: 16px;
   left: 14px;
   z-index: 80;
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  max-width: calc(50% - 40px);   /* stop before the centered ActionBar */
   pointer-events: none;
+  width: fit-content;
+  max-width: calc(50% - 40px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
-.battle-slider__track {
-  display: flex;
+.battle-slider__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 170px);
   gap: 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 4px 2px 4px 4px;
-  scrollbar-width: none;
+  padding: 4px;
   pointer-events: all;
 }
 
-.battle-slider__track::-webkit-scrollbar {
-  display: none;
+.battle-slider--expanded .battle-slider__grid {
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245,158,11,0.3) transparent;
 }
 
 /* ── Individual card ── */
 .battle-slider__card {
-  flex-shrink: 0;
   width: 170px;
   background: rgba(7, 11, 17, 0.92);
   border: 1px solid rgba(34, 211, 138, 0.12);
@@ -183,4 +184,92 @@
   color: #475569;
   letter-spacing: 0.8px;
   white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════
+   NPC Bounty Slider Cards
+   ══════════════════════════════════════════════ */
+
+.battle-slider__card--bounty {
+  border-color: rgba(245, 158, 11, 0.25);
+  animation: bounty-slider-pulse 2.5s ease-in-out infinite;
+}
+
+.battle-slider__card--bounty::before {
+  background: linear-gradient(90deg, #f59e0b, #ef4444) !important;
+  opacity: 0.9;
+}
+
+.battle-slider__card--bounty:hover {
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.15), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.battle-slider__card--bounty-boss {
+  border-color: rgba(239, 68, 68, 0.3);
+  animation: bounty-slider-pulse-boss 1.8s ease-in-out infinite;
+}
+
+.battle-slider__card--bounty-boss::before {
+  background: linear-gradient(90deg, #ef4444, #dc2626) !important;
+}
+
+.battle-slider__card--bounty-elite {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.battle-slider__npc-badge {
+  font-size: 14px;
+  filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.5));
+}
+
+.battle-slider__npc-name {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 900;
+  color: #fbbf24;
+  letter-spacing: 0.03em;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.3);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes bounty-slider-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  50% { box-shadow: 0 0 16px 2px rgba(245, 158, 11, 0.12); }
+}
+
+@keyframes bounty-slider-pulse-boss {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 18px 3px rgba(239, 68, 68, 0.18); }
+}
+
+/* ── Expand / Collapse button ── */
+.battle-slider__expand {
+  grid-column: 1 / -1;
+  padding: 5px 12px;
+  background: rgba(7, 11, 17, 0.92);
+  border: 1px dashed rgba(245, 158, 11, 0.25);
+  border-radius: 6px;
+  backdrop-filter: blur(12px);
+  pointer-events: all;
+  cursor: pointer;
+  color: #fbbf24;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 200ms;
+}
+
+.battle-slider__expand:hover {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.1);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+  color: #fff;
 }

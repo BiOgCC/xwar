@@ -88,7 +88,7 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
         label: result.item.slot.toUpperCase(),
         value: result.item.name,
         tier: result.item.tier,
-        icon: <img src={getItemImagePath(result.item.tier, result.item.slot, result.item.category, result.item.weaponSubtype) || ''} alt="item" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />,
+        icon: <img src={getItemImagePath(result.item.tier, result.item.slot, result.item.category, result.item.weaponSubtype, result.item.superforged) || ''} alt="item" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />,
       })
     }
     if (result.money > 0) {

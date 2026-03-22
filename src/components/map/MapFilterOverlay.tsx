@@ -9,6 +9,7 @@ interface FilterState {
   oceanBlocks: boolean
   stateNames: boolean
   stateBorders: boolean
+  deposits: boolean
 }
 
 const DEFAULT_FILTERS: FilterState = {
@@ -18,12 +19,14 @@ const DEFAULT_FILTERS: FilterState = {
   oceanBlocks: true,
   stateNames: true,
   stateBorders: true,
+  deposits: true,
 }
 
 const FILTER_ITEMS: { key: keyof FilterState; icon: string; label: string; layers: string[] }[] = [
   { key: 'playerTerritory', icon: '🟢', label: 'My Territory', layers: ['xwar-player-glow', 'xwar-player-tint'] },
   { key: 'allies', icon: '🔵', label: 'Ally Glow', layers: ['xwar-ally-glow'] },
   { key: 'enemies', icon: '🔴', label: 'Enemy Zones', layers: ['xwar-enemy-tint', 'xwar-enemy-border'] },
+  { key: 'deposits', icon: '⛏️', label: 'Deposits', layers: ['xwar-deposit-markers', 'xwar-deposit-glow', 'xwar-deposit-labels'] },
   { key: 'oceanBlocks', icon: '🌊', label: 'Ocean Blocks', layers: ['xwar-ocean-fill'] },
   { key: 'stateNames', icon: '🏷️', label: 'State Names', layers: ['xwar-state-names'] },
   { key: 'stateBorders', icon: '📐', label: 'State Borders', layers: ['xwar-state-border'] },

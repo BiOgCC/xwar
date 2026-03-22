@@ -126,6 +126,8 @@ export const playerSkills = pgTable('player_skills', {
   dodge:        integer('dodge').default(0),
   precision:    integer('precision_').default(0),
   // Economic
+  work:           integer('work').default(0),
+  entrepreneurship: integer('entrepreneurship').default(0),
   production:   integer('production').default(0),
   prospection:  integer('prospection').default(0),
   industrialist: integer('industrialist').default(0),
@@ -503,6 +505,46 @@ export const bounties = pgTable('bounties', {
   createdAt:   timestamp('created_at').defaultNow(),
   expiresAt:   timestamp('expires_at'),
 })
+
+// ═══════════════════════════════════════════════
+//  RAID EVENTS (Damage Race Boss Fights)
+// ═══════════════════════════════════════════════
+
+export const raidEvents = pgTable('raid_events', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  name:            varchar('name', { length: 32 }).notNull(),
+  rank:            varchar('rank', { length: 8 }).notNull(),   // grunt | elite | boss
+  countryCode:     varchar('country_code', { length: 4 }).references(() => countries.code),
+  status:          varchar('status', { length: 16 }).default('active'), // active | hunters_win | boss_survives
+  baseBounty:      bigint('base_bounty', { mode: 'number' }).default(0),
+  supportPool:     bigint('support_pool', { mode: 'number' }).default(0),
+  totalHunterDmg:  bigint('total_hunter_dmg', { mode: 'number' }).default(0),
+  totalBossDmg:    bigint('total_boss_dmg', { mode: 'number' }).default(0),
+  currentTick:     integer('current_tick').default(0),
+  startedAt:       timestamp('started_at').defaultNow(),
+  expiresAt:       timestamp('expires_at').notNull(),
+  finishedAt:      timestamp('finished_at'),
+}, (table) => ({
+  statusIdx: index('idx_raid_events_status').on(table.status),
+}))
+
+// ═══════════════════════════════════════════════
+//  RAID PARTICIPANTS (fighter / supporter per event)
+// ═══════════════════════════════════════════════
+
+export const raidParticipants = pgTable('raid_participants', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  eventId:      uuid('event_id').references(() => raidEvents.id, { onDelete: 'cascade' }).notNull(),
+  playerId:     uuid('player_id').references(() => players.id).notNull(),
+  side:         varchar('side', { length: 10 }).notNull(), // 'fighter' | 'supporter'
+  totalDmg:     bigint('total_dmg', { mode: 'number' }).default(0),
+  totalFunded:  bigint('total_funded', { mode: 'number' }).default(0),
+  hits:         integer('hits').default(0),
+}, (table) => ({
+  eventIdx:  index('idx_raid_participants_event').on(table.eventId),
+  playerIdx: index('idx_raid_participants_player').on(table.playerId),
+  uniqueParticipant: index('idx_raid_participants_unique').on(table.eventId, table.playerId),
+}))
 
 // ═══════════════════════════════════════════════
 //  STOCK EXCHANGE

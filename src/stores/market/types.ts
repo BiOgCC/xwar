@@ -117,6 +117,7 @@ export interface MarketOrder {
     stats: Record<string, number>
     durability: number
     weaponSubtype?: string
+    superforged?: boolean
   }
   divSnapshot?: {
     name: string

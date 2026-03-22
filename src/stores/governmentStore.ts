@@ -994,33 +994,52 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     Object.values(state.governments).forEach(gov => {
       if (gov.militaryBudgetPercent <= 0) return
       const country = ws.getCountry(gov.countryId)
-      if (!country || country.fund.money <= 0) return
+      if (!country) return
 
-      // Calculate per-tick budget: (fund × budgetPercent%) / ticksPerDay
-      const dailyBudget = country.fund.money * (gov.militaryBudgetPercent / 100)
-      const perTickBudget = Math.floor(dailyBudget / Math.max(1, ticksPerDay))
-      if (perTickBudget <= 0) return
+      const pct = gov.militaryBudgetPercent / 100
+      const ticks = Math.max(1, ticksPerDay)
+
+      // Calculate per-tick budget for each resource
+      const budgetMoney = country.fund.money > 0 ? Math.floor(country.fund.money * pct / ticks) : 0
+      const budgetOil = country.fund.oil > 0 ? Math.floor(country.fund.oil * pct / ticks) : 0
+      const budgetMatX = country.fund.materialX > 0 ? Math.floor(country.fund.materialX * pct / ticks) : 0
+      if (budgetMoney <= 0 && budgetOil <= 0 && budgetMatX <= 0) return
 
       // Find all armies for this country
       const countryArmies = Object.values(armyStore.armies).filter(a => a.countryCode === gov.countryId)
       if (countryArmies.length === 0) return
 
       // Distribute equally among armies
-      const perArmy = Math.floor(perTickBudget / countryArmies.length)
-      if (perArmy <= 0) return
+      const n = countryArmies.length
+      const perArmyMoney = Math.floor(budgetMoney / n)
+      const perArmyOil = Math.floor(budgetOil / n)
+      const perArmyMatX = Math.floor(budgetMatX / n)
 
-      const totalDrain = perArmy * countryArmies.length
+      // Build drain costs (only non-zero resources)
+      const totalMoney = perArmyMoney * n
+      const totalOil = perArmyOil * n
+      const totalMatX = perArmyMatX * n
+      const costs: Partial<NationalFund> = {}
+      if (totalMoney > 0) costs.money = totalMoney
+      if (totalOil > 0) costs.oil = totalOil
+      if (totalMatX > 0) costs.materialX = totalMatX
+
       // Drain from country fund
-      ws.spendFromFund(gov.countryId, { money: totalDrain })
+      ws.spendFromFund(gov.countryId, costs)
 
-      // Add to each army's salary pool
+      // Add to each army's salary pool (money) and vault (oil, materialX)
       countryArmies.forEach(army => {
         useArmyStore.setState(s => ({
           armies: {
             ...s.armies,
             [army.id]: {
               ...s.armies[army.id],
-              salaryPool: (s.armies[army.id].salaryPool || 0) + perArmy,
+              salaryPool: (s.armies[army.id].salaryPool || 0) + perArmyMoney,
+              vault: {
+                ...s.armies[army.id].vault,
+                oil: s.armies[army.id].vault.oil + perArmyOil,
+                materialX: (s.armies[army.id].vault.materialX || 0) + perArmyMatX,
+              },
             },
           },
         }))

@@ -262,21 +262,6 @@ export default function ActionBar() {
 
       <div className="action-bar__flow">›</div>
 
-      {/* ═══ RECRUIT ═══ */}
-      <div className="action-bar__slot">
-        <button
-          className={`action-bar__btn${activePanel === 'combat' && useUIStore.getState().warDefaultTab === 'recruit' ? ' action-bar__btn--active' : ''}`}
-          onClick={() => { useUIStore.getState().setWarDefaultTab('recruit'); useUIStore.getState().setActivePanel('combat') }}
-          title="Recruit"
-        >
-          <span className="action-bar__icon">🛡️</span>
-          <span className="action-bar__label">RECRUIT</span>
-          <span className={`action-bar__status action-bar__status--${Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length > 0 ? 'good' : 'neutral'}`}>
-            {Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length} DIV
-          </span>
-        </button>
-      </div>
-
       {/* ═══ FIGHT ═══ */}
       <div className="action-bar__slot">
         <button
@@ -289,6 +274,21 @@ export default function ActionBar() {
           <span className="action-bar__label">FIGHT</span>
           <span className={`action-bar__status action-bar__status--${activeBattleCount > 0 ? 'danger' : stamina > 50 ? 'good' : stamina > 20 ? 'warn' : 'danger'}`}>
             {activeBattleCount > 0 ? `${activeBattleCount} WAR${activeBattleCount !== 1 ? 'S' : ''}` : `${stamina} STA`}
+          </span>
+        </button>
+      </div>
+
+      {/* ═══ MY FORCES ═══ */}
+      <div className="action-bar__slot">
+        <button
+          className={`action-bar__btn${activePanel === 'armed_forces' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => { useUIStore.getState().setAfDefaultTab('own'); useUIStore.getState().setActivePanel('armed_forces') }}
+          title="My Forces"
+        >
+          <span className="action-bar__icon">🛡️</span>
+          <span className="action-bar__label">MY FORCES</span>
+          <span className={`action-bar__status action-bar__status--${Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length > 0 ? 'good' : 'neutral'}`}>
+            {Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length} DIV
           </span>
         </button>
       </div>
@@ -323,6 +323,19 @@ export default function ActionBar() {
 
       <div className="action-bar__sep" />
 
+      {/* ═══ BOUNTY ═══ */}
+      <div className="action-bar__slot">
+        <button
+          className={`action-bar__btn${activePanel === 'bounty' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => { useUIStore.getState().setBountyDefaultTab('npc_hunts'); useUIStore.getState().setActivePanel('bounty') }}
+          title="Bounty"
+        >
+          <span className="action-bar__icon">💰</span>
+          <span className="action-bar__label">BOUNTY</span>
+          <span className="action-bar__status action-bar__status--neutral">HUNT</span>
+        </button>
+      </div>
+
       {/* ═══ MARKET ═══ */}
       <div className="action-bar__slot">
         <button
@@ -336,21 +349,6 @@ export default function ActionBar() {
           <span className={`action-bar__status action-bar__status--${player.money > 10000 ? 'good' : player.money > 1000 ? 'warn' : 'danger'}`}>
             ${(player.money / 1000).toFixed(0)}K
           </span>
-        </button>
-      </div>
-
-
-
-      {/* ═══ COMPANIES ═══ */}
-      <div className="action-bar__slot">
-        <button
-          className={`action-bar__btn${activePanel === 'profile' && useUIStore.getState().profileDefaultTab === 'companies' ? ' action-bar__btn--active' : ''}`}
-          onClick={() => { useUIStore.getState().setProfileDefaultTab('companies'); useUIStore.getState().setActivePanel('profile') }}
-          title="Companies"
-        >
-          <span className="action-bar__icon">🏢</span>
-          <span className="action-bar__label">COMPANIES</span>
-          <span className="action-bar__status action-bar__status--neutral">MANAGE</span>
         </button>
       </div>
 

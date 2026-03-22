@@ -18,11 +18,11 @@ export const MILITARY_SKILLS: { key: MilitarySkill; label: string; icon: string;
 ]
 
 export const ECONOMIC_SKILLS: { key: EconomicSkill; label: string; icon: string; desc: string }[] = [
-  { key: 'work', label: 'Work', icon: '🔨', desc: 'Increases max work bar (+20 per level)' },
-  { key: 'entrepreneurship', label: 'Enterprise', icon: '💼', desc: 'Increases max entrepreneurship bar (+15 per level)' },
+  { key: 'work', label: 'Work', icon: '🔨', desc: 'Increases max work bar (+20 per level). 1% per level chance for double pay when working for others.' },
+  { key: 'entrepreneurship', label: 'Enterprise', icon: '💼', desc: 'Increases max entrepreneurship bar (+15 per level). 1% per level chance for double Production Points on enterprise.' },
   { key: 'production', label: 'Production', icon: '⚙️', desc: 'Increases production bar fill per work/enterprise action (+2 per level)' },
-  { key: 'prospection', label: 'Prospection', icon: '⛏️', desc: '3% chance per level to find bonus scrap when working (up to 30%)' },
-  { key: 'industrialist', label: 'Industrialist', icon: '🏭', desc: 'Increased red bullet chance on produce, up to 20% superforge chance on craft (+10% stats)' },
+  { key: 'prospection', label: 'Prospection', icon: '⛏️', desc: '2% chance per level to discover deposits on work/enterprise (requires Prospection Center). 3% per level bonus scrap on work.' },
+  { key: 'industrialist', label: 'Industrialist', icon: '🏭', desc: '1% per level chance for scrap (100-600) and matX (20-80) on produce. 2% red bullet chance per level (max 20%). 20% superforge on craft (+9-16% stats).' },
 ]
 
 export interface SkillsState {

@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { rewardItemVariants, SPRINGS, TIER_FX, useScreenShake } from './AnimationSystem'
 import { TIER_COLORS, TIER_LABELS, type EquipItem, type EquipTier } from '../../stores/inventoryStore'
+import GameModal from './GameModal'
 
 /* ═══════════════════════════════════════════════════
    RewardReveal — Staggered Tier-Aware Reward Display
+   Now uses GameModal for consistent popup behavior
    ═══════════════════════════════════════════════════ */
 
 interface RewardEntry {
@@ -37,6 +39,12 @@ export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARD
     }
     return best
   }, [rewards])
+
+  const glowColor = useMemo(() => {
+    const tiers = rewards.filter(r => r.tier).map(r => r.tier!)
+    if (tiers.length === 0) return '#a855f7'
+    return TIER_COLORS[highestTier] || '#a855f7'
+  }, [rewards, highestTier])
 
   useEffect(() => {
     if (!isOpen) {
@@ -71,96 +79,119 @@ export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARD
   }, [flashColor])
 
   return (
-    <AnimatePresence>
-      {isOpen && (
+    <GameModal isOpen={isOpen} onClose={onClose} size="md" glowColor={glowColor}>
+      <div style={{ textAlign: 'center', padding: '8px 0', position: 'relative' }}>
+        {/* Screen flash */}
+        {flashColor && (
+          <div className={`reward-flash reward-flash--${flashColor}`} />
+        )}
+
+        {/* Title */}
         <motion.div
-          className="reward-overlay"
+          initial={{ opacity: 0, y: -20, scale: 0.8 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ ...SPRINGS.bouncy, delay: 0.1 }}
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '16px',
+            fontWeight: 900,
+            color: glowColor,
+            letterSpacing: '2px',
+            textShadow: `0 0 16px ${glowColor}60`,
+            marginBottom: '16px',
+          }}
+        >
+          {title}
+        </motion.div>
+
+        {/* Reward Cards */}
+        {showRewards && (
+          <motion.div
+            className="reward-cards"
+            initial="hidden"
+            animate="visible"
+            variants={{
+              hidden: {},
+              visible: { transition: { staggerChildren: 0.12, delayChildren: 0.05 } },
+            }}
+            style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}
+          >
+            {rewards.map((reward, i) => {
+              const fx = reward.tier ? TIER_FX[reward.tier] : null
+              const tierColor = reward.tier ? TIER_COLORS[reward.tier] : undefined
+              const tierLabel = reward.tier ? TIER_LABELS[reward.tier] : undefined
+
+              return (
+                <motion.div
+                  key={i}
+                  className={`reward-card ${fx?.glowClass || ''}`}
+                  variants={rewardItemVariants}
+                  style={{
+                    '--card-glow': tierColor ? `${tierColor}20` : 'transparent',
+                    borderColor: tierColor ? `${tierColor}40` : undefined,
+                  } as React.CSSProperties}
+                >
+                  <div className="reward-card__icon">{reward.icon}</div>
+                  <div className="reward-card__label">{reward.label}</div>
+                  <div
+                    className="reward-card__value"
+                    style={tierColor ? { color: tierColor } : undefined}
+                  >
+                    {reward.value}
+                  </div>
+                  {tierLabel && (
+                    <div
+                      className="reward-card__tier"
+                      style={{
+                        color: tierColor,
+                        borderColor: `${tierColor}50`,
+                        background: `${tierColor}15`,
+                      }}
+                    >
+                      {tierLabel}
+                    </div>
+                  )}
+                </motion.div>
+              )
+            })}
+          </motion.div>
+        )}
+
+        {/* Collect Button */}
+        <motion.button
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: { duration: 0.2 } }}
+          transition={{ delay: 0.5 + rewards.length * 0.12 }}
           onClick={onClose}
+          style={{
+            marginTop: '16px',
+            background: `linear-gradient(135deg, ${glowColor}, ${glowColor}cc)`,
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '10px 32px',
+            fontSize: '13px',
+            fontWeight: 800,
+            fontFamily: 'var(--font-display)',
+            letterSpacing: '2px',
+            cursor: 'pointer',
+            boxShadow: `0 4px 20px ${glowColor}40`,
+            textTransform: 'uppercase' as const,
+            width: '100%',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.transform = 'scale(1.05)'
+            e.currentTarget.style.boxShadow = `0 6px 30px ${glowColor}60`
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.transform = 'scale(1)'
+            e.currentTarget.style.boxShadow = `0 4px 20px ${glowColor}40`
+          }}
         >
-          {/* Screen flash */}
-          {flashColor && (
-            <div className={`reward-flash reward-flash--${flashColor}`} />
-          )}
-
-          {/* Title */}
-          <motion.div
-            className="reward-title"
-            initial={{ opacity: 0, y: -20, scale: 0.8 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ ...SPRINGS.bouncy, delay: 0.1 }}
-          >
-            {title}
-          </motion.div>
-
-          {/* Reward Cards */}
-          {showRewards && (
-            <motion.div
-              className="reward-cards"
-              initial="hidden"
-              animate="visible"
-              variants={{
-                hidden: {},
-                visible: { transition: { staggerChildren: 0.12, delayChildren: 0.05 } },
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {rewards.map((reward, i) => {
-                const fx = reward.tier ? TIER_FX[reward.tier] : null
-                const tierColor = reward.tier ? TIER_COLORS[reward.tier] : undefined
-                const tierLabel = reward.tier ? TIER_LABELS[reward.tier] : undefined
-
-                return (
-                  <motion.div
-                    key={i}
-                    className={`reward-card ${fx?.glowClass || ''}`}
-                    variants={rewardItemVariants}
-                    style={{
-                      '--card-glow': tierColor ? `${tierColor}20` : 'transparent',
-                      borderColor: tierColor ? `${tierColor}40` : undefined,
-                    } as React.CSSProperties}
-                  >
-                    <div className="reward-card__icon">{reward.icon}</div>
-                    <div className="reward-card__label">{reward.label}</div>
-                    <div
-                      className="reward-card__value"
-                      style={tierColor ? { color: tierColor } : undefined}
-                    >
-                      {reward.value}
-                    </div>
-                    {tierLabel && (
-                      <div
-                        className="reward-card__tier"
-                        style={{
-                          color: tierColor,
-                          borderColor: `${tierColor}50`,
-                          background: `${tierColor}15`,
-                        }}
-                      >
-                        {tierLabel}
-                      </div>
-                    )}
-                  </motion.div>
-                )
-              })}
-            </motion.div>
-          )}
-
-          {/* Dismiss */}
-          <motion.button
-            className="reward-dismiss"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 + rewards.length * 0.12 }}
-            onClick={onClose}
-          >
-            COLLECT
-          </motion.button>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          🎁 COLLECT
+        </motion.button>
+      </div>
+    </GameModal>
   )
 }
 
