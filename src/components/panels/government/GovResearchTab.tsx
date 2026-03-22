@@ -4,12 +4,17 @@ import { useGovernmentStore } from '../../../stores/governmentStore'
 import { useWorldStore } from '../../../stores/worldStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useResearchStore, MILITARY_DOCTRINE, ECONOMIC_THEORY, type ResearchNode } from '../../../stores/researchStore'
+import { Dna, Microscope, BarChart2, Sword, CircleDollarSign, Shield, Handshake, Check, Medal, ClipboardList, Castle, Target, Skull, Zap, Flame, Hammer, Ship, Landmark, Factory, Package, Star } from 'lucide-react'
+
+const ICON_MAP: Record<string, React.FC<any>> = {
+  medal: Medal, clipboard: ClipboardList, castle: Castle, crosshair: Target, skull: Skull, zap: Zap, flame: Flame, hammer: Hammer, ship: Ship, landmark: Landmark, factory: Factory, coins: CircleDollarSign, package: Package, star: Star
+}
 
 // ====== RADIAL RESEARCH CHART ======
 
 interface RadialTreeProps {
   title: string
-  icon: string
+  icon: React.ReactNode
   color: string
   glowColor: string
   nodes: ResearchNode[]
@@ -25,7 +30,7 @@ function RadialResearchTree({ title, icon, color, glowColor, nodes, unlocked, ca
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, color, letterSpacing: '1px', textTransform: 'uppercase' }}>{icon} {title}</div>
+      <div style={{ fontSize: '10px', fontWeight: 700, color, letterSpacing: '1px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>{title}</div>
       <svg width={240} height={240} viewBox="0 0 240 240" style={{ filter: `drop-shadow(0 0 8px ${glowColor}30)` }}>
         {/* Background ring */}
         <circle cx={cx} cy={cy} r={radius} fill="none" stroke={`${color}15`} strokeWidth="2" strokeDasharray="4 4" />
@@ -78,9 +83,14 @@ function RadialResearchTree({ title, icon, color, glowColor, nodes, unlocked, ca
               />
 
               {/* Node icon */}
-              <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central" fontSize="14" fill={isUnlocked ? '#fff' : canDo ? '#ccc' : '#3e4a5c'}>
-                {isUnlocked ? '✓' : node.icon}
-              </text>
+              <foreignObject x={x - 8} y={y - 8} width={16} height={16}>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', color: isUnlocked ? '#fff' : canDo ? '#ccc' : '#3e4a5c' }}>
+                  {(() => {
+                    const NodeIcon = ICON_MAP[node.icon]
+                    return isUnlocked ? <Check size={12}/> : (NodeIcon ? <NodeIcon size={12}/> : null)
+                  })()}
+                </div>
+              </foreignObject>
 
               {/* Hover tooltip */}
               {isHovered && (
@@ -101,7 +111,11 @@ function RadialResearchTree({ title, icon, color, glowColor, nodes, unlocked, ca
         })}
 
         {/* Center label */}
-        <text x={cx} y={cy - 6} textAnchor="middle" fontSize="16">{icon}</text>
+        <foreignObject x={cx - 12} y={cy - 18} width={24} height={24}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', color }}>
+            {icon}
+          </div>
+        </foreignObject>
         <text x={cx} y={cy + 10} textAnchor="middle" fontSize="7" fontWeight="700" fill={color}>{unlocked.length}/{nodes.length}</text>
       </svg>
     </div>
@@ -118,7 +132,6 @@ export default function GovResearchTab() {
   const iso = player.countryCode || 'US'
   const gov = govStore.governments[iso]
   const isPresident = gov?.president === player.name
-  const [empireName, setEmpireName] = useState(gov?.empireName || '')
 
   if (!gov) return null
 
@@ -137,52 +150,59 @@ export default function GovResearchTab() {
 
   return (
     <>
-      {/* Empire Name (kept from old tab) */}
-      <div className="gov-section">
-        <div className="gov-section__title gov-section__title--amber">👑 EMPIRE NAME</div>
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <input className="gov-input" type="text" value={empireName} onChange={e => setEmpireName(e.target.value)} maxLength={30} placeholder="Enter empire name..." style={{ flex: 1 }} />
-          <button className="gov-btn gov-btn--amber" onClick={() => {
-            if (!isPresident) { ui.addFloatingText('PRESIDENT ONLY', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
-            if (!empireName.trim()) { ui.addFloatingText('ENTER A NAME', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
-            useGovernmentStore.setState(s => ({ governments: { ...s.governments, [iso]: { ...s.governments[iso], empireName: empireName.trim() } } }))
-            ui.addFloatingText(`EMPIRE: ${empireName.trim()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
-          }}>SET</button>
+      {/* Skill Tree (Moved from Empire Tab) */}
+      {gov.ideology && (
+        <div className="gov-section">
+          <div className="gov-section__title gov-section__title--purple" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Dna size={14} /> SKILL TREE</div>
+          <div style={{ fontSize: '7px', color: '#3e4a5c', marginBottom: '4px' }}>Each ideology upgrade costs $5,000 from National Fund. Max 10 per branch. {isPresident ? '' : '🔒 Only the President can upgrade.'}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {([
+              { key: 'warBonus' as const, icon: <Sword size={12}/>, label: 'WAR', desc: '+2% attack/pt', color: '#ef4444' },
+              { key: 'economyBonus' as const, icon: <CircleDollarSign size={12}/>, label: 'ECONOMY', desc: '+2% production/pt', color: '#22d38a' },
+              { key: 'techBonus' as const, icon: <Microscope size={12}/>, label: 'TECH', desc: '+2% cyber/pt', color: '#8b5cf6' },
+              { key: 'defenseBonus' as const, icon: <Shield size={12}/>, label: 'DEFENSE', desc: '+2% bunker/pt', color: '#f59e0b' },
+              { key: 'diplomacyBonus' as const, icon: <Handshake size={12}/>, label: 'DIPLOMACY', desc: '+1 alliance/pt', color: '#3b82f6' },
+            ]).map(skill => {
+              const pts = gov.ideologyPoints[skill.key], maxPts = 10
+              return (
+                <div key={skill.key} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '5px', background: 'rgba(0,0,0,0.3)', borderRadius: '3px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', width: '18px', flexShrink: 0, color: skill.color }}>{skill.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '8px', fontWeight: 700, color: skill.color }}>{skill.label}</div>
+                    <div style={{ fontSize: '6px', color: '#3e4a5c' }}>{skill.desc}</div>
+                    <div style={{ display: 'flex', gap: '1px', marginTop: '2px' }}>
+                      {Array.from({ length: maxPts }).map((_, i) => (
+                        <div key={i} style={{ width: '12px', height: '4px', borderRadius: '1px', background: i < pts ? skill.color : 'rgba(255,255,255,0.06)' }} />
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{pts}/{maxPts}</div>
+                    <button className="gov-btn" disabled={pts >= maxPts || !isPresident} style={{
+                      borderColor: `${skill.color}50`, color: skill.color, fontSize: '7px', padding: '1px 5px', marginTop: '2px',
+                      opacity: pts >= maxPts || !isPresident ? 0.3 : 1,
+                    }} onClick={() => {
+                      if (!isPresident) { ui.addFloatingText('PRESIDENT ONLY', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
+                      const currentFund = useWorldStore.getState().getCountry(iso)?.fund
+                      if (!currentFund || currentFund.money < 5000) { ui.addFloatingText('FUND: $5,000 REQUIRED', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
+                      useWorldStore.getState().spendFromFund(iso, { money: 5000 })
+                      useGovernmentStore.setState((s: any) => {
+                        const g = s.governments[iso]
+                        return { governments: { ...s.governments, [iso]: { ...g, ideologyPoints: { ...g.ideologyPoints, [skill.key]: g.ideologyPoints[skill.key] + 1 } } } }
+                      })
+                      ui.addFloatingText(`+1 ${skill.label}`, window.innerWidth / 2, window.innerHeight / 2, skill.color)
+                    }}>+1</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
-        {gov.empireName && <div style={{ fontSize: '9px', color: '#f59e0b', marginTop: '4px' }}>Current: <strong>{gov.empireName}</strong></div>}
-      </div>
-
-      {/* Ideology (kept from old tab) */}
-      <div className="gov-section">
-        <div className="gov-section__title">🏛️ IDEOLOGY</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px' }}>
-          {([
-            { id: 'militarist' as const, icon: '⚔️', label: 'MILITARIST', color: '#ef4444', desc: '+ATK & +Crit' },
-            { id: 'capitalist' as const, icon: '💰', label: 'CAPITALIST', color: '#22d38a', desc: '+Production & +Tax' },
-            { id: 'technocrat' as const, icon: '🔬', label: 'TECHNOCRAT', color: '#8b5cf6', desc: '+Cyber & +Tech' },
-            { id: 'expansionist' as const, icon: '🌍', label: 'EXPANSIONIST', color: '#3b82f6', desc: '+Defense & +Diplo' },
-          ]).map(ideo => (
-            <button key={ideo.id} onClick={() => {
-              if (!isPresident) { ui.addFloatingText('PRESIDENT ONLY', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
-              useGovernmentStore.setState(s => ({ governments: { ...s.governments, [iso]: { ...s.governments[iso], ideology: ideo.id } } }))
-              ui.addFloatingText(`IDEOLOGY: ${ideo.label}`, window.innerWidth / 2, window.innerHeight / 2, ideo.color)
-            }} style={{
-              padding: '6px', borderRadius: '3px', cursor: 'pointer', textAlign: 'left',
-              border: `1px solid ${gov.ideology === ideo.id ? ideo.color + '50' : 'rgba(255,255,255,0.05)'}`,
-              background: gov.ideology === ideo.id ? `${ideo.color}10` : 'rgba(0,0,0,0.3)',
-            }}>
-              <div style={{ fontSize: '11px', marginBottom: '1px' }}>
-                {ideo.icon} <span style={{ fontSize: '9px', fontWeight: 700, color: gov.ideology === ideo.id ? ideo.color : '#64748b' }}>{ideo.label}</span>
-              </div>
-              <div style={{ fontSize: '7px', color: '#3e4a5c' }}>{ideo.desc}</div>
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Research Trees */}
       <div className="gov-section">
-        <div className="gov-section__title gov-section__title--purple">🔬 NATIONAL RESEARCH</div>
+        <div className="gov-section__title gov-section__title--purple" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Microscope size={14} /> NATIONAL RESEARCH</div>
         <div style={{ fontSize: '7px', color: '#3e4a5c', marginBottom: '2px' }}>
           Unlock technologies from the National Fund. Sequential unlock — requires previous node. {isPresident ? '✅ You are President.' : '🔒 Only the President can research.'}
         </div>
@@ -191,7 +211,7 @@ export default function GovResearchTab() {
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
           <RadialResearchTree
             title="Military Doctrine"
-            icon="⚔️"
+            icon={<Sword size={20} />}
             color="#ef4444"
             glowColor="#ef4444"
             nodes={MILITARY_DOCTRINE}
@@ -201,7 +221,7 @@ export default function GovResearchTab() {
           />
           <RadialResearchTree
             title="Economic Theory"
-            icon="💰"
+            icon={<CircleDollarSign size={20} />}
             color="#22d38a"
             glowColor="#22d38a"
             nodes={ECONOMIC_THEORY}
@@ -215,18 +235,22 @@ export default function GovResearchTab() {
       {/* Active Bonuses Summary */}
       {(research.military.length > 0 || research.economy.length > 0) && (
         <div className="gov-section">
-          <div className="gov-section__title">📊 ACTIVE BONUSES</div>
+          <div className="gov-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><BarChart2 size={14} color="#e2e8f0" /> ACTIVE BONUSES</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px', fontSize: '7px' }}>
-            {MILITARY_DOCTRINE.filter(n => research.military.includes(n.id)).map(n => (
-              <div key={n.id} style={{ padding: '3px 5px', background: 'rgba(239,68,68,0.08)', borderRadius: '2px', border: '1px solid rgba(239,68,68,0.15)' }}>
-                <span style={{ color: '#ef4444' }}>{n.icon}</span> <span style={{ color: '#94a3b8' }}>{n.effect}</span>
+            {MILITARY_DOCTRINE.filter(n => research.military.includes(n.id)).map(n => {
+              const Icon = ICON_MAP[n.icon]
+              return (
+              <div key={n.id} style={{ padding: '3px 5px', background: 'rgba(239,68,68,0.08)', borderRadius: '2px', border: '1px solid rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ color: '#ef4444', display: 'flex' }}>{Icon && <Icon size={10} />}</span> <span style={{ color: '#94a3b8' }}>{n.effect}</span>
               </div>
-            ))}
-            {ECONOMIC_THEORY.filter(n => research.economy.includes(n.id)).map(n => (
-              <div key={n.id} style={{ padding: '3px 5px', background: 'rgba(34,211,138,0.08)', borderRadius: '2px', border: '1px solid rgba(34,211,138,0.15)' }}>
-                <span style={{ color: '#22d38a' }}>{n.icon}</span> <span style={{ color: '#94a3b8' }}>{n.effect}</span>
+            )})}
+            {ECONOMIC_THEORY.filter(n => research.economy.includes(n.id)).map(n => {
+              const Icon = ICON_MAP[n.icon]
+              return (
+              <div key={n.id} style={{ padding: '3px 5px', background: 'rgba(34,211,138,0.08)', borderRadius: '2px', border: '1px solid rgba(34,211,138,0.15)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ color: '#22d38a', display: 'flex' }}>{Icon && <Icon size={10} />}</span> <span style={{ color: '#94a3b8' }}>{n.effect}</span>
               </div>
-            ))}
+            )})}
           </div>
         </div>
       )}

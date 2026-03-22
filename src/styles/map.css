@@ -367,3 +367,29 @@
   0%, 100% { opacity: 1; box-shadow: 0 0 4px rgba(239, 68, 68, 0.3); }
   50% { opacity: 0.85; box-shadow: 0 0 16px rgba(239, 68, 68, 0.6); }
 }
+
+/* ---- Trade Route Popup (MapLibre native popup) ---- */
+.trade-route-popup .maplibregl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  border-radius: 8px;
+}
+
+.trade-route-popup .maplibregl-popup-close-button {
+  color: #64748b;
+  font-size: 18px;
+  right: 8px;
+  top: 6px;
+  z-index: 2;
+  transition: color 150ms ease;
+}
+
+.trade-route-popup .maplibregl-popup-close-button:hover {
+  color: #ef4444;
+  background: transparent;
+}
+
+.trade-route-popup .maplibregl-popup-tip {
+  border-top-color: rgba(10, 15, 30, 0.95) !important;
+}

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type PanelType = 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'social_club' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'armed_forces' | 'foreign_country' | 'casino' | 'bounty' | 'stocks' | 'alliance' | 'settings' | 'help' | 'history' | 'diplomacy' | 'chat' | null
+export type PanelType = 'region' | 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'social_club' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'armed_forces' | 'foreign_country' | 'casino' | 'bounty' | 'stocks' | 'alliance' | 'settings' | 'help' | 'history' | 'diplomacy' | 'chat' | null
 export type ResourceViewMode = 'deposits' | 'strategic' | 'political'
 
 export interface Notification {
@@ -41,6 +41,8 @@ export interface UIState {
   afDefaultTab: string | null
   resourceViewMode: ResourceViewMode
   selectedForeignCountry: string | null
+  selectedRegionId: string | null
+  setSelectedRegionId: (id: string | null) => void
   setActivePanel: (panel: PanelType) => void
   togglePanel: (panel: PanelType) => void
   goBack: () => void
@@ -69,6 +71,7 @@ export const useUIStore = create<UIState>((set) => ({
   panelHistory: [],
   panelFullscreen: false,
   selectedForeignCountry: null,
+  selectedRegionId: null,
   showModal: false,
   modalContent: null,
   notifications: [],
@@ -123,6 +126,7 @@ export const useUIStore = create<UIState>((set) => ({
   setAfDefaultTab: (tab) => set({ afDefaultTab: tab }),
 
   setForeignCountry: (code) => set({ selectedForeignCountry: code }),
+  setSelectedRegionId: (id) => set({ selectedRegionId: id }),
 
   cycleResourceView: () => set((state) => {
     const modes: ResourceViewMode[] = ['deposits', 'strategic', 'political']

@@ -5,6 +5,7 @@ import { usePlayerStore } from '../../../stores/playerStore'
 import { useWorldStore } from '../../../stores/worldStore'
 import { useGovernmentStore } from '../../../stores/governmentStore'
 import { useUIStore } from '../../../stores/uiStore'
+import { Users, Swords, Shield, Crown, CheckCircle, Skull, TreePine, Plane, Ship, Wrench, CircleDot, XCircle, Brain, Coins, Fuel, Cog, Atom, Bitcoin, Landmark, Zap, Building, Castle, Anchor } from 'lucide-react'
 import CountryFlag from '../../shared/CountryFlag'
 import { fmtElapsed } from '../warHelpers'
 import type { NationalFundKey } from '../../../types/world.types'
@@ -100,7 +101,7 @@ export default function AFCountryTab({ iso }: { iso: string }) {
       border: '1px solid rgba(255,255,255,0.05)',
     }}>
       <div style={{ fontSize: '14px', fontWeight: 900, color, fontFamily: 'var(--font-display)' }}>{value}</div>
-      <div style={{ fontSize: '6px', color: '#64748b', fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase' }}>{label}</div>
     </div>
   )
 
@@ -149,7 +150,7 @@ export default function AFCountryTab({ iso }: { iso: string }) {
       {/* Pop Cap */}
       <div style={{ padding: '4px 8px', background: 'rgba(0,0,0,0.3)', borderRadius: '5px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 800, marginBottom: '2px' }}>
-          <span style={{ color: '#94a3b8' }}>🏠 POP CAP</span>
+          <span style={{ color: '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: '3px' }}><Users size={12} color="#94a3b8" /> POP CAP</span>
           <span style={{ color: popColor }}>{popCap.used}/{popCap.max}</span>
         </div>
         <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
@@ -163,7 +164,7 @@ export default function AFCountryTab({ iso }: { iso: string }) {
         border: '1px solid rgba(59,130,246,0.15)',
       }}>
         <div style={{ fontSize: '9px', fontWeight: 900, color: '#3b82f6', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '6px' }}>
-          🪖 ARMED FORCES ({countryArmies.length})
+          <Swords size={14} color="#3b82f6" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> ARMED FORCES ({countryArmies.length})
         </div>
         {countryArmies.length === 0 ? (
           <div style={{ fontSize: '10px', color: '#64748b', textAlign: 'center', padding: '8px' }}>No military forces created yet.</div>
@@ -180,14 +181,14 @@ export default function AFCountryTab({ iso }: { iso: string }) {
                   border: '1px solid rgba(255,255,255,0.06)',
                 }}>
                   <div>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>⚔️ {army.name}</div>
-                    <div style={{ fontSize: '7px', color: '#64748b' }}>
-                      👑 {army.commanderId} • {army.members.length} members • {divs.length} divs
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '4px' }}><Swords size={12} color="#e2e8f0" /> {army.name}</div>
+                    <div style={{ fontSize: '8px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Crown size={10} color="#64748b" /> {army.commanderId} • {army.members.length} members • {divs.length} divs
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                    {readyCount > 0 && <span style={{ fontSize: '8px', fontWeight: 700, color: '#22d38a', background: 'rgba(34,211,138,0.1)', padding: '1px 5px', borderRadius: '3px' }}>✅ {readyCount}</span>}
-                    {combatCount > 0 && <span style={{ fontSize: '8px', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '1px 5px', borderRadius: '3px' }}>⚔️ {combatCount}</span>}
+                    {readyCount > 0 && <span style={{ fontSize: '8px', fontWeight: 700, color: '#22d38a', background: 'rgba(34,211,138,0.1)', padding: '1px 5px', borderRadius: '3px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><CheckCircle size={10} /> {readyCount}</span>}
+                    {combatCount > 0 && <span style={{ fontSize: '8px', fontWeight: 700, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '1px 5px', borderRadius: '3px', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Swords size={10} /> {combatCount}</span>}
                     <span className={`war-army-status war-army-status--${army.status}`} style={{ fontSize: '7px' }}>{army.status.toUpperCase()}</span>
                   </div>
                 </div>
@@ -204,22 +205,22 @@ export default function AFCountryTab({ iso }: { iso: string }) {
         borderRadius: '6px', border: '1px solid rgba(245,158,11,0.15)',
       }}>
         <div style={{ fontSize: '9px', fontWeight: 900, color: '#f59e0b', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '6px' }}>
-          💰 FORCE VAULT
+          <Coins size={14} color="#f59e0b" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> FORCE VAULT
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
           {([
-            ['🪙', 'Money', vault.money],
-            ['🛢️', 'Oil', vault.oil],
-            ['🔩', 'Scrap', vault.scrap],
-            ['⚛️', 'MatX', vault.materialX],
-            ['₿', 'BTC', vault.bitcoin],
-            ['✈️', 'Jets', vault.jets],
-          ] as const).map(([icon, label, val]) => (
+            ['money', 'Money', vault.money, Coins],
+            ['oil', 'Oil', vault.oil, Fuel],
+            ['scrap', 'Scrap', vault.scrap, Cog],
+            ['matx', 'MatX', vault.materialX, Atom],
+            ['btc', 'BTC', vault.bitcoin, Bitcoin],
+            ['jets', 'Jets', vault.jets, Plane],
+          ] as const).map(([key, label, val, Icon]) => (
             <div key={label} style={{
               display: 'flex', alignItems: 'center', gap: '4px',
               padding: '4px 6px', background: 'rgba(0,0,0,0.3)', borderRadius: '3px',
             }}>
-              <span style={{ fontSize: '10px' }}>{icon}</span>
+              <Icon size={14} color="#fbbf24" />
               <div>
                 <div style={{ fontSize: '10px', fontWeight: 800, color: '#fbbf24', fontFamily: 'var(--font-display)' }}>{Number(val).toLocaleString()}</div>
                 <div style={{ fontSize: '6px', color: '#64748b', fontWeight: 700 }}>{label}</div>
@@ -231,7 +232,7 @@ export default function AFCountryTab({ iso }: { iso: string }) {
         {/* President: Transfer controls */}
         {isPresident && (
           <div style={{ marginTop: '6px', padding: '6px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '4px', letterSpacing: '0.5px' }}>🏛️ FUND FORCES (PRESIDENT)</div>
+            <div style={{ fontSize: '8px', color: '#94a3b8', fontWeight: 800, marginBottom: '4px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}><Landmark size={12} color="#94a3b8" /> FUND FORCES (PRESIDENT)</div>
             <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
               <select
                 value={fundTransferRes}
@@ -284,7 +285,7 @@ export default function AFCountryTab({ iso }: { iso: string }) {
         border: '1px solid rgba(255,255,255,0.06)',
       }}>
         <div style={{ fontSize: '9px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '6px' }}>
-          🧠 ARMY INTELLIGENCE
+          <Brain size={14} color="#e2e8f0" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> ARMY INTELLIGENCE
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px' }}>
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '4px', padding: '5px' }}>
@@ -298,8 +299,8 @@ export default function AFCountryTab({ iso }: { iso: string }) {
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '4px', padding: '5px' }}>
             <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>POWER</div>
             <div style={{ display: 'flex', gap: '6px', fontSize: '9px', fontWeight: 700 }}>
-              <span style={{ color: '#ef4444' }}>⚔️{totalDpt.toLocaleString()}</span>
-              <span style={{ color: '#3b82f6' }}>🛡️{totalHp.toLocaleString()}</span>
+              <span style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Swords size={12} color="#ef4444" />{totalDpt.toLocaleString()}</span>
+              <span style={{ color: '#3b82f6', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Shield size={12} color="#3b82f6" />{totalHp.toLocaleString()}</span>
             </div>
           </div>
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '4px', padding: '5px' }}>
@@ -308,21 +309,21 @@ export default function AFCountryTab({ iso }: { iso: string }) {
               {topDiv ? topDiv.name : 'None'}
             </div>
             <div style={{ fontSize: '8px', color: '#f59e0b', fontWeight: 700 }}>
-              {topDiv ? `💀 ${topDiv.killCount}` : '-'}
+              {topDiv ? <><Skull size={12} color="#f59e0b" style={{ display: 'inline', verticalAlign: 'middle' }} /> {topDiv.killCount}</> : '-'}
             </div>
           </div>
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '4px', padding: '5px' }}>
             <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>COMPOSITION</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', color: '#cbd5e1' }}>
-              <span>🌲{comp.land}</span><span>✈️{comp.air}</span><span>🚢{comp.naval}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><TreePine size={10} color="#cbd5e1" />{comp.land}</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Plane size={10} color="#cbd5e1" />{comp.air}</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Ship size={10} color="#cbd5e1" />{comp.naval}</span>
             </div>
           </div>
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '4px', padding: '5px' }}>
             <div style={{ fontSize: '7px', color: '#94a3b8', fontWeight: 800, marginBottom: '2px' }}>EQUIPMENT</div>
             <div style={{ display: 'flex', gap: '4px', fontSize: '9px', fontWeight: 700 }}>
-              <span style={{ color: '#22d38a' }}>✓{fullyGeared}</span>
-              <span style={{ color: '#f59e0b' }}>◐{someGear}</span>
-              <span style={{ color: '#ef4444' }}>✗{noGear}</span>
+              <span style={{ color: '#22d38a', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><CheckCircle size={10} />{fullyGeared}</span>
+              <span style={{ color: '#f59e0b', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><CircleDot size={10} />{someGear}</span>
+              <span style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><XCircle size={10} />{noGear}</span>
             </div>
           </div>
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '4px', padding: '5px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
@@ -340,20 +341,20 @@ export default function AFCountryTab({ iso }: { iso: string }) {
           border: '1px solid rgba(255,255,255,0.06)',
         }}>
           <div style={{ fontSize: '9px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '6px' }}>
-            🏗️ INFRASTRUCTURE
+            <Building size={14} color="#e2e8f0" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> INFRASTRUCTURE
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
             {([
-              ['⛴️', 'Port', country.portLevel],
-              ['✈️', 'Airport', country.airportLevel],
-              ['🛡️', 'Bunker', country.bunkerLevel],
-              ['🏰', 'Mil. Base', country.militaryBaseLevel],
-            ] as const).map(([icon, label, level]) => (
+              ['port', 'Port', country.portLevel, Anchor],
+              ['airport', 'Airport', country.airportLevel, Plane],
+              ['bunker', 'Bunker', country.bunkerLevel, Shield],
+              ['milbase', 'Mil. Base', country.militaryBaseLevel, Castle],
+            ] as const).map(([key, label, level, Icon]) => (
               <div key={label} style={{
                 textAlign: 'center', padding: '5px 2px',
                 background: 'rgba(0,0,0,0.3)', borderRadius: '4px',
               }}>
-                <div style={{ fontSize: '12px' }}>{icon}</div>
+                <div style={{ display: 'flex', justifyContent: 'center' }}><Icon size={16} color={level > 1 ? '#22d38a' : '#64748b'} /></div>
                 <div style={{ fontSize: '11px', fontWeight: 900, color: level > 1 ? '#22d38a' : '#64748b', fontFamily: 'var(--font-display)' }}>Lv.{level}</div>
                 <div style={{ fontSize: '6px', color: '#64748b', fontWeight: 700 }}>{label}</div>
               </div>
@@ -370,7 +371,7 @@ export default function AFCountryTab({ iso }: { iso: string }) {
           border: '1px solid rgba(239,68,68,0.15)',
         }}>
           <div style={{ fontSize: '9px', fontWeight: 900, color: '#ef4444', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '6px' }}>
-            💥 ACTIVE BATTLES ({activeBattles.length})
+              <Zap size={14} color="#ef4444" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> ACTIVE BATTLES ({activeBattles.length})
           </div>
           {activeBattles.map(battle => {
             const atkDmg = battle.attacker?.damageDealt || 0

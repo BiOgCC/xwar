@@ -1846,6 +1846,45 @@
   letter-spacing: 0.1em;
 }
 
+/* PP (Political Power) badge */
+.ptab-hero__pp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  flex-shrink: 0;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+  cursor: help;
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.ptab-hero__pp:hover {
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.4), 0 0 6px rgba(245, 158, 11, 0.2);
+  transform: translateY(-1px);
+}
+
+.ptab-hero__pp-num {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 900;
+  color: #fbbf24;
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+
+.ptab-hero__pp-lbl {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 700;
+  color: #f59e0b;
+  letter-spacing: 0.1em;
+}
+
 /* ─── Specialization card ─── */
 .ptab-spec-card {
   background: rgba(10, 14, 23, 0.7);
@@ -1885,6 +1924,328 @@
   height: 100%;
   transition: width 600ms ease;
   box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+/* ─── Clickable spec cards ─── */
+.ptab-spec-card--clickable {
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.ptab-spec-card--clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 12px rgba(99,102,241,0.1);
+}
+
+.ptab-spec-card--clickable:active {
+  transform: translateY(0px);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SPEC DETAIL PANEL
+   ═══════════════════════════════════════════════════════════════ */
+.spec-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0;
+  animation: spec-detail-in 250ms ease;
+}
+
+@keyframes spec-detail-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Back button */
+.spec-detail__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  color: #94a3b8;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 4px 10px 4px 6px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  width: fit-content;
+  margin-bottom: 2px;
+}
+
+.spec-detail__back:hover {
+  background: rgba(255,255,255,0.08);
+  color: #e2e8f0;
+}
+
+/* Header */
+.spec-detail__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--spec-bg);
+  border: 1px solid var(--spec-border);
+  border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.spec-detail__header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--spec-color);
+  box-shadow: 0 0 12px var(--spec-color);
+  opacity: 0.7;
+}
+
+.spec-detail__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--spec-color) 50%, transparent));
+}
+
+.spec-detail__title-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.spec-detail__name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--spec-color);
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--spec-color) 40%, transparent);
+}
+
+.spec-detail__tier-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+}
+
+.spec-detail__xp-badge {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.spec-detail__xp-val {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--spec-color);
+  line-height: 1;
+}
+
+.spec-detail__xp-sep {
+  font-size: 10px;
+  color: #475569;
+}
+
+.spec-detail__xp-max {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.spec-detail__xp-unit {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.1em;
+  margin-left: 2px;
+}
+
+/* XP Progress Track */
+.spec-detail__xp-track {
+  height: 6px;
+  background: rgba(0,0,0,0.5);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+.spec-detail__xp-fill {
+  height: 100%;
+  background: var(--spec-color);
+  border-radius: 3px;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--spec-color) 50%, transparent);
+  transition: width 600ms ease;
+}
+
+/* How to Earn */
+.spec-detail__earn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: rgba(10,14,23,0.6);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 8px;
+}
+
+.spec-detail__earn-label {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 800;
+  color: var(--spec-color);
+  letter-spacing: 0.12em;
+  opacity: 0.8;
+}
+
+.spec-detail__earn-desc {
+  font-size: 10px;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+/* Section Title */
+.spec-detail__section-title {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 800;
+  color: #475569;
+  letter-spacing: 0.14em;
+  margin-top: 4px;
+}
+
+/* Tier Table */
+.spec-detail__tier-table {
+  display: flex;
+  flex-direction: column;
+  background: rgba(10,14,23,0.6);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.spec-detail__tier-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 64px 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 9px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: background 150ms ease;
+}
+
+.spec-detail__tier-row:last-child {
+  border-bottom: none;
+}
+
+.spec-detail__tier-row--current {
+  background: color-mix(in srgb, var(--spec-color) 8%, transparent);
+  border-left: 2px solid var(--spec-color);
+}
+
+.spec-detail__tier-row--locked {
+  opacity: 0.4;
+}
+
+.spec-detail__tier-num {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--spec-color);
+  opacity: 0.7;
+}
+
+.spec-detail__tier-row--current .spec-detail__tier-num {
+  opacity: 1;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--spec-color) 50%, transparent);
+}
+
+.spec-detail__tier-name {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.04em;
+}
+
+.spec-detail__tier-xp {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 600;
+  color: #64748b;
+  text-align: right;
+}
+
+.spec-detail__tier-bonus {
+  font-size: 8px;
+  color: var(--spec-color);
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.spec-detail__tier-row--current .spec-detail__tier-bonus {
+  opacity: 1;
+  font-weight: 700;
+}
+
+/* Stats Grid */
+.spec-detail__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.spec-detail__stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 6px;
+  background: rgba(10,14,23,0.7);
+  border: 1px solid var(--spec-border);
+  border-radius: 8px;
+  text-align: center;
+  transition: transform 150ms ease;
+}
+
+.spec-detail__stat-card:hover {
+  transform: translateY(-2px);
+}
+
+.spec-detail__stat-val {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--spec-color);
+  line-height: 1;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--spec-color) 30%, transparent);
+}
+
+.spec-detail__stat-label {
+  font-family: var(--font-display);
+  font-size: 7px;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* ─── Dual stat panels ─── */

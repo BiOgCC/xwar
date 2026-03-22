@@ -15,11 +15,12 @@ export default function InventorySummary() {
   return (
     <div className="comp-inventory-summary" style={{ marginBottom: '16px' }}>
       <div className="comp-inv-row">
-        <div className="comp-inv-item"><span title="Money">💰</span>{fmt(player.money)}</div>
+        <div className="comp-inv-item"><span title="Money"><ResourceIcon resourceKey="money" /></span>{fmt(player.money)}</div>
         <div className="comp-inv-item"><span title="Bitcoin"><ResourceIcon resourceKey="bitcoin" /></span>{fmt(player.bitcoin)}</div>
         <div className="comp-inv-item"><span title="Scrap"><ResourceIcon resourceKey="scrap" /></span>{fmt(player.scrap ?? 0)}</div>
         <div className="comp-inv-item"><span title="Oil"><ResourceIcon resourceKey="oil" /></span>{fmt(player.oil ?? 0)}</div>
         <div className="comp-inv-item"><span title="Material X"><ResourceIcon resourceKey="materialX" /></span>{fmt(player.materialX ?? 0)}</div>
+        <div className="comp-inv-item"><span title="Badge of Honor"><ResourceIcon resourceKey="badgesOfHonor" /></span>{fmt(player.badgesOfHonor ?? 0)}</div>
       </div>
       <div className="comp-inv-row">
         <div className="comp-inv-item"><span title="Wheat"><ResourceIcon resourceKey="wheat" /></span>{fmt(player.wheat ?? 0)}</div>

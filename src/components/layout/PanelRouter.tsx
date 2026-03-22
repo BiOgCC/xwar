@@ -25,6 +25,7 @@ import SettingsPanel from '../panels/SettingsPanel'
 import HelpPanel from '../panels/HelpPanel'
 import HistoryPanel from '../panels/HistoryPanel'
 import DiplomacyPanel from '../panels/DiplomacyPanel'
+import RegionPanel from '../panels/RegionPanel'
 import {
   User, Backpack, BarChart2, Factory, CircleDollarSign,
   Gamepad2, Target, TrendingUp, Handshake, Landmark,
@@ -54,6 +55,7 @@ function getSidebarIcon(id: string) {
     case 'prestige': return <Star {...SIDEBAR_ICON_PROPS} />
     case 'diplomacy': return <Handshake {...SIDEBAR_ICON_PROPS} />
     case 'history': return <ScrollText {...SIDEBAR_ICON_PROPS} />
+    case 'region': return <Target {...SIDEBAR_ICON_PROPS} />
     default: return <User {...SIDEBAR_ICON_PROPS} />
   }
 }
@@ -270,6 +272,8 @@ export default function PanelRouter() {
 
               : activePanel === 'foreign_country' && selectedForeignCountry
               ? <><CountryFlag iso={selectedForeignCountry} size={18} style={{ marginRight: '6px' }} />{getCountryName(selectedForeignCountry).toUpperCase()}</>
+              : activePanel === 'region'
+              ? '🌍 REGION DETAILS'
               : activePanel?.toUpperCase()}
           </h3>
           <div className="hud-panel__actions">
@@ -296,6 +300,7 @@ export default function PanelRouter() {
           {activePanel === 'bounty' && <BountyPanel />}
           {activePanel === 'stocks' && <StockMarketPanel />}
           {activePanel === 'alliance' && <AlliancePanel />}
+          {activePanel === 'region' && <RegionPanel />}
           {activePanel === 'resources' && (
             <>
               <div className="hud-card">

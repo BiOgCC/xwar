@@ -40,8 +40,12 @@ export function playSfx(url: string, volume = 0.5) {
 // ── Pre-defined game sounds ──
 
 const BOH_SOUND = '/assets/sounds/boh_earned.wav'
+let bohLastPlayed = 0
 
-/** Play the Badge of Honor earned sound. */
+/** Play the Badge of Honor earned sound (30s cooldown to avoid spam). */
 export function playBohSound() {
+  const now = Date.now()
+  if (now - bohLastPlayed < 30_000) return   // skip if played within last 30s
+  bohLastPlayed = now
   playSfx(BOH_SOUND, 0.6)
 }

@@ -8,6 +8,7 @@ import { useBattleStore } from '../../../stores/battleStore'
 import { useInventoryStore } from '../../../stores/inventoryStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useArmyStore } from '../../../stores/army'
+import { TrendingUp, Gift, Radio, Landmark, Users, Vote, Shield, Swords, Sword } from 'lucide-react'
 
 /** Mini treasury balance chart */
 function TreasuryChart({ iso }: { iso: string }) {
@@ -74,7 +75,7 @@ function TreasuryChart({ iso }: { iso: string }) {
   return (
     <div style={{ marginBottom: '4px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-        <span className="gov-section__title" style={{ marginBottom: 0 }}>📈 TREASURY BALANCE</span>
+        <span className="gov-section__title" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '6px' }}><TrendingUp size={14} /> TREASURY BALANCE</span>
         <div style={{ display: 'flex', gap: '2px' }}>
           {([30, 60, 180] as const).map(d => (
             <button key={d} onClick={() => setRange(d)} style={{
@@ -106,7 +107,7 @@ export function GovAccountTab() {
   const [nukeTarget, setNukeTarget] = useState('')
 
   const armyStore = useArmyStore()
-  const countryDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
+  const countryDivs = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso)
   const divsOnSale = gov?.divisionShop?.length || 0
 
   const handleDonate = () => {
@@ -141,64 +142,18 @@ export function GovAccountTab() {
   if (!gov) return null
   return (
     <>
-      {/* National Fund */}
-      <div className="gov-section gov-section--highlight">
-        <div className="gov-section__title gov-section__title--green">🏦 NATIONAL FUND</div>
-        <div className="gov-resource-grid">
-          {([['💵', 'Money', fund.money], ['🛢️', 'Oil', fund.oil], ['🔩', 'Scrap', fund.scrap],
-            ['⚛️', 'MatX', fund.materialX], ['₿', 'BTC', fund.bitcoin], ['✈️', 'Jets', fund.jets],
-          ] as [string, string, number][]).map(([icon, label, val]) => (
-            <div key={label} className="gov-resource-cell">
-              <span className="gov-resource-cell__icon">{icon}</span>
-              <div className="gov-resource-cell__value">{val.toLocaleString()}</div>
-              <div className="gov-resource-cell__label">{label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
+
 
       {/* Chart */}
       <div className="gov-section">
         <TreasuryChart iso={iso} />
       </div>
 
-      {/* Force Vault */}
-      <div className="gov-section gov-section--amber">
-        <div className="gov-section__title gov-section__title--amber">💰 FORCE VAULT</div>
-        <div className="gov-resource-grid">
-          {([['🪙', 'Money', vault.money], ['🛢️', 'Oil', vault.oil], ['🔩', 'Scrap', vault.scrap],
-            ['⚛️', 'MatX', vault.materialX], ['₿', 'BTC', vault.bitcoin], ['✈️', 'Jets', vault.jets],
-          ] as [string, string, number][]).map(([icon, label, val]) => (
-            <div key={label} className="gov-resource-cell">
-              <span className="gov-resource-cell__icon">{icon}</span>
-              <div className="gov-resource-cell__value" style={{ color: '#fbbf24' }}>{Number(val).toLocaleString()}</div>
-              <div className="gov-resource-cell__label">{label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
 
-      {/* Military Stats */}
-      <div className="gov-section">
-        <div className="gov-section__title">⚔️ MILITARY STATS</div>
-        <div className="gov-stats-grid">
-          {([
-            ['🎖️ Budget', `${gov?.militaryBudgetPercent || 0}%`, '#3b82f6'],
-            ['⚔️ Divisions', `${countryDivs.length}`, '#e2e8f0'],
-            ['🏪 On Sale', `${divsOnSale}`, '#f59e0b'],
-            ['💰 Vault $', `${vault.money.toLocaleString()}`, '#22d38a'],
-          ] as [string, string, string][]).map(([label, val, color]) => (
-            <div key={label} className="gov-stat-cell">
-              <span className="gov-stat-cell__label">{label}</span>
-              <span className="gov-stat-cell__value" style={{ color }}>{val}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Donate */}
       <div className="gov-section">
-        <div className="gov-section__title">🎁 DONATE TO FUND</div>
+        <div className="gov-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Gift size={14} /> DONATE TO FUND</div>
         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
           <select className="gov-select" style={{ flex: 1 }} value={donateResource} onChange={e => setDonateResource(e.target.value as NationalFundKey)}>
             <option value="money">Money</option><option value="oil">Oil</option><option value="scrap">Scraps</option>
@@ -211,22 +166,22 @@ export function GovAccountTab() {
 
       {/* Nuclear Strike */}
       <div className="gov-section gov-section--red" style={{ opacity: gov.nuclearAuthorized ? 1 : 0.5 }}>
-        <div className="gov-section__title gov-section__title--red">☢️ NUCLEAR STRIKE</div>
+        <div className="gov-section__title gov-section__title--red" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Radio size={14} /> NUCLEAR STRIKE</div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <select className="gov-select" style={{ flex: 1 }} value={nukeTarget} onChange={e => setNukeTarget(e.target.value)} disabled={!gov.nuclearAuthorized}>
             <option value="" disabled>Target...</option>
             {world.countries.filter(c => c.code !== iso).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
           </select>
-          <button className="gov-btn gov-btn--red" onClick={handleNuke} disabled={!gov.nuclearAuthorized || !nukeTarget} style={{ fontWeight: 900 }}>☢️ NUKE</button>
+          <button className="gov-btn gov-btn--red" onClick={handleNuke} disabled={!gov.nuclearAuthorized || !nukeTarget} style={{ fontWeight: 900, display: 'flex', alignItems: 'center', gap: '4px' }}><Radio size={12} /> NUKE</button>
         </div>
         {!gov.nuclearAuthorized && <p style={{ fontSize: '7px', color: '#3e4a5c', marginTop: '4px' }}>Requires law authorization + funded program</p>}
       </div>
 
       {/* Congress */}
       <div className="gov-section">
-        <div className="gov-section__title">🏛️ CONGRESS</div>
+        <div className="gov-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Landmark size={14} /> CONGRESS</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          {gov.congress.map((m, i) => (
+          {gov.congress.map((m: string, i: number) => (
             <div key={i} className={`gov-citizen ${i === 0 ? 'gov-citizen--president' : 'gov-citizen--congress'}`}>
               <span style={{ fontSize: '10px', fontWeight: 600, color: '#e2e8f0' }}>{m}</span>
               <span style={{ fontSize: '8px', color: '#475569' }}>{i === 0 ? 'LEADER' : `SEAT ${i}`}</span>
@@ -252,7 +207,7 @@ export function GovCitizenshipTab() {
   return (
     <>
       <div className="gov-section">
-        <div className="gov-section__title">👥 CITIZENS ({gov.citizens.length})</div>
+        <div className="gov-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={14} /> CITIZENS ({gov.citizens.length})</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {[...gov.citizens].sort((a, b) => b.level - a.level).map(c => (
             <div key={c.id} className={`gov-citizen ${c.role === 'president' ? 'gov-citizen--president' : c.role === 'congress' ? 'gov-citizen--congress' : ''}`}>
@@ -265,10 +220,10 @@ export function GovCitizenshipTab() {
           ))}
         </div>
       </div>
-      <button className="gov-btn gov-btn--green" style={{ width: '100%' }} onClick={() => {
+      <button className="gov-btn gov-btn--green" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} onClick={() => {
         govStore.registerCandidate(iso, player.name, player.name)
         ui.addFloatingText('REGISTERED', window.innerWidth / 2, window.innerHeight / 2, '#22d38a')
-      }}>🗳️ RUN FOR OFFICE</button>
+      }}><Vote size={14} /> RUN FOR OFFICE</button>
     </>
   )
 }
@@ -284,7 +239,7 @@ export function GovWarTab() {
   const battles = Object.values(useBattleStore.getState().battles).filter(b => b.attackerId === iso || b.defenderId === iso)
 
   // Autodefense slider state
-  const countryDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === iso && d.status === 'ready')
+  const countryDivs = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso && d.status === 'ready')
   const maxDivs = countryDivs.length
   const currentLimit = govStore.autoDefenseLimit // -1 = all, 0 = off, N = cap
   // Slider value: 0 = off, 1..maxDivs = N, maxDivs+1 = ALL (-1)
@@ -301,8 +256,8 @@ export function GovWarTab() {
     <>
       {/* Country Autodefense Card */}
       <div className="gov-section gov-section--highlight" style={{ borderLeft: `3px solid ${sliderColor}` }}>
-        <div className="gov-section__title" style={{ color: sliderColor }}>
-          🛡️ COUNTRY AUTODEFENSE
+        <div className="gov-section__title" style={{ color: sliderColor, display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Shield size={14} color={sliderColor} /> COUNTRY AUTODEFENSE
         </div>
         <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '8px' }}>
           Set how many divisions auto-deploy when your country is attacked. Armed Forces always deploy regardless.
@@ -332,14 +287,14 @@ export function GovWarTab() {
       </div>
 
       <div className="gov-section">
-        <div className="gov-section__title gov-section__title--red">⚔️ ACTIVE WARS</div>
+        <div className="gov-section__title gov-section__title--red" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Swords size={14} color="#ef4444" /> ACTIVE WARS</div>
         {wars.length === 0 && battles.length === 0
           ? <p style={{ fontSize: '9px', color: '#3e4a5c' }}>No active wars or battles.</p>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {wars.map(w => (
                 <div key={w.id} style={{ padding: '6px', background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.1)', borderRadius: '3px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444' }}>
-                    {w.attacker === iso ? `🗡️ ATTACKING ${w.defender}` : `🛡️ DEFENDING VS ${w.attacker}`}
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    {w.attacker === iso ? <><Sword size={12}/> ATTACKING {w.defender}</> : <><Shield size={12}/> DEFENDING VS {w.attacker}</>}
                   </div>
                   <div style={{ fontSize: '8px', color: '#475569', marginTop: '2px' }}>
                     {w.status.toUpperCase()} · {Math.floor((Date.now() - w.startedAt) / 86400000)}d ago

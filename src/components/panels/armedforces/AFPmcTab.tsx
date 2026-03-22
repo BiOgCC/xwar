@@ -3,6 +3,7 @@ import { useArmyStore, DIVISION_TEMPLATES, getDivisionEquipBonus } from '../../.
 import { usePlayerStore, getMilitaryRank } from '../../../stores/playerStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useInventoryStore, TIER_COLORS } from '../../../stores/inventoryStore'
+import { Swords, Shield, Skull, TreePine, Plane, Ship, CheckCircle, CircleDot, XCircle, Brain, Coins, Fuel, FlaskConical, Crosshair as GunIcon, Flag, Target, Users, Plus, Package, Crown, Trophy, BarChart3, Landmark as VaultIcon, Sparkles, ArrowUpRight, Gift, Banknote, ClipboardList, ArrowLeft, Scale, Award } from 'lucide-react'
 import { RANK_ICONS } from '../warHelpers'
 
 type PMCSection = 'divisions' | 'leaderboard' | 'stats' | 'vault' | 'defense'
@@ -125,6 +126,14 @@ export default function AFPmcTab({ iso }: { iso: string }) {
     </div>
   )
 
+  const SECTION_ICONS: Record<string, React.ReactElement> = {
+    swords: <Swords size={14} />,
+    trophy: <Trophy size={14} />,
+    stats: <BarChart3 size={14} />,
+    vault: <VaultIcon size={14} />,
+    defense: <Shield size={14} />,
+  }
+
   const sectionHeader = (icon: string, title: string, section: PMCSection, color: string, badge?: string | number) => (
     <div
       onClick={() => toggleSection(section)}
@@ -137,7 +146,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span style={{ fontSize: '12px' }}>{icon}</span>
+        <span style={{ display: 'flex', color }}>{SECTION_ICONS[icon] || icon}</span>
         <span style={{ fontSize: '10px', fontWeight: 900, color: expandedSection === section ? color : '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>
           {title}
         </span>
@@ -181,15 +190,15 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                   background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '18px', boxShadow: '0 2px 8px rgba(168,85,247,0.3)',
-                }}>🏴</div>
+                }}><Flag size={20} color="#fff" /></div>
                 <div>
                   <div style={{ fontSize: '14px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>
                     {currentArmy.name.toUpperCase()}
                   </div>
                   <div style={{ display: 'flex', gap: '8px', fontSize: '8px', color: '#94a3b8', marginTop: '2px' }}>
-                    <span>👑 {currentArmy.commanderId}</span>
-                    <span>👥 {currentArmy.members.length} members</span>
-                    <span>⚔️ {pmcDivs.length} divisions</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><Crown size={10} color="#94a3b8" /> {currentArmy.commanderId}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><Users size={10} color="#94a3b8" /> {currentArmy.members.length} members</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><Swords size={10} color="#94a3b8" /> {pmcDivs.length} divisions</span>
                   </div>
                 </div>
               </div>
@@ -210,7 +219,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
               background: 'rgba(0,0,0,0.3)', borderRadius: '4px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '14px' }}>{RANK_ICONS[myRank.rank] || '🪖'}</span>
+                <span style={{ fontSize: '14px', display: 'flex' }}><Shield size={16} color="#22d38a" /></span>
                 <div>
                   <div style={{ fontSize: '10px', fontWeight: 800, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{myRank.label.toUpperCase()}</div>
                   <div style={{ fontSize: '7px', color: '#64748b' }}>
@@ -233,23 +242,23 @@ export default function AFPmcTab({ iso }: { iso: string }) {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <div style={{ fontSize: '10px', fontWeight: 900, color: '#a78bfa', fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>
-                  ✨ COMPOSITION AURAS
+                  <Sparkles size={14} color="#a78bfa" style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> COMPOSITION AURAS
                 </div>
                 <span style={{ fontSize: '7px', color: '#64748b', fontStyle: 'italic' }}>Total from {pmcDivs.length} shared division{pmcDivs.length !== 1 ? 's' : ''}</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
                 {[
-                  { icon: '✈️', label: 'AIR', val: pmcAura.air, buff: `+${pmcAura.critDmgPct}%`, stat: 'CRIT DMG', color: '#60a5fa' },
-                  { icon: '🚶', label: 'GROUND', val: pmcAura.ground, buff: `+${pmcAura.dodgePct}%`, stat: 'DODGE', color: '#3b82f6' },
-                  { icon: '🪖', label: 'ARMOR', val: pmcAura.tanks, buff: `+${pmcAura.attackPct}%`, stat: 'ATK', color: '#f59e0b' },
-                  { icon: '🚢', label: 'NAVY', val: pmcAura.navy, buff: `+${pmcAura.precisionPct}%`, stat: 'PREC', color: '#a78bfa' },
+                  { Icon: Plane, label: 'AIR', val: pmcAura.air, buff: `+${pmcAura.critDmgPct}%`, stat: 'CRIT DMG', color: '#60a5fa' },
+                  { Icon: Users, label: 'GROUND', val: pmcAura.ground, buff: `+${pmcAura.dodgePct}%`, stat: 'DODGE', color: '#3b82f6' },
+                  { Icon: Shield, label: 'ARMOR', val: pmcAura.tanks, buff: `+${pmcAura.attackPct}%`, stat: 'ATK', color: '#f59e0b' },
+                  { Icon: Ship, label: 'NAVY', val: pmcAura.navy, buff: `+${pmcAura.precisionPct}%`, stat: 'PREC', color: '#a78bfa' },
                 ].map(cat => (
                   <div key={cat.label} style={{
                     textAlign: 'center', padding: '6px 4px',
                     background: `${cat.color}08`, borderRadius: '5px',
                     border: `1px solid ${cat.color}25`,
                   }}>
-                    <div style={{ fontSize: '16px' }}>{cat.icon}</div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}><cat.Icon size={20} color={cat.color} /></div>
                     <div style={{ fontSize: '12px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{cat.val}</div>
                     <div style={{ fontSize: '7px', color: '#64748b', fontWeight: 700, marginBottom: '2px' }}>{cat.label}</div>
                     <div style={{
@@ -266,7 +275,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
           )}
 
           {/* ═══════ SECTION: SHARED DIVISIONS ═══════ */}
-          {sectionHeader('⚔️', 'SHARED DIVISIONS', 'divisions', '#3b82f6', pmcDivs.length)}
+          {sectionHeader('swords', 'SHARED DIVISIONS', 'divisions', '#3b82f6', pmcDivs.length)}
           {expandedSection === 'divisions' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {pmcDivs.length === 0 ? (
@@ -281,7 +290,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                   training: '#f59e0b', ready: '#22d38a', in_combat: '#ef4444', recovering: '#3b82f6', destroyed: '#64748b'
                 }
                 const statusLabels: Record<string, string> = {
-                  training: '🔨 TRAIN', ready: '✅ READY', in_combat: '⚔️ COMBAT', recovering: '💤 RECV', destroyed: '💀 DEAD'
+                  training: 'TRAIN', ready: 'READY', in_combat: 'COMBAT', recovering: 'RECV', destroyed: 'DEAD'
                 }
                 const isOwner = div.ownerId === player.name
 
@@ -301,8 +310,8 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '7px', color: '#64748b', marginTop: '1px' }}>
                           <span>👤 {div.ownerId}</span>
-                          <span>👥 {div.manpower}</span>
-                          <span>💀 {div.killCount}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Users size={8} color="#64748b" /> {div.manpower}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Skull size={8} color="#64748b" /> {div.killCount}</span>
                         </div>
                       </div>
                       <span style={{
@@ -325,7 +334,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
           )}
 
           {/* ═══════ SECTION: LEADERBOARD ═══════ */}
-          {sectionHeader('🏆', 'LEADERBOARD', 'leaderboard', '#f59e0b', currentArmy.members.length)}
+          {sectionHeader('trophy', 'LEADERBOARD', 'leaderboard', '#f59e0b', currentArmy.members.length)}
           {expandedSection === 'leaderboard' && (
             <div style={{
               padding: '6px', borderRadius: '6px',
@@ -345,7 +354,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                       color: leaderboardSort === sortKey ? '#f59e0b' : '#64748b',
                     }}
                   >
-                    {sortKey === 'damage' ? '⚔️ DAMAGE' : '💪 POWER'}
+                    {sortKey === 'damage' ? 'DAMAGE' : 'POWER'}
                   </button>
                 ))}
               </div>
@@ -374,7 +383,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                         <span style={{ fontSize: '10px', fontWeight: 700, color: isMe ? '#3b82f6' : '#e2e8f0' }}>
                           {member.playerId}
                         </span>
-                        {isCommander && <span style={{ fontSize: '8px' }}>👑</span>}
+                        {isCommander && <Crown size={10} color="#f59e0b" />}
                         <span style={{
                           fontSize: '6px', fontWeight: 800, padding: '1px 4px', borderRadius: '2px',
                           color: roleColors[member.role] || '#64748b',
@@ -385,9 +394,9 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                         </span>
                       </div>
                       <div style={{ display: 'flex', gap: '8px', fontSize: '7px', color: '#64748b', marginTop: '1px' }}>
-                        <span>⚔️ {member.totalDamageThisPeriod.toLocaleString()} dmg</span>
-                        <span>💪 {member.contributedPower.toLocaleString()} pwr</span>
-                        {claimable > 0 && <span style={{ color: '#22d38a' }}>💰 ${claimable.toLocaleString()}</span>}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Swords size={8} /> {member.totalDamageThisPeriod.toLocaleString()} dmg</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Shield size={8} /> {member.contributedPower.toLocaleString()} pwr</span>
+                        {claimable > 0 && <span style={{ color: '#22d38a', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Coins size={8} /> ${claimable.toLocaleString()}</span>}
                       </div>
                     </div>
                     {/* Promote (officer only) */}
@@ -410,7 +419,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
           )}
 
           {/* ═══════ SECTION: PMC STATS ═══════ */}
-          {sectionHeader('📊', 'PMC STATS', 'stats', '#22d38a')}
+          {sectionHeader('stats', 'PMC STATS', 'stats', '#22d38a')}
           {expandedSection === 'stats' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {/* Overview grid */}
@@ -432,7 +441,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                 padding: '6px', borderRadius: '5px',
                 background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
               }}>
-                <div style={{ fontSize: '8px', fontWeight: 900, color: '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '0.8px', marginBottom: '4px' }}>🧠 INTELLIGENCE</div>
+                <div style={{ fontSize: '8px', fontWeight: 900, color: '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '0.8px', marginBottom: '4px' }}>INTELLIGENCE</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '3px' }}>
                   <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', padding: '4px' }}>
                     <div style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 800, marginBottom: '1px' }}>ELITE</div>
@@ -446,20 +455,20 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                     <div style={{ fontSize: '8px', fontWeight: 700, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {topDiv ? topDiv.name : '—'}
                     </div>
-                    <div style={{ fontSize: '7px', color: '#f59e0b', fontWeight: 700 }}>{topDiv ? `💀 ${topDiv.killCount}` : ''}</div>
+                    <div style={{ fontSize: '7px', color: '#f59e0b', fontWeight: 700 }}>{topDiv ? <><Skull size={10} color="#f59e0b" style={{ display: 'inline', verticalAlign: 'middle' }} /> {topDiv.killCount}</> : ''}</div>
                   </div>
                   <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', padding: '4px' }}>
                     <div style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 800, marginBottom: '1px' }}>COMP</div>
                     <div style={{ display: 'flex', gap: '3px', fontSize: '8px', color: '#cbd5e1' }}>
-                      <span>🌲{comp.land}</span><span>✈️{comp.air}</span><span>🚢{comp.naval}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><TreePine size={10} color="#cbd5e1" />{comp.land}</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Plane size={10} color="#cbd5e1" />{comp.air}</span><span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Ship size={10} color="#cbd5e1" />{comp.naval}</span>
                     </div>
                   </div>
                   <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', padding: '4px' }}>
                     <div style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 800, marginBottom: '1px' }}>GEAR</div>
                     <div style={{ display: 'flex', gap: '3px', fontSize: '8px', fontWeight: 700 }}>
-                      <span style={{ color: '#22d38a' }}>✓{fullyGeared}</span>
-                      <span style={{ color: '#f59e0b' }}>◐{someGear}</span>
-                      <span style={{ color: '#ef4444' }}>✗{noGear}</span>
+                      <span style={{ color: '#22d38a', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><CheckCircle size={10} />{fullyGeared}</span>
+                      <span style={{ color: '#f59e0b', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><CircleDot size={10} />{someGear}</span>
+                      <span style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><XCircle size={10} />{noGear}</span>
                     </div>
                   </div>
                   <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', padding: '4px' }}>
@@ -469,7 +478,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                   <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', padding: '4px' }}>
                     <div style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 800, marginBottom: '1px' }}>POWER</div>
                     <div style={{ display: 'flex', gap: '4px', fontSize: '8px', fontWeight: 700 }}>
-                      <span style={{ color: '#ef4444' }}>⚔️{totalDpt.toLocaleString()}</span>
+                      <span style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '2px' }}><Swords size={10} color="#ef4444" />{totalDpt.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -480,7 +489,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
           )}
 
           {/* ═══════ SECTION: MILITARY VAULT ═══════ */}
-          {sectionHeader('🏦', 'MILITARY VAULT', 'vault', '#f59e0b')}
+          {sectionHeader('vault', 'MILITARY VAULT', 'vault', '#f59e0b')}
           {expandedSection === 'vault' && (
             <div style={{
               padding: '8px', borderRadius: '6px',
@@ -490,18 +499,18 @@ export default function AFPmcTab({ iso }: { iso: string }) {
               {/* Resource display */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '3px', marginBottom: '6px' }}>
                 {[
-                  { icon: '💰', label: 'Money', val: currentArmy.vault.money },
-                  { icon: '🛢️', label: 'Oil', val: currentArmy.vault.oil },
-                  { icon: '🧪', label: 'MaterialX', val: currentArmy.vault.materialX || 0 },
-                  { icon: '🔫', label: 'Ammo', val: currentArmy.vault.ammo },
-                  { icon: '✈️', label: 'Jets', val: currentArmy.vault.jets },
-                  { icon: '🪖', label: 'Tanks', val: currentArmy.vault.tanks },
+                  { Icon: Coins, label: 'Money', val: currentArmy.vault.money },
+                  { Icon: Fuel, label: 'Oil', val: currentArmy.vault.oil },
+                  { Icon: FlaskConical, label: 'MaterialX', val: currentArmy.vault.materialX || 0 },
+                  { Icon: GunIcon, label: 'Ammo', val: currentArmy.vault.ammo },
+                  { Icon: Plane, label: 'Jets', val: currentArmy.vault.jets },
+                  { Icon: Shield, label: 'Tanks', val: currentArmy.vault.tanks },
                 ].map(r => (
                   <div key={r.label} style={{
                     display: 'flex', alignItems: 'center', gap: '4px',
                     padding: '4px 6px', background: 'rgba(0,0,0,0.3)', borderRadius: '3px',
                   }}>
-                    <span style={{ fontSize: '10px' }}>{r.icon}</span>
+                    <span style={{ display: 'flex' }}><r.Icon size={14} color="#fbbf24" /></span>
                     <div>
                       <div style={{ fontSize: '10px', fontWeight: 800, color: '#fbbf24', fontFamily: 'var(--font-display)' }}>{r.val.toLocaleString()}</div>
                       <div style={{ fontSize: '6px', color: '#64748b', fontWeight: 700 }}>{r.label}</div>
@@ -514,7 +523,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                   padding: '4px 6px', background: 'rgba(34,211,138,0.08)', borderRadius: '3px',
                   border: '1px solid rgba(34,211,138,0.15)',
                 }}>
-                  <span style={{ fontSize: '10px' }}>💵</span>
+                  <span style={{ display: 'flex' }}><Banknote size={14} color="#22d38a" /></span>
                   <div>
                     <div style={{ fontSize: '10px', fontWeight: 800, color: '#22d38a', fontFamily: 'var(--font-display)' }}>{(currentArmy.salaryPool || 0).toLocaleString()}</div>
                     <div style={{ fontSize: '6px', color: '#64748b', fontWeight: 700 }}>Salary Pool</div>
@@ -525,23 +534,23 @@ export default function AFPmcTab({ iso }: { iso: string }) {
               {/* Quick Donate */}
               <div style={{ display: 'flex', gap: '3px', marginBottom: '4px', flexWrap: 'wrap' }}>
                 {[
-                  { resource: 'money' as const, amount: 10000, label: '💰 $10K' },
-                  { resource: 'money' as const, amount: 50000, label: '💰 $50K' },
-                  { resource: 'oil' as const, amount: 100, label: '🛢️ 100' },
-                  { resource: 'materialX' as const, amount: 50, label: '🧪 50' },
+                  { resource: 'money' as const, amount: 10000, label: '$10K', Icon: Coins },
+                  { resource: 'money' as const, amount: 50000, label: '$50K', Icon: Coins },
+                  { resource: 'oil' as const, amount: 100, label: '100', Icon: Fuel },
+                  { resource: 'materialX' as const, amount: 50, label: '50', Icon: FlaskConical },
                 ].map(d => (
-                  <button key={d.label} className="war-btn war-btn--small"
-                    style={{ fontSize: '7px', padding: '3px 6px' }}
+                  <button key={d.label + d.amount} className="war-btn war-btn--small"
+                    style={{ fontSize: '8px', padding: '3px 6px', display: 'flex', alignItems: 'center', gap: '2px' }}
                     onClick={() => {
                       const r = armyStore.donateToVault(currentArmy.id, d.resource, d.amount)
                       showFb(r.message, r.success)
                     }}
-                  >{d.label}</button>
+                  ><d.Icon size={10} /> {d.label}</button>
                 ))}
                 <button className="war-btn war-btn--small"
-                  style={{ fontSize: '7px', padding: '3px 6px', color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)' }}
+                  style={{ fontSize: '8px', padding: '3px 6px', color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)', display: 'flex', alignItems: 'center', gap: '2px' }}
                   onClick={() => setShowDonate(!showDonate)}
-                >🎁 EQUIP</button>
+                ><Gift size={10} /> EQUIP</button>
               </div>
 
               {/* Salary Claim */}
@@ -552,7 +561,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                     showFb(r.message, r.success)
                   }}
                 >
-                  💰 CLAIM SALARY — ${(currentArmy.soldierBalances?.[player.name] || 0).toLocaleString()}
+                  CLAIM SALARY — ${(currentArmy.soldierBalances?.[player.name] || 0).toLocaleString()}
                 </button>
               )}
 
@@ -563,29 +572,29 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                     <button className="war-btn war-btn--small"
                       style={{ fontSize: '7px', padding: '3px 6px', color: '#22d38a', borderColor: 'rgba(34,211,138,0.3)', flex: 1 }}
                       onClick={() => setShowDistribute(!showDistribute)}
-                    >📤 DISTRIBUTE</button>
+                    ><ArrowUpRight size={10} /> DISTRIBUTE</button>
                     <button className="war-btn war-btn--small"
                       style={{ fontSize: '7px', padding: '3px 6px', color: '#3b82f6', borderColor: 'rgba(59,130,246,0.3)', flex: 1 }}
-                      onClick={() => showFb('Open Market panel → "🏦 Army Vault" toggle to trade vault resources')}
-                    >📊 TRADE</button>
+                      onClick={() => showFb('Open Market panel → "Army Vault" toggle to trade vault resources')}
+                    >TRADE</button>
                   </div>
 
                   {showDistribute && (
                     <div style={{ marginTop: '4px', padding: '6px', background: 'rgba(34,211,138,0.05)', border: '1px solid rgba(34,211,138,0.15)', borderRadius: '4px' }}>
-                      <div style={{ fontSize: '8px', fontWeight: 800, color: '#22d38a', marginBottom: '4px' }}>📤 DISTRIBUTE TO {currentArmy.members.length} MEMBERS</div>
+                      <div style={{ fontSize: '8px', fontWeight: 800, color: '#22d38a', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '3px' }}><ArrowUpRight size={12} color="#22d38a" /> DISTRIBUTE TO {currentArmy.members.length} MEMBERS</div>
                       <div style={{ display: 'flex', gap: '3px', marginBottom: '4px' }}>
                         <button className={`war-btn war-btn--small ${distResource === 'money' ? 'war-btn--primary' : ''}`}
                           style={{ fontSize: '7px', padding: '2px 5px' }}
                           onClick={() => setDistResource('money')}
-                        >💰 Money</button>
+                        >Money</button>
                         <button className={`war-btn war-btn--small ${distResource === 'oil' ? 'war-btn--primary' : ''}`}
                           style={{ fontSize: '7px', padding: '2px 5px' }}
                           onClick={() => setDistResource('oil')}
-                        >🛢️ Oil</button>
+                        >Oil</button>
                         <button className={`war-btn war-btn--small ${distResource === 'materialX' ? 'war-btn--primary' : ''}`}
                           style={{ fontSize: '7px', padding: '2px 5px' }}
                           onClick={() => setDistResource('materialX')}
-                        >🧪 MatX</button>
+                        >MatX</button>
                       </div>
                       <div style={{ display: 'flex', gap: '3px', marginBottom: '4px' }}>
                         {(distResource === 'money' ? [10000, 50000, 100000] : [50, 100, 500]).map(a => (
@@ -601,7 +610,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                           const r = armyStore.distributeVaultToMembers(currentArmy.id, distResource, distAmount)
                           showFb(r.message, r.success)
                         }}
-                      >📤 DISTRIBUTE {distResource === 'money' ? `$${distAmount.toLocaleString()}` : `${distAmount} oil`} TO ALL</button>
+                      >DISTRIBUTE {distResource === 'money' ? `$${distAmount.toLocaleString()}` : `${distAmount} oil`} TO ALL</button>
                     </div>
                   )}
                 </>
@@ -613,7 +622,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
                 if (vaultItems.length === 0) return null
                 return (
                   <div style={{ marginTop: '6px' }}>
-                    <div style={{ fontSize: '8px', fontWeight: 800, color: '#a855f7', letterSpacing: '0.8px', marginBottom: '3px' }}>🗃️ VAULT EQUIPMENT ({vaultItems.length})</div>
+                    <div style={{ fontSize: '8px', fontWeight: 800, color: '#a855f7', letterSpacing: '0.8px', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '3px' }}><Package size={12} color="#a855f7" /> VAULT EQUIPMENT ({vaultItems.length})</div>
                     <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
                       {vaultItems.map(item => (
                         <div key={item.id} style={{
@@ -634,7 +643,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
           )}
 
           {/* ═══════ SECTION: DEFENSE COORDINATION ═══════ */}
-          {sectionHeader('🛡️', 'DEFENSE COORD', 'defense', '#ef4444')}
+          {sectionHeader('defense', 'DEFENSE COORD', 'defense', '#ef4444')}
           {expandedSection === 'defense' && (
             <div style={{
               padding: '8px', borderRadius: '6px',

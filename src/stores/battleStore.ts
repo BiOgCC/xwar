@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { computeLeyLineCombatMods } from './leyLineStore'
 import { rateLimiter } from '../engine/AntiExploit'
 import { computePlayerCombatStats, aggregateEquipmentStats, computeBaseSkillStats, type PlayerCombatStats } from '../engine/stats'
 import { computeDivisionAttack, computeDamageToDefender, computePlayerAttack, deviate, EMPTY_STAR_MODS, EMPTY_EQUIP_BONUS, NO_ORDER, NO_AURA, type AuraBonus, type OrderEffects as EngineOrderEffects } from '../engine/combat'
@@ -6,6 +7,7 @@ import { getWarRewards, getWarRewardShare } from '../engine/economy'
 import { useResearchStore } from './researchStore'
 import { useWorldStore } from './worldStore'
 import { useGovernmentStore } from './governmentStore'
+import { useAllianceStore, getIdeologyBonus } from './allianceStore'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
@@ -581,6 +583,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       const atkMilBonus = useResearchStore.getState().getMilitaryBonuses(battle.attackerId)
       const defMilBonus = useResearchStore.getState().getMilitaryBonuses(battle.defenderId)
 
+      // --- Ley Line corridor bonuses (fetched once per tick) ---
+      const atkLeyLine = computeLeyLineCombatMods(battle.attackerId)
+      const defLeyLine = computeLeyLineCombatMods(battle.defenderId)
+
       // --- Revolt Homeland Bonus (attacker = revolting native country) ---
       let revoltAtkMult = 1
       let revoltDodgeMult = 1
@@ -646,8 +652,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const strength = div.health / div.maxHealth
           dmg = Math.floor(dmg * strength)
           dmg = Math.floor(dmg * atkOrd.atkMult)
-          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus + revolt bonus
-          dmg = Math.floor(deviate(dmg) * atkMilBonus.damageBonus * atkMilBonus.allCombatBonus * revoltAtkMult)
+          // Apply Alliance Vanguard Bonus (dynamic, scales with level)
+          const atkAllianceState = useAllianceStore.getState()
+          const atkAlliance = atkAllianceState.alliances.find(a => a.members.some(m => m.name === battle.attackerId))
+          const allianceAtkMult = atkAlliance?.activeIdeology === 'vanguard' ? getIdeologyBonus(atkAlliance) : 1
+
+          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus + revolt bonus + Ley Line
+          dmg = Math.floor(deviate(dmg) * atkMilBonus.damageBonus * atkMilBonus.allCombatBonus * revoltAtkMult * allianceAtkMult * atkLeyLine.damageMult)
           atkTotalDmg += Math.max(1, dmg)
         }
       })
@@ -713,8 +724,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const strength = d.health / d.maxHealth
           dmg = Math.floor(dmg * strength)
           dmg = Math.floor(dmg * defOrd.atkMult)
-          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus
-          dmg = Math.floor(deviate(dmg) * defMilBonus.damageBonus * defMilBonus.allCombatBonus)
+          // Apply Alliance Sentinel Bonus (dynamic, scales with level)
+          const defAllianceState = useAllianceStore.getState()
+          const defAlliance = defAllianceState.alliances.find(a => a.members.some(m => m.name === battle.defenderId))
+          const allianceDefMult = defAlliance?.activeIdeology === 'sentinel' ? getIdeologyBonus(defAlliance) : 1
+
+          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus + Ley Line
+          dmg = Math.floor(deviate(dmg) * defMilBonus.damageBonus * defMilBonus.allCombatBonus * allianceDefMult * defLeyLine.damageMult)
           defTotalDmg += Math.max(1, dmg)
         }
       })
@@ -742,7 +758,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             divEvents.push({ divName: d.name, side: 'atk', event: 'dodge' })
             return
           }
-          const totalDefArmor = ((playerStats.armorBlock || 0) + defEq.bonusArmor) * tmpl.armorMult * defOrderFx.armorMult * defMilBonus.armorBonus
+          const totalDefArmor = ((playerStats.armorBlock || 0) + defEq.bonusArmor) * tmpl.armorMult * defOrderFx.armorMult * defMilBonus.armorBonus * defLeyLine.armorMult
           const defArmorMit = totalDefArmor / (totalDefArmor + 100)
           let finalDmg = Math.max(1, Math.floor(basePerDiv * (1 - defArmorMit)))
           finalDmg = Math.max(1, Math.floor(finalDmg / 1.35)) // healthMult divider x1.35
@@ -767,7 +783,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             divEvents.push({ divName: d.name, side: 'def', event: 'dodge' })
             return
           }
-          const totalAtkArmor = ((playerStats.armorBlock || 0) + atkEq.bonusArmor) * tmpl.armorMult * atkOrderFx.armorMult * atkMilBonus.armorBonus
+          const totalAtkArmor = ((playerStats.armorBlock || 0) + atkEq.bonusArmor) * tmpl.armorMult * atkOrderFx.armorMult * atkMilBonus.armorBonus * atkLeyLine.armorMult
           const atkArmorMit = totalAtkArmor / (totalAtkArmor + 100)
           let finalDmg = Math.max(1, Math.floor(basePerDiv * (1 - atkArmorMit)))
           finalDmg = Math.max(1, Math.floor(finalDmg / 1.35)) // healthMult divider x1.35

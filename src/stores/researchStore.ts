@@ -14,23 +14,23 @@ export interface ResearchNode {
 }
 
 export const MILITARY_DOCTRINE: ResearchNode[] = [
-  { id: 'mil_1', name: 'Basic Training',    icon: '🎖️', cost: 50000,  description: 'Improved drill routines',    effect: '+5% division HP' },
-  { id: 'mil_2', name: 'Field Tactics',     icon: '📋', cost: 100000, description: 'Battlefield coordination',    effect: '+5% division damage' },
-  { id: 'mil_3', name: 'Fortification',     icon: '🏰', cost: 150000, description: 'Hardened defensive positions', effect: '+10% armor all units' },
-  { id: 'mil_4', name: 'Combined Arms',     icon: '🎯', cost: 200000, description: 'Multi-branch warfare',        effect: '+5% hit rate' },
-  { id: 'mil_5', name: 'Elite Forces',      icon: '💀', cost: 300000, description: 'Special operations doctrine',  effect: '+10% crit damage' },
-  { id: 'mil_6', name: 'Rapid Deployment',  icon: '⚡', cost: 400000, description: 'Streamlined logistics',       effect: '-20% training time' },
-  { id: 'mil_7', name: 'Total War',         icon: '🔥', cost: 500000, description: 'Full national mobilization',  effect: '+5% all combat stats' },
+  { id: 'mil_1', name: 'Basic Training',    icon: 'medal', cost: 50000,  description: 'Improved drill routines',    effect: '+5% division HP' },
+  { id: 'mil_2', name: 'Field Tactics',     icon: 'clipboard', cost: 100000, description: 'Battlefield coordination',    effect: '+5% division damage' },
+  { id: 'mil_3', name: 'Fortification',     icon: 'castle', cost: 150000, description: 'Hardened defensive positions', effect: '+10% armor all units' },
+  { id: 'mil_4', name: 'Combined Arms',     icon: 'crosshair', cost: 200000, description: 'Multi-branch warfare',        effect: '+5% hit rate' },
+  { id: 'mil_5', name: 'Elite Forces',      icon: 'skull', cost: 300000, description: 'Special operations doctrine',  effect: '+10% crit damage' },
+  { id: 'mil_6', name: 'Rapid Deployment',  icon: 'zap', cost: 400000, description: 'Streamlined logistics',       effect: '-20% training time' },
+  { id: 'mil_7', name: 'Total War',         icon: 'flame', cost: 500000, description: 'Full national mobilization',  effect: '+5% all combat stats' },
 ]
 
 export const ECONOMIC_THEORY: ResearchNode[] = [
-  { id: 'eco_1', name: 'Labor Reform',      icon: '⚒️', cost: 50000,  description: 'Worker efficiency programs',  effect: '+10% work earnings' },
-  { id: 'eco_2', name: 'Trade Routes',      icon: '🚢', cost: 100000, description: 'International commerce',      effect: '+5% production output' },
-  { id: 'eco_3', name: 'Banking System',    icon: '🏦', cost: 150000, description: 'Modern financial services',   effect: '-10% heal cost' },
-  { id: 'eco_4', name: 'Industrial Policy', icon: '🏭', cost: 200000, description: 'Manufacturing subsidies',     effect: '-10% recruit cost' },
-  { id: 'eco_5', name: 'War Economy',       icon: '💰', cost: 300000, description: 'Military-industrial complex',  effect: '+25% war rewards' },
-  { id: 'eco_6', name: 'Supply Lines',      icon: '📦', cost: 400000, description: 'Efficient logistics network',  effect: '-15% revive cost' },
-  { id: 'eco_7', name: 'Superpower',        icon: '🌟', cost: 500000, description: 'Global economic dominance',    effect: '+10% all economy' },
+  { id: 'eco_1', name: 'Labor Reform',      icon: 'hammer', cost: 50000,  description: 'Worker efficiency programs',  effect: '+10% work earnings' },
+  { id: 'eco_2', name: 'Trade Routes',      icon: 'ship', cost: 100000, description: 'International commerce',      effect: '+5% production output' },
+  { id: 'eco_3', name: 'Banking System',    icon: 'landmark', cost: 150000, description: 'Modern financial services',   effect: '-10% heal cost' },
+  { id: 'eco_4', name: 'Industrial Policy', icon: 'factory', cost: 200000, description: 'Manufacturing subsidies',     effect: '-10% recruit cost' },
+  { id: 'eco_5', name: 'War Economy',       icon: 'coins', cost: 300000, description: 'Military-industrial complex',  effect: '+25% war rewards' },
+  { id: 'eco_6', name: 'Supply Lines',      icon: 'package', cost: 400000, description: 'Efficient logistics network',  effect: '-15% revive cost' },
+  { id: 'eco_7', name: 'Superpower',        icon: 'star', cost: 500000, description: 'Global economic dominance',    effect: '+10% all economy' },
 ]
 
 // ====== STORE ======

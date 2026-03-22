@@ -9,7 +9,6 @@ import type { Region } from './stores/regionStore'
 import GameMap from './components/map/GameMap'
 import { COUNTRY_CENTROIDS } from './components/map/GameMap'
 import type { GameMapHandle } from './components/map/GameMap'
-import RegionPopup from './components/map/RegionPopup'
 import BattleMapOverlay from './components/map/BattleMapOverlay'
 import TopBar from './components/layout/TopBar'
 // Sidebar is now integrated into PanelRouter
@@ -39,9 +38,8 @@ function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const player = usePlayerStore()
   const world = useWorldStore()
-  const { floatingTexts, setActivePanel, setForeignCountry } = useUIStore()
+  const { floatingTexts, setActivePanel, setForeignCountry, setSelectedRegionId } = useUIStore()
   const [mousePos, setMousePos] = useState({ lat: '0.00° N', lng: '0.00° E' })
-  const [selectedRegion, setSelectedRegion] = useState<Region | null>(null)
   const mapRef = useRef<GameMapHandle>(null)
   const [selectedWarRegion, setSelectedWarRegion] = useState<Region | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -81,8 +79,35 @@ function App() {
   }, [])
 
   const handleRegionClick = useCallback((region: Region) => {
-    setSelectedRegion(region)
-  }, [])
+    const currentId = useUIStore.getState().selectedRegionId
+    if (currentId === region.id) {
+      // Already selected → open country tab
+      if (region.isOcean) return
+      const playerIso = usePlayerStore.getState().countryCode || 'US'
+      if (region.countryCode === playerIso) {
+        setActivePanel('government')
+      } else {
+        setForeignCountry(region.countryCode)
+        setActivePanel('foreign_country')
+      }
+      return
+    }
+    setSelectedRegionId(region.id)
+    setActivePanel('region')
+  }, [setSelectedRegionId, setActivePanel, setForeignCountry])
+
+  const handleRegionDoubleClick = useCallback((region: Region) => {
+    if (region.isOcean) return // Usually nothing special on double click for ocean
+    
+    // Default to country panel behavior
+    const playerIso = usePlayerStore.getState().countryCode || 'US'
+    if (region.countryCode === playerIso) {
+      setActivePanel('government')
+    } else {
+      setForeignCountry(region.countryCode)
+      setActivePanel('foreign_country')
+    }
+  }, [setActivePanel, setForeignCountry])
 
   return (
     <div className="xwar-root">
@@ -99,14 +124,15 @@ function App() {
           ref={mapRef}
           countries={world.countries}
           onRegionClick={handleRegionClick}
+          onRegionDoubleClick={handleRegionDoubleClick}
           onMouseMove={handleMouseMove}
         />
         <BattleMapOverlay
           mapRef={mapRef}
           onRegionClick={(region) => {
-            // Ocean regions → open standard RegionPopup (which has the naval patrol button)
+            // Battle overlay intercepts clicks during war selection
             if (region.isOcean) {
-              setSelectedRegion(region)
+              handleRegionClick(region)
               return
             }
             const playerIso = player.countryCode || 'US'
@@ -160,14 +186,6 @@ function App() {
 
         <PanelRouter />
       </div>
-
-      {/* ====== REGION POPUP ====== */}
-      {selectedRegion && (
-        <RegionPopup
-          region={selectedRegion}
-          onClose={() => setSelectedRegion(null)}
-        />
-      )}
 
       {/* War Region Popup */}
       {selectedWarRegion && (

@@ -4,6 +4,7 @@ import { useGovernmentStore } from '../../../stores/governmentStore'
 import type { LawType } from '../../../stores/governmentStore'
 import { useWorldStore } from '../../../stores/worldStore'
 import { useUIStore } from '../../../stores/uiStore'
+import { Scroll, Scale, ClipboardList, Ban, Shield, Package, DollarSign } from 'lucide-react'
 
 /** LAWS tab — Propose law + active laws voting */
 export default function GovLawsTab() {
@@ -35,7 +36,7 @@ export default function GovLawsTab() {
   // Which law types need a percent input?
   const needsPercent = lawType === 'import_tariff' || lawType === 'military_spending_change'
 
-  const activeLaws = Object.values(govStore.laws).filter(l => l.countryId === iso && l.status === 'active')
+  const activeLaws = (Object.values(govStore.laws) as any[]).filter(l => l.countryId === iso && l.status === 'active')
 
   const handleProposeLaw = () => {
     if (!isOfficial) { ui.addFloatingText('NOT IN OFFICE', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
@@ -65,7 +66,7 @@ export default function GovLawsTab() {
   }
 
   /** Apply the effect of a passed law */
-  const applyLawEffect = (law: ReturnType<typeof useGovernmentStore.getState>['laws'][string], countryIso: string) => {
+  const applyLawEffect = (law: any, countryIso: string) => {
     const cx = window.innerWidth / 2
     const cy = window.innerHeight / 2
 
@@ -85,7 +86,7 @@ export default function GovLawsTab() {
         break
 
       case 'impeach_president':
-        useGovernmentStore.setState(s => ({
+        useGovernmentStore.setState((s: any) => ({
           governments: {
             ...s.governments,
             [countryIso]: { ...s.governments[countryIso], president: null, candidates: [] }
@@ -96,7 +97,7 @@ export default function GovLawsTab() {
 
       case 'tax_change':
         if (law.newValue !== undefined) {
-          useGovernmentStore.setState(s => ({
+          useGovernmentStore.setState((s: any) => ({
             governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], taxRate: law.newValue! } }
           }))
           ui.addFloatingText(`TAX → ${law.newValue}%`, cx, cy, '#f59e0b')
@@ -105,7 +106,7 @@ export default function GovLawsTab() {
 
       case 'declare_sworn_enemy':
         if (law.targetCountryId) {
-          useGovernmentStore.setState(s => ({
+          useGovernmentStore.setState((s: any) => ({
             governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], swornEnemy: law.targetCountryId! } }
           }))
           ui.addFloatingText(`ENEMY: ${law.targetCountryId}`, cx, cy, '#ef4444')
@@ -113,7 +114,7 @@ export default function GovLawsTab() {
         break
 
       case 'authorize_nuclear_action':
-        useGovernmentStore.setState(s => ({
+        useGovernmentStore.setState((s: any) => ({
           governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], nuclearAuthorized: true } }
         }))
         ui.addFloatingText('☢️ AUTHORIZED', cx, cy, '#ef4444')
@@ -121,13 +122,13 @@ export default function GovLawsTab() {
 
       case 'propose_alliance':
         if (law.targetCountryId) {
-          useGovernmentStore.setState(s => {
+          useGovernmentStore.setState((s: any) => {
             const g1 = s.governments[countryIso], g2 = s.governments[law.targetCountryId!]
             return {
               governments: {
                 ...s.governments,
-                [countryIso]: { ...g1, alliances: [...(g1?.alliances || []).filter(a => a !== law.targetCountryId), law.targetCountryId!] },
-                ...(g2 ? { [law.targetCountryId!]: { ...g2, alliances: [...(g2.alliances || []).filter(a => a !== countryIso), countryIso] } } : {}),
+                [countryIso]: { ...g1, alliances: [...(g1?.alliances || []).filter((a: any) => a !== law.targetCountryId), law.targetCountryId!] },
+                ...(g2 ? { [law.targetCountryId!]: { ...g2, alliances: [...(g2.alliances || []).filter((a: any) => a !== countryIso), countryIso] } } : {}),
               }
             }
           })
@@ -137,13 +138,13 @@ export default function GovLawsTab() {
 
       case 'break_alliance':
         if (law.targetCountryId) {
-          useGovernmentStore.setState(s => {
+          useGovernmentStore.setState((s: any) => {
             const g1 = s.governments[countryIso], g2 = s.governments[law.targetCountryId!]
             return {
               governments: {
                 ...s.governments,
-                [countryIso]: { ...g1, alliances: (g1?.alliances || []).filter(a => a !== law.targetCountryId) },
-                ...(g2 ? { [law.targetCountryId!]: { ...g2, alliances: (g2.alliances || []).filter(a => a !== countryIso) } } : {}),
+                [countryIso]: { ...g1, alliances: (g1?.alliances || []).filter((a: any) => a !== law.targetCountryId) },
+                ...(g2 ? { [law.targetCountryId!]: { ...g2, alliances: (g2.alliances || []).filter((a: any) => a !== countryIso) } } : {}),
               }
             }
           })
@@ -162,9 +163,9 @@ export default function GovLawsTab() {
 
       case 'trade_embargo':
         if (law.targetCountryId) {
-          useGovernmentStore.setState(s => {
+          useGovernmentStore.setState((s: any) => {
             const g = s.governments[countryIso]
-            const embargoes = [...(g.embargoes || []).filter(e => e !== law.targetCountryId), law.targetCountryId!]
+            const embargoes = [...(g.embargoes || []).filter((e: any) => e !== law.targetCountryId), law.targetCountryId!]
             return { governments: { ...s.governments, [countryIso]: { ...g, embargoes } } }
           })
           ui.addFloatingText(`🚫 EMBARGO ON ${law.targetCountryId}`, cx, cy, '#ef4444')
@@ -173,23 +174,23 @@ export default function GovLawsTab() {
 
       case 'lift_embargo':
         if (law.targetCountryId) {
-          useGovernmentStore.setState(s => {
+          useGovernmentStore.setState((s: any) => {
             const g = s.governments[countryIso]
-            return { governments: { ...s.governments, [countryIso]: { ...g, embargoes: (g.embargoes || []).filter(e => e !== law.targetCountryId) } } }
+            return { governments: { ...s.governments, [countryIso]: { ...g, embargoes: (g.embargoes || []).filter((e: any) => e !== law.targetCountryId) } } }
           })
           ui.addFloatingText(`✅ EMBARGO LIFTED ON ${law.targetCountryId}`, cx, cy, '#22d38a')
         }
         break
 
       case 'conscription':
-        useGovernmentStore.setState(s => ({
+        useGovernmentStore.setState((s: any) => ({
           governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], conscriptionActive: true } }
         }))
         ui.addFloatingText('⚔️ CONSCRIPTION ACTIVATED', cx, cy, '#f59e0b')
         break
 
       case 'end_conscription':
-        useGovernmentStore.setState(s => ({
+        useGovernmentStore.setState((s: any) => ({
           governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], conscriptionActive: false } }
         }))
         ui.addFloatingText('🕊️ CONSCRIPTION ENDED', cx, cy, '#22d38a')
@@ -198,7 +199,7 @@ export default function GovLawsTab() {
       case 'import_tariff':
         if (law.newValue !== undefined) {
           const clamped = Math.max(0, Math.min(50, law.newValue))
-          useGovernmentStore.setState(s => ({
+          useGovernmentStore.setState((s: any) => ({
             governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], importTariff: clamped } }
           }))
           ui.addFloatingText(`📦 TARIFF → ${clamped}%`, cx, cy, '#f59e0b')
@@ -207,7 +208,7 @@ export default function GovLawsTab() {
 
       case 'minimum_wage':
         if (law.newValue !== undefined) {
-          useGovernmentStore.setState(s => ({
+          useGovernmentStore.setState((s: any) => ({
             governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], minimumWage: Math.max(0, law.newValue!) } }
           }))
           ui.addFloatingText(`💵 MIN WAGE → $${law.newValue.toLocaleString()}`, cx, cy, '#f59e0b')
@@ -217,7 +218,7 @@ export default function GovLawsTab() {
       case 'military_spending_change':
         if (law.newValue !== undefined) {
           const clamped = Math.max(0, Math.min(50, law.newValue))
-          useGovernmentStore.setState(s => ({
+          useGovernmentStore.setState((s: any) => ({
             governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], militaryBudgetPercent: clamped } }
           }))
           ui.addFloatingText(`🎖️ MIL BUDGET → ${clamped}%`, cx, cy, '#f59e0b')
@@ -256,7 +257,7 @@ export default function GovLawsTab() {
   }
 
   /** Extra detail shown on active law cards */
-  const lawDetail = (law: typeof activeLaws[number]): string => {
+  const lawDetail = (law: any): string => {
     if (law.targetCountryId) return `Target: ${law.targetCountryId}`
     if (law.type === 'tax_change' && law.newValue !== undefined) return `New Rate: ${law.newValue}%`
     if (law.type === 'print_money' && law.newValue !== undefined) return `Amount: $${law.newValue.toLocaleString()}`
@@ -270,7 +271,7 @@ export default function GovLawsTab() {
     <>
       {isOfficial && (
         <div className="gov-section">
-          <div className="gov-section__title gov-section__title--blue">📜 PROPOSE LAW</div>
+          <div className="gov-section__title gov-section__title--blue" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Scroll size={14} /> PROPOSE LAW</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <select className="gov-select" value={lawType} onChange={e => setLawType(e.target.value as LawType)}>
               <optgroup label="Diplomacy & War">
@@ -341,22 +342,22 @@ export default function GovLawsTab() {
       {/* Active policies */}
       {gov && (gov.embargoes?.length > 0 || gov.conscriptionActive || gov.importTariff > 0 || gov.minimumWage > 0) && (
         <div className="gov-section">
-          <div className="gov-section__title gov-section__title--blue">📋 ACTIVE POLICIES</div>
+          <div className="gov-section__title gov-section__title--blue" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ClipboardList size={14} /> ACTIVE POLICIES</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', fontSize: '8px' }}>
-            {gov.embargoes?.map(e => <span key={e} style={{ background: '#ef444422', color: '#ef4444', padding: '1px 6px', borderRadius: '3px' }}>🚫 Embargo: {e}</span>)}
-            {gov.conscriptionActive && <span style={{ background: '#f59e0b22', color: '#f59e0b', padding: '1px 6px', borderRadius: '3px' }}>⚔️ Conscription</span>}
-            {gov.importTariff > 0 && <span style={{ background: '#3b82f622', color: '#3b82f6', padding: '1px 6px', borderRadius: '3px' }}>📦 Tariff: {gov.importTariff}%</span>}
-            {gov.minimumWage > 0 && <span style={{ background: '#22d38a22', color: '#22d38a', padding: '1px 6px', borderRadius: '3px' }}>💵 Min Wage: ${gov.minimumWage.toLocaleString()}</span>}
+            {gov.embargoes?.map((e: any) => <span key={e} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ef444422', color: '#ef4444', padding: '2px 6px', borderRadius: '3px' }}><Ban size={10} /> Embargo: {e}</span>)}
+            {gov.conscriptionActive && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f59e0b22', color: '#f59e0b', padding: '2px 6px', borderRadius: '3px' }}><Shield size={10} /> Conscription</span>}
+            {gov.importTariff > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#3b82f622', color: '#3b82f6', padding: '2px 6px', borderRadius: '3px' }}><Package size={10} /> Tariff: {gov.importTariff}%</span>}
+            {gov.minimumWage > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#22d38a22', color: '#22d38a', padding: '2px 6px', borderRadius: '3px' }}><DollarSign size={10} /> Min Wage: ${gov.minimumWage.toLocaleString()}</span>}
           </div>
         </div>
       )}
 
       <div className="gov-section">
-        <div className="gov-section__title">⚖️ ACTIVE LAWS ({activeLaws.length})</div>
+        <div className="gov-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Scale size={14} color="#e2e8f0" /> ACTIVE LAWS ({activeLaws.length})</div>
         {activeLaws.length === 0
           ? <p style={{ fontSize: '9px', color: '#3e4a5c' }}>No laws on the floor.</p>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {activeLaws.map(law => (
+              {activeLaws.map((law: any) => (
                 <div key={law.id} className="gov-law">
                   <div style={{ fontSize: '9px', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>{lawLabel(law.type)}</div>
                   <div style={{ fontSize: '9px', color: '#94a3b8', margin: '2px 0 4px' }}>

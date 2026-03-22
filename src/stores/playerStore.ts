@@ -6,6 +6,7 @@ import { useWarCardsStore } from './warCardsStore'
 import { rateLimiter, validateEarn, validateSpend, logSuspicion } from '../engine/AntiExploit'
 import { applyCatchUpXP } from '../engine/catchup'
 import { useWorldStore } from './worldStore'
+import { useAllianceStore, getIdeologyBonus } from './allianceStore'
 
 import type { PlayerRole, MilitaryRank } from '../types/player.types'
 export type { PlayerRole, MilitaryRank }
@@ -394,8 +395,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       bohBadges += 1
       bohBonusClaimed = true
       if (_econFlowHook) _econFlowHook('daily_fight_bonus', 1, 'created', 'badgesOfHonor')
-      // 🎖️ Play metal-falling SFX
-      import('../utils/soundFx').then(({ playBohSound }) => playBohSound()).catch(() => {})
     }
 
     // Tiered threshold + diminishing returns
@@ -412,8 +411,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       bohBadges += bohEarned
       bohToday += bohEarned
       if (_econFlowHook) _econFlowHook('damage_threshold', bohEarned, 'created', 'badgesOfHonor')
-      // 🎖️ Play metal-falling SFX
-      import('../utils/soundFx').then(({ playBohSound }) => playBohSound()).catch(() => {})
     }
     ;(updates as any).badgesOfHonor = bohBadges
     ;(updates as any).bohDamageAccumulator = bohAccum
@@ -438,6 +435,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set(updates)
     // Record damage for specialization XP
     useSpecializationStore.getState().recordDamage(finalDamage)
+    useAllianceStore.getState().contributeIdeologyXP(1)
     // War Cards: check damage milestones + single-hit record + weekly tracking
     const newState = get()
     const wc = useWarCardsStore.getState()
@@ -508,9 +506,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   earnMoney: (amount) => {
     if (!validateEarn(amount, 'earnMoney')) return
-    set((s) => ({ money: s.money + amount }))
+    const allianceBonus = getIdeologyBonus(useAllianceStore.getState().getPlayerAlliance())
+    const activeIdeology = useAllianceStore.getState().getPlayerAlliance()?.activeIdeology
+    const finalAmount = activeIdeology === 'syndicate' ? Math.floor(amount * allianceBonus) : amount
+    set((s) => ({ money: s.money + finalAmount }))
     // Track in economy ledger
-    if (_econFlowHook) _econFlowHook('player_earn', amount, 'created', 'money')
+    if (_econFlowHook) _econFlowHook('player_earn', finalAmount, 'created', 'money')
     // War Cards: check money milestones
     const s = get()
     const wc = useWarCardsStore.getState()
@@ -554,7 +555,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set((s) => {
       if (Math.floor(s.work) < 10) return {}
       const productionLevel = useSkillsStore.getState().economic.production
-      const fill = 20 + productionLevel * 2
+      const activeIdeology = useAllianceStore.getState().getPlayerAlliance()?.activeIdeology
+      const syndicateBonus = activeIdeology === 'syndicate' ? getIdeologyBonus(useAllianceStore.getState().getPlayerAlliance()) : 1
+      const fill = (20 + productionLevel * 2) * syndicateBonus
       // Prospection: chance to find bonus scrap
       const prospectionLevel = useSkillsStore.getState().economic.prospection
       const prospectChance = prospectionLevel * 0.03  // 3% per level, up to 30%
@@ -567,19 +570,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
     })
     useSpecializationStore.getState().recordWork()
+    useAllianceStore.getState().contributeIdeologyXP(1)
   },
 
   doEntrepreneurship: () => {
     set((s) => {
       if (Math.floor(s.entrepreneurship) < 10) return {}
       const productionLevel = useSkillsStore.getState().economic.production
-      const fill = 25 + productionLevel * 2
+      const activeIdeology = useAllianceStore.getState().getPlayerAlliance()?.activeIdeology
+      const syndicateBonus = activeIdeology === 'syndicate' ? getIdeologyBonus(useAllianceStore.getState().getPlayerAlliance()) : 1
+      const fill = (25 + productionLevel * 2) * syndicateBonus
       return {
         entrepreneurship: Math.max(0, s.entrepreneurship - 10),
         productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
       }
     })
     useSpecializationStore.getState().recordWork()
+    useAllianceStore.getState().contributeIdeologyXP(1)
   },
 
   produce: (industrialistLevel: number) =>
@@ -603,6 +610,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         nextXP = xpForLevel(newLevel)
       }
       useSpecializationStore.getState().recordProduce()
+      useAllianceStore.getState().contributeIdeologyXP(1)
       if (bonusScrap > 0 && _econFlowHook) _econFlowHook('produce_scrap', bonusScrap, 'created', 'scrap')
       // War Cards: check items produced milestone
       setTimeout(() => {
@@ -685,10 +693,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (amount <= 0) return
     set((s) => ({ [key]: ((s as any)[key] || 0) + amount } as any))
     if (_econFlowHook) _econFlowHook(source, amount, 'created', key)
-    // 🎖️ Play metal-falling SFX when earning a Badge of Honor
-    if (key === 'badgesOfHonor') {
-      import('../utils/soundFx').then(({ playBohSound }) => playBohSound()).catch(() => {})
-    }
   },
 
   removeResource: (key, amount, source) => {

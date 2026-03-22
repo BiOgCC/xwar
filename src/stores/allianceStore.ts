@@ -41,6 +41,48 @@ export interface Alliance {
   maxMembers: number
   wins: number
   losses: number
+  activeIdeology: string | null
+  ideologyVotes: Record<string, string>
+  ideologyXP: Record<string, number>     // { vanguard: 450, syndicate: 120, ... }
+  lastIdeologyResetAt: number            // timestamp, 14-day cooldown
+}
+
+export interface AllianceIdeologyResetProposal {
+  id: string
+  proposerId: string
+  newIdeology: string
+  votesFor: string[]
+  votesAgainst: string[]
+  status: 'voting' | 'passed' | 'rejected' | 'expired'
+  proposedAt: number
+  expiresAt: number
+}
+
+// Ideology XP per level: Level N needs N * 200 cumulative XP. Max level 10.
+const IDEOLOGY_XP_PER_LEVEL = 200
+const IDEOLOGY_MAX_LEVEL = 10
+
+export function getIdeologyLevel(xp: number): number {
+  return Math.min(IDEOLOGY_MAX_LEVEL, Math.floor(xp / IDEOLOGY_XP_PER_LEVEL))
+}
+
+export function getIdeologyBonus(alliance: Alliance | null): number {
+  if (!alliance || !alliance.activeIdeology) return 1
+  const xp = alliance.ideologyXP?.[alliance.activeIdeology] || 0
+  const level = getIdeologyLevel(xp)
+  if (alliance.activeIdeology === 'nexus') return 1 + level * 0.02   // +2% per level (max +20%)
+  return 1 + level * 0.01  // +1% per level (max +10%)
+}
+
+export function getIdeologyXPProgress(alliance: Alliance | null): { level: number; xp: number; nextXP: number; percent: number } {
+  if (!alliance || !alliance.activeIdeology) return { level: 0, xp: 0, nextXP: IDEOLOGY_XP_PER_LEVEL, percent: 0 }
+  const xp = alliance.ideologyXP?.[alliance.activeIdeology] || 0
+  const level = getIdeologyLevel(xp)
+  if (level >= IDEOLOGY_MAX_LEVEL) return { level, xp, nextXP: IDEOLOGY_MAX_LEVEL * IDEOLOGY_XP_PER_LEVEL, percent: 100 }
+  const currentLevelXP = level * IDEOLOGY_XP_PER_LEVEL
+  const nextXP = (level + 1) * IDEOLOGY_XP_PER_LEVEL
+  const percent = ((xp - currentLevelXP) / (nextXP - currentLevelXP)) * 100
+  return { level, xp, nextXP, percent }
 }
 
 const MAX_ALLIANCE_SIZE = 5
@@ -65,6 +107,10 @@ const SEED_ALLIANCES: Alliance[] = [
     maxMembers: MAX_ALLIANCE_SIZE,
     wins: 3,
     losses: 1,
+    activeIdeology: 'sentinel',
+    ideologyVotes: { 'Commander_X': 'sentinel' },
+    ideologyXP: { sentinel: 350, vanguard: 50 },
+    lastIdeologyResetAt: 0,
   },
   {
     id: 'alliance_eastern',
@@ -81,6 +127,10 @@ const SEED_ALLIANCES: Alliance[] = [
     maxMembers: MAX_ALLIANCE_SIZE,
     wins: 2,
     losses: 2,
+    activeIdeology: 'vanguard',
+    ideologyVotes: { 'AI_Commander_Putin': 'vanguard' },
+    ideologyXP: { vanguard: 600 },
+    lastIdeologyResetAt: 0,
   },
   {
     id: 'alliance_brics',
@@ -97,6 +147,10 @@ const SEED_ALLIANCES: Alliance[] = [
     maxMembers: MAX_ALLIANCE_SIZE,
     wins: 1,
     losses: 0,
+    activeIdeology: 'syndicate',
+    ideologyVotes: { 'AI_Commander_Modi': 'syndicate' },
+    ideologyXP: { syndicate: 200 },
+    lastIdeologyResetAt: 0,
   },
 ]
 
@@ -118,6 +172,7 @@ export interface AllianceState {
   playerAllianceId: string | null
   lastTreatySnapshotAt: number  // timestamp of last 12h snapshot
   fundProposals: AllianceFundProposal[]
+  ideologyResetProposals: AllianceIdeologyResetProposal[]
 
   fetchAlliances: () => Promise<void>
   createAlliance: (name: string, tag: string) => Promise<{ success: boolean; message: string }>
@@ -135,6 +190,12 @@ export interface AllianceState {
   proposeFundTransfer: (targetCountryCode: string, amount: number, direction: 'to_country' | 'to_alliance') => { success: boolean; message: string }
   voteOnFundTransfer: (proposalId: string, vote: 'for' | 'against') => { success: boolean; message: string }
   resolveFundProposals: () => void
+
+  // Alliance Empire — ideology system
+  proposeIdeologyReset: (newIdeology: string) => { success: boolean; message: string }
+  voteOnIdeologyReset: (proposalId: string, vote: 'for' | 'against') => { success: boolean; message: string }
+  resolveIdeologyResetProposals: () => void
+  contributeIdeologyXP: (amount: number) => void
 }
 
 export const useAllianceStore = create<AllianceState>((set, get) => ({
@@ -143,6 +204,7 @@ export const useAllianceStore = create<AllianceState>((set, get) => ({
   playerAllianceId: 'alliance_nato',
   lastTreatySnapshotAt: Date.now(),
   fundProposals: [],
+  ideologyResetProposals: [],
 
   fetchAlliances: async () => {
     try {
@@ -167,9 +229,17 @@ export const useAllianceStore = create<AllianceState>((set, get) => ({
       const res: any = await api.post('/alliance/create', { name, tag })
       usePlayerStore.getState().spendMoney(500_000)
       
+      const newAlliance = {
+        ...res.alliance,
+        activeIdeology: null,
+        ideologyVotes: {},
+        ideologyXP: {},
+        lastIdeologyResetAt: 0,
+      }
+      
       set(s => ({
-        alliances: [...s.alliances, res.alliance],
-        playerAllianceId: res.alliance.id,
+        alliances: [...s.alliances, newAlliance],
+        playerAllianceId: newAlliance.id,
       }))
       
       const p = usePlayerStore.getState()
@@ -610,6 +680,130 @@ export const useAllianceStore = create<AllianceState>((set, get) => ({
         }
 
         return { ...p, status: newStatus }
+      }),
+    }))
+  },
+
+  proposeIdeologyReset: (newIdeology) => {
+    const player = usePlayerStore.getState()
+    const state = get()
+    if (!state.playerAllianceId) return { success: false, message: 'Not in an alliance' }
+    const alliance = state.alliances.find(a => a.id === state.playerAllianceId)
+    if (!alliance) return { success: false, message: 'Alliance not found' }
+    const member = alliance.members.find(m => m.name === player.name)
+    if (!member) return { success: false, message: 'Not in this alliance' }
+    if (member.role !== 'leader' && member.role !== 'officer') return { success: false, message: 'Only leaders/officers can propose' }
+    if (alliance.activeIdeology === newIdeology) return { success: false, message: 'Already active ideology' }
+
+    // 14-day cooldown
+    const FOURTEEN_DAYS = 14 * 24 * 60 * 60 * 1000
+    if (alliance.lastIdeologyResetAt && Date.now() - alliance.lastIdeologyResetAt < FOURTEEN_DAYS) {
+      const remaining = Math.ceil((FOURTEEN_DAYS - (Date.now() - alliance.lastIdeologyResetAt)) / 86400000)
+      return { success: false, message: `Cooldown: ${remaining}d remaining` }
+    }
+
+    // Check no other active proposal
+    if (state.ideologyResetProposals.some(p => p.status === 'voting')) {
+      return { success: false, message: 'Another ideology vote is already active' }
+    }
+
+    const proposal: AllianceIdeologyResetProposal = {
+      id: `ideo_${Date.now()}`,
+      proposerId: player.name,
+      newIdeology,
+      votesFor: [player.name],
+      votesAgainst: [],
+      status: 'voting',
+      proposedAt: Date.now(),
+      expiresAt: Date.now() + 24 * 3600000, // 24h
+    }
+    set(s => ({ ideologyResetProposals: [...s.ideologyResetProposals, proposal] }))
+
+    // Auto-resolve if single member
+    if (alliance.members.length === 1) {
+      get().resolveIdeologyResetProposals()
+    }
+
+    return { success: true, message: `Proposed switch to ${newIdeology.toUpperCase()}` }
+  },
+
+  voteOnIdeologyReset: (proposalId, vote) => {
+    const player = usePlayerStore.getState()
+    const state = get()
+    if (!state.playerAllianceId) return { success: false, message: 'Not in an alliance' }
+
+    const proposal = state.ideologyResetProposals.find(p => p.id === proposalId)
+    if (!proposal || proposal.status !== 'voting') return { success: false, message: 'Proposal not found or closed' }
+
+    if (proposal.votesFor.includes(player.name) || proposal.votesAgainst.includes(player.name)) {
+      return { success: false, message: 'Already voted' }
+    }
+
+    set(s => ({
+      ideologyResetProposals: s.ideologyResetProposals.map(p => {
+        if (p.id !== proposalId) return p
+        return vote === 'for'
+          ? { ...p, votesFor: [...p.votesFor, player.name] }
+          : { ...p, votesAgainst: [...p.votesAgainst, player.name] }
+      }),
+    }))
+
+    // Auto-resolve after vote
+    get().resolveIdeologyResetProposals()
+    return { success: true, message: `Voted ${vote.toUpperCase()}` }
+  },
+
+  resolveIdeologyResetProposals: () => {
+    const state = get()
+    const alliance = state.alliances.find(a => a.id === state.playerAllianceId)
+    if (!alliance) return
+
+    const majority = Math.ceil(alliance.members.length / 2)
+    const now = Date.now()
+
+    set(s => ({
+      ideologyResetProposals: s.ideologyResetProposals.map(p => {
+        if (p.status !== 'voting') return p
+
+        let newStatus: 'voting' | 'passed' | 'rejected' | 'expired' = 'voting'
+        if (p.votesFor.length >= majority) newStatus = 'passed'
+        else if (p.votesAgainst.length >= majority) newStatus = 'rejected'
+        else if (now > p.expiresAt) newStatus = 'expired'
+
+        if (newStatus === 'passed') {
+          // Switch ideology — XP persists, just change active
+          useAllianceStore.setState(ss => ({
+            alliances: ss.alliances.map(a =>
+              a.id === state.playerAllianceId
+                ? { ...a, activeIdeology: p.newIdeology, lastIdeologyResetAt: now }
+                : a
+            ),
+          }))
+          useNewsStore.getState().pushEvent('alliance',
+            `[${alliance.tag}] switched ideology to ${p.newIdeology.toUpperCase()}`
+          )
+        }
+
+        return { ...p, status: newStatus }
+      }),
+    }))
+  },
+
+  contributeIdeologyXP: (amount) => {
+    const state = get()
+    if (!state.playerAllianceId) return
+    const alliance = state.alliances.find(a => a.id === state.playerAllianceId)
+    if (!alliance || !alliance.activeIdeology) return
+
+    const ideo = alliance.activeIdeology
+    const currentXP = alliance.ideologyXP?.[ideo] || 0
+    const maxXP = IDEOLOGY_MAX_LEVEL * IDEOLOGY_XP_PER_LEVEL
+    if (currentXP >= maxXP) return  // Already max level
+
+    set(s => ({
+      alliances: s.alliances.map(a => {
+        if (a.id !== state.playerAllianceId) return a
+        return { ...a, ideologyXP: { ...a.ideologyXP, [ideo]: Math.min(maxXP, currentXP + amount) } }
       }),
     }))
   },

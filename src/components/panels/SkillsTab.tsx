@@ -8,6 +8,29 @@ import {
   type MilitarySkill,
   type EconomicSkill,
 } from '../../stores/skillsStore'
+import {
+  Swords, Target, Zap, Crosshair, Battery, Drumstick, Shield, Wind,
+  Hammer, Briefcase, Settings, Pickaxe, Factory, Star, Rocket, RefreshCw
+} from 'lucide-react'
+
+const MIL_ICONS: Record<string, any> = {
+  attack: Swords,
+  critRate: Target,
+  critDamage: Zap,
+  precision: Crosshair,
+  stamina: Battery,
+  hunger: Drumstick,
+  armor: Shield,
+  dodge: Wind,
+}
+
+const ECO_ICONS: Record<string, any> = {
+  work: Hammer,
+  entrepreneurship: Briefcase,
+  production: Settings,
+  prospection: Pickaxe,
+  industrialist: Factory,
+}
 
 export default function SkillsTab() {
   const player = usePlayerStore()
@@ -53,7 +76,9 @@ export default function SkillsTab() {
     <div className="skills-tab">
       {/* Skill Points Header */}
       <div className="skills-sp">
-        <span className="skills-sp__icon">⭐</span>
+        <span className="skills-sp__icon" style={{ display: 'flex', alignItems: 'center' }}>
+          <Star size={16} color="#fbbf24" fill="#fbbf24" />
+        </span>
         <span className="skills-sp__label">Available Skill Points</span>
         <span className="skills-sp__value">{player.skillPoints}</span>
         {catchUpActive && (
@@ -61,26 +86,29 @@ export default function SkillsTab() {
             fontSize: '8px', fontWeight: 700, color: '#22d38a',
             background: 'rgba(34, 211, 138, 0.12)', border: '1px solid rgba(34, 211, 138, 0.3)',
             borderRadius: '4px', padding: '2px 6px', marginLeft: '6px', whiteSpace: 'nowrap',
-            textShadow: '0 0 6px rgba(34, 211, 138, 0.4)',
+            textShadow: '0 0 6px rgba(34, 211, 138, 0.4)', display: 'flex', alignItems: 'center', gap: '4px'
           }}>
-            🚀 +{Math.round((catchUpMult - 1) * 100)}% XP BOOST
+            <Rocket size={10} color="#22d38a" /> +{Math.round((catchUpMult - 1) * 100)}% XP BOOST
           </span>
         )}
       </div>
 
       {/* Military Doctrine */}
       <div className="skills-tree">
-        <div className="skills-tree__header skills-tree__header--mil">
-          <span>⚔️</span> MILITARY DOCTRINE
+        <div className="skills-tree__header skills-tree__header--mil" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Swords size={18} color="#ef4444" strokeWidth={2} /> MILITARY DOCTRINE
         </div>
         <div className="skills-list">
           {MILITARY_SKILLS.map((s) => {
             const level = skills.military[s.key]
             const cost = skills.getSkillCost(level)
             const canAssign = level < 10 && player.skillPoints >= cost
+            const Icon = MIL_ICONS[s.key] || Swords
             return (
               <div key={s.key} className="skill-row">
-                <span className="skill-row__icon">{s.icon}</span>
+                <span className="skill-row__icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={18} color="#ef4444" strokeWidth={2} />
+                </span>
                 <div className="skill-row__info" style={{ display: 'flex', flexDirection: 'column' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="skill-row__name">{s.label}</span>
@@ -111,26 +139,29 @@ export default function SkillsTab() {
         </div>
         <button
           className="skill-row__btn skill-row__btn--mil"
-          style={{ width: '100%', marginTop: '8px', padding: '6px 0', fontSize: '11px', opacity: 0.8 }}
+          style={{ width: '100%', marginTop: '8px', padding: '6px 0', fontSize: '11px', opacity: 0.8, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}
           onClick={() => { if (confirm('Reset all Military skills? Costs 50,000 gold. All SP will be refunded.')) skills.resetSkills('military') }}
         >
-          🔄 Reset Military (50k)
+          <RefreshCw size={14} /> Reset Military (50k)
         </button>
       </div>
 
       {/* Economic Theory */}
       <div className="skills-tree">
-        <div className="skills-tree__header skills-tree__header--eco">
-          <span>💼</span> ECONOMIC THEORY
+        <div className="skills-tree__header skills-tree__header--eco" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Briefcase size={18} color="#38bdf8" strokeWidth={2} /> ECONOMIC THEORY
         </div>
         <div className="skills-list">
           {ECONOMIC_SKILLS.map((s) => {
             const level = skills.economic[s.key]
             const cost = skills.getSkillCost(level)
             const canAssign = level < 10 && player.skillPoints >= cost
+            const Icon = ECO_ICONS[s.key] || Briefcase
             return (
               <div key={s.key} className="skill-row">
-                <span className="skill-row__icon">{s.icon}</span>
+                <span className="skill-row__icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={18} color="#38bdf8" strokeWidth={2} />
+                </span>
                 <div className="skill-row__info" style={{ display: 'flex', flexDirection: 'column' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="skill-row__name">{s.label}</span>
@@ -161,12 +192,13 @@ export default function SkillsTab() {
         </div>
         <button
           className="skill-row__btn skill-row__btn--eco"
-          style={{ width: '100%', marginTop: '8px', padding: '6px 0', fontSize: '11px', opacity: 0.8 }}
+          style={{ width: '100%', marginTop: '8px', padding: '6px 0', fontSize: '11px', opacity: 0.8, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}
           onClick={() => { if (confirm('Reset all Economic skills? Costs 50,000 gold. All SP will be refunded.')) skills.resetSkills('economic') }}
         >
-          🔄 Reset Economic (50k)
+          <RefreshCw size={14} /> Reset Economic (50k)
         </button>
       </div>
     </div>
   )
 }
+

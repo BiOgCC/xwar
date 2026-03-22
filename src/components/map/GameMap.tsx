@@ -5,10 +5,14 @@ import type { Country } from '../../stores/worldStore'
 import { useWorldStore } from '../../stores/worldStore'
 import type { Region } from '../../stores/regionStore'
 import { useRegionStore } from '../../stores/regionStore'
+import { LEY_LINE_DEFS, ARCHETYPE_META } from '../../data/leyLineRegistry'
+import { useLeyLineStore } from '../../stores/leyLineStore'
+import { useTradeRouteStore } from '../../stores/tradeRouteStore'
 
 interface GameMapProps {
   countries: Country[]
   onRegionClick?: (region: Region) => void
+  onRegionDoubleClick?: (region: Region) => void
   onMouseMove?: (lat: string, lng: string) => void
 }
 
@@ -100,7 +104,7 @@ const hslToHex = (h: number, s: number, l: number): string => {
 const DEFAULT_CENTER: [number, number] = [20, 25]
 const DEFAULT_ZOOM = 2.0
 
-const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionClick, onMouseMove }, ref) => {
+const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionClick, onRegionDoubleClick, onMouseMove }, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -108,6 +112,8 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
   // Store callbacks in refs so marker event listeners always have the latest version
   const onRegionClickRef = useRef(onRegionClick)
   onRegionClickRef.current = onRegionClick
+  const onRegionDoubleClickRef = useRef(onRegionDoubleClick)
+  onRegionDoubleClickRef.current = onRegionDoubleClick
   const countriesRef = useRef(countries)
   countriesRef.current = countries
 
@@ -686,7 +692,155 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             },
           })
 
-          // ── Hover interactions (rAF-debounced to avoid thrashing the GPU) ──
+          // ── 9.7 LEY LINE CORRIDORS ──
+          const leyLineFeatures: any[] = []
+          const leyLineNodeFeatures: any[] = []
+
+          LEY_LINE_DEFS.forEach(line => {
+            const meta = ARCHETYPE_META[line.archetype]
+            // Collect region positions for the corridor LineString
+            const coords: number[][] = []
+            line.blocks.forEach(blockId => {
+              const region = allRegions.find(r => r.id === blockId)
+              if (region) coords.push(region.position)
+            })
+            if (coords.length < 2) return
+
+            // Check activation status
+            const lineStatus = useLeyLineStore.getState().getAllLineStatus()
+            const status = lineStatus.find(s => s.def.id === line.id)
+            const isActive = status?.active ?? false
+            const completion = status?.completion ?? 0
+
+            leyLineFeatures.push({
+              type: 'Feature',
+              properties: {
+                id: line.id,
+                name: line.name,
+                archetype: line.archetype,
+                color: meta.color,
+                active: isActive,
+                completion: completion,
+              },
+              geometry: { type: 'LineString', coordinates: coords },
+            })
+
+            // Node dots at each block region
+            coords.forEach((coord, i) => {
+              leyLineNodeFeatures.push({
+                type: 'Feature',
+                properties: {
+                  lineId: line.id,
+                  color: meta.color,
+                  active: isActive,
+                  blockId: line.blocks[i],
+                },
+                geometry: { type: 'Point', coordinates: coord },
+              })
+            })
+          })
+
+          if (leyLineFeatures.length > 0) {
+            m.addSource('xwar-leylines', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: leyLineFeatures },
+            })
+            m.addSource('xwar-leyline-nodes', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: leyLineNodeFeatures },
+            })
+
+            // Glow layer (wide, blurred)
+            m.addLayer({
+              id: 'xwar-leyline-glow',
+              type: 'line',
+              source: 'xwar-leylines',
+              paint: {
+                'line-color': ['get', 'color'],
+                'line-width': [
+                  'case',
+                  ['==', ['get', 'active'], true], 8,
+                  4,
+                ],
+                'line-opacity': [
+                  'case',
+                  ['==', ['get', 'active'], true], 0.35,
+                  0.10,
+                ],
+                'line-blur': 6,
+              },
+            })
+
+            // Core line — ACTIVE (solid)
+            m.addLayer({
+              id: 'xwar-leyline-core-active',
+              type: 'line',
+              source: 'xwar-leylines',
+              filter: ['==', ['get', 'active'], true],
+              paint: {
+                'line-color': ['get', 'color'],
+                'line-width': 2.5,
+                'line-opacity': 0.85,
+              },
+            })
+
+            // Core line — INACTIVE (dashed)
+            m.addLayer({
+              id: 'xwar-leyline-core-inactive',
+              type: 'line',
+              source: 'xwar-leylines',
+              filter: ['!=', ['get', 'active'], true],
+              paint: {
+                'line-color': ['get', 'color'],
+                'line-width': 1.5,
+                'line-opacity': 0.30,
+                'line-dasharray': [4, 4],
+              },
+            })
+
+            // Node dots
+            m.addLayer({
+              id: 'xwar-leyline-nodes',
+              type: 'circle',
+              source: 'xwar-leyline-nodes',
+              minzoom: 2.5,
+              paint: {
+                'circle-radius': [
+                  'case',
+                  ['==', ['get', 'active'], true], 5,
+                  3.5,
+                ],
+                'circle-color': ['get', 'color'],
+                'circle-opacity': [
+                  'case',
+                  ['==', ['get', 'active'], true], 0.9,
+                  0.4,
+                ],
+                'circle-stroke-color': '#000000',
+                'circle-stroke-width': 1,
+              },
+            })
+
+            // Ley Line name labels (visible at zoom 3+)
+            m.addLayer({
+              id: 'xwar-leyline-labels',
+              type: 'symbol',
+              source: 'xwar-leylines',
+              minzoom: 3,
+              layout: {
+                'text-field': ['get', 'name'],
+                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                'text-size': 11,
+                'symbol-placement': 'line-center',
+                'text-allow-overlap': false,
+              },
+              paint: {
+                'text-color': ['get', 'color'],
+                'text-halo-color': 'rgba(0, 0, 0, 0.9)',
+                'text-halo-width': 1.5,
+              },
+            })
+          }
           let hoveredStateName: string | null = null
           let hoverRaf: number | null = null
 
@@ -720,7 +874,6 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           m.on('mousemove', 'xwar-ocean-fill', handleHoverMove)
           m.on('mouseleave', 'xwar-ocean-fill', handleHoverLeave)
 
-          // ── 10. GEOJSON CLICK → OPEN STATE PANEL ──
           const handleClick = (e: any) => {
             if (e.features && e.features.length > 0) {
               const props = e.features[0].properties
@@ -747,6 +900,47 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           }
           m.on('click', 'xwar-state-fill', handleClick)
           m.on('click', 'xwar-ocean-fill', handleClick)
+
+          // Double click maps to double click ref
+          const handleDoubleClick = (e: any) => {
+            if (e.features && e.features.length > 0) {
+              const props = e.features[0].properties
+              const iso3 = props?.['adm0_a3']
+              const isOcean = props?.['isOcean']
+              
+              if (isOcean) {
+                const oceanRegion = useRegionStore.getState().regions.find(r => r.name === props.name)
+                if (oceanRegion && onRegionDoubleClickRef.current) {
+                  onRegionDoubleClickRef.current(oceanRegion)
+                }
+              } else {
+                const countryName = iso3 ? ISO3_TO_NAME[iso3] : null
+                if (countryName) {
+                  const country = countriesRef.current.find(c => c.name === countryName)
+                  if (country) {
+                     const lngLat = e.lngLat
+                     const { regions } = useRegionStore.getState()
+                     const countryRegions = regions.filter(r => r.countryCode === country.code)
+                     if (countryRegions.length > 0) {
+                       let closestRegion = countryRegions[0]
+                       let minDst = Infinity
+                       countryRegions.forEach(r => {
+                         const dx = r.position[0] - lngLat.lng
+                         const dy = r.position[1] - lngLat.lat
+                         const dst = dx*dx + dy*dy
+                         if (dst < minDst) { minDst = dst; closestRegion = r; }
+                       })
+                       if (onRegionDoubleClickRef.current) {
+                         onRegionDoubleClickRef.current(closestRegion)
+                       }
+                     }
+                  }
+                }
+              }
+            }
+          }
+          m.on('dblclick', 'xwar-state-fill', handleDoubleClick)
+          m.on('dblclick', 'xwar-ocean-fill', handleDoubleClick)
 
           // Refine region positions
           useRegionStore.getState().updateBoundsFromGeoJSON(geojson, 'adm0_a3')
@@ -787,82 +981,140 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             })
             .catch((err: any) => console.warn('Could not load oceans.geojson:', err))
 
-          // ── TEST SEA ROUTE: Azores → New York (pre-computed via searoute-js) ──
-          fetch('/data/test-route-azores-ny.geojson')
-            .then(r => r.json())
-            .then((route: any) => {
-              m.addSource('xwar-test-route', {
-                type: 'geojson',
-                data: route,
-              })
+          // ── TRADE ROUTES: 13 major maritime lanes ──
+          useTradeRouteStore.getState().loadRoutes().then(() => {
+            const tradeStore = useTradeRouteStore.getState()
+            if (!tradeStore.geojson || !m) return
 
-              // Glow layer (wider, blurred)
-              m.addLayer({
-                id: 'xwar-test-route-glow',
-                type: 'line',
-                source: 'xwar-test-route',
-                paint: {
-                  'line-color': '#00e5ff',
-                  'line-width': 5,
-                  'line-opacity': 0.25,
-                  'line-blur': 4,
-                },
-              })
-
-              // Core dashed line
-              m.addLayer({
-                id: 'xwar-test-route-line',
-                type: 'line',
-                source: 'xwar-test-route',
-                paint: {
-                  'line-color': '#00e5ff',
-                  'line-width': 2,
-                  'line-opacity': 0.85,
-                  'line-dasharray': [4, 3],
-                },
-              })
-
-              // Endpoint markers (Azores & New York)
-              const endpointGeoJson: any = {
-                type: 'FeatureCollection',
-                features: [
-                  { type: 'Feature', properties: { label: 'Azores' }, geometry: { type: 'Point', coordinates: [-27.22, 38.73] } },
-                  { type: 'Feature', properties: { label: 'New York' }, geometry: { type: 'Point', coordinates: [-74.00, 40.71] } },
-                ],
-              }
-              m.addSource('xwar-test-route-endpoints', { type: 'geojson', data: endpointGeoJson })
-              m.addLayer({
-                id: 'xwar-test-route-dots',
-                type: 'circle',
-                source: 'xwar-test-route-endpoints',
-                paint: {
-                  'circle-radius': 5,
-                  'circle-color': '#00e5ff',
-                  'circle-stroke-color': '#ffffff',
-                  'circle-stroke-width': 2,
-                },
-              })
-              m.addLayer({
-                id: 'xwar-test-route-labels',
-                type: 'symbol',
-                source: 'xwar-test-route-endpoints',
-                layout: {
-                  'text-field': ['get', 'label'],
-                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                  'text-size': 12,
-                  'text-offset': [0, 1.5],
-                  'text-anchor': 'top',
-                },
-                paint: {
-                  'text-color': '#00e5ff',
-                  'text-halo-color': 'rgba(0,0,0,0.8)',
-                  'text-halo-width': 1.5,
-                },
-              })
-
-              console.log('✅ Test sea route rendered: Azores → New York (' + Math.round(route.properties?.length || 0) + ' nm)')
+            m.addSource('xwar-trade-routes', {
+              type: 'geojson',
+              data: tradeStore.geojson,
             })
-            .catch((err: any) => console.warn('Could not load test sea route:', err))
+
+            // Glow layer (wider, blurred)
+            m.addLayer({
+              id: 'xwar-trade-routes-glow',
+              type: 'line',
+              source: 'xwar-trade-routes',
+              paint: {
+                'line-color': '#00e5ff',
+                'line-width': 5,
+                'line-opacity': 0.20,
+                'line-blur': 4,
+              },
+            })
+
+            // Core dashed line
+            m.addLayer({
+              id: 'xwar-trade-routes-line',
+              type: 'line',
+              source: 'xwar-trade-routes',
+              paint: {
+                'line-color': '#00e5ff',
+                'line-width': 2,
+                'line-opacity': 0.75,
+                'line-dasharray': [4, 3],
+              },
+            })
+
+            // Endpoint markers (from + to for all routes)
+            const endpointFeatures: any[] = []
+            tradeStore.routes.forEach(r => {
+              endpointFeatures.push(
+                { type: 'Feature', properties: { label: r.from, routeId: r.id }, geometry: { type: 'Point', coordinates: r.fromCoords } },
+                { type: 'Feature', properties: { label: r.to, routeId: r.id }, geometry: { type: 'Point', coordinates: r.toCoords } },
+              )
+            })
+
+            m.addSource('xwar-trade-route-endpoints', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: endpointFeatures },
+            })
+            m.addLayer({
+              id: 'xwar-trade-route-dots',
+              type: 'circle',
+              source: 'xwar-trade-route-endpoints',
+              paint: {
+                'circle-radius': 4,
+                'circle-color': '#00e5ff',
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 1.5,
+              },
+            })
+            m.addLayer({
+              id: 'xwar-trade-route-labels',
+              type: 'symbol',
+              source: 'xwar-trade-route-endpoints',
+              minzoom: 3,
+              layout: {
+                'text-field': ['get', 'label'],
+                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                'text-size': 11,
+                'text-offset': [0, 1.4],
+                'text-anchor': 'top',
+                'text-allow-overlap': false,
+              },
+              paint: {
+                'text-color': '#00e5ff',
+                'text-halo-color': 'rgba(0,0,0,0.85)',
+                'text-halo-width': 1.5,
+              },
+            })
+
+            // ── Click handler: show route popup ──
+            m.on('click', 'xwar-trade-routes-line', (e: any) => {
+              if (!e.features || e.features.length === 0) return
+              const props = e.features[0].properties
+              const routeId = props?.id
+              if (!routeId) return
+
+              const store = useTradeRouteStore.getState()
+              const route = store.routes.find(r => r.id === routeId)
+              if (!route) return
+
+              store.selectRoute(routeId)
+
+              const active = store.isRouteActive(route)
+              const statusIcon = active ? '✅' : '❌'
+              const statusText = active ? 'ACTIVE' : 'INACTIVE'
+              const statusColor = active ? '#22d38a' : '#ef4444'
+
+              // Build resource list HTML
+              const resources: string[] = []
+              if (route.oil > 0) resources.push(`🛢️ Oil: <b>${route.oil}</b>/hr`)
+              if (route.fish > 0) resources.push(`🐟 Fish: <b>${route.fish}</b>/hr`)
+              if (route.tradedGoods > 0) resources.push(`📦 Goods: <b>$${route.tradedGoods.toLocaleString()}</b>/hr`)
+
+              const html = `
+                <div style="font-family:'Orbitron',sans-serif;background:rgba(10,15,30,0.95);border:1px solid #00e5ff33;border-radius:8px;padding:12px 16px;min-width:220px;">
+                  <div style="font-size:13px;font-weight:700;color:#00e5ff;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">
+                    ⚓ ${route.name}
+                  </div>
+                  <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">
+                    ${route.from} → ${route.to}<br/>
+                    <span style="color:#64748b;">${route.lengthNm.toLocaleString()} nm</span>
+                  </div>
+                  <div style="font-size:11px;color:#e2e8f0;margin-bottom:8px;line-height:1.6;">
+                    ${resources.join('<br/>')}
+                  </div>
+                  <div style="font-size:12px;font-weight:700;color:${statusColor};">
+                    ${statusIcon} ${statusText}
+                  </div>
+                </div>
+              `
+
+              new maplibregl.Popup({ closeButton: true, closeOnClick: true, className: 'trade-route-popup' })
+                .setLngLat(e.lngLat)
+                .setHTML(html)
+                .addTo(m)
+            })
+
+            // Cursor change on hover
+            m.on('mouseenter', 'xwar-trade-routes-line', () => { m.getCanvas().style.cursor = 'pointer' })
+            m.on('mouseleave', 'xwar-trade-routes-line', () => { m.getCanvas().style.cursor = 'crosshair' })
+
+            console.log(`✅ Trade routes rendered: ${tradeStore.routes.length} routes`)
+          })
 
           setMapLoaded(true)
         })

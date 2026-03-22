@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
 import { useCompanyStore } from './companyStore'
+import { useSkillsStore } from './skillsStore'
+import { useSpecializationStore } from './specializationStore'
+import { useAllianceStore, getIdeologyBonus } from './allianceStore'
 import { useBattleStore } from './battleStore'
 import { useGovernmentStore } from './governmentStore'
 import { useMissionStore } from './missionStore'
@@ -526,10 +529,13 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     player.consumeBar('stamina', staminaAmount)
 
     // Scale by Prospection + Industrialist skill levels
-    const skills = player as any // skillsStore values if available
-    const prospection = skills.skills?.economy?.prospection || 1
-    const industrialist = skills.skills?.economy?.production || 1
-    const scaledAmount = Math.floor(staminaAmount * (1 + (prospection + industrialist) * 0.1))
+    const prospection = useSkillsStore.getState().economic.prospection
+    const industrialist = useSkillsStore.getState().economic.industrialist
+
+    const playerAlliance = useAllianceStore.getState().getPlayerAlliance()
+    const allianceBonus = playerAlliance?.activeIdeology === 'nexus' ? getIdeologyBonus(playerAlliance) : 1
+
+    const scaledAmount = Math.floor(staminaAmount * (1 + (prospection + industrialist) * 0.1) * allianceBonus)
 
     const contest = { ...c.contestState }
     contest.attackerProgress += scaledAmount
@@ -552,6 +558,7 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       },
     }))
 
+    useAllianceStore.getState().contributeIdeologyXP(1)
     return { success: true, message: result === 'attacker_won' ? '🎯 Stamina goal reached! Hack successful!' : `+${scaledAmount} hacking progress (${staminaAmount} stamina used).` }
   },
 
@@ -566,15 +573,20 @@ export const useCyberStore = create<CyberState>((set, get) => ({
     if (player.stamina < staminaAmount) return { success: false, message: 'Not enough stamina.' }
     player.consumeBar('stamina', staminaAmount)
 
+    const playerAlliance = useAllianceStore.getState().getPlayerAlliance()
+    const allianceBonus = playerAlliance?.activeIdeology === 'nexus' ? getIdeologyBonus(playerAlliance) : 1
+    const scaledStamina = Math.floor(staminaAmount * allianceBonus)
+    useAllianceStore.getState().contributeIdeologyXP(1)
+
     const contest = { ...c.contestState }
-    contest.defenderProgress += staminaAmount
+    contest.defenderProgress += scaledStamina
     const existing = contest.defenderContributors.find(x => x.playerId === playerId)
     if (existing) {
       contest.defenderContributors = contest.defenderContributors.map(x =>
-        x.playerId === playerId ? { ...x, contributed: x.contributed + staminaAmount } : x
+        x.playerId === playerId ? { ...x, contributed: x.contributed + scaledStamina } : x
       )
     } else {
-      contest.defenderContributors = [...contest.defenderContributors, { playerId, contributed: staminaAmount }]
+      contest.defenderContributors = [...contest.defenderContributors, { playerId, contributed: scaledStamina }]
     }
 
     const result = checkContestResult(contest)
@@ -587,7 +599,7 @@ export const useCyberStore = create<CyberState>((set, get) => ({
       },
     }))
 
-    return { success: true, message: result === 'defender_won' ? '🛡️ Hack blocked!' : `+${staminaAmount} defense progress.` }
+    return { success: true, message: result === 'defender_won' ? '🛡️ Hack blocked!' : `+${scaledStamina} defense progress.` }
   },
 
   resolveStaminaContests: () => {

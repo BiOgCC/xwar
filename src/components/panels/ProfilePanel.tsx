@@ -3,7 +3,9 @@ import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useArmyStore } from '../../stores/army'
 import { useWorldStore } from '../../stores/worldStore'
+import { useGovernmentStore } from '../../stores/governmentStore'
 import { getCatchUpXPMultiplier } from '../../engine/catchup'
+import { computePPBreakdown, aggregateContributionsSinceJoin } from '../../engine/elections'
 import { usePlayerStore as usePlayerStoreBase } from '../../stores/playerStore'
 import ProfileTab from './ProfileTab'
 import InventoryTab from './InventoryTab'
@@ -121,6 +123,30 @@ export default function ProfilePanel() {
                 pointerEvents: 'none',
               }} />
             </div>
+
+            {/* Political Power badge */}
+            {(() => {
+              const govStore = useGovernmentStore.getState()
+              const pp = govStore.getPoliticalPower(player.name)
+              // Compute breakdown for tooltip
+              const record = govStore.citizenContributions[player.name]
+              let breakdown = { damage: 0, production: 0, donations: 0, total: Math.max(1, 0) }
+              if (record && record.entries.length > 0) {
+                let joinedAt = 0
+                for (const gov of Object.values(govStore.governments)) {
+                  const citizen = gov.citizens.find(c => c.id === player.name)
+                  if (citizen) { joinedAt = citizen.joinedAt; break }
+                }
+                const contributions = aggregateContributionsSinceJoin(record.entries, joinedAt, Date.now())
+                breakdown = computePPBreakdown(contributions)
+              }
+              return (
+                <div className="ptab-hero__pp" title={`⚔️ Damage: ${breakdown.damage.toFixed(1)}\n🔧 Production: ${breakdown.production.toFixed(1)}\n💰 Donations: ${breakdown.donations.toFixed(1)}`}>
+                  <span className="ptab-hero__pp-num">{Math.round(pp)}</span>
+                  <span className="ptab-hero__pp-lbl">PP</span>
+                </div>
+              )
+            })()}
 
             {/* Level badge */}
             <div className="ptab-hero__badge">

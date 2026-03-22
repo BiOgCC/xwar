@@ -10,17 +10,21 @@ import GovResearchTab from './government/GovResearchTab'
 import GovLawsTab from './government/GovLawsTab'
 import '../../styles/gov.css'
 
+import {
+  Home, BarChart2, Wallet, Users, Swords, Building2, Microscope, Scroll, Landmark
+} from 'lucide-react'
+
 type GovTab = 'home' | 'finance' | 'account' | 'citizenship' | 'war' | 'defense' | 'research' | 'laws'
 
-const TABS: { id: GovTab; label: string; icon: string }[] = [
-  { id: 'home', label: 'HQ', icon: '🏠' },
-  { id: 'finance', label: 'FINANCE', icon: '📊' },
-  { id: 'account', label: 'ACCOUNT', icon: '💰' },
-  { id: 'citizenship', label: 'CITIZENS', icon: '👥' },
-  { id: 'war', label: 'WAR', icon: '⚔️' },
-  { id: 'defense', label: 'REGION', icon: '🏗️' },
-  { id: 'research', label: 'RESEARCH', icon: '🔬' },
-  { id: 'laws', label: 'GOV', icon: '📜' },
+const TABS: { id: GovTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'home', label: 'HQ', icon: <Home size={18} strokeWidth={2} /> },
+  { id: 'finance', label: 'FINANCE', icon: <BarChart2 size={18} strokeWidth={2} /> },
+  { id: 'account', label: 'ACCOUNT', icon: <Wallet size={18} strokeWidth={2} /> },
+  { id: 'citizenship', label: 'CITIZENS', icon: <Users size={18} strokeWidth={2} /> },
+  { id: 'war', label: 'WAR', icon: <Swords size={18} strokeWidth={2} /> },
+  { id: 'defense', label: 'REGION', icon: <Building2 size={18} strokeWidth={2} /> },
+  { id: 'research', label: 'RESEARCH', icon: <Microscope size={18} strokeWidth={2} /> },
+  { id: 'laws', label: 'GOV', icon: <Scroll size={18} strokeWidth={2} /> },
 ]
 
 export default function GovernmentPanel() {
@@ -54,7 +58,7 @@ export default function GovernmentPanel() {
       {/* Header Strip */}
       <div className="gov-header">
         <div className="gov-header__country">
-          <span className="gov-header__flag">🏛️</span>
+          <span className="gov-header__flag" style={{ display: 'flex', alignItems: 'center' }}><Landmark size={20} color="#22d38a" strokeWidth={2} /></span>
           <span className="gov-header__name">{country?.name || iso}</span>
         </div>
         <div className="gov-header__stats">

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useArmyStore } from '../../stores/army'
 import { useUIStore } from '../../stores/uiStore'
+import { Landmark, Flag, Swords, UserPlus, BarChart3, Crosshair, Check } from 'lucide-react'
 import AFCountryTab from './armedforces/AFCountryTab'
 import AFPmcTab from './armedforces/AFPmcTab'
 import AFOwnForcesTab from './armedforces/AFOwnForcesTab'
@@ -9,6 +10,8 @@ import WarRecruitTab from './WarRecruitTab'
 import MarketDivsTab from './market/MarketDivsTab'
 import CombatTab from './WarCombatTab'
 import '../../styles/war.css'
+
+const TAB_ICON_SIZE = 18
 
 type AFTab = 'country' | 'pmc' | 'own' | 'recruit' | 'market' | 'fight'
 type SourceFilter = 'own' | 'country' | 'pmc'
@@ -41,13 +44,13 @@ export default function ArmedForcesPanel() {
     setTimeout(() => setFeedback(''), 3000)
   }
 
-  const tabs: { id: AFTab; label: string; icon: string; isImg?: boolean; count?: number }[] = [
-    { id: 'country', label: 'COUNTRY AF', icon: '🏛️' },
-    { id: 'pmc', label: 'PMC', icon: '🏴' },
-    { id: 'own', label: 'MY FORCES', icon: '/assets/icons/divs.png', isImg: true, count: myDivisions.length },
-    { id: 'recruit', label: 'RECRUIT', icon: '/assets/icons/gear.png', isImg: true },
-    { id: 'market', label: 'DIV MKT', icon: '📊' },
-    { id: 'fight', label: 'FIGHT', icon: '⚔️' },
+  const tabs: { id: AFTab; label: string; icon: ReactNode; count?: number }[] = [
+    { id: 'country', label: 'COUNTRY\nAF', icon: <Landmark size={TAB_ICON_SIZE} strokeWidth={2} /> },
+    { id: 'pmc', label: 'PMC', icon: <Flag size={TAB_ICON_SIZE} strokeWidth={2} /> },
+    { id: 'own', label: 'MY\nFORCES', icon: <Swords size={TAB_ICON_SIZE} strokeWidth={2} />, count: myDivisions.length },
+    { id: 'recruit', label: 'RECRUIT', icon: <UserPlus size={TAB_ICON_SIZE} strokeWidth={2} /> },
+    { id: 'market', label: 'DIV MKT', icon: <BarChart3 size={TAB_ICON_SIZE} strokeWidth={2} /> },
+    { id: 'fight', label: 'FIGHT', icon: <Crosshair size={TAB_ICON_SIZE} strokeWidth={2} /> },
   ]
 
   // Show source selector for recruit and market tabs
@@ -63,10 +66,7 @@ export default function ArmedForcesPanel() {
             className={`war-tab ${tab === t.id ? 'war-tab--active' : ''}`}
             onClick={() => setTab(t.id)}
           >
-            {t.isImg
-              ? <img src={t.icon} alt={t.label} className="war-tab__img" />
-              : <span className="war-tab__icon">{t.icon}</span>
-            }
+            <span className="war-tab__icon" style={{ display: 'flex' }}>{t.icon}</span>
             <span className="war-tab__label">{t.label}</span>
             {t.count !== undefined && t.count > 0 && <span className="war-tab__badge">{t.count}</span>}
           </button>
@@ -82,8 +82,8 @@ export default function ArmedForcesPanel() {
         }}>
           <span style={{ fontSize: '8px', fontWeight: 700, color: '#64748b', letterSpacing: '0.1em', marginRight: '2px' }}>SOURCE:</span>
           {([
-            { id: 'country' as SourceFilter, label: '🏛️ COUNTRY', color: '#22d38a' },
-            { id: 'pmc' as SourceFilter, label: '🏴 PMC', color: '#a855f7' },
+            { id: 'country' as SourceFilter, label: 'COUNTRY', color: '#22d38a' },
+            { id: 'pmc' as SourceFilter, label: 'PMC', color: '#a855f7' },
           ]).map(s => {
             const active = sourceFilter === s.id
             return (
@@ -100,7 +100,7 @@ export default function ArmedForcesPanel() {
                   letterSpacing: '0.08em', fontFamily: 'var(--font-display)',
                 }}
               >
-                {active && <span style={{ marginRight: '3px' }}>✓</span>}
+                {active && <Check size={10} style={{ marginRight: '3px' }} />}
                 {s.label}
               </button>
             )

@@ -12,6 +12,10 @@ import {
   type CompanyType,
 } from '../../stores/companyStore'
 import CompanyIcon from '../companies/CompanyIcon'
+import {
+  Building2, Hammer, Handshake, Briefcase, Package, Pickaxe,
+  Scroll, Edit2, Trash2, Truck, Check, X, MapPin, Zap
+} from 'lucide-react'
 
 export default function CompaniesTab() {
   const player = usePlayerStore()
@@ -119,7 +123,7 @@ export default function CompaniesTab() {
           className={`ctab-switch__btn ${!showJobs ? 'ctab-switch__btn--active' : ''}`}
           onClick={() => setShowJobs(false)}
         >
-          <span>🏢</span>
+          <span style={{ display: 'flex', alignItems: 'center' }}><Building2 size={16} /></span>
           <span>My Business</span>
           <span className="ctab-switch__count">{itemsInBusinessStr}</span>
         </button>
@@ -127,7 +131,7 @@ export default function CompaniesTab() {
           className={`ctab-switch__btn ${showJobs ? 'ctab-switch__btn--active' : ''}`}
           onClick={() => setShowJobs(true)}
         >
-          <span>🔨</span>
+          <span style={{ display: 'flex', alignItems: 'center' }}><Hammer size={16} /></span>
           <span>Jobs Board</span>
           <span className="ctab-switch__count">{companyStore.jobs.length}</span>
         </button>
@@ -145,8 +149,8 @@ export default function CompaniesTab() {
               <span className="ctab-section-hdr__dot" style={{ background: '#3b82f6' }} />
               <span className="ctab-section-hdr__title">MY JOB</span>
             </div>
-            <span className="ctab-section-hdr__badge" style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}>
-              🔨 Work: {Math.round(player.work)}/{player.maxWork}
+            <span className="ctab-section-hdr__badge" style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Hammer size={10} color="#60a5fa" /> Work: {Math.round(player.work)}/{player.maxWork}
             </span>
           </div>
 
@@ -170,7 +174,7 @@ export default function CompaniesTab() {
                       <div className="ctab-job-card__meta">
                         <span style={{ color: template.color, fontSize: '9px', fontWeight: 700 }}>{template.label} LVL {activeJob.companyLevel}</span>
                         {activeJob.productionBonus > 0 && <span className="ctab-badge ctab-badge--green">+{activeJob.productionBonus}%</span>}
-                        <span className="ctab-badge" style={{ color: '#94a3b8' }}>📍{country?.code || activeJob.location}</span>
+                        <span className="ctab-badge" style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '2px' }}><MapPin size={8} /> {country?.code || activeJob.location}</span>
                       </div>
                     </div>
                     <div className="ctab-job-card__pay">
@@ -188,17 +192,18 @@ export default function CompaniesTab() {
                     className="ctab-job-card__work-btn"
                     onClick={handleWork}
                     disabled={Math.floor(player.work) < 10}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                   >
-                    🔨 Work Now
+                    <Hammer size={14} /> Work Now
                   </button>
                 </div>
               )
             })() : (
               <div className="ctab-empty-job">
-                <span className="ctab-empty-job__icon">💼</span>
+                <span className="ctab-empty-job__icon" style={{ display: 'flex', alignItems: 'center' }}><Briefcase size={24} color="#64748b" /></span>
                 <span className="ctab-empty-job__text">No active job</span>
-                <button className="ctab-empty-job__btn" onClick={() => setShowJobs(true)}>
-                  🤝 Browse Jobs
+                <button className="ctab-empty-job__btn" style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={() => setShowJobs(true)}>
+                  <Handshake size={14} /> Browse Jobs
                 </button>
               </div>
             )}
@@ -209,8 +214,8 @@ export default function CompaniesTab() {
             <div className="ctab-section-hdr__left">
               <span className="ctab-section-hdr__dot" style={{ background: '#22d38a' }} />
               <span className="ctab-section-hdr__title">MY COMPANIES</span>
-              <span className="ctab-section-hdr__badge" style={{ background: 'rgba(168,85,247,0.12)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.25)' }}>
-                💼 Ent: {Math.round(player.entrepreneurship)}/{player.maxEntrepreneurship}
+              <span className="ctab-section-hdr__badge" style={{ background: 'rgba(168,85,247,0.12)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.25)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Briefcase size={10} color="#c084fc" /> Ent: {Math.round(player.entrepreneurship)}/{player.maxEntrepreneurship}
               </span>
             </div>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -220,13 +225,13 @@ export default function CompaniesTab() {
                 onClick={async () => {
                   const result = await companyStore.collectAll()
                   if (result.collected > 0) {
-                    flash(`📦 Collected from ${result.collected} companies!`)
+                    flash(`✅ Collected from ${result.collected} companies!`)
                   } else {
                     flash('Nothing to collect')
                   }
                 }}
               >
-                📦 Collect All
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Package size={14} /> Collect All</div>
               </button>
               <button className="ctab-build-btn" onClick={() => setShowBuild(true)}>
                 + Build

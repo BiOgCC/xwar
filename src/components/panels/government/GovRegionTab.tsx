@@ -2,6 +2,7 @@ import { usePlayerStore } from '../../../stores/playerStore'
 import { useGovernmentStore } from '../../../stores/governmentStore'
 import { useWorldStore } from '../../../stores/worldStore'
 import { useUIStore } from '../../../stores/uiStore'
+import { Anchor, Plane, Shield, Landmark, Building2, Pickaxe } from 'lucide-react'
 
 /** REGION/DEFENSE tab — Infrastructure upgrades + strategic resources */
 export default function GovRegionTab() {
@@ -16,10 +17,10 @@ export default function GovRegionTab() {
   if (!myCountry) return <div className="gov-section"><p style={{ fontSize: '9px', color: '#3e4a5c' }}>Country not found.</p></div>
 
   const infra = [
-    { key: 'portLevel' as const, label: 'Port', icon: '⚓', desc: 'Naval Strikes. +10% naval dmg, +5% crit.', color: '#0ea5e9' },
-    { key: 'airportLevel' as const, label: 'Airport', icon: '✈️', desc: 'Air Strikes. Enables non-adjacent aerial ops.', color: '#a855f7' },
-    { key: 'bunkerLevel' as const, label: 'Bunker', icon: '🛡️', desc: 'Defensive fortification. Harder to conquer.', color: '#22d38a' },
-    { key: 'militaryBaseLevel' as const, label: 'Mil. Base', icon: '🏛️', desc: '+5-20% base damage to ALL units.', color: '#ef4444' },
+    { key: 'portLevel' as const, label: 'Port', Icon: Anchor, desc: 'Naval Strikes. +10% naval dmg, +5% crit.', color: '#0ea5e9' },
+    { key: 'airportLevel' as const, label: 'Airport', Icon: Plane, desc: 'Air Strikes. Enables non-adjacent aerial ops.', color: '#a855f7' },
+    { key: 'bunkerLevel' as const, label: 'Bunker', Icon: Shield, desc: 'Defensive fortification. Harder to conquer.', color: '#22d38a' },
+    { key: 'militaryBaseLevel' as const, label: 'Mil. Base', Icon: Landmark, desc: '+5-20% base damage to ALL units.', color: '#ef4444' },
   ]
   const upgradeCost = (level: number) => ({ money: level * 5000, oil: level * 500, materialX: level * 200 })
 
@@ -37,14 +38,16 @@ export default function GovRegionTab() {
   return (
     <>
       <div className="gov-section">
-        <div className="gov-section__title">🏗️ INFRASTRUCTURE</div>
+        <div className="gov-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Building2 size={16} color="#fb923c" /> INFRASTRUCTURE</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {infra.map(inf => {
             const level = myCountry[inf.key], cost = upgradeCost(level)
             return (
               <div key={inf.key} className="gov-infra" style={{ borderColor: `${inf.color}20` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: inf.color }}>{inf.icon} {inf.label}</span>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: inf.color, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <inf.Icon size={14} color={inf.color} /> {inf.label}
+                  </span>
                   <span style={{ fontSize: '14px', fontWeight: 900, color: inf.color, fontFamily: 'var(--font-display)' }}>Lv.{level}</span>
                 </div>
                 <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '4px' }}>{inf.desc}</div>
@@ -61,7 +64,7 @@ export default function GovRegionTab() {
       </div>
 
       <div className="gov-section">
-        <div className="gov-section__title gov-section__title--green">⛏️ STRATEGIC RESOURCES ({myCountry.conqueredResources?.length || 0})</div>
+        <div className="gov-section__title gov-section__title--green" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Pickaxe size={16} color="#f472b6" /> STRATEGIC RESOURCES ({myCountry.conqueredResources?.length || 0})</div>
         {(myCountry.conqueredResources?.length || 0) > 0
           ? <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
               {myCountry.conqueredResources.map((r, i) => (
