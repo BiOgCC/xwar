@@ -11,17 +11,25 @@ import SkillsTab from './SkillsTab'
 import CompaniesTab from './CompaniesTab'
 import AccountTab from './AccountTab'
 import SpriteAvatar from '../shared/SpriteAvatar'
+import {
+  User, Backpack, Star, Factory, Settings, Zap, Drumstick, BriefcaseBusiness, Hammer, Users
+} from 'lucide-react'
+
+const TAB_ICON_PROPS = { color: '#22d38a', size: 18, strokeWidth: 2 }
+
+function getTabIcon(id: string) {
+  switch (id) {
+    case 'profile': return <User {...TAB_ICON_PROPS} />
+    case 'inventory': return <Backpack {...TAB_ICON_PROPS} />
+    case 'skills': return <Star {...TAB_ICON_PROPS} />
+    case 'companies': return <Factory {...TAB_ICON_PROPS} />
+    case 'account': return <Settings {...TAB_ICON_PROPS} />
+    default: return <User {...TAB_ICON_PROPS} />
+  }
+}
 
 type SubTab = 'profile' | 'inventory' | 'skills' | 'companies' | 'account'
 
-/* ── Tab icon image paths ── */
-const ICON_IMGS: Record<SubTab, string> = {
-  profile: '/assets/icons/profile.png',
-  inventory: '/assets/icons/inventory.png',
-  skills: '/assets/icons/skills.png',
-  companies: '/assets/icons/companies.png',
-  account: '/assets/icons/account.png',
-}
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'profile', label: 'Profile' },
@@ -45,11 +53,13 @@ export default function ProfilePanel() {
   const player = usePlayerStore()
   const playerBase = usePlayerStoreBase()
 
+  const STAT_ICON_PROPS = { color: '#22d38a', size: 14, strokeWidth: 2 }
+
   const barData = [
-    { label: 'STAMINA',    value: player.stamina,          max: player.maxStamina,          color: '#ef4444', grad: 'linear-gradient(90deg, #dc2626, #ef4444, #f87171)', icon: '⚡' },
-    { label: 'HUNGER',     value: player.hunger,           max: player.maxHunger,           color: '#f59e0b', grad: 'linear-gradient(90deg, #d97706, #f59e0b, #fbbf24)', icon: '🍖' },
-    { label: 'ENTERPRISE', value: player.entrepreneurship, max: player.maxEntrepreneurship, color: '#a855f7', grad: 'linear-gradient(90deg, #9333ea, #a855f7, #c084fc)', icon: '💼' },
-    { label: 'WORK',       value: player.work,             max: player.maxWork,             color: '#3b82f6', grad: 'linear-gradient(90deg, #2563eb, #3b82f6, #60a5fa)', icon: '🔨' },
+    { label: 'STAMINA',    value: player.stamina,          max: player.maxStamina,          color: '#ef4444', grad: 'linear-gradient(90deg, #dc2626, #ef4444, #f87171)', icon: <Zap {...STAT_ICON_PROPS} /> },
+    { label: 'HUNGER',     value: player.hunger,           max: player.maxHunger,           color: '#f59e0b', grad: 'linear-gradient(90deg, #d97706, #f59e0b, #fbbf24)', icon: <Drumstick {...STAT_ICON_PROPS} /> },
+    { label: 'ENTERPRISE', value: player.entrepreneurship, max: player.maxEntrepreneurship, color: '#a855f7', grad: 'linear-gradient(90deg, #9333ea, #a855f7, #c084fc)', icon: <BriefcaseBusiness {...STAT_ICON_PROPS} /> },
+    { label: 'WORK',       value: player.work,             max: player.maxWork,             color: '#3b82f6', grad: 'linear-gradient(90deg, #2563eb, #3b82f6, #60a5fa)', icon: <Hammer {...STAT_ICON_PROPS} /> },
   ]
   return (
     <div className="profile-panel">
@@ -61,7 +71,7 @@ export default function ProfilePanel() {
             className={`profile-tabs__btn ${activeTab === tab.id ? 'profile-tabs__btn--active' : ''}`}
             onClick={() => setActiveTab(tab.id)}
           >
-            <span><img src={ICON_IMGS[tab.id]} alt={tab.label} style={{ width: 18, height: 18, objectFit: 'contain' }} /></span>
+            <span style={{ display: 'flex' }}>{getTabIcon(tab.id)}</span>
             <span>{tab.label}</span>
           </button>
         ))}
@@ -122,7 +132,7 @@ export default function ProfilePanel() {
             <div className="ptab-hero__info">
               <div className="ptab-hero__name">{player.name}</div>
               <div className="ptab-hero__pop" style={{ color: popColor }}>
-                <span>👥</span>
+                <span style={{ display: 'flex' }}><Users {...STAT_ICON_PROPS} color={popColor} /></span>
                 <span>Pop {popUsed}/{popMax}</span>
                 <span className="ptab-hero__pop-pct">{popPct}%</span>
               </div>
@@ -205,7 +215,7 @@ export default function ProfilePanel() {
             const popCap = useArmyStore.getState().getPlayerPopCap()
             return (
               <div className="profile-bar" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
-                <span style={{ fontSize: '11px', lineHeight: 1 }}>👥</span>
+                <span style={{ display: 'flex', lineHeight: 1 }}><Users {...STAT_ICON_PROPS} /></span>
                 <span style={{ fontSize: '8px', fontFamily: 'var(--font-display)', fontWeight: 600, color: '#94a3b8', letterSpacing: '0.08em' }}>POP</span>
                 <span style={{ marginLeft: 'auto', fontSize: '9px', fontFamily: 'var(--font-display)', fontWeight: 600, color: popCap.used >= popCap.max ? '#ef4444' : '#38bdf8' }}>{popCap.used}/{popCap.max}</span>
               </div>

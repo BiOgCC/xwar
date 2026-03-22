@@ -25,6 +25,38 @@ import SettingsPanel from '../panels/SettingsPanel'
 import HelpPanel from '../panels/HelpPanel'
 import HistoryPanel from '../panels/HistoryPanel'
 import DiplomacyPanel from '../panels/DiplomacyPanel'
+import {
+  User, Backpack, BarChart2, Factory, CircleDollarSign,
+  Gamepad2, Target, TrendingUp, Handshake, Landmark,
+  ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText
+} from 'lucide-react'
+
+const SIDEBAR_ICON_PROPS = { color: '#22d38a', size: 16, strokeWidth: 2 }
+
+function getSidebarIcon(id: string) {
+  switch (id) {
+    case 'profile': return <User {...SIDEBAR_ICON_PROPS} />
+    case 'inventory': return <Backpack {...SIDEBAR_ICON_PROPS} />
+    case 'market': return <BarChart2 {...SIDEBAR_ICON_PROPS} />
+    case 'companies': return <Factory {...SIDEBAR_ICON_PROPS} />
+    case 'resources': return <CircleDollarSign {...SIDEBAR_ICON_PROPS} />
+    case 'casino': return <Gamepad2 {...SIDEBAR_ICON_PROPS} />
+    case 'bounty': return <Target {...SIDEBAR_ICON_PROPS} />
+    case 'stocks': return <TrendingUp {...SIDEBAR_ICON_PROPS} />
+    case 'alliance': return <Handshake {...SIDEBAR_ICON_PROPS} />
+    case 'social_club': return <Landmark {...SIDEBAR_ICON_PROPS} />
+    case 'government': return <Landmark {...SIDEBAR_ICON_PROPS} />
+    case 'missions': return <ClipboardList {...SIDEBAR_ICON_PROPS} />
+    case 'combat': return <Swords {...SIDEBAR_ICON_PROPS} />
+    case 'cyberwarfare': return <Monitor {...SIDEBAR_ICON_PROPS} />
+    case 'armed_forces': return <Shield {...SIDEBAR_ICON_PROPS} />
+    case 'military': return <Medal {...SIDEBAR_ICON_PROPS} />
+    case 'prestige': return <Star {...SIDEBAR_ICON_PROPS} />
+    case 'diplomacy': return <Handshake {...SIDEBAR_ICON_PROPS} />
+    case 'history': return <ScrollText {...SIDEBAR_ICON_PROPS} />
+    default: return <User {...SIDEBAR_ICON_PROPS} />
+  }
+}
 
 
 /* ── 4 quick-access icons shown at the bottom of the panel ── */
@@ -161,7 +193,7 @@ export default function PanelRouter() {
         className={`hud-sidebar__item ${isActive ? 'hud-sidebar__item--active' : ''}`}
         onClick={() => handleItemClick(item)}
       >
-        <span className="hud-sidebar__icon">{item.icon}</span>
+        <span className="hud-sidebar__icon">{getSidebarIcon(item.id)}</span>
         <span className="hud-sidebar__label">
           {item.id === 'resources' && activePanel === 'resources'
             ? resourceViewMode === 'deposits' ? 'DEPOSITS'
@@ -370,7 +402,7 @@ export default function PanelRouter() {
               onClick={() => handleQuickNav(q.id)}
               title={q.label}
             >
-              <span className="hud-panel__quicknav-icon">{q.icon}</span>
+              <span className="hud-panel__quicknav-icon">{getSidebarIcon(q.id)}</span>
               <span className="hud-panel__quicknav-label">{q.label}</span>
             </button>
           ))}

@@ -1,11 +1,32 @@
 import { useState, useRef, useEffect } from 'react'
+import {
+  Hammer,
+  BriefcaseBusiness,
+  Settings,
+  Drumstick,
+  Swords,
+  Shield,
+  Monitor,
+  Medal,
+  CircleDollarSign,
+  BarChart2,
+  Backpack,
+  Package,
+  Croissant,
+  Fish,
+  Beef
+} from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useBattleStore } from '../../stores/battleStore'
 import { useCompanyStore, COMPANY_TEMPLATES } from '../../stores/companyStore'
 import { useMissionStore } from '../../stores/missionStore'
 import { useArmyStore } from '../../stores/army'
+import CompanyIcon from '../companies/CompanyIcon'
 import '../../styles/actionbar.css'
+
+const ICON_PROPS = { color: '#22d38a', size: 18, strokeWidth: 2 }
+const MENU_ICON_PROPS = { color: '#22d38a', size: 14, strokeWidth: 2 }
 
 export default function ActionBar() {
   const activePanel = useUIStore((s) => s.activePanel)
@@ -96,19 +117,19 @@ export default function ActionBar() {
           title="Work [1]"
         >
           <span className="action-bar__key">1</span>
-          <span className="action-bar__icon">🔨</span>
+          <span className="action-bar__icon"><Hammer {...ICON_PROPS} /></span>
           <span className="action-bar__label">WORK</span>
           <span className={`action-bar__status action-bar__status--${lvl(workPct)}`}>{workPct}%</span>
         </button>
         {openMenu === 'work' && (
           <div className="action-bar__menu">
-            <div className="action-bar__menu-title">🔨 WORK AT JOB</div>
+            <div className="action-bar__menu-title">WORK AT JOB</div>
             <button
               className="action-bar__menu-btn"
               onClick={handleWork}
               disabled={Math.floor(player.work) < 10}
             >
-              <span>🔨 Work Now</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Hammer {...MENU_ICON_PROPS} /> Work Now</span>
               <span className="action-bar__menu-cost">-10 Work</span>
             </button>
             {companyStore.activeJobId ? (
@@ -124,7 +145,7 @@ export default function ActionBar() {
                   }
                 }}
               >
-                <span>💼 Take a Job!</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><BriefcaseBusiness {...MENU_ICON_PROPS} /> Take a Job!</span>
                 <span className="action-bar__menu-cost">${[...companyStore.jobs].sort((a, b) => b.payPerPP - a.payPerPP)[0]?.payPerPP ?? 0}/PP</span>
               </button>
             ) : (
@@ -142,13 +163,13 @@ export default function ActionBar() {
           title="Hustle [2]"
         >
           <span className="action-bar__key">2</span>
-          <span className="action-bar__icon">💼</span>
+          <span className="action-bar__icon"><BriefcaseBusiness {...ICON_PROPS} /></span>
           <span className="action-bar__label">HUSTLE</span>
           <span className={`action-bar__status action-bar__status--${lvl(hustlePct)}`}>{hustlePct}%</span>
         </button>
         {openMenu === 'hustle' && (
           <div className="action-bar__menu">
-            <div className="action-bar__menu-title">💼 ENTERPRISE</div>
+            <div className="action-bar__menu-title">ENTERPRISE</div>
             {companies.length === 0 && <div className="action-bar__menu-hint">No companies owned</div>}
             {companies.map(c => {
               const t = COMPANY_TEMPLATES[c.type]
@@ -160,7 +181,7 @@ export default function ActionBar() {
                   onClick={() => handleEnterprise(c.id)}
                   disabled={Math.floor(player.entrepreneurship) < 10 || c.productionProgress >= c.productionMax}
                 >
-                  <span>{t.icon} {t.label} <span style={{ opacity: 0.5 }}>L{c.level}</span></span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><CompanyIcon type={c.type} color="#22d38a" size={14} /> {t.label} <span style={{ opacity: 0.5 }}>L{c.level}</span></span>
                   <span className="action-bar__menu-cost">{pct}%</span>
                 </button>
               )
@@ -177,7 +198,7 @@ export default function ActionBar() {
           title="Produce [3]"
         >
           <span className="action-bar__key">3</span>
-          <span className="action-bar__icon">⚙️</span>
+          <span className="action-bar__icon"><Settings {...ICON_PROPS} /></span>
           <span className="action-bar__label">COLLECT</span>
           <span className={`action-bar__status action-bar__status--${hasProducible ? 'good' : 'neutral'}`}>
             {companies.filter(c => c.productionProgress > 0).length}/{companies.length}
@@ -185,13 +206,13 @@ export default function ActionBar() {
         </button>
         {openMenu === 'produce' && (
           <div className="action-bar__menu">
-            <div className="action-bar__menu-title">⚙️ PRODUCE & COLLECT</div>
+            <div className="action-bar__menu-title">PRODUCE & COLLECT</div>
             <button
               className="action-bar__menu-btn action-bar__menu-btn--accent"
               onClick={handleCollectAll}
               disabled={!hasProducible}
             >
-              <span>📦 Collect All</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Package {...MENU_ICON_PROPS} /> Collect All</span>
               <span className="action-bar__menu-cost">{companies.filter(c => c.productionProgress > 0).length} ready</span>
             </button>
             <div className="action-bar__menu-sep" />
@@ -205,7 +226,7 @@ export default function ActionBar() {
                   onClick={() => handleProduce(c.id)}
                   disabled={c.productionProgress <= 0}
                 >
-                  <span>{t.icon} {t.label} <span style={{ opacity: 0.5 }}>L{c.level}</span></span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><CompanyIcon type={c.type} color="#22d38a" size={14} /> {t.label} <span style={{ opacity: 0.5 }}>L{c.level}</span></span>
                   <span className={`action-bar__menu-cost${pct >= 100 ? ' action-bar__menu-cost--full' : ''}`}>{pct}%</span>
                 </button>
               )
@@ -224,19 +245,19 @@ export default function ActionBar() {
           title="Eat [4]"
         >
           <span className="action-bar__key">4</span>
-          <span className="action-bar__icon">🍖</span>
+          <span className="action-bar__icon"><Drumstick {...ICON_PROPS} /></span>
           <span className="action-bar__label">EAT</span>
           <span className={`action-bar__status action-bar__status--${totalFood > 10 ? 'good' : totalFood > 0 ? 'warn' : 'danger'}`}>{totalFood}</span>
         </button>
         {openMenu === 'eat' && (
           <div className="action-bar__menu">
-            <div className="action-bar__menu-title">🍖 EAT FOOD → STAMINA</div>
+            <div className="action-bar__menu-title">EAT FOOD → STAMINA</div>
             <button
               className="action-bar__menu-btn"
               onClick={() => handleEat('bread')}
               disabled={player.bread <= 0 || Math.floor(player.hunger) <= 0}
             >
-              <span>🍞 Bread <span style={{ opacity: 0.5 }}>+15% STA</span></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Croissant {...MENU_ICON_PROPS} /> Bread <span style={{ opacity: 0.5 }}>+15% STA</span></span>
               <span className="action-bar__menu-cost">×{player.bread}</span>
             </button>
             <button
@@ -244,7 +265,7 @@ export default function ActionBar() {
               onClick={() => handleEat('sushi')}
               disabled={player.sushi <= 0 || Math.floor(player.hunger) <= 0}
             >
-              <span>🍣 Sushi <span style={{ opacity: 0.5 }}>+30% STA</span></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Fish {...MENU_ICON_PROPS} /> Sushi <span style={{ opacity: 0.5 }}>+30% STA</span></span>
               <span className="action-bar__menu-cost">×{player.sushi}</span>
             </button>
             <button
@@ -252,7 +273,7 @@ export default function ActionBar() {
               onClick={() => handleEat('wagyu')}
               disabled={player.wagyu <= 0 || Math.floor(player.hunger) <= 0}
             >
-              <span>🥩 Wagyu <span style={{ opacity: 0.5 }}>+45% STA</span></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Beef {...MENU_ICON_PROPS} /> Wagyu <span style={{ opacity: 0.5 }}>+45% STA</span></span>
               <span className="action-bar__menu-cost">×{player.wagyu}</span>
             </button>
             {Math.floor(player.hunger) <= 0 && <div className="action-bar__menu-hint">Hunger bar empty — wait for regen</div>}
@@ -270,7 +291,7 @@ export default function ActionBar() {
           title="Fight [5]"
         >
           <span className="action-bar__key">5</span>
-          <span className="action-bar__icon">⚔️</span>
+          <span className="action-bar__icon"><Swords {...ICON_PROPS} /></span>
           <span className="action-bar__label">FIGHT</span>
           <span className={`action-bar__status action-bar__status--${activeBattleCount > 0 ? 'danger' : stamina > 50 ? 'good' : stamina > 20 ? 'warn' : 'danger'}`}>
             {activeBattleCount > 0 ? `${activeBattleCount} WAR${activeBattleCount !== 1 ? 'S' : ''}` : `${stamina} STA`}
@@ -285,7 +306,7 @@ export default function ActionBar() {
           onClick={() => { useUIStore.getState().setAfDefaultTab('own'); useUIStore.getState().setActivePanel('armed_forces') }}
           title="My Forces"
         >
-          <span className="action-bar__icon">🛡️</span>
+          <span className="action-bar__icon"><Shield {...ICON_PROPS} /></span>
           <span className="action-bar__label">MY FORCES</span>
           <span className={`action-bar__status action-bar__status--${Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length > 0 ? 'good' : 'neutral'}`}>
             {Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length} DIV
@@ -301,7 +322,7 @@ export default function ActionBar() {
           title="Cyber [6]"
         >
           <span className="action-bar__key">6</span>
-          <span className="action-bar__icon">🖥️</span>
+          <span className="action-bar__icon"><Monitor {...ICON_PROPS} /></span>
           <span className="action-bar__label">CYBER</span>
           <span className="action-bar__status action-bar__status--neutral">OPS</span>
         </button>
@@ -315,7 +336,7 @@ export default function ActionBar() {
           title="Military [7]"
         >
           <span className="action-bar__key">7</span>
-          <span className="action-bar__icon">🎖️</span>
+          <span className="action-bar__icon"><Medal {...ICON_PROPS} /></span>
           <span className="action-bar__label">MILITARY</span>
           <span className="action-bar__status action-bar__status--neutral">OPS</span>
         </button>
@@ -330,7 +351,7 @@ export default function ActionBar() {
           onClick={() => { useUIStore.getState().setBountyDefaultTab('npc_hunts'); useUIStore.getState().setActivePanel('bounty') }}
           title="Bounty"
         >
-          <span className="action-bar__icon">💰</span>
+          <span className="action-bar__icon"><CircleDollarSign {...ICON_PROPS} /></span>
           <span className="action-bar__label">BOUNTY</span>
           <span className="action-bar__status action-bar__status--neutral">HUNT</span>
         </button>
@@ -344,7 +365,7 @@ export default function ActionBar() {
           title="Market [8]"
         >
           <span className="action-bar__key">8</span>
-          <span className="action-bar__icon">📊</span>
+          <span className="action-bar__icon"><BarChart2 {...ICON_PROPS} /></span>
           <span className="action-bar__label">MARKET</span>
           <span className={`action-bar__status action-bar__status--${player.money > 10000 ? 'good' : player.money > 1000 ? 'warn' : 'danger'}`}>
             ${(player.money / 1000).toFixed(0)}K
@@ -359,7 +380,7 @@ export default function ActionBar() {
           onClick={() => { useUIStore.getState().setProfileDefaultTab('inventory'); useUIStore.getState().setActivePanel('profile') }}
           title="Inventory"
         >
-          <span className="action-bar__icon">🎒</span>
+          <span className="action-bar__icon"><Backpack {...ICON_PROPS} /></span>
           <span className="action-bar__label">INVENTORY</span>
           <span className="action-bar__status action-bar__status--neutral">ITEMS</span>
         </button>

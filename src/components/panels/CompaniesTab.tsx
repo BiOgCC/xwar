@@ -11,6 +11,7 @@ import {
   getLocationBonus,
   type CompanyType,
 } from '../../stores/companyStore'
+import CompanyIcon from '../companies/CompanyIcon'
 
 export default function CompaniesTab() {
   const player = usePlayerStore()
@@ -162,7 +163,7 @@ export default function CompaniesTab() {
                 <div className="ctab-job-card" style={{ borderColor: `${template.color}40` }}>
                   <div className="ctab-job-card__header" style={{ background: `linear-gradient(135deg, ${template.color}15, transparent)` }}>
                     <div className="ctab-job-card__icon" style={{ color: template.color, background: `${template.color}20`, border: `1px solid ${template.color}40` }}>
-                      {template.icon}
+                      <CompanyIcon type={activeJob.companyType} />
                     </div>
                     <div className="ctab-job-card__info">
                       <span className="ctab-job-card__employer">{activeJob.employerName}</span>
@@ -253,7 +254,7 @@ export default function CompaniesTab() {
                   {/* Card Header */}
                   <div className="ctab-company-card__header" style={{ background: `linear-gradient(135deg, ${template.color}12, transparent 80%)` }}>
                     <div className="ctab-company-card__icon" style={{ color: template.color, background: `${template.color}18`, border: `1px solid ${template.color}35` }}>
-                      {template.icon}
+                      <CompanyIcon type={company.type} />
                     </div>
 
                     <div className="ctab-company-card__title-block">
@@ -475,7 +476,7 @@ export default function CompaniesTab() {
                 <div key={job.id} className="ctab-job-card" style={{ borderColor: isActiveJob ? `${template.color}60` : `${template.color}25` }}>
                   <div className="ctab-job-card__header" style={{ background: `linear-gradient(135deg, ${template.color}${isActiveJob ? '20' : '10'}, transparent)` }}>
                     <div className="ctab-job-card__icon" style={{ color: template.color, background: `${template.color}15`, border: `1px solid ${template.color}30` }}>
-                      {template.icon}
+                      <CompanyIcon type={job.companyType} />
                     </div>
                     <div className="ctab-job-card__info">
                       <span className="ctab-job-card__employer">{job.employerName}</span>
@@ -526,7 +527,7 @@ export default function CompaniesTab() {
                 return (
                   <div key={type} className="ctab-build-item" style={{ borderColor: `${t.color}30` }}>
                     <div className="ctab-build-item__icon" style={{ color: t.color, background: `${t.color}18`, border: `1px solid ${t.color}30` }}>
-                      {t.icon}
+                      <CompanyIcon type={type} />
                     </div>
                     <div className="ctab-build-item__info">
                       <span className="ctab-build-item__name">{t.label}</span>
