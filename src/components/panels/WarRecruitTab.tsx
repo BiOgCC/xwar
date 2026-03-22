@@ -3,7 +3,11 @@ import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/army'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { usePlayerStore } from '../../stores/playerStore'
 
-export default function WarRecruitTab() {
+interface WarRecruitTabProps {
+  sourceFilter?: 'own' | 'country' | 'pmc'
+}
+
+export default function WarRecruitTab({ sourceFilter = 'own' }: WarRecruitTabProps) {
   const player = usePlayerStore()
   const govStore = useGovernmentStore()
   const [feedback, setFeedback] = useState('')
@@ -77,7 +81,7 @@ export default function WarRecruitTab() {
       <button
         onClick={() => setShowContractModal(true)}
         style={{
-          width: '20%', margin: '0 auto 8px', padding: '10px 16px',
+          width: 'auto', margin: '0 auto 8px', padding: '10px 20px',
           background: 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(37,99,235,0.15))',
           border: '1px solid rgba(59,130,246,0.4)', borderRadius: '6px',
           color: '#3b82f6', fontWeight: 700, fontSize: '13px',

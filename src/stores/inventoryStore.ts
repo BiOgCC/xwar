@@ -309,11 +309,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       
       const { item, bonusMoney, bonusScrap } = res
       
-      usePlayerStore.setState(s => ({
-        lootBoxes: s.lootBoxes - 1,
-        money: s.money + (bonusMoney || 0),
-        scrap: s.scrap + (bonusScrap || 0)
-      }))
+      usePlayerStore.getState().removeResource('lootBoxes', 1, 'lootbox_open')
+      if (bonusMoney) usePlayerStore.getState().earnMoney(bonusMoney)
+      if (bonusScrap) usePlayerStore.getState().addResource('scrap', bonusScrap, 'lootbox_open')
 
       if (item) {
         set(s => ({ items: [...s.items, item] }))
@@ -322,7 +320,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       // 15% chance to drop a Badge of Honor
       const badgeDrop = Math.random() < 0.15 ? 1 : 0
       if (badgeDrop > 0) {
-        usePlayerStore.setState(s => ({ badgesOfHonor: s.badgesOfHonor + badgeDrop }))
+        usePlayerStore.getState().addResource('badgesOfHonor', badgeDrop, 'lootbox_drop')
       }
 
       // Track case opens
@@ -356,13 +354,13 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       if (!res.success) return null
 
       const { item } = res
-      usePlayerStore.setState(s => ({ militaryBoxes: s.militaryBoxes - 1 }))
+      usePlayerStore.getState().removeResource('militaryBoxes', 1, 'milbox_open')
       if (item) set(s => ({ items: [...s.items, item] }))
 
       // 25% chance to drop a Badge of Honor
       const badgeDrop = Math.random() < 0.25 ? 1 : 0
       if (badgeDrop > 0) {
-        usePlayerStore.setState(s => ({ badgesOfHonor: s.badgesOfHonor + badgeDrop }))
+        usePlayerStore.getState().addResource('badgesOfHonor', badgeDrop, 'milbox_drop')
       }
 
       set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
@@ -390,7 +388,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
           totalItemsDismantled: s.totalItemsDismantled + 1,
         }))
         
-        usePlayerStore.setState(s => ({ scrap: s.scrap + (res.scrapGained || 0) }))
+        usePlayerStore.getState().addResource('scrap', res.scrapGained || 0, 'item_dismantle')
 
         // War Cards
         const inv = get()
@@ -418,7 +416,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         set((s) => ({
           items: s.items.filter((i) => i.id !== itemId),
         }))
-        usePlayerStore.setState(s => ({ money: s.money + (res.moneyGained || 0) }))
+        usePlayerStore.getState().earnMoney(res.moneyGained || 0)
         return { success: true, moneyGained: res.moneyGained, message: 'Item sold' }
       }
       return { success: false, moneyGained: 0, message: res.error || 'Failed to sell' }

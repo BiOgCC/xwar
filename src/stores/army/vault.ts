@@ -249,7 +249,7 @@ export function createVaultSlice(
         // In multiplayer, this would need server coordination
         army.members.forEach(m => {
           if (m.playerId === player.name) {
-            usePlayerStore.setState(s => ({ oil: (s.oil || 0) + perMember }))
+            usePlayerStore.getState().addResource('oil', perMember, 'vault_distribution')
           }
           // Other players would receive their share when they log in (server-side)
         })

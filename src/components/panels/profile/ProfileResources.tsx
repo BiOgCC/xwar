@@ -12,9 +12,9 @@ export default function ProfileResources() {
         <div className="ptab-section__title">🍽️ CONSUME FOOD</div>
         <div className="ptab-food-grid">
           {[
-            { key: 'bread', emoji: <img src="/assets/food/bread.png" alt="Bread" style={{ width: '16px', height: '16px' }} />, label: 'Bread',  count: player.bread,  gain: '+10 STA', type: 'bread'  as const },
-            { key: 'sushi', emoji: <img src="/assets/food/sushi.png" alt="Sushi" style={{ width: '16px', height: '16px' }} />, label: 'Sushi',  count: player.sushi,  gain: '+20 STA', type: 'sushi'  as const },
-            { key: 'wagyu', emoji: <img src="/assets/food/wagyu.png" alt="Wagyu" style={{ width: '16px', height: '16px' }} />, label: 'Wagyu',  count: player.wagyu,  gain: '+30 STA', type: 'wagyu'  as const },
+            { key: 'bread', emoji: <img src="/assets/food/bread.png" alt="Bread" style={{ width: '16px', height: '16px' }} />, label: 'Bread',  count: player.bread,  gain: '+15% STA', type: 'bread'  as const },
+            { key: 'sushi', emoji: <img src="/assets/food/sushi.png" alt="Sushi" style={{ width: '16px', height: '16px' }} />, label: 'Sushi',  count: player.sushi,  gain: '+30% STA', type: 'sushi'  as const },
+            { key: 'wagyu', emoji: <img src="/assets/food/wagyu.png" alt="Wagyu" style={{ width: '16px', height: '16px' }} />, label: 'Wagyu',  count: player.wagyu,  gain: '+45% STA', type: 'wagyu'  as const },
           ].map(f => (
             <button
               key={f.key}

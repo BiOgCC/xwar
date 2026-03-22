@@ -4,6 +4,7 @@ import { usePlayerStore } from '../../stores/playerStore'
 import { useBattleStore } from '../../stores/battleStore'
 import { useCompanyStore, COMPANY_TEMPLATES } from '../../stores/companyStore'
 import { useMissionStore } from '../../stores/missionStore'
+import { useArmyStore } from '../../stores/army'
 import '../../styles/actionbar.css'
 
 export default function ActionBar() {
@@ -65,8 +66,8 @@ export default function ActionBar() {
   const handleEat = (type: 'bread' | 'sushi' | 'wagyu') => {
     const ok = player.consumeFood(type)
     if (ok) {
-      const gain = type === 'wagyu' ? 30 : type === 'sushi' ? 20 : 10
-      flash(`+${gain} Stamina`, '#f59e0b')
+      const pct = type === 'wagyu' ? 45 : type === 'sushi' ? 30 : 15
+      flash(`+${pct}% Stamina`, '#f59e0b')
       useMissionStore.getState().trackEat()
     } else {
       flash('Cannot eat', '#ef4444')
@@ -110,7 +111,25 @@ export default function ActionBar() {
               <span>🔨 Work Now</span>
               <span className="action-bar__menu-cost">-10 Work</span>
             </button>
-            <div className="action-bar__menu-hint">{companyStore.activeJobId ? 'Active job' : 'No job — browse Jobs Board'}</div>
+            {companyStore.activeJobId ? (
+              <div className="action-bar__menu-hint">Active job</div>
+            ) : companyStore.jobs.length > 0 ? (
+              <button
+                className="action-bar__menu-btn action-bar__menu-btn--accent"
+                onClick={() => {
+                  const best = [...companyStore.jobs].sort((a, b) => b.payPerPP - a.payPerPP)[0]
+                  if (best) {
+                    companyStore.setActiveJob(best.id)
+                    flash(`💼 Took job at ${best.employerName} — $${best.payPerPP}/PP`, '#22d38a')
+                  }
+                }}
+              >
+                <span>💼 Take a Job!</span>
+                <span className="action-bar__menu-cost">${[...companyStore.jobs].sort((a, b) => b.payPerPP - a.payPerPP)[0]?.payPerPP ?? 0}/PP</span>
+              </button>
+            ) : (
+              <div className="action-bar__menu-hint">No jobs available</div>
+            )}
           </div>
         )}
       </div>
@@ -217,7 +236,7 @@ export default function ActionBar() {
               onClick={() => handleEat('bread')}
               disabled={player.bread <= 0 || Math.floor(player.hunger) <= 0}
             >
-              <span>🍞 Bread <span style={{ opacity: 0.5 }}>+10 STA</span></span>
+              <span>🍞 Bread <span style={{ opacity: 0.5 }}>+15% STA</span></span>
               <span className="action-bar__menu-cost">×{player.bread}</span>
             </button>
             <button
@@ -225,7 +244,7 @@ export default function ActionBar() {
               onClick={() => handleEat('sushi')}
               disabled={player.sushi <= 0 || Math.floor(player.hunger) <= 0}
             >
-              <span>🍣 Sushi <span style={{ opacity: 0.5 }}>+20 STA</span></span>
+              <span>🍣 Sushi <span style={{ opacity: 0.5 }}>+30% STA</span></span>
               <span className="action-bar__menu-cost">×{player.sushi}</span>
             </button>
             <button
@@ -233,7 +252,7 @@ export default function ActionBar() {
               onClick={() => handleEat('wagyu')}
               disabled={player.wagyu <= 0 || Math.floor(player.hunger) <= 0}
             >
-              <span>🥩 Wagyu <span style={{ opacity: 0.5 }}>+30 STA</span></span>
+              <span>🥩 Wagyu <span style={{ opacity: 0.5 }}>+45% STA</span></span>
               <span className="action-bar__menu-cost">×{player.wagyu}</span>
             </button>
             {Math.floor(player.hunger) <= 0 && <div className="action-bar__menu-hint">Hunger bar empty — wait for regen</div>}
@@ -243,11 +262,26 @@ export default function ActionBar() {
 
       <div className="action-bar__flow">›</div>
 
+      {/* ═══ RECRUIT ═══ */}
+      <div className="action-bar__slot">
+        <button
+          className={`action-bar__btn${activePanel === 'combat' && useUIStore.getState().warDefaultTab === 'recruit' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => { useUIStore.getState().setWarDefaultTab('recruit'); useUIStore.getState().setActivePanel('combat') }}
+          title="Recruit"
+        >
+          <span className="action-bar__icon">🛡️</span>
+          <span className="action-bar__label">RECRUIT</span>
+          <span className={`action-bar__status action-bar__status--${Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length > 0 ? 'good' : 'neutral'}`}>
+            {Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length} DIV
+          </span>
+        </button>
+      </div>
+
       {/* ═══ FIGHT ═══ */}
       <div className="action-bar__slot">
         <button
           className={`action-bar__btn${activePanel === 'combat' ? ' action-bar__btn--active' : ''}${player.stamina >= 10 && activeBattleCount > 0 ? ' action-bar__btn--ready' : ''}`}
-          onClick={() => togglePanel('combat')}
+          onClick={() => { useUIStore.getState().setWarDefaultTab('battles'); togglePanel('combat') }}
           title="Fight [5]"
         >
           <span className="action-bar__key">5</span>
@@ -283,7 +317,7 @@ export default function ActionBar() {
           <span className="action-bar__key">7</span>
           <span className="action-bar__icon">🎖️</span>
           <span className="action-bar__label">MILITARY</span>
-          <span className="action-bar__status action-bar__status--neutral">ARMY</span>
+          <span className="action-bar__status action-bar__status--neutral">OPS</span>
         </button>
       </div>
 
@@ -305,17 +339,31 @@ export default function ActionBar() {
         </button>
       </div>
 
-      {/* ═══ MISSIONS ═══ */}
+
+
+      {/* ═══ COMPANIES ═══ */}
       <div className="action-bar__slot">
         <button
-          className={`action-bar__btn${activePanel === 'missions' ? ' action-bar__btn--active' : ''}`}
-          onClick={() => togglePanel('missions')}
-          title="Missions [9]"
+          className={`action-bar__btn${activePanel === 'profile' && useUIStore.getState().profileDefaultTab === 'companies' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => { useUIStore.getState().setProfileDefaultTab('companies'); useUIStore.getState().setActivePanel('profile') }}
+          title="Companies"
         >
-          <span className="action-bar__key">9</span>
-          <span className="action-bar__icon">📋</span>
-          <span className="action-bar__label">MISSIONS</span>
-          <span className="action-bar__status action-bar__status--neutral">OPS</span>
+          <span className="action-bar__icon">🏢</span>
+          <span className="action-bar__label">COMPANIES</span>
+          <span className="action-bar__status action-bar__status--neutral">MANAGE</span>
+        </button>
+      </div>
+
+      {/* ═══ INVENTORY ═══ */}
+      <div className="action-bar__slot">
+        <button
+          className={`action-bar__btn${activePanel === 'profile' && useUIStore.getState().profileDefaultTab === 'inventory' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => { useUIStore.getState().setProfileDefaultTab('inventory'); useUIStore.getState().setActivePanel('profile') }}
+          title="Inventory"
+        >
+          <span className="action-bar__icon">🎒</span>
+          <span className="action-bar__label">INVENTORY</span>
+          <span className="action-bar__status action-bar__status--neutral">ITEMS</span>
         </button>
       </div>
     </div>

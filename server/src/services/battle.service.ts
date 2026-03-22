@@ -180,7 +180,7 @@ interface DivisionSnapshot {
 
 // Rate limiter for player actions
 const playerCooldowns = new Map<string, number>()
-const PLAYER_ACTION_COOLDOWN_MS = 500
+const PLAYER_ACTION_COOLDOWN_MS = 150
 
 // ═══════════════════════════════════════════════
 //  BATTLE SERVICE CLASS

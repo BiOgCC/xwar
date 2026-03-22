@@ -85,18 +85,18 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       }))
       // Update player bar maximums based on skills
       if (skill === 'stamina') {
-        usePlayerStore.setState({ maxStamina: 100 + (currentLevel + 1) * 20 })
+        usePlayerStore.setState({ maxStamina: 120 + (currentLevel + 1) * 24 })
       } else if (skill === 'hunger') {
-        usePlayerStore.setState({ maxHunger: 5 + (currentLevel + 1) })
+        usePlayerStore.setState({ maxHunger: 6 + (currentLevel + 1) })
       }
     } else {
       set((s) => ({
         economic: { ...s.economic, [skill]: currentLevel + 1 },
       }))
       if (skill === 'work') {
-        usePlayerStore.setState({ maxWork: 100 + (currentLevel + 1) * 20 })
+        usePlayerStore.setState({ maxWork: 120 + (currentLevel + 1) * 24 })
       } else if (skill === 'entrepreneurship') {
-        usePlayerStore.setState({ maxEntrepreneurship: 100 + (currentLevel + 1) * 15 })
+        usePlayerStore.setState({ maxEntrepreneurship: 120 + (currentLevel + 1) * 18 })
       }
     }
     return true
@@ -116,20 +116,21 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
 
     // Spend gold
-    usePlayerStore.setState(s => ({ money: s.money - RESPEC_COST, skillPoints: s.skillPoints + refund }))
+    usePlayerStore.getState().spendMoney(RESPEC_COST)
+    usePlayerStore.setState(s => ({ skillPoints: s.skillPoints + refund }))
 
     if (tree === 'military') {
       // Reset military skills and revert bar maxes
       set({
         military: { attack: 0, critRate: 0, critDamage: 0, precision: 0, stamina: 0, hunger: 0, armor: 0, dodge: 0 },
       })
-      usePlayerStore.setState({ maxStamina: 100, maxHunger: 5 })
+      usePlayerStore.setState({ maxStamina: 120, maxHunger: 6 })
     } else {
       // Reset economic skills and revert bar maxes
       set({
         economic: { work: 0, entrepreneurship: 0, production: 0, prospection: 0, industrialist: 0 },
       })
-      usePlayerStore.setState({ maxWork: 100, maxEntrepreneurship: 100 })
+      usePlayerStore.setState({ maxWork: 120, maxEntrepreneurship: 120 })
     }
     return true
   },

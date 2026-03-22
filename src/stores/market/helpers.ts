@@ -38,11 +38,15 @@ export function getPlayerResource(def: ResourceDef): number {
 /**
  * Type-safe setter for player resources by dynamic key.
  * Adjusts the value by `delta` (positive = add, negative = subtract).
+ * Routes through tracked addResource/removeResource for economy ledger.
  */
 export function adjustPlayerResource(def: ResourceDef, delta: number): void {
-  usePlayerStore.setState(s => ({
-    [def.playerKey]: Math.max(0, ((s as unknown as Record<string, number>)[def.playerKey] ?? 0) + delta),
-  } as any))
+  const player = usePlayerStore.getState()
+  if (delta > 0) {
+    player.addResource(def.playerKey, delta, 'market_trade')
+  } else if (delta < 0) {
+    player.removeResource(def.playerKey, Math.abs(delta), 'market_trade')
+  }
 }
 
 /** Round to 2 decimal places to avoid floating point artifacts */

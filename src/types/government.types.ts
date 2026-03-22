@@ -44,7 +44,22 @@ export interface Law {
 export interface Candidate {
   id: string
   name: string
-  votes: number
+  votes: number            // legacy flat count (kept for compat)
+  weightedVotes: number    // total PP-weighted vote tally
+  voterIds: string[]       // unique voter IDs (for coalition threshold)
+}
+
+/** A single timestamped contribution entry for PP rolling window. */
+export interface ContributionEntry {
+  type: 'damage' | 'production' | 'donation'
+  amount: number
+  timestamp: number
+}
+
+/** Per-citizen rolling contribution log for Political Power computation. */
+export interface CitizenContributions {
+  citizenId: string
+  entries: ContributionEntry[]
 }
 
 export type IdeologyType = 'militarist' | 'capitalist' | 'technocrat' | 'expansionist'

@@ -8,6 +8,7 @@ import CountryFlag from '../shared/CountryFlag'
 import ProfilePanel from '../panels/ProfilePanel'
 import GovernmentPanel from '../panels/GovernmentPanel'
 import MilitaryPanel from '../panels/MilitaryPanel'
+import ArmedForcesPanel from '../panels/ArmedForcesPanel'
 import CyberwarfarePanel from '../panels/CyberwarfarePanel'
 import MissionsPanel from '../panels/MissionsPanel'
 import PrestigePanel from '../panels/PrestigePanel'
@@ -20,14 +21,18 @@ import BountyPanel from '../panels/BountyPanel'
 import StockMarketPanel from '../panels/StockMarketPanel'
 import AlliancePanel from '../panels/AlliancePanel'
 import SocialClubPanel from '../panels/SocialClubPanel'
+import SettingsPanel from '../panels/SettingsPanel'
+import HelpPanel from '../panels/HelpPanel'
+import HistoryPanel from '../panels/HistoryPanel'
+import DiplomacyPanel from '../panels/DiplomacyPanel'
 
-/* ── 5 quick-access icons shown at the bottom of the panel ── */
+
+/* ── 4 quick-access icons shown at the bottom of the panel ── */
 const QUICK_NAV = [
-  { id: 'military',    icon: '🎖️', label: 'MIL' },
-  { id: 'combat',      icon: '⚔️', label: 'WAR' },
-  { id: 'cyberwarfare', icon: '🖥️', label: 'CYBER' },
-  { id: 'market',      icon: '📊', label: 'MKT' },
-  { id: 'profile',     icon: '👤', label: 'PROF' },
+  { id: 'inventory',    icon: '🎒', label: 'INV' },
+  { id: 'armed_forces', icon: '🪖', label: 'AF' },
+  { id: 'market',       icon: '📊', label: 'MKT' },
+  { id: 'companies',    icon: '🏭', label: 'COMP' },
 ]
 
 /* ── Sidebar panel sub-component (reused for top & bottom drag groups) ── */
@@ -144,6 +149,8 @@ export default function PanelRouter() {
   /* ── quick-nav click ── */
   const handleQuickNav = useCallback((id: string) => {
     if (id === 'profile') { setProfileDefaultTab(null); setActivePanel('profile') }
+    else if (id === 'inventory') { setProfileDefaultTab('inventory'); setActivePanel('profile') }
+    else if (id === 'companies') { setProfileDefaultTab('companies'); setActivePanel('profile') }
     else { setActivePanel(id as any) }
   }, [setProfileDefaultTab, setActivePanel])
 
@@ -171,7 +178,17 @@ export default function PanelRouter() {
 
   return (
     <div className="hud-panel-wrap">
-      {/* ── Collapsible sidebar drawer (attached to panel left edge) ── */}
+      {/* ── Toggle tab (left edge of nav drawer) ── */}
+      <button
+        className="hud-panel-nav__toggle"
+        onClick={() => setNavOpen(o => !o)}
+        title={navOpen ? 'Close navigator' : 'Open navigator'}
+      >
+        <span className="hud-panel-nav__toggle-icon">{navOpen ? '◀' : '▶'}</span>
+        <span className="hud-panel-nav__toggle-label">NAV</span>
+      </button>
+
+      {/* ── Collapsible sidebar drawer ── */}
       <nav className={`hud-panel-nav ${navOpen ? 'hud-panel-nav--open' : ''} ${dragState ? 'hud-sidebar--dragging' : ''}`}>
         <div className="hud-panel-nav__header">
           <span className="hud-panel-nav__header-icon">☰</span>
@@ -198,16 +215,6 @@ export default function PanelRouter() {
         </div>
       </nav>
 
-      {/* ── Toggle tab (always visible on left edge of panel) ── */}
-      <button
-        className="hud-panel-nav__toggle"
-        onClick={() => setNavOpen(o => !o)}
-        title={navOpen ? 'Close navigator' : 'Open navigator'}
-      >
-        <span className="hud-panel-nav__toggle-icon">{navOpen ? '▶' : '◀'}</span>
-        <span className="hud-panel-nav__toggle-label">NAV</span>
-      </button>
-
       {/* ── Main panel ── */}
       <aside className={`hud-panel ${panelFullscreen ? 'hud-panel--fullscreen' : ''}`}>
         <div className="hud-panel__header">
@@ -218,6 +225,17 @@ export default function PanelRouter() {
               ? 'DAILY OPS — COMPLETE MISSIONS FOR COSMETIC REWARDS'
               : activePanel === 'social_club'
               ? 'SOCIAL CLUB'
+              : activePanel === 'settings'
+              ? '⚙️ SETTINGS'
+              : activePanel === 'help'
+              ? '❓ HELP & GUIDE'
+              : activePanel === 'history'
+              ? '📜 WAR HISTORY'
+              : activePanel === 'diplomacy'
+              ? '🤝 DIPLOMACY'
+              : activePanel === 'armed_forces'
+              ? '🪖 ARMED FORCES'
+
               : activePanel === 'foreign_country' && selectedForeignCountry
               ? <><CountryFlag iso={selectedForeignCountry} size={18} style={{ marginRight: '6px' }} />{getCountryName(selectedForeignCountry).toUpperCase()}</>
               : activePanel?.toUpperCase()}
@@ -237,6 +255,7 @@ export default function PanelRouter() {
         <div className="hud-panel__body">
           {activePanel === 'profile' && <ProfilePanel />}
           {activePanel === 'military' && <MilitaryPanel />}
+          {activePanel === 'armed_forces' && <ArmedForcesPanel />}
           {activePanel === 'combat' && <WarPanel panelFullscreen={panelFullscreen} setPanelFullscreen={setPanelFullscreen} />}
           {activePanel === 'foreign_country' && <ForeignCountryPanel />}
           {activePanel === 'market' && <MarketPanel />}
@@ -335,6 +354,11 @@ export default function PanelRouter() {
           {activePanel === 'missions' && <MissionsPanel />}
           {activePanel === 'prestige' && <PrestigePanel />}
           {activePanel === 'social_club' && <SocialClubPanel />}
+          {activePanel === 'settings' && <SettingsPanel />}
+          {activePanel === 'help' && <HelpPanel />}
+          {activePanel === 'history' && <HistoryPanel />}
+          {activePanel === 'diplomacy' && <DiplomacyPanel />}
+
         </div>
 
         {/* ── Quick-access icons at the bottom ── */}
@@ -342,7 +366,7 @@ export default function PanelRouter() {
           {QUICK_NAV.map(q => (
             <button
               key={q.id}
-              className={`hud-panel__quicknav-btn ${activePanel === q.id ? 'hud-panel__quicknav-btn--active' : ''}`}
+              className={`hud-panel__quicknav-btn ${(q.id === 'inventory' || q.id === 'companies') ? (activePanel === 'profile' ? 'hud-panel__quicknav-btn--active' : '') : (activePanel === q.id ? 'hud-panel__quicknav-btn--active' : '')}`}
               onClick={() => handleQuickNav(q.id)}
               title={q.label}
             >
@@ -358,7 +382,7 @@ export default function PanelRouter() {
             onClick={goBack}
             title="Go back"
           >
-            ◀ BACK
+            ◀
           </button>
         )}
       </aside>

@@ -40,17 +40,13 @@ export function createQueriesSlice(
     getPlayerPopCap: () => {
       const player = usePlayerStore.getState()
       const companies = useCompanyStore.getState().companies
-      const farmTypes = ['wheat_farm', 'fish_farm', 'steak_farm']
-      const farmLevelSum = companies
-        .filter(c => farmTypes.includes(c.type))
-        .reduce((sum, c) => sum + c.level, 0)
-      const foodShopTypes = ['bakery', 'sushi_bar', 'wagyu_grill']
-      const foodShopPop = companies
-        .filter(c => foodShopTypes.includes(c.type))
-        .reduce((sum, c) => sum + c.level * 2, 0)
-      const maxPop = 6 + farmLevelSum + foodShopPop
+      const numberOfCompanies = companies.length
+      const sumOfLevels = companies.reduce((sum, c) => sum + c.level, 0)
+      // population × numberOfCompanies × sumOfCompanyLevels
+      // For a single player, population = 1
+      const maxPop = 1 * numberOfCompanies * sumOfLevels
       const used = get().getPlayerPopUsed()
-      return { used, max: maxPop }
+      return { used, max: Math.max(1, maxPop) }
     },
 
     getPlayerPopUsed: () => {
@@ -74,19 +70,14 @@ export function createQueriesSlice(
           return sum + (template?.popCost || 1)
         }, 0)
       const companies = useCompanyStore.getState().companies
-      const farmTypes = ['wheat_farm', 'fish_farm', 'steak_farm']
-      const farmLevelSum = companies
-        .filter(c => farmTypes.includes(c.type))
-        .reduce((sum, c) => sum + c.level, 0)
-      const foodShopTypes = ['bakery', 'sushi_bar', 'wagyu_grill']
-      const foodShopPop = companies
-        .filter(c => foodShopTypes.includes(c.type))
-        .reduce((sum, c) => sum + c.level * 2, 0)
+      const numberOfCompanies = companies.length
+      const sumOfLevels = companies.reduce((sum, c) => sum + c.level, 0)
       const govStore = useGovernmentStore.getState()
       const gov = govStore.governments[countryCode]
-      const citizenCount = gov?.citizens?.length || 1
-      const maxPop = (citizenCount * 6) + farmLevelSum + foodShopPop
-      return { used, max: maxPop }
+      const population = gov?.citizens?.length || 1
+      // population × numberOfCompanies × sumOfCompanyLevels
+      const maxPop = population * numberOfCompanies * sumOfLevels
+      return { used, max: Math.max(1, maxPop) }
     },
 
     // ====== ARMY AV & AURA ======

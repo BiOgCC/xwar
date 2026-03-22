@@ -125,12 +125,12 @@ export default function GovResearchTab() {
   const research = researchStore.getResearch(iso)
   const fund = useWorldStore.getState().getCountry(iso)?.fund
 
-  const handleUnlock = (tree: 'military' | 'economy', nodeId: string) => {
+  const handleUnlock = async (tree: 'military' | 'economy', nodeId: string) => {
     if (!isPresident) {
       ui.addFloatingText('PRESIDENT ONLY', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
       return
     }
-    const result = researchStore.unlockNode(iso, tree, nodeId)
+    const result = await researchStore.unlockNode(iso, tree, nodeId)
     const color = tree === 'military' ? '#ef4444' : '#22d38a'
     ui.addFloatingText(result.message, window.innerWidth / 2, window.innerHeight / 2, result.success ? color : '#ef4444')
   }

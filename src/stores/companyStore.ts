@@ -49,30 +49,25 @@ const triggerEconomicModifiers = (): string => {
       const cashAmount = 100 + Math.floor(Math.random() * 67)
       
       // Grant items based on deposit type
-      switch (deposit.type) {
-        case 'wheat': usePlayerStore.setState(s => ({ wheat: s.wheat + itemAmount })); break
-        case 'fish': usePlayerStore.setState(s => ({ fish: s.fish + itemAmount })); break
-        case 'steak': usePlayerStore.setState(s => ({ steak: s.steak + itemAmount })); break
-        case 'oil': usePlayerStore.setState(s => ({ oil: s.oil + itemAmount })); break
-        case 'materialx': usePlayerStore.setState(s => ({ materialX: s.materialX + itemAmount })); break
-      }
-      usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + 3 }))
+      const resKey = deposit.type === 'materialx' ? 'materialX' : deposit.type
+      usePlayerStore.getState().addResource(resKey, itemAmount, 'deposit_discovery')
+      usePlayerStore.getState().addResource('bitcoin', 2, 'deposit_discovery')
       usePlayerStore.getState().earnMoney(cashAmount)
       
       // Discover it in worldStore
       worldStore.discoverDeposit(deposit.id, player.name)
       
       const country = worldStore.getCountry(deposit.countryCode)
-      msg += ` 🎉 Discovered ${deposit.type} deposit in ${country?.name || deposit.countryCode}! +${itemAmount} ${deposit.type}, +3₿, +$${cashAmount}`
+      msg += ` 🎉 Discovered ${deposit.type} deposit in ${country?.name || deposit.countryCode}! +${itemAmount} ${deposit.type}, +2₿, +$${cashAmount}`
     } else {
       // Fallback: small resource bonus
       const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
       const resource = resources[Math.floor(Math.random() * resources.length)]
       const bonusAmount = 50
       if (resource === 'Oil') {
-        usePlayerStore.setState((s) => ({ oil: s.oil + bonusAmount }))
+        usePlayerStore.getState().addResource('oil', bonusAmount, 'prospection_fallback')
       } else {
-        usePlayerStore.setState((s) => ({ materialX: s.materialX + Math.floor(bonusAmount / 5) }))
+        usePlayerStore.getState().addResource('materialX', Math.floor(bonusAmount / 5), 'prospection_fallback')
       }
       msg += ` 🎉 Found ${resource}!`
     }
@@ -82,7 +77,7 @@ const triggerEconomicModifiers = (): string => {
   const indLevel = skills.economic.industrialist || 0
   const redBulletChance = Math.min(0.50, indLevel * 0.05)
   if (redBulletChance > 0 && Math.random() < redBulletChance) {
-    usePlayerStore.setState((s) => ({ redBullets: s.redBullets + 1 }))
+    usePlayerStore.getState().addResource('redBullets', 1, 'industrialist_find')
     msg += ` 🔴 Industrialist found a RED BULLET!`
   }
   
@@ -114,7 +109,7 @@ export const COMPANY_TEMPLATES: Record<CompanyType, CompanyTemplate> = {
   },
   bakery: {
     type: 'bakery', label: 'Bakery', icon: '🍞', color: '#fcd34d',
-    desc: 'Converts 10 Wheat into 1 Bread.', produces: 'Bread',
+    desc: 'Converts 1 Wheat into 1 Bread.', produces: 'Bread',
     buildCost: { money: 5000, bitcoin: 1 }, baseProductionMax: 100,
   },
   sushi_bar: {
@@ -512,7 +507,8 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const res = await api.post<{ success: boolean, deposit: any }>('/company/prospect', { companyId }).catch(() => null)
     if (!res || !res.success) {
       // Refund on failure
-      usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + 1, stamina: s.stamina + 10 }))
+      usePlayerStore.getState().addResource('bitcoin', 1, 'prospect_refund')
+      usePlayerStore.setState(s => ({ stamina: s.stamina + 10 }))
       return null
     }
 
@@ -527,18 +523,16 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     if (found) {
       const resources: Array<'Oil' | 'MaterialX'> = ['Oil', 'MaterialX']
       const resource = resources[Math.floor(Math.random() * resources.length)]
-      const btcReward = 3 + 8  // Base 3 + 8 bonus per successful scan
+      const btcReward = 5  // Reduced from 3+8=11 to 5
 
-      usePlayerStore.setState((s) => ({
-        bitcoin: s.bitcoin + btcReward,
-      }))
+      usePlayerStore.getState().addResource('bitcoin', btcReward, 'prospection_reward')
       usePlayerStore.getState().earnMoney(5000)
 
       const bonusAmount = 100 * company.level
       if (resource === 'Oil') {
-        usePlayerStore.setState((s) => ({ oil: s.oil + bonusAmount }))
+        usePlayerStore.getState().addResource('oil', bonusAmount, 'prospection_reward')
       } else {
-        usePlayerStore.setState((s) => ({ materialX: s.materialX + Math.floor(bonusAmount / 10) }))
+        usePlayerStore.getState().addResource('materialX', Math.floor(bonusAmount / 10), 'prospection_reward')
       }
 
       const deposit: DepositEvent = {
@@ -583,6 +577,15 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         }
       })
     }))
+
+    // Auto-collect for level 5+ companies — eco players can forget about limits
+    const state = get()
+    for (const company of state.companies) {
+      if (company.type === 'prospection_center') continue
+      if (company.level < 5) continue
+      if (company.productionProgress <= 0) continue
+      get().produceCompany(company.id)
+    }
   },
 
   nukeCountry: (targetCountryCode: string) => {
@@ -608,37 +611,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
   },
 
   processMaintenanceTick: () => {
-    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
-    const now = Date.now()
-
-    // Maintenance cost per company level per day
-    const COST_PER_LEVEL = [0, 500, 1500, 5000, 15000, 40000, 80000, 150000] // Lv0-7
-
-    set(s => {
-      let totalDeducted = 0
-      const player = usePlayerStore.getState()
-
-      const updatedCompanies = s.companies.map(company => {
-        // Skip already disabled companies
-        if (company.disabledUntil && now < company.disabledUntil) return company
-
-        const cost = COST_PER_LEVEL[Math.min(company.level, 7)] || 500
-
-        if (player.money >= cost) {
-          player.spendMoney(cost)
-          totalDeducted += cost
-          return company
-        } else {
-          // Can't pay — apply 48h grace then idle
-          return {
-            ...company,
-            disabledUntil: now + 2 * TWENTY_FOUR_HOURS_MS,
-          }
-        }
-      })
-
-      return { companies: updatedCompanies }
-    })
+    // Maintenance removed — no-op
   },
 
   collectAll: async () => {

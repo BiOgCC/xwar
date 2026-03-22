@@ -3,6 +3,7 @@ import { useWorldStore } from './worldStore'
 import { useArmyStore, DIVISION_TEMPLATES } from './army'
 import type { Division } from './army/types'
 import { usePlayerStore } from './playerStore'
+import { getCountryName } from '../data/countries'
 
 // ====== REGION MODEL ======
 
@@ -24,6 +25,12 @@ export interface Region {
   isBlockaded: boolean
   debris: { scrap: number; materialX: number; militaryBoxes: number }
   scavengeCount: number  // How many times this debris pile has been scavenged (max 4)
+  // Revolt system
+  revoltPressure: number       // 0–100, Homeland Bonus scales linearly
+  revoltCooldownUntil: number  // timestamp: no auto-trigger until after this
+  noDefenderTicks: number      // consecutive ticks with 0 occupier divisions — auto-lib at 300
+  revoltBattleId: string | null // active revolt battle ID
+  revoltTriggerType: 'manual' | 'auto' | null // how the current revolt was triggered
 }
 
 // ====== NAMED REGION DEFINITIONS ======
@@ -306,6 +313,11 @@ function computeRegions(): Region[] {
       isBlockaded: false,
       debris: { scrap: 0, materialX: 0, militaryBoxes: 0 },
       scavengeCount: 0,
+      revoltPressure: 0,
+      revoltCooldownUntil: 0,
+      noDefenderTicks: 0,
+      revoltBattleId: null,
+      revoltTriggerType: null,
     }
   })
 }
@@ -367,6 +379,11 @@ export interface RegionState {
   stopNavalPatrol: (regionId: string) => { success: boolean; message: string }
   getPlayerPatrol: (regionId: string) => NavalPatrolMission | undefined
   processNavalPatrolIncome: () => void
+  // Revolt system
+  processRevoltTick: () => void
+  triggerRevolt: (regionId: string, triggerType: 'manual' | 'auto') => { success: boolean; message: string }
+  liberateRegion: (regionId: string, mockMessage?: string) => void
+  getHomelandBonus: (regionId: string) => { atkMult: number; dodgeMult: number; playerDmgMult: number }
 }
 
 const ISO3_TO_ISO2: Record<string, string> = {
@@ -724,6 +741,8 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           attackedBy: null, assignedArmyId: null, position: [cLng, cLat], adjacent: [], defense,
           isOcean: false, fishingBonus: 0, oilYield: 0, tradeRouteValue: 0, isBlockaded: false,
           debris: { scrap: 0, materialX: 0, militaryBoxes: 0 }, scavengeCount: 0,
+          revoltPressure: 0, revoltCooldownUntil: 0, noDefenderTicks: 0,
+          revoltBattleId: null, revoltTriggerType: null,
         })
       })
 
@@ -855,6 +874,10 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           materialX: s.materialX + matXGained,
           militaryBoxes: s.militaryBoxes + boxGained,
         }))
+        // 10% chance to drop 1 Badge of Honor on scavenge completion
+        if (Math.random() < 0.10) {
+          player.addResource('badgesOfHonor', 1, 'scavenge_bonus')
+        }
       }
 
       // Return divisions to ready
@@ -993,5 +1016,222 @@ export const useRegionStore = create<RegionState>((set, get) => ({
       if (fundOil > 0) worldStore.addToFund(cc, 'oil', fundOil)
       if (fundMoney > 0) worldStore.addToFund(cc, 'money', fundMoney)
     })
+  },
+
+  // ====== REVOLT SYSTEM ======
+
+  getHomelandBonus: (regionId) => {
+    const region = get().regions.find(r => r.id === regionId)
+    if (!region) return { atkMult: 1, dodgeMult: 1, playerDmgMult: 1 }
+    const pct = Math.min(100, Math.max(0, region.revoltPressure)) / 100
+    return {
+      atkMult: 1 + pct * 0.20,        // 0% → +0%, 100% → +20%
+      dodgeMult: 1 + pct * 0.15,       // 0% → +0%, 100% → +15%
+      playerDmgMult: 1 + pct * 0.30,   // 0% → +0%, 100% → +30%
+    }
+  },
+
+  processRevoltTick: () => {
+    const state = get()
+    const now = Date.now()
+    const updated = state.regions.map(r => {
+      // Only occupied (non-ocean) regions accumulate pressure
+      if (r.controlledBy === r.countryCode || r.isOcean) return r
+
+      // Skip if an active revolt battle is already running
+      if (r.revoltBattleId) {
+        // Track no-defender ticks for auto-liberation
+        try {
+          const { useBattleStore } = require('./battleStore')
+          const battle = useBattleStore.getState().battles[r.revoltBattleId]
+          if (battle && battle.status === 'active') {
+            const defenderDivs = battle.defender.engagedDivisionIds.length
+            const newNoDefTicks = defenderDivs === 0 ? r.noDefenderTicks + 1 : 0
+            if (newNoDefTicks >= 300) {
+              // Auto-liberation! Occupier had 0 defenders for 300 straight ticks
+              setTimeout(() => {
+                const regionStore = useRegionStore.getState()
+                const countryName = getCountryName(r.countryCode)
+                const occupierName = getCountryName(r.controlledBy)
+                regionStore.liberateRegion(
+                  r.id,
+                  `🔥🏳️ ${r.name} has been LIBERATED! ${occupierName} fled like cowards — 300 ticks with ZERO defenders! ${countryName} reclaims their homeland!`
+                )
+              }, 0)
+              return r
+            }
+            return { ...r, noDefenderTicks: newNoDefTicks }
+          }
+          // Battle ended — check result
+          if (battle && battle.status !== 'active') {
+            if (battle.status === 'attacker_won') {
+              // Revolt succeeded! Liberation handled by battleStore on victory
+              return { ...r, revoltBattleId: null, revoltTriggerType: null, revoltPressure: 0, noDefenderTicks: 0 }
+            } else {
+              // Revolt failed — reduce pressure based on trigger type
+              const retention = r.revoltTriggerType === 'manual' ? 0.50 : 0.67
+              return {
+                ...r,
+                revoltBattleId: null,
+                revoltTriggerType: null,
+                revoltPressure: Math.floor(r.revoltPressure * retention),
+                noDefenderTicks: 0,
+              }
+            }
+          }
+        } catch (e) { /* battleStore not yet loaded */ }
+        return r
+      }
+
+      // Cooldown check
+      if (r.revoltCooldownUntil > now) return r
+
+      // Calculate solidarity: how many OTHER regions of the same country are also occupied?
+      const siblingOccupied = state.regions.filter(
+        sr => sr.id !== r.id && sr.countryCode === r.countryCode && sr.controlledBy !== sr.countryCode && !sr.isOcean
+      ).length
+
+      // Pressure increment: base 2 + 0.5 per sibling occupied region
+      const pressureRate = 2 + siblingOccupied * 0.5
+      const newPressure = Math.min(100, r.revoltPressure + pressureRate)
+
+      // Auto-trigger check at 100%: 2.5% chance per tick (every 30s)
+      if (newPressure >= 100) {
+        if (Math.random() < 0.025) {
+          // Auto-trigger revolt!
+          setTimeout(() => {
+            useRegionStore.getState().triggerRevolt(r.id, 'auto')
+          }, 0)
+        }
+      }
+
+      return { ...r, revoltPressure: newPressure }
+    })
+
+    set({ regions: updated })
+  },
+
+  triggerRevolt: (regionId, triggerType) => {
+    const state = get()
+    const region = state.regions.find(r => r.id === regionId)
+    if (!region) return { success: false, message: 'Region not found.' }
+    if (region.controlledBy === region.countryCode) return { success: false, message: 'Region is not occupied.' }
+    if (region.revoltBattleId) return { success: false, message: 'A revolt battle is already active in this region.' }
+
+    // Launch a revolt battle: the native country attacks the occupier
+    try {
+      const { useBattleStore } = require('./battleStore')
+      const battleStore = useBattleStore.getState()
+
+      // The native country is the attacker (trying to reclaim)
+      // The current controller (occupier) is the defender
+      battleStore.launchAttack(
+        region.countryCode,     // attacker = native country
+        region.controlledBy,    // defender = occupier
+        region.name,
+        'revolt' as any,
+        region.id
+      )
+
+      // Find the battle ID
+      const battles = useBattleStore.getState().battles
+      const battleId = Object.keys(battles).find(id =>
+        battles[id].regionName === region.name &&
+        battles[id].status === 'active' &&
+        battles[id].type === 'revolt'
+      ) || null
+
+      // Update region state
+      set(s => ({
+        regions: s.regions.map(r => r.id === regionId ? {
+          ...r,
+          revoltBattleId: battleId,
+          revoltTriggerType: triggerType,
+          noDefenderTicks: 0,
+        } : r)
+      }))
+
+      // Push news event
+      try {
+        const { useNewsStore } = require('./newsStore')
+        const countryName = getCountryName(region.countryCode)
+        const occupierName = getCountryName(region.controlledBy)
+        const icon = triggerType === 'manual' ? '⚔️🔥' : '🔥💥'
+        useNewsStore.getState().pushEvent(
+          'war',
+          `${icon} REVOLT in ${region.name}! ${countryName} rises against ${occupierName} occupation! (${Math.round(region.revoltPressure)}% Homeland Bonus)`
+        )
+      } catch (e) { /* newsStore not loaded */ }
+
+      return { success: true, message: `🔥 Revolt triggered in ${region.name}! Battle has begun!` }
+    } catch (e) {
+      return { success: false, message: 'Failed to launch revolt battle.' }
+    }
+  },
+
+  liberateRegion: (regionId, mockMessage) => {
+    const state = get()
+    const region = state.regions.find(r => r.id === regionId)
+    if (!region) return
+
+    const prevController = region.controlledBy
+
+    // Flip region control back to native country
+    set(s => ({
+      regions: s.regions.map(r => r.id === regionId ? {
+        ...r,
+        controlledBy: r.countryCode,
+        revoltPressure: 0,
+        revoltBattleId: null,
+        revoltTriggerType: null,
+        noDefenderTicks: 0,
+        revoltCooldownUntil: 0,
+        captureProgress: 0,
+        attackedBy: null,
+        assignedArmyId: null,
+      } : r)
+    }))
+
+    // End any active occupation
+    try {
+      const { useOccupationStore } = require('./occupationStore')
+      const occStore = useOccupationStore.getState()
+      const occupation = Object.values(occStore.occupations).find(
+        (o: any) => o.occupiedRegion === region.name && o.occupierId === prevController
+      )
+      if (occupation) {
+        occStore.endOccupation((occupation as any).id)
+      }
+    } catch (e) { /* occupationStore not loaded */ }
+
+    // End the revolt battle if still active
+    if (region.revoltBattleId) {
+      try {
+        const { useBattleStore } = require('./battleStore')
+        const battle = useBattleStore.getState().battles[region.revoltBattleId]
+        if (battle && battle.status === 'active') {
+          useBattleStore.setState((s: any) => ({
+            battles: {
+              ...s.battles,
+              [region.revoltBattleId!]: { ...battle, status: 'attacker_won' }
+            }
+          }))
+        }
+      } catch (e) { /* */ }
+    }
+
+    // Push news announcement
+    try {
+      const { useNewsStore } = require('./newsStore')
+      if (mockMessage) {
+        useNewsStore.getState().pushEvent('war', mockMessage)
+      } else {
+        const countryName = getCountryName(region.countryCode)
+        useNewsStore.getState().pushEvent(
+          'war',
+          `🔥🏆 ${region.name} has been LIBERATED! ${countryName} reclaims their homeland!`
+        )
+      }
+    } catch (e) { /* newsStore not loaded */ }
   },
 }))

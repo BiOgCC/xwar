@@ -25,8 +25,11 @@ const DEFAULT_BOTTOM: SidebarItem[] = [
   { id: 'missions', icon: '📋', label: 'MISSIONS' },
   { id: 'combat', icon: '⚔️', label: 'COMBAT' },
   { id: 'cyberwarfare', icon: '🖥️', label: 'CYBER' },
-  { id: 'military', icon: '🎖️', label: 'MILITARY' },
+  { id: 'armed_forces', icon: '🪖', label: 'ARMED FORCES' },
+  { id: 'military', icon: '🎖️', label: 'DUELS' },
   { id: 'prestige', icon: '⭐', label: 'PRESTIGE' },
+  { id: 'diplomacy', icon: '🕊️', label: 'DIPLOMACY' },
+  { id: 'history', icon: '📜', label: 'HISTORY' },
 ]
 
 export type PanelId = 'top' | 'bottom'

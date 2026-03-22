@@ -87,7 +87,7 @@ async function cyberPost(path: string, body?: any) {
 interface FullOpDef {
   id: string; name: string; icon: string; pillar: string
   description: string; effectDescription: string
-  cost: { scrap: number; materialX: number; oil: number; bitcoin: number }
+  cost: { scrap: number; materialX: number; oil: number; bitcoin: number; badgesOfHonor: number }
   targetType: 'country' | 'region' | 'player' | 'battle'
   successChance: number; detectionChance: number
   durationMs: number; playersRequired: number
@@ -97,54 +97,54 @@ const FULL_OPS: FullOpDef[] = [
   // ESPIONAGE
   { id: 'resource_intel', pillar: 'espionage', name: 'Resource Intelligence Report', icon: '📊',
     description: 'Gather economic intelligence: national funds, citizen-owned food & ammo supplies.',
-    cost: { scrap: 1000, materialX: 5000, oil: 2000, bitcoin: 1 }, targetType: 'country',
+    cost: { scrap: 1000, materialX: 5000, oil: 2000, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 80, detectionChance: 30, durationMs: 0, playersRequired: 5,
     effectDescription: 'Report: National fund breakdown, citizen food & bullet reserves.' },
   { id: 'military_intel', pillar: 'espionage', name: 'Military Intelligence Report', icon: '🎖️',
     description: 'Scan ports, airports, bunkers, military bases and report citizen-owned jets, warships & tanks.',
-    cost: { scrap: 1500, materialX: 7000, oil: 2500, bitcoin: 1 }, targetType: 'country',
+    cost: { scrap: 1500, materialX: 7000, oil: 2500, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 80, detectionChance: 30, durationMs: 0, playersRequired: 5,
     effectDescription: 'Report: Infrastructure levels, jets, warships, tanks owned by citizens.' },
   { id: 'infrastructure_scan', pillar: 'espionage', name: 'Regional Infrastructure Scan', icon: '🏗️',
     description: 'Scan active companies, worker counts, owned materials, and tax revenue in a region.',
-    cost: { scrap: 2000, materialX: 9000, oil: 3000, bitcoin: 1 }, targetType: 'country',
+    cost: { scrap: 2000, materialX: 9000, oil: 3000, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 80, detectionChance: 30, durationMs: 0, playersRequired: 5,
     effectDescription: 'Report: Active companies, workers, materials, tax generated.' },
   { id: 'blueprint_loot', pillar: 'espionage', name: 'Blueprint Loot Operation', icon: '🔓',
     description: 'Copy a prestigious blueprint from a top player and distribute untradable copies to your citizens.',
-    cost: { scrap: 3000, materialX: 12000, oil: 3500, bitcoin: 1 }, targetType: 'player',
+    cost: { scrap: 3000, materialX: 12000, oil: 3500, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'player',
     successChance: 80, detectionChance: 30, durationMs: 0, playersRequired: 5,
     effectDescription: 'Copy prestigious blueprint. Citizens receive untradable copy. Enables crafting.' },
   // SABOTAGE
   { id: 'company_sabotage', pillar: 'sabotage', name: 'Company Sabotage', icon: '🔌',
     description: 'Infiltrate any company and steal 20% of production for 24 hours. Distributed to attacker citizens.',
-    cost: { scrap: 2000, materialX: 10000, oil: 4000, bitcoin: 1 }, targetType: 'country',
+    cost: { scrap: 2000, materialX: 10000, oil: 4000, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 80, detectionChance: 30, durationMs: 86400000, playersRequired: 5,
     effectDescription: 'Steal 20% production from ALL companies for 24h. Distributed to citizens.' },
   { id: 'logistics_disruption', pillar: 'sabotage', name: 'Logistics Disruption', icon: '🚚',
     description: 'Disable ports or airports in the target region for 48 hours.',
-    cost: { scrap: 2500, materialX: 12000, oil: 4500, bitcoin: 1 }, targetType: 'country',
+    cost: { scrap: 2500, materialX: 12000, oil: 4500, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 85, detectionChance: 20, durationMs: 172800000, playersRequired: 5,
     effectDescription: 'Disables Port or Airport in target country for 48h. Blocks Naval/Air Strikes.' },
   { id: 'bunker_override', pillar: 'sabotage', name: 'Bunker Override', icon: '🏰',
     description: 'Override bunker defenses, reducing defense by 50% for 24 hours.',
-    cost: { scrap: 3000, materialX: 15000, oil: 5000, bitcoin: 1 }, targetType: 'country',
+    cost: { scrap: 3000, materialX: 15000, oil: 5000, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 80, detectionChance: 30, durationMs: 86400000, playersRequired: 5,
     effectDescription: 'Bunker defense -50% for 24 hours.' },
   { id: 'power_grid_attack', pillar: 'sabotage', name: 'Power Grid Attack', icon: '⚡',
     description: 'Attack the power grid, stopping company production.',
-    cost: { scrap: 3500, materialX: 18000, oil: 5500, bitcoin: 1 }, targetType: 'region',
+    cost: { scrap: 3500, materialX: 18000, oil: 5500, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'region',
     successChance: 80, detectionChance: 30, durationMs: 5400000, playersRequired: 5,
     effectDescription: '33% companies in region stop production for 90 minutes.' },
   // PROPAGANDA
   { id: 'disinformation', pillar: 'propaganda', name: 'Disinformation Campaign', icon: '📰',
     description: 'Spread fake alerts to create confusion.',
-    cost: { scrap: 1500, materialX: 8000, oil: 2500, bitcoin: 1 }, targetType: 'country',
+    cost: { scrap: 1500, materialX: 8000, oil: 2500, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 80, detectionChance: 30, durationMs: 1800000, playersRequired: 5,
     effectDescription: 'Fake invasion/mission/cyber alerts for 30 minutes.' },
   { id: 'botnet_attack', pillar: 'propaganda', name: 'Botnet Attack', icon: '🤖',
     description: 'Flood enemy combat logs with 300K fake damage.',
-    cost: { scrap: 4000, materialX: 20000, oil: 6000, bitcoin: 1 }, targetType: 'battle',
+    cost: { scrap: 4000, materialX: 20000, oil: 6000, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'battle',
     successChance: 80, detectionChance: 30, durationMs: 3600000, playersRequired: 5,
     effectDescription: '300,000 fake damage in battle log. Does NOT affect capture.' },
 ]
@@ -187,7 +187,7 @@ export default function CyberwarfarePanel() {
   const world = useWorldStore()
   const ui = useUIStore()
 
-  const [tab, setTab] = useState<TabId>('board')
+  const [tab, setTab] = useState<TabId>('operations')
   const [loading, setLoading] = useState(false)
 
   // Board state (legacy, kept for board tab)
@@ -626,6 +626,9 @@ export default function CyberwarfarePanel() {
                               </div>
                               <div style={{ fontSize: '9px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px', color: '#94a3b8' }}>
                                 ₿ BTC: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{fullOp.cost.bitcoin}</span>
+                              </div>
+                              <div style={{ fontSize: '9px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px', color: '#94a3b8' }}>
+                                🎖️ BOH: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{fullOp.cost.badgesOfHonor}</span>
                               </div>
                             </div>
 

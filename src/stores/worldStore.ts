@@ -268,7 +268,7 @@ export interface WorldState {
   warFundDamageTracker: Record<string, number>  // countryCode -> total damage dealt today
   warFundBattleOutcomes: Record<string, { wins: number; losses: number }>  // countryCode -> wins/losses today
 
-  // Economy Ledger — tracks money supply flows
+  // Economy Ledger — tracks all resource supply flows
   economyLedger: {
     dayKey: string                                // UTC date key for current day
     moneyCreated: Record<string, number>          // source -> total $ created today
@@ -276,6 +276,13 @@ export interface WorldState {
     totalCreatedToday: number
     totalDestroyedToday: number
     netFlowToday: number                          // created - destroyed
+    // Per-resource flow tracking (oil, bitcoin, scrap, materialX, wheat, etc.)
+    resourceFlows: Record<string, {               // resource key -> daily flows
+      created: Record<string, number>             // source -> amount created
+      destroyed: Record<string, number>           // source -> amount destroyed
+      totalCreated: number
+      totalDestroyed: number
+    }>
     history: Array<{                              // daily snapshots (last 30 days)
       dayKey: string
       totalCreated: number
@@ -283,6 +290,7 @@ export interface WorldState {
       netFlow: number
       topSources: Array<{ source: string; amount: number }>
       topSinks: Array<{ source: string; amount: number }>
+      resourceFlows: Record<string, { totalCreated: number; totalDestroyed: number }>
     }>
   }
 
@@ -308,7 +316,7 @@ export interface WorldState {
   recordWarFundBattleOutcome: (winnerCode: string, loserCode: string) => void
   distributeWarFund: () => void
   // Economy Ledger
-  recordEconFlow: (source: string, amount: number, type: 'created' | 'destroyed') => void
+  recordEconFlow: (source: string, amount: number, type: 'created' | 'destroyed', resource?: string) => void
   getEconomySnapshot: () => WorldState['economyLedger']
 
   // Catch-up: recalculate median from all player levels
@@ -333,6 +341,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     totalCreatedToday: 0,
     totalDestroyedToday: 0,
     netFlowToday: 0,
+    resourceFlows: {},
     history: [],
   },
 
@@ -641,14 +650,27 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     return { wars: [...state.wars, newWar] }
   }),
 
-  endWar: (iso1, iso2) => set((state) => ({
-    wars: state.wars.map(w => {
-      if (w.status !== 'active') return w
-      const match = (w.attacker === iso1 && w.defender === iso2) ||
-                    (w.attacker === iso2 && w.defender === iso1)
-      return match ? { ...w, status: 'ended' as const } : w
-    })
-  })),
+  endWar: (iso1, iso2) => {
+    const state = get()
+    const warToEnd = state.wars.find(w =>
+      w.status === 'active' &&
+      ((w.attacker === iso1 && w.defender === iso2) || (w.attacker === iso2 && w.defender === iso1))
+    )
+    set((s) => ({
+      wars: s.wars.map(w => {
+        if (w.status !== 'active') return w
+        const match = (w.attacker === iso1 && w.defender === iso2) ||
+                      (w.attacker === iso2 && w.defender === iso1)
+        return match ? { ...w, status: 'ended' as const } : w
+      })
+    }))
+    // Record in history store
+    if (warToEnd) {
+      import('../stores/historyStore').then(({ useHistoryStore }) => {
+        useHistoryStore.getState().recordWarEnd(warToEnd, 'ceasefire')
+      })
+    }
+  },
 
   printMoney: (countryCode, amount) => {
     if (amount <= 0) return
@@ -684,6 +706,12 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 10)
 
+    // Snapshot per-resource flows (just totals, not individual sources)
+    const resourceFlowsSnapshot: Record<string, { totalCreated: number; totalDestroyed: number }> = {}
+    for (const [res, flow] of Object.entries(ledger.resourceFlows)) {
+      resourceFlowsSnapshot[res] = { totalCreated: flow.totalCreated, totalDestroyed: flow.totalDestroyed }
+    }
+
     const dailySnapshot = {
       dayKey: ledger.dayKey,
       totalCreated: ledger.totalCreatedToday,
@@ -691,6 +719,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       netFlow: ledger.netFlowToday,
       topSources,
       topSinks,
+      resourceFlows: resourceFlowsSnapshot,
     }
 
     set({
@@ -706,6 +735,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         totalCreatedToday: 0,
         totalDestroyedToday: 0,
         netFlowToday: 0,
+        resourceFlows: {},
         history: [dailySnapshot, ...ledger.history].slice(0, 30),
       },
     })
@@ -839,18 +869,36 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   }),
 
   // ── Economy Ledger ──
-  recordEconFlow: (source, amount, type) => {
+  recordEconFlow: (source, amount, type, resource = 'money') => {
     if (amount <= 0) return
     set(state => {
       const ledger = { ...state.economyLedger }
-      if (type === 'created') {
-        ledger.moneyCreated = { ...ledger.moneyCreated, [source]: (ledger.moneyCreated[source] || 0) + amount }
-        ledger.totalCreatedToday += amount
-      } else {
-        ledger.moneyDestroyed = { ...ledger.moneyDestroyed, [source]: (ledger.moneyDestroyed[source] || 0) + amount }
-        ledger.totalDestroyedToday += amount
+
+      // Track money in the legacy top-level fields (backward compat)
+      if (resource === 'money') {
+        if (type === 'created') {
+          ledger.moneyCreated = { ...ledger.moneyCreated, [source]: (ledger.moneyCreated[source] || 0) + amount }
+          ledger.totalCreatedToday += amount
+        } else {
+          ledger.moneyDestroyed = { ...ledger.moneyDestroyed, [source]: (ledger.moneyDestroyed[source] || 0) + amount }
+          ledger.totalDestroyedToday += amount
+        }
+        ledger.netFlowToday = ledger.totalCreatedToday - ledger.totalDestroyedToday
       }
-      ledger.netFlowToday = ledger.totalCreatedToday - ledger.totalDestroyedToday
+
+      // Track ALL resources (including money) in the per-resource map
+      const flows = { ...ledger.resourceFlows }
+      const resFlow = flows[resource] || { created: {}, destroyed: {}, totalCreated: 0, totalDestroyed: 0 }
+      if (type === 'created') {
+        resFlow.created = { ...resFlow.created, [source]: (resFlow.created[source] || 0) + amount }
+        resFlow.totalCreated += amount
+      } else {
+        resFlow.destroyed = { ...resFlow.destroyed, [source]: (resFlow.destroyed[source] || 0) + amount }
+        resFlow.totalDestroyed += amount
+      }
+      flows[resource] = resFlow
+      ledger.resourceFlows = flows
+
       return { economyLedger: ledger }
     })
   },

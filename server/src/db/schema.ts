@@ -75,14 +75,14 @@ export const players = pgTable('players', {
   skillPoints:   integer('skill_points').default(0),
 
   // Bars
-  stamina:       numeric('stamina', { precision: 6, scale: 1 }).default('100'),
-  maxStamina:    integer('max_stamina').default(100),
-  hunger:        integer('hunger').default(5),
-  maxHunger:     integer('max_hunger').default(5),
-  entrepreneurship: integer('entrepreneurship').default(100),
-  maxEntrepreneurship: integer('max_entrepreneurship').default(100),
-  work:          integer('work').default(100),
-  maxWork:       integer('max_work').default(100),
+  stamina:       numeric('stamina', { precision: 6, scale: 1 }).default('120'),
+  maxStamina:    integer('max_stamina').default(120),
+  hunger:        integer('hunger').default(6),
+  maxHunger:     integer('max_hunger').default(6),
+  entrepreneurship: integer('entrepreneurship').default(120),
+  maxEntrepreneurship: integer('max_entrepreneurship').default(120),
+  work:          integer('work').default(120),
+  maxWork:       integer('max_work').default(120),
   productionBar: integer('production_bar').default(0),
   productionBarMax: integer('production_bar_max').default(100),
 

@@ -113,6 +113,31 @@ export function getWarRewards(enemyDivsKilled: number, won: boolean, researchMul
   return { baseMoney, killBounty, totalMoney: Math.floor((baseMoney + enemyDivsKilled * killBounty) * researchMult) }
 }
 
+/**
+ * Calculate a player's share of war rewards based on their damage contribution.
+ * Prevents alt-account farming by paying proportionally to impact.
+ *
+ * @param totalPool   Total money in the reward pool (from getWarRewards)
+ * @param playerDmg   Damage dealt by this player
+ * @param totalDmg    Total damage dealt by the entire winning/losing side
+ * @returns           This player's money share (floored to integer)
+ *
+ * Rules:
+ * - Share = pool × (playerDmg / totalDmg)
+ * - Minimum: 5% of pool (so any participant gets something)
+ * - Maximum: 60% of pool (so one whale can't vacuum everything)
+ * - If playerDmg is 0, returns 0 (no reward for non-contributors)
+ */
+export function getWarRewardShare(totalPool: number, playerDmg: number, totalDmg: number): number {
+  if (playerDmg <= 0 || totalDmg <= 0) return 0
+
+  const rawShare = totalPool * (playerDmg / totalDmg)
+  const minShare = totalPool * 0.05
+  const maxShare = totalPool * 0.60
+
+  return Math.floor(Math.max(minShare, Math.min(maxShare, rawShare)))
+}
+
 // ====== DIVISION INSURANCE ======
 
 /**

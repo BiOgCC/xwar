@@ -12,7 +12,7 @@ import '../../styles/world-news.css'
    Real-time headlines from World Monitor
    ══════════════════════════════════════════════ */
 
-const DEFAULT_POS = { x: 12, y: 400 }
+const DEFAULT_POS = { x: 12, y: 12 }
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts
@@ -29,7 +29,7 @@ export default function WorldNewsWidget() {
   const setCategoryFilter = useWorldNewsStore((s) => s.setCategoryFilter)
   const startAutoRefresh = useWorldNewsStore((s) => s.startAutoRefresh)
 
-  const [minimized, setMinimized] = useState(false)
+  const [minimized, setMinimized] = useState(true)
   const [closed, setClosed] = useState(false)
   const [pos, setPos] = useState(DEFAULT_POS)
 

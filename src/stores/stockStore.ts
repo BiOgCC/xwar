@@ -186,7 +186,7 @@ export const useStockStore = create<StockState>((set, get) => {
         if (res.success) {
           await get().fetchStocks()
           await get().fetchHoldings()
-          usePlayerStore.setState(s => ({ money: s.money + res.proceeds }))
+          usePlayerStore.getState().earnMoney(res.proceeds)
           return { success: true, message: res.message }
         }
         return { success: false, message: 'Could not sell shares' }

@@ -2,7 +2,7 @@
  * SLOW ECONOMY PIPELINE — Every 30 minutes
  *
  * Handles periodic economic simulation:
- * - Player bar regeneration (5% of max)
+ * - Player bar regeneration (~4.17% of max → fills in 12h)
  * - Company production accumulation (PP per level)
  * - Market order cleanup (expire 24h+ old orders)
  * - Army salary distribution (when interval elapsed)
@@ -14,15 +14,15 @@ import { sql } from 'drizzle-orm'
 
 /**
  * Regenerate player bars: stamina, hunger, entrepreneurship, work.
- * Adds 5% of max value per tick. Uses LEAST to cap at max.
+ * Adds ~4.17% of max value per tick (1/24 → fills in 12h). Uses LEAST to cap at max.
  */
 async function regenBars() {
   await db.execute(sql`
     UPDATE players SET
-      stamina = LEAST(max_stamina::numeric, stamina::numeric + max_stamina * 0.05),
-      hunger = LEAST(max_hunger, hunger + GREATEST(1, max_hunger / 20)),
-      entrepreneurship = LEAST(max_entrepreneurship, entrepreneurship + GREATEST(1, max_entrepreneurship / 20)),
-      work = LEAST(max_work, work + GREATEST(1, max_work / 20))
+      stamina = LEAST(max_stamina::numeric, stamina::numeric + max_stamina / 24.0),
+      hunger = LEAST(max_hunger, hunger + GREATEST(1, max_hunger / 24)),
+      entrepreneurship = LEAST(max_entrepreneurship, entrepreneurship + GREATEST(1, max_entrepreneurship / 24)),
+      work = LEAST(max_work, work + GREATEST(1, max_work / 24))
   `)
 }
 

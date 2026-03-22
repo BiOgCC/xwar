@@ -5,6 +5,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useRegionStore } from '../../stores/regionStore'
 import { useArmyStore } from '../../stores/army'
 import { usePlayerStore } from '../../stores/playerStore'
+import { useGovernmentStore } from '../../stores/governmentStore'
 import type { Region } from '../../stores/regionStore'
 import type { Division } from '../../stores/army/types'
 
@@ -26,6 +27,9 @@ export default function RegionPopup({ region, onClose }: RegionPopupProps) {
   const [selectedDivs, setSelectedDivs] = useState<string[]>([])
   const [scavengeMsg, setScavengeMsg] = useState('')
   const [navalMsg, setNavalMsg] = useState<string | null>(null)
+  const [revoltMsg, setRevoltMsg] = useState<string | null>(null)
+
+  const govStore = useGovernmentStore()
 
   const hasDebris = region.debris.scrap > 0 || region.debris.materialX > 0 || region.debris.militaryBoxes > 0
   const canScavenge = hasDebris && region.scavengeCount < 4
@@ -41,6 +45,13 @@ export default function RegionPopup({ region, onClose }: RegionPopupProps) {
 
   // Naval patrol state
   const activePatrol = regionStore.getPlayerPatrol(region.id)
+
+  // Revolt system state
+  const isOccupied = !region.isOcean && region.controlledBy !== region.countryCode
+  const homelandBonus = regionStore.getHomelandBonus(region.id)
+  const canTriggerRevolt = isOccupied && player.countryCode === region.countryCode &&
+    govStore.canTriggerRevolt(region.countryCode, player.name) && !region.revoltBattleId
+  const hasActiveRevolt = !!region.revoltBattleId
 
   const handleToggleDiv = (divId: string) => {
     setSelectedDivs(prev =>
@@ -82,6 +93,12 @@ export default function RegionPopup({ region, onClose }: RegionPopupProps) {
       setNavalMsg(result.message)
     }
     setTimeout(() => setNavalMsg(null), 4000)
+  }
+
+  const handleTriggerRevolt = () => {
+    const result = regionStore.triggerRevolt(region.id, 'manual')
+    setRevoltMsg(result.message)
+    setTimeout(() => setRevoltMsg(null), 5000)
   }
 
   return (
@@ -155,6 +172,61 @@ export default function RegionPopup({ region, onClose }: RegionPopupProps) {
             </div>
           )}
         </div>
+
+        {/* 🔥 Revolt / Homeland Bonus section */}
+        {isOccupied && (
+          <div style={{
+            margin: '8px 0', padding: '10px 12px', borderRadius: 8,
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(249,115,22,0.15))',
+            border: `1px solid rgba(239,68,68,${region.revoltPressure > 70 ? '0.6' : '0.3'})`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', letterSpacing: 1 }}>
+                🔥 HOMELAND BONUS
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: region.revoltPressure >= 100 ? '#f59e0b' : '#ef4444' }}>
+                {Math.round(region.revoltPressure)}%
+              </span>
+            </div>
+            {/* Pressure bar */}
+            <div style={{
+              width: '100%', height: 6, borderRadius: 3,
+              background: 'rgba(0,0,0,0.4)', overflow: 'hidden', marginBottom: 6,
+            }}>
+              <div style={{
+                width: `${Math.min(100, region.revoltPressure)}%`, height: '100%', borderRadius: 3,
+                background: region.revoltPressure >= 100
+                  ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
+                  : region.revoltPressure > 70
+                    ? 'linear-gradient(90deg, #ef4444, #f97316)'
+                    : 'linear-gradient(90deg, #dc2626, #ef4444)',
+                transition: 'width 0.5s ease',
+                ...(region.revoltPressure >= 100 ? { animation: 'revolt-pulse 1s ease-in-out infinite' } : {}),
+              }} />
+            </div>
+            {/* Bonus breakdown */}
+            <div style={{ display: 'flex', gap: 10, fontSize: 10, color: '#d1d5db' }}>
+              <span>⚔️ ATK +{((homelandBonus.atkMult - 1) * 100).toFixed(0)}%</span>
+              <span>💨 Dodge +{((homelandBonus.dodgeMult - 1) * 100).toFixed(0)}%</span>
+              <span>👤 Player +{((homelandBonus.playerDmgMult - 1) * 100).toFixed(0)}%</span>
+            </div>
+            {/* Status labels */}
+            {hasActiveRevolt && (
+              <div style={{ marginTop: 6, fontSize: 11, fontWeight: 700, color: '#f59e0b', textAlign: 'center' }}>
+                ⚔️ REVOLT BATTLE IN PROGRESS
+              </div>
+            )}
+            {region.revoltPressure >= 100 && !hasActiveRevolt && (
+              <div style={{ marginTop: 6, fontSize: 10, color: '#f97316', textAlign: 'center' }}>
+                ⚡ Max pressure — auto-revolt may trigger any tick (2.5% chance)
+              </div>
+            )}
+          </div>
+        )}
+
+        {revoltMsg && (
+          <div style={{ fontSize: 11, color: '#ef4444', margin: '4px 0', textAlign: 'center', fontWeight: 700 }}>{revoltMsg}</div>
+        )}
 
         {/* Debris section */}
         {hasDebris && (
@@ -299,6 +371,20 @@ export default function RegionPopup({ region, onClose }: RegionPopupProps) {
               onClick={handleToTheSea}
             >
               {activePatrol ? '🚢 RECALL PATROL' : '⚓ TO THE SEA'}
+            </button>
+          )}
+          {canTriggerRevolt && (
+            <button
+              className="region-popup__action-btn"
+              onClick={handleTriggerRevolt}
+              style={{
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                color: '#fff', fontWeight: 700, border: 'none',
+                textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                animation: region.revoltPressure >= 70 ? 'revolt-pulse 2s ease-in-out infinite' : undefined,
+              }}
+            >
+              🔥 TRIGGER REVOLT ({Math.round(region.revoltPressure)}%)
             </button>
           )}
         </div>

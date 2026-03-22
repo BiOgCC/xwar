@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "predev": "npx -y kill-port 5173 || true",
+    "dev": "concurrently \"npm run predev && vite\" \"cd server && npm run dev\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "sim": "tsx tools/simulator/run.ts"
@@ -15,6 +16,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "jsdom": "^29.0.1",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3",
     "vite": "^8.0.0"
@@ -29,6 +32,7 @@
     "maplibre-gl": "^5.20.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "searoute": "^0.0.2",
     "socket.io-client": "^4.8.3",
     "three": "^0.183.2",
     "zustand": "^5.0.11"

@@ -246,13 +246,13 @@ router.post('/skills', async (req, res) => {
 
     // Update bar maximums for relevant skills
     if (skill === 'stamina') {
-      await db.update(players).set({ maxStamina: 100 + (currentLevel + 1) * 20 }).where(eq(players.id, playerId))
+      await db.update(players).set({ maxStamina: 120 + (currentLevel + 1) * 24 }).where(eq(players.id, playerId))
     } else if (skill === 'hunger') {
-      await db.update(players).set({ maxHunger: 5 + (currentLevel + 1) }).where(eq(players.id, playerId))
+      await db.update(players).set({ maxHunger: 6 + (currentLevel + 1) }).where(eq(players.id, playerId))
     } else if (skill === 'work') {
-      await db.update(players).set({ maxWork: 100 + (currentLevel + 1) * 20 }).where(eq(players.id, playerId))
+      await db.update(players).set({ maxWork: 120 + (currentLevel + 1) * 24 }).where(eq(players.id, playerId))
     } else if (skill === 'entrepreneurship') {
-      await db.update(players).set({ maxEntrepreneurship: 100 + (currentLevel + 1) * 15 }).where(eq(players.id, playerId))
+      await db.update(players).set({ maxEntrepreneurship: 120 + (currentLevel + 1) * 18 }).where(eq(players.id, playerId))
     }
 
     res.json({ success: true, skill, newLevel: currentLevel + 1, skillPointsLeft: player.skillPoints! - cost })

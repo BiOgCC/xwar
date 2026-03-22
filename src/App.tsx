@@ -28,6 +28,10 @@ import { useAuthStore } from './stores/authStore'
 import ActionBar from './components/layout/ActionBar'
 import NewsSlideshow from './components/layout/NewsSlideshow'
 import WorldNewsWidget from './components/layout/WorldNewsWidget'
+import NotificationToast from './components/shared/NotificationToast'
+import SearchOverlay from './components/map/SearchOverlay'
+import MapFilterOverlay from './components/map/MapFilterOverlay'
+import BattleSlider from './components/map/BattleSlider'
 import './styles/ticker.css'
 
 
@@ -40,6 +44,20 @@ function App() {
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null)
   const mapRef = useRef<GameMapHandle>(null)
   const [selectedWarRegion, setSelectedWarRegion] = useState<Region | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [filterOpen, setFilterOpen] = useState(false)
+
+  // Global "/" key opens search
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+      if (e.key === '/' && !searchOpen) { e.preventDefault(); setSearchOpen(true) }
+      if (e.key === 'Escape' && searchOpen) { setSearchOpen(false) }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [searchOpen])
 
   // Hooks
   useKeyboardShortcuts()
@@ -104,26 +122,34 @@ function App() {
         />
 
         {/* Search Bar */}
-        <div className="hud-search">
+        <div className="hud-search" onClick={() => setSearchOpen(true)} style={{ cursor: 'pointer' }}>
           <span className="hud-search__icon">🔍</span>
           <span className="hud-search__text">LOCATE</span>
           <span className="hud-search__slash">/</span>
         </div>
 
+        {/* Search Overlay */}
+        {searchOpen && <SearchOverlay mapRef={mapRef} onClose={() => setSearchOpen(false)} />}
+
+        {/* Map Filter Overlay */}
+        {filterOpen && <MapFilterOverlay mapRef={mapRef} />}
+
         <ActionBar />
+
+        <BattleSlider />
 
         <NewsSlideshow />
         <WorldNewsWidget />
 
-        {/* Right Controls */}
+        {/* Left Controls */}
         <div className="hud-controls">
-          <button className="hud-control" title="Filter"><span>☰</span><span className="hud-control__label">FILTER</span></button>
+          <button className="hud-control" title="Filter" onClick={() => setFilterOpen(f => !f)}><span>☰</span><span className="hud-control__label">FILTER</span></button>
           <button className="hud-control" title="Zoom In" onClick={() => mapRef.current?.zoomIn()}><span>+</span><span className="hud-control__label">ZOOM IN</span></button>
           <button className="hud-control" title="Zoom Out" onClick={() => mapRef.current?.zoomOut()}><span>−</span><span className="hud-control__label">ZOOM OUT</span></button>
           <button className="hud-control" title="Reset" onClick={() => mapRef.current?.resetView()}><span>⊞</span><span className="hud-control__label">RESET</span></button>
           <div className="hud-controls__divider" />
-          <button className="hud-control" title="Settings"><span>⚙️</span><span className="hud-control__label">SETTINGS</span></button>
-          <button className="hud-control" title="Help"><span>❓</span><span className="hud-control__label">HELP</span></button>
+          <button className="hud-control" title="Settings" onClick={() => setActivePanel('settings')}><span>⚙️</span><span className="hud-control__label">SETTINGS</span></button>
+          <button className="hud-control" title="Help" onClick={() => setActivePanel('help')}><span>❓</span><span className="hud-control__label">HELP</span></button>
         </div>
 
         {/* Coordinates */}
@@ -181,6 +207,9 @@ function App() {
 
       {/* Scanline Overlay */}
       <div className="hud-scanlines" />
+
+      {/* Toast Notifications */}
+      <NotificationToast />
 
       {/* Floating Texts */}
       <div className="hud-floating-container">

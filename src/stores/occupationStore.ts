@@ -197,7 +197,7 @@ export const useOccupationStore = create<OccupationState>((set, get) => ({
       // Give scrap directly to the player who executed the action
       const player = usePlayerStore.getState()
       if (player.name === executorId) {
-        usePlayerStore.setState(s => ({ scrap: (s.scrap || 0) + playerShare }))
+        usePlayerStore.getState().addResource('scrap', playerShare, 'occupation_destroy')
       }
     }
     if (fundShare > 0) {

@@ -14,8 +14,8 @@ import { checkTimeSanity } from '../engine/AntiExploit'
 import { wrapStoreWithIntegrityCheck } from '../engine/storeFreeze'
 
 // Register economy flow hook: playerStore -> worldStore
-registerEconFlowHook((source, amount, type) => {
-  useWorldStore.getState().recordEconFlow(source, amount, type)
+registerEconFlowHook((source, amount, type, resource) => {
+  useWorldStore.getState().recordEconFlow(source, amount, type, resource)
 })
 
 // Wrap playerStore with integrity checks (production only)
@@ -42,10 +42,11 @@ export function useGameLoop() {
     // ── Subscribe phase handlers ──
     const unsubs: (() => void)[] = []
 
-    // COMBAT (15s) — battle resolution
+    // COMBAT (15s) — battle resolution + revolt pressure
     unsubs.push(gameClock.subscribe('combat', () => {
       try { useBattleStore.getState().resolveTicksAndRounds() } catch (e) { console.warn('[Combat] resolveTicksAndRounds:', e) }
       try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
+      try { useRegionStore.getState().processRevoltTick() } catch (e) { console.warn('[Revolt] processRevoltTick:', e) }
     }))
 
     // MILITARY — no longer needs a tick (lobby-based quick battles now)
@@ -136,8 +137,7 @@ export function useGameLoop() {
           })
         })
       } catch (e) { console.warn('[Economy] war cards:', e) }
-      try { useCompanyStore.getState().processMaintenanceTick() } catch (e) { console.warn('[Economy] maintenance:', e) }
-      try { useArmyStore.getState().processEconomyUpkeepTick() } catch (e) { console.warn('[Economy] military upkeep:', e) }
+
       try { useWorldStore.getState().snapshotFundHistory() } catch (e) { console.warn('[Economy] fund snapshot:', e) }
       // Prestige hourly snapshot + weekly jackpot
       try {

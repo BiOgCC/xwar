@@ -65,6 +65,8 @@ export default function MilitaryPanel() {
 
   const allReports = Object.values(mil.reports).sort((a, b) => b.timestamp - a.timestamp)
   const canAffordBadge = player.badgesOfHonor >= 1
+  const canAffordBitcoin = player.bitcoin >= 1
+  const canAffordBoth = canAffordBadge && canAffordBitcoin
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -141,7 +143,7 @@ export default function MilitaryPanel() {
               {operations.map(op => {
                 const color = PILLAR_COLORS[activePillar] || '#ef4444'
                 const hasTarget = targetCountry !== '' && targetRegion !== ''
-                const canLaunch = canAffordBadge && hasTarget
+                const canLaunch = canAffordBoth && hasTarget
                 const isExpanded = expandedOp === op.id
 
                 return (
@@ -167,7 +169,7 @@ export default function MilitaryPanel() {
                           fontSize: '8px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px',
                           background: `${color}12`, color: color, border: `1px solid ${color}30`,
                         }}>
-                          1🎖️ → 1₿ + 1📦
+                          1₿ + 1🎖️ → 1📦
                         </span>
                       </div>
                       <div style={{ fontSize: '9px', color: '#94a3b8' }}>{op.description}</div>
@@ -194,18 +196,14 @@ export default function MilitaryPanel() {
                           <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>
                             🏆 REWARDS
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
                             <div style={{
                               fontSize: '9px', fontWeight: 700, padding: '5px', borderRadius: '4px', textAlign: 'center',
-                              background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', color: '#f59e0b',
+                              background: canAffordBitcoin ? 'rgba(245,158,11,0.08)' : 'rgba(239,68,68,0.08)',
+                              border: `1px solid ${canAffordBitcoin ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                              color: canAffordBitcoin ? '#f59e0b' : '#ef4444',
                             }}>
                               ₿1 Bitcoin
-                            </div>
-                            <div style={{
-                              fontSize: '9px', fontWeight: 700, padding: '5px', borderRadius: '4px', textAlign: 'center',
-                              background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', color: '#a855f7',
-                            }}>
-                              📦1 Mil. Case
                             </div>
                             <div style={{
                               fontSize: '9px', fontWeight: 700, padding: '5px', borderRadius: '4px', textAlign: 'center',
@@ -215,6 +213,9 @@ export default function MilitaryPanel() {
                             }}>
                               🎖️1 Badge
                             </div>
+                          </div>
+                          <div style={{ fontSize: '8px', color: '#64748b', marginTop: '4px', fontWeight: 600 }}>
+                            🏆 WIN REWARD: 📦 1 Military Case
                           </div>
                         </div>
 
@@ -246,7 +247,7 @@ export default function MilitaryPanel() {
                             boxShadow: canLaunch ? `0 0 12px ${color}20` : 'none',
                           }}
                         >
-                          {!hasTarget ? '🎯 SELECT TARGET FIRST' : !canAffordBadge ? '🎖️ NEED BADGE OF HONOR' : '⚔️ LAUNCH DUEL'}
+                          {!hasTarget ? '🎯 SELECT TARGET FIRST' : !canAffordBoth ? '₿+🎖️ NEED BITCOIN & BADGE' : '⚔️ LAUNCH DUEL'}
                         </button>
                       </div>
                     )}

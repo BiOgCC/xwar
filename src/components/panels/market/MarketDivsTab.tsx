@@ -6,11 +6,12 @@ import { useGovernmentStore } from '../../../stores/governmentStore'
 
 interface MarketDivsTabProps {
   showFb: (msg: string, ok?: boolean) => void
+  sourceFilter?: 'own' | 'country' | 'pmc'
 }
 
 const starColor = (s: number) => s >= 5 ? '#f59e0b' : s >= 4 ? '#a855f7' : s >= 3 ? '#3b82f6' : '#94a3b8'
 
-export default function MarketDivsTab({ showFb }: MarketDivsTabProps) {
+export default function MarketDivsTab({ showFb, sourceFilter = 'own' }: MarketDivsTabProps) {
   const market = useMarketStore()
   const player = usePlayerStore()
   const armyStoreState = useArmyStore()

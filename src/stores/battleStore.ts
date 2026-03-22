@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { rateLimiter } from '../engine/AntiExploit'
 import { computePlayerCombatStats, aggregateEquipmentStats, computeBaseSkillStats, type PlayerCombatStats } from '../engine/stats'
 import { computeDivisionAttack, computeDamageToDefender, computePlayerAttack, deviate, EMPTY_STAR_MODS, EMPTY_EQUIP_BONUS, NO_ORDER, NO_AURA, type AuraBonus, type OrderEffects as EngineOrderEffects } from '../engine/combat'
-import { getWarRewards } from '../engine/economy'
+import { getWarRewards, getWarRewardShare } from '../engine/economy'
 import { useResearchStore } from './researchStore'
 import { useWorldStore } from './worldStore'
 import { useGovernmentStore } from './governmentStore'
@@ -14,6 +14,8 @@ import { useSpecializationStore } from './specializationStore'
 import { useWarCardsStore } from './warCardsStore'
 import { getCountryName, getCountryFlag, getCountryFlagUrl } from '../data/countries'
 import { useRegionStore } from './regionStore'
+import type { Region } from './regionStore'
+import { getCountryDistance, getAttackOilCost } from '../utils/geography'
 
 // Re-export for backwards compatibility — consumers importing from battleStore still work
 export { getCountryName, getCountryFlag, getCountryFlagUrl }
@@ -187,6 +189,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       return { success: false, message: 'Cannot attack: no adjacency or not at war.' }
     }
 
+    const dist = getCountryDistance(attackerArmy.countryCode, defenderCountryCode)
+    const cost = getAttackOilCost(dist)
+    if (attackerArmy.vault.oil < cost) {
+      return { success: false, message: `Not enough oil in Army Vault. Needs ${cost}🛢️.` }
+    }
+
     // Auto-defense: fetch all ready divisions for the defending country (across all armies + unassigned)
     const allDefenderDivs = Object.values(armyStore.divisions)
       .filter(d => d.countryCode === defenderCountryCode && d.status === 'ready')
@@ -245,6 +253,21 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         useArmyStore.setState(s => ({
           divisions: { ...s.divisions, [divId]: { ...s.divisions[divId], status: 'in_combat' } }
         }))
+      }
+    })
+
+    // Deduct oil cost
+    useArmyStore.setState(s => {
+      const armyToUpdate = s.armies[attackerArmyId]
+      if (!armyToUpdate) return s
+      return {
+        armies: {
+          ...s.armies,
+          [attackerArmyId]: {
+            ...armyToUpdate,
+            vault: { ...armyToUpdate.vault, oil: armyToUpdate.vault.oil - cost }
+          }
+        }
       }
     })
 
@@ -558,6 +581,15 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       const atkMilBonus = useResearchStore.getState().getMilitaryBonuses(battle.attackerId)
       const defMilBonus = useResearchStore.getState().getMilitaryBonuses(battle.defenderId)
 
+      // --- Revolt Homeland Bonus (attacker = revolting native country) ---
+      let revoltAtkMult = 1
+      let revoltDodgeMult = 1
+      if (battle.type === 'revolt' && battle.regionId) {
+        const bonus = useRegionStore.getState().getHomelandBonus(battle.regionId)
+        revoltAtkMult = bonus.atkMult      // up to 1.20
+        revoltDodgeMult = bonus.dodgeMult   // up to 1.15
+      }
+
       // --- ATTACKER DAMAGE (player stats × division template multipliers) ---
       // Attack speed accumulator: add 1.0 per tick, fire when accum >= attackSpeed
       const cooldowns = { ...(battle.divisionCooldowns || {}) }
@@ -614,8 +646,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const strength = div.health / div.maxHealth
           dmg = Math.floor(dmg * strength)
           dmg = Math.floor(dmg * atkOrd.atkMult)
-          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus
-          dmg = Math.floor(deviate(dmg) * atkMilBonus.damageBonus * atkMilBonus.allCombatBonus)
+          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus + revolt bonus
+          dmg = Math.floor(deviate(dmg) * atkMilBonus.damageBonus * atkMilBonus.allCombatBonus * revoltAtkMult)
           atkTotalDmg += Math.max(1, dmg)
         }
       })
@@ -730,7 +762,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const atkOrderFx = TACTICAL_ORDERS[battle.attackerOrder || 'none'].effects
           // Aura dodge bonus + equip dodge for attacking divisions + ±10% deviation
           const atkEq = getDivisionEquipBonus(d)
-          const dodgeChance = deviate((playerStats.dodgeChance || 5) * tmpl.dodgeMult * atkOrderFx.dodgeMult * (1 + atkAura.dodgePct / 100) + atkEq.bonusDodge) / 100
+          const dodgeChance = deviate((playerStats.dodgeChance || 5) * tmpl.dodgeMult * atkOrderFx.dodgeMult * (1 + atkAura.dodgePct / 100) + atkEq.bonusDodge) * revoltDodgeMult / 100
           if (Math.random() < dodgeChance) {
             divEvents.push({ divName: d.name, side: 'def', event: 'dodge' })
             return
@@ -874,6 +906,15 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         useRegionStore.getState().addDebris(battle.regionId, debrisScrap, debrisMatX, debrisBoxes)
       }
 
+      // BOH rewards for division kills: +1 🎖️ per enemy division destroyed
+      const ps0 = usePlayerStore.getState()
+      const playerCountry0 = ps0.countryCode || 'US'
+      if (playerCountry0 === battle.attackerId && defDestroyed > 0) {
+        ps0.addResource('badgesOfHonor', defDestroyed, 'division_kill')
+      } else if (playerCountry0 === battle.defenderId && atkDestroyed > 0) {
+        ps0.addResource('badgesOfHonor', atkDestroyed, 'division_kill')
+      }
+
       // --- Award ground points ---
       const activeRoundIndex = battle.rounds.length - 1
       const activeRound = { ...battle.rounds[activeRoundIndex] }
@@ -927,8 +968,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           newStatus = 'attacker_won'
           const world = useWorldStore.getState()
           if (battle.type === 'invasion') world.occupyCountry(battle.defenderId, battle.attackerId, false)
-          // Flip region control if battle targets a specific region
-          if (battle.regionId) {
+          // Revolt victory: liberate the region back to native country
+          if (battle.type === 'revolt' && battle.regionId) {
+            useRegionStore.getState().liberateRegion(battle.regionId)
+          }
+          // Flip region control if battle targets a specific region (non-revolt)
+          if (battle.type !== 'revolt' && battle.regionId) {
             const regionStore = useRegionStore.getState()
             const regionIdx = regionStore.regions.findIndex(r => r.id === battle.regionId)
             if (regionIdx >= 0) {
@@ -937,28 +982,62 @@ export const useBattleStore = create<BattleState>((set, get) => ({
               }))
             }
           }
-          // --- War Rewards (with Economic Theory research bonus) ---
+          // --- War Rewards (damage-weighted, with Economic Theory research bonus) ---
           const atkKills = battle.defender.divisionsDestroyed + defDestroyed
           const defKills = battle.attacker.divisionsDestroyed + atkDestroyed
           const ecoBonuses = useResearchStore.getState().getEconomyBonuses(battle.attackerId)
           const winnerRewards = getWarRewards(atkKills, true, ecoBonuses.warRewardsMult * ecoBonuses.allEconomyBonus)
           const loserRewards = getWarRewards(defKills, false)
           const ps = usePlayerStore.getState()
-          ps.earnMoney(winnerRewards.totalMoney)
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}! 💰 +$${winnerRewards.totalMoney.toLocaleString()} (base $${winnerRewards.baseMoney.toLocaleString()} + ${atkKills} kills × $${winnerRewards.killBounty.toLocaleString()})` })
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFEAT — ${getCountryName(battle.defenderId)} loses ${battle.regionName}. 💰 Consolation: $${loserRewards.totalMoney.toLocaleString()}` })
+          const playerCC = ps.countryCode || 'US'
+
+          // Damage-weighted reward: share based on player's contribution
+          const myAtkDmg = battle.attackerDamageDealers[ps.name] || 0
+          const totalAtkDmg = battle.attacker.damageDealt || 1
+          if (playerCC === battle.attackerId && myAtkDmg > 0) {
+            const myShare = getWarRewardShare(winnerRewards.totalMoney, myAtkDmg, totalAtkDmg)
+            ps.earnMoney(myShare)
+            ps.addResource('badgesOfHonor', 1, 'battle_win')
+          } else if (playerCC === battle.defenderId) {
+            // Loser consolation is also damage-weighted
+            const myDefDmg = battle.defenderDamageDealers[ps.name] || 0
+            const totalDefDmg = battle.defender.damageDealt || 1
+            if (myDefDmg > 0) {
+              const myShare = getWarRewardShare(loserRewards.totalMoney, myDefDmg, totalDefDmg)
+              ps.earnMoney(myShare)
+            }
+          }
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}! 💰 Pool: $${winnerRewards.totalMoney.toLocaleString()} (damage-weighted)` })
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFEAT — ${getCountryName(battle.defenderId)} loses ${battle.regionName}. 💰 Consolation pool: $${loserRewards.totalMoney.toLocaleString()}` })
         } else if (defRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
           newStatus = 'defender_won'
-          // --- War Rewards (with Economic Theory research bonus) ---
-          const atkKills = battle.defender.divisionsDestroyed + defDestroyed
-          const defKills = battle.attacker.divisionsDestroyed + atkDestroyed
-          const ecoBonuses = useResearchStore.getState().getEconomyBonuses(battle.defenderId)
-          const winnerRewards = getWarRewards(defKills, true, ecoBonuses.warRewardsMult * ecoBonuses.allEconomyBonus)
-          const loserRewards = getWarRewards(atkKills, false)
-          const ps = usePlayerStore.getState()
-          ps.earnMoney(winnerRewards.totalMoney)
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}! 💰 +$${winnerRewards.totalMoney.toLocaleString()} (base $${winnerRewards.baseMoney.toLocaleString()} + ${defKills} kills × $${winnerRewards.killBounty.toLocaleString()})` })
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ ATTACK FAILED — ${getCountryName(battle.attackerId)} repelled from ${battle.regionName}. 💰 Consolation: $${loserRewards.totalMoney.toLocaleString()}` })
+          // --- War Rewards (damage-weighted, with Economic Theory research bonus) ---
+          const dAtkKills = battle.defender.divisionsDestroyed + defDestroyed
+          const dDefKills = battle.attacker.divisionsDestroyed + atkDestroyed
+          const dEcoBonuses = useResearchStore.getState().getEconomyBonuses(battle.defenderId)
+          const dWinnerRewards = getWarRewards(dDefKills, true, dEcoBonuses.warRewardsMult * dEcoBonuses.allEconomyBonus)
+          const dLoserRewards = getWarRewards(dAtkKills, false)
+          const dPs = usePlayerStore.getState()
+          const dPlayerCC = dPs.countryCode || 'US'
+
+          // Damage-weighted reward: share based on player's contribution
+          const dMyDefDmg = battle.defenderDamageDealers[dPs.name] || 0
+          const dTotalDefDmg = battle.defender.damageDealt || 1
+          if (dPlayerCC === battle.defenderId && dMyDefDmg > 0) {
+            const dMyShare = getWarRewardShare(dWinnerRewards.totalMoney, dMyDefDmg, dTotalDefDmg)
+            dPs.earnMoney(dMyShare)
+            dPs.addResource('badgesOfHonor', 1, 'battle_win')
+          } else if (dPlayerCC === battle.attackerId) {
+            // Loser consolation is also damage-weighted
+            const dMyAtkDmg = battle.attackerDamageDealers[dPs.name] || 0
+            const dTotalAtkDmg = battle.attacker.damageDealt || 1
+            if (dMyAtkDmg > 0) {
+              const dMyShare = getWarRewardShare(dLoserRewards.totalMoney, dMyAtkDmg, dTotalAtkDmg)
+              dPs.earnMoney(dMyShare)
+            }
+          }
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}! 💰 Pool: $${dWinnerRewards.totalMoney.toLocaleString()} (damage-weighted)` })
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ ATTACK FAILED — ${getCountryName(battle.attackerId)} repelled from ${battle.regionName}. 💰 Consolation pool: $${dLoserRewards.totalMoney.toLocaleString()}` })
         } else {
           newRounds = [...newRounds, { attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }]
           newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `🔔 Round ${battle.rounds.length} complete! New round begins.` })
@@ -1103,18 +1182,91 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const player = usePlayerStore.getState()
     if (player.stamina < 5) return { damage: 0, isCrit: false, message: 'Not enough stamina (5 required).' }
 
-    // ── #1 FIX: Auto-detect side from player's country — no forceSide exploit ──
+    // ── Side Selection & Validation ──
     const playerCountry = player.countryCode || 'US'
     let side: 'attacker' | 'defender'
-    if (playerCountry === battle.attackerId) side = 'attacker'
-    else if (playerCountry === battle.defenderId) side = 'defender'
-    else return { damage: 0, isCrit: false, message: 'Your country is not in this battle.' }
+
+    if (_forceSide) {
+      if (playerCountry === battle.attackerId && _forceSide !== 'attacker') {
+        return { damage: 0, isCrit: false, message: 'You can only support your own country!' }
+      } else if (playerCountry === battle.defenderId && _forceSide !== 'defender') {
+        return { damage: 0, isCrit: false, message: 'You can only support your own country!' }
+      } else if (playerCountry !== battle.attackerId && playerCountry !== battle.defenderId) {
+        // Foreigner
+        const world = useWorldStore.getState()
+        const myCountryObj = world.countries.find(c => c.code === playerCountry)
+        const attackerObj = world.countries.find(c => c.code === battle.attackerId)
+        const defenderObj = world.countries.find(c => c.code === battle.defenderId)
+
+        const isAlliedWithAttacker = myCountryObj?.empire && attackerObj?.empire && myCountryObj.empire === attackerObj.empire
+        const isAlliedWithDefender = myCountryObj?.empire && defenderObj?.empire && myCountryObj.empire === defenderObj.empire
+
+        if (_forceSide === 'attacker' && isAlliedWithDefender) {
+          return { damage: 0, isCrit: false, message: 'You are allied with the defender. You can only support your allies!' }
+        }
+        if (_forceSide === 'defender' && isAlliedWithAttacker) {
+          return { damage: 0, isCrit: false, message: 'You are allied with the attacker. You can only support your allies!' }
+        }
+
+        const opponentCountry = _forceSide === 'attacker' ? battle.defenderId : battle.attackerId
+        const isAtWar = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === opponentCountry) || (w.attacker === opponentCountry && w.defender === playerCountry)))
+        const isSupportingAlly = (_forceSide === 'attacker' && isAlliedWithAttacker) || (_forceSide === 'defender' && isAlliedWithDefender)
+        
+        const distance = getCountryDistance(playerCountry, opponentCountry)
+        let oilCost = getAttackOilCost(distance) / 10000
+        
+        if (!isSupportingAlly && !isAtWar) {
+          oilCost *= 2 // The user rule: If you are not at war, the cost is x2
+        }
+
+        oilCost = Number(oilCost.toFixed(2))
+
+        if (player.oil < oilCost) return { damage: 0, isCrit: false, message: `Not enough oil (${oilCost} required).` }
+        player.spendOil(oilCost)
+      }
+      side = _forceSide
+    } else {
+      if (playerCountry === battle.attackerId) {
+        side = 'attacker'
+      } else if (playerCountry === battle.defenderId) {
+        side = 'defender'
+      } else {
+        // Foreigner auto-detect
+        const world = useWorldStore.getState()
+        const atWarWithAttacker = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === battle.attackerId) || (w.attacker === battle.attackerId && w.defender === playerCountry)))
+        const atWarWithDefender = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === battle.defenderId) || (w.attacker === battle.defenderId && w.defender === playerCountry)))
+
+        if (atWarWithDefender && !atWarWithAttacker) {
+          side = 'attacker' // siding with attacker against defender
+          const distance = getCountryDistance(playerCountry, battle.defenderId)
+          const oilCost = Math.max(1, Math.floor(getAttackOilCost(distance) / 100))
+          if (player.oil < oilCost) return { damage: 0, isCrit: false, message: `Not enough oil (${oilCost} required for distance).` }
+          player.spendOil(oilCost)
+        } else if (atWarWithAttacker && !atWarWithDefender) {
+          side = 'defender' // siding with defender against attacker
+          const distance = getCountryDistance(playerCountry, battle.attackerId)
+          const oilCost = Math.max(1, Math.floor(getAttackOilCost(distance) / 100))
+          if (player.oil < oilCost) return { damage: 0, isCrit: false, message: `Not enough oil (${oilCost} required for distance).` }
+          player.spendOil(oilCost)
+        } else if (atWarWithAttacker && atWarWithDefender) {
+          return { damage: 0, isCrit: false, message: 'You are at war with both sides! Cannot auto-join.' }
+        } else {
+          return { damage: 0, isCrit: false, message: 'Your country is not in this battle nor at war with either side.' }
+        }
+      }
+    }
 
     player.consumeBar('stamina', 5)
 
     const cs = getPlayerCombatStats()
     const isCrit = Math.random() * 100 < cs.critRate
-    const damage = isCrit ? Math.floor(cs.attackDamage * cs.critMultiplier) : cs.attackDamage
+    let damage = isCrit ? Math.floor(cs.attackDamage * cs.critMultiplier) : cs.attackDamage
+
+    // Revolt Homeland Bonus: +30% player damage for citizens of the occupied land
+    if (battle.type === 'revolt' && battle.regionId && side === 'attacker') {
+      const bonus = useRegionStore.getState().getHomelandBonus(battle.regionId)
+      damage = Math.floor(damage * bonus.playerDmgMult)
+    }
 
     get().addDamage(battleId, side, damage, isCrit, false, player.name)
 
@@ -1132,13 +1284,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       if (Math.random() * 100 < dropChance) {
         const roll = Math.random()
         if (roll < 0.01) {
-          usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + 1 }))
+          usePlayerStore.getState().addResource('bitcoin', 1, 'battle_loot_drop')
           dropMsg = ' [₿+1]'
         } else if (roll < 0.34) {
-          usePlayerStore.setState(s => ({ militaryBoxes: (s.militaryBoxes || 0) + 1 }))
+          usePlayerStore.getState().addResource('militaryBoxes', 1, 'battle_loot_drop')
           dropMsg = ' [🧰+1]'
         } else {
-          usePlayerStore.setState(s => ({ lootBoxes: (s.lootBoxes || 0) + 1 }))
+          usePlayerStore.getState().addResource('lootBoxes', 1, 'battle_loot_drop')
           dropMsg = ' [📦+1]'
         }
       }
@@ -1165,14 +1317,46 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // ── #1 FIX: Auto-detect side from player's country ──
     const playerCountry = player.countryCode || 'US'
     let isAttacker: boolean
-    if (playerCountry === battle.attackerId) isAttacker = true
-    else if (playerCountry === battle.defenderId) isAttacker = false
-    else return { blocked: 0, message: 'Your country is not in this battle.' }
+    if (playerCountry === battle.attackerId) {
+      isAttacker = true
+    } else if (playerCountry === battle.defenderId) {
+      isAttacker = false
+    } else {
+      // Foreigner logic
+      const world = useWorldStore.getState()
+      const atWarWithAttacker = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === battle.attackerId) || (w.attacker === battle.attackerId && w.defender === playerCountry)))
+      const atWarWithDefender = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === battle.defenderId) || (w.attacker === battle.defenderId && w.defender === playerCountry)))
+
+      if (atWarWithDefender && !atWarWithAttacker) {
+        isAttacker = true
+        const distance = getCountryDistance(playerCountry, battle.defenderId)
+        const oilCost = Math.max(1, Math.floor(getAttackOilCost(distance) / 100))
+        if (player.oil < oilCost) return { blocked: 0, message: `Not enough oil (${oilCost} required for distance).` }
+        player.spendOil(oilCost)
+      } else if (atWarWithAttacker && !atWarWithDefender) {
+        isAttacker = false
+        const distance = getCountryDistance(playerCountry, battle.attackerId)
+        const oilCost = Math.max(1, Math.floor(getAttackOilCost(distance) / 100))
+        if (player.oil < oilCost) return { blocked: 0, message: `Not enough oil (${oilCost} required for distance).` }
+        player.spendOil(oilCost)
+      } else if (atWarWithAttacker && atWarWithDefender) {
+        return { blocked: 0, message: 'You are at war with both sides! Cannot join.' }
+      } else {
+        return { blocked: 0, message: 'Your country is not in this battle nor at war with either side.' }
+      }
+    }
 
     player.consumeBar('stamina', 3)
 
     const cs = getPlayerCombatStats()
-    const blocked = cs.armorBlock + Math.floor(cs.dodgeChance * 0.5)
+    const isCrit = Math.random() * 100 < cs.critRate
+    let blocked = isCrit ? Math.floor(cs.attackDamage * cs.critMultiplier) : cs.attackDamage
+
+    // Revolt Homeland Bonus: +30% player damage for citizens of the occupied land
+    if (battle.type === 'revolt' && battle.regionId && isAttacker) {
+      const bonus = useRegionStore.getState().getHomelandBonus(battle.regionId)
+      blocked = Math.floor(blocked * bonus.playerDmgMult)
+    }
 
     const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
 
@@ -1181,6 +1365,26 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     // Degrade equipped items durability
     useInventoryStore.getState().degradeEquippedItems(1)
+
+    // ── Hit Loot Drops (7% base + Mercenary Bonus) ──
+    let dropMsg = ''
+    try {
+      const merB = useSpecializationStore.getState().getMercenaryBonuses()
+      const dropChance = 7 + (merB?.lootChancePercent || 0)
+      if (Math.random() * 100 < dropChance) {
+        const roll = Math.random()
+        if (roll < 0.01) {
+          usePlayerStore.getState().addResource('bitcoin', 1, 'battle_loot_drop')
+          dropMsg = ' [₿+1]'
+        } else if (roll < 0.34) {
+          usePlayerStore.getState().addResource('militaryBoxes', 1, 'battle_loot_drop')
+          dropMsg = ' [🧰+1]'
+        } else {
+          usePlayerStore.getState().addResource('lootBoxes', 1, 'battle_loot_drop')
+          dropMsg = ' [📦+1]'
+        }
+      }
+    } catch (e) { console.warn('[Hit Loot] Error', e) }
 
     set(s => ({
       battles: {
@@ -1194,7 +1398,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           damageFeed: [{
             playerName: `${player.name} 🛡️`,
             side: (isAttacker ? 'attacker' : 'defender') as 'attacker' | 'defender',
-            amount: blocked, isCrit: false, isDodged: false, time: Date.now(),
+            amount: blocked, isCrit, isDodged: false, time: Date.now(),
           }, ...battle.damageFeed].slice(0, 20),
         },
       },
@@ -1204,7 +1408,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     import('../api/client').then(({ battleDefend }) => battleDefend(battleId).catch(() => {}))
     return {
       blocked,
-      message: `🛡️ Blocked ${blocked} incoming damage!`,
+      message: (isCrit ? `💥 CRITICAL BLOCK! ${blocked} incoming damage blocked!` : `🛡️ Blocked ${blocked} incoming damage!`) + dropMsg,
     }
   },
 

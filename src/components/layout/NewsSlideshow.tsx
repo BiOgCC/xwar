@@ -53,7 +53,7 @@ const DEFAULT_POS = { x: 12, y: 56 }
 
 export default function NewsSlideshow() {
   const [index, setIndex] = useState(0)
-  const [minimized, setMinimized] = useState(false)
+  const [minimized, setMinimized] = useState(true)
   const [closed, setClosed] = useState(false)
   const [fading, setFading] = useState(false)
   const [pos, setPos] = useState(DEFAULT_POS)

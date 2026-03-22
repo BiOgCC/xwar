@@ -7,6 +7,8 @@ import '../../styles/battle-avatar.css'
 type TracerStyle = 'infantry' | 'tank' | 'jet' | 'warship' | 'submarine'
 
 interface BattleAvatarProps {
+  battleId: string
+  isOwnBattle: boolean
   attackerFlag: string
   defenderFlag: string
   attackerName: string
@@ -36,6 +38,8 @@ interface BattleAvatarProps {
 }
 
 export default function BattleAvatar({
+  battleId,
+  isOwnBattle,
   attackerFlag,
   defenderFlag,
   attackerName,
@@ -75,7 +79,6 @@ export default function BattleAvatar({
   const COOLDOWN_MS = 5000
   const FUSE_FRAMES = 180 // ~3 seconds at 60fps
   const GROUND_Y_RATIO = 0.78
-  const announcerPlayedRef = useRef<AnnouncerPlayed>(new Set())
 
   // Queue crit events from prop changes
   useEffect(() => {
@@ -163,7 +166,7 @@ export default function BattleAvatar({
 
     // Check announcer thresholds on each damageRatio change
     const battleAgeMs = battleStartedAt ? Date.now() - battleStartedAt : 0
-    checkAnnouncerThresholds(ratio, announcerPlayedRef.current, battleAgeMs, currentRound)
+    checkAnnouncerThresholds(battleId, isOwnBattle, ratio, battleAgeMs, currentRound)
 
     // Per-side fire intervals: 10 frames (idle) → 2 frames (max)
     const atkFireInterval = Math.max(2, Math.round(10 - 8 * atkI))
@@ -887,7 +890,6 @@ export default function BattleAvatar({
       grenadesRef.current = []
       throwCountRef.current = 0
       cooldownUntilRef.current = 0
-      announcerPlayedRef.current.clear()
     }
   }, [isActive])
 

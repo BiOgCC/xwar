@@ -1,0 +1,186 @@
+/* ══════════════════════════════════════════════
+   Battle Slider — bottom-left floating HUD
+   ══════════════════════════════════════════════ */
+
+.battle-slider {
+  position: absolute;
+  bottom: 16px;
+  left: 14px;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: calc(50% - 40px);   /* stop before the centered ActionBar */
+  pointer-events: none;
+}
+
+.battle-slider__track {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 4px 4px;
+  scrollbar-width: none;
+  pointer-events: all;
+}
+
+.battle-slider__track::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Individual card ── */
+.battle-slider__card {
+  flex-shrink: 0;
+  width: 170px;
+  background: rgba(7, 11, 17, 0.92);
+  border: 1px solid rgba(34, 211, 138, 0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+  backdrop-filter: blur(12px);
+  pointer-events: all;
+  position: relative;
+  overflow: hidden;
+}
+
+.battle-slider__card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--atk-clr, #3b82f6), var(--def-clr, #ef4444));
+  opacity: 0.7;
+}
+
+.battle-slider__card:hover {
+  border-color: rgba(34, 211, 138, 0.35);
+  box-shadow: 0 0 18px rgba(34, 211, 138, 0.08), 0 4px 16px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Active (currently selected) */
+.battle-slider__card--active {
+  border-color: rgba(34, 211, 138, 0.4);
+  box-shadow: 0 0 12px rgba(34, 211, 138, 0.1);
+}
+
+/* ── Flags row ── */
+.battle-slider__flags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.battle-slider__flag-img {
+  width: 20px;
+  height: 14px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.battle-slider__vs {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 900;
+  color: #64748b;
+  letter-spacing: 1px;
+}
+
+.battle-slider__score {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.battle-slider__score--atk {
+  color: var(--atk-clr, #3b82f6);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--atk-clr, #3b82f6) 40%, transparent);
+}
+
+.battle-slider__score--def {
+  color: var(--def-clr, #ef4444);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--def-clr, #ef4444) 40%, transparent);
+}
+
+/* ── Region label ── */
+.battle-slider__region {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-align: center;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+/* ── Damage bar ── */
+.battle-slider__bar {
+  position: relative;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+
+.battle-slider__bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+/* ── Damage numbers ── */
+.battle-slider__dmg {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.battle-slider__dmg-atk {
+  color: var(--atk-clr, #3b82f6);
+}
+
+.battle-slider__dmg-def {
+  color: var(--def-clr, #ef4444);
+}
+
+/* ── Pulse for hot battles ── */
+.battle-slider__card--hot {
+  animation: slider-card-pulse 2s ease-in-out infinite;
+}
+
+@keyframes slider-card-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 14px 2px rgba(239, 68, 68, 0.15); }
+}
+
+/* ── Empty state ── */
+.battle-slider__empty {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background: rgba(7, 11, 17, 0.85);
+  border: 1px solid rgba(34, 211, 138, 0.08);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+  pointer-events: all;
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}

@@ -11,8 +11,8 @@ import type { PlayerRole, MilitaryRank } from '../types/player.types'
 export type { PlayerRole, MilitaryRank }
 
 // Economy ledger hook — registered by worldStore to avoid circular deps
-let _econFlowHook: ((source: string, amount: number, type: 'created' | 'destroyed') => void) | null = null
-export function registerEconFlowHook(hook: (source: string, amount: number, type: 'created' | 'destroyed') => void) {
+let _econFlowHook: ((source: string, amount: number, type: 'created' | 'destroyed', resource?: string) => void) | null = null
+export function registerEconFlowHook(hook: (source: string, amount: number, type: 'created' | 'destroyed', resource?: string) => void) {
   _econFlowHook = hook
 }
 
@@ -68,6 +68,12 @@ export interface PlayerState {
   staminaPills: number
   energyLeaves: number
   lootChancePool: number
+
+  // BOH combat farming state
+  bohDamageAccumulator: number
+  bohEarnedFromDamageToday: number
+  bohLastDayReset: number
+  bohDailyBonusClaimed: boolean
 
   // XP & Leveling
   level: number
@@ -131,6 +137,8 @@ export interface PlayerState {
   spendScrap: (amount: number) => boolean
   spendBitcoin: (amount: number) => boolean
   spendBadgesOfHonor: (amount: number) => boolean
+  addResource: (key: string, amount: number, source: string) => void
+  removeResource: (key: string, amount: number, source: string) => boolean
   regenerateBars: () => void
 
   // Shame counter increments
@@ -199,19 +207,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   energyLeaves: 0,
   lootChancePool: 0,
 
+  bohDamageAccumulator: 0,
+  bohEarnedFromDamageToday: 0,
+  bohLastDayReset: 0,
+  bohDailyBonusClaimed: false,
+
   level: 12,
   experience: 450,
   experienceToNext: 150, // Level 12 is in tier 11-20 → 150 XP needed
   skillPoints: 49,
 
-  stamina: 100,
-  maxStamina: 100,
-  hunger: 5,
-  maxHunger: 5,
-  entrepreneurship: 100,
-  maxEntrepreneurship: 100,
-  work: 100,
-  maxWork: 100,
+  stamina: 120,
+  maxStamina: 120,
+  hunger: 6,
+  maxHunger: 6,
+  entrepreneurship: 120,
+  maxEntrepreneurship: 120,
+  work: 120,
+  maxWork: 120,
   lastFullRecoveryAt: Date.now(),
 
   productionBar: 0,
@@ -240,7 +253,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set((s) => {
       if (s[type] <= 0 || Math.floor(s.hunger) <= 0) return {}
       
-      const staminaGain = type === 'wagyu' ? 30 : type === 'sushi' ? 20 : 10
+      const staminaPct = type === 'wagyu' ? 0.45 : type === 'sushi' ? 0.30 : 0.15
+      const staminaGain = Math.floor(s.maxStamina * staminaPct)
       consumed = true
       
       return {
@@ -363,6 +377,45 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       (updates as any)[`${usedAmmo}Bullets`] = ammoCount
     }
 
+    // ── BOH Combat Farming ──
+    // Reset daily counters at 00:00 UTC
+    const todayUTC = Math.floor(Date.now() / 86400000)
+    let bohToday = s.bohEarnedFromDamageToday
+    let bohBonusClaimed = s.bohDailyBonusClaimed
+    let bohBadges = s.badgesOfHonor
+    if (todayUTC > s.bohLastDayReset) {
+      bohToday = 0
+      bohBonusClaimed = false
+      ;(updates as any).bohLastDayReset = todayUTC
+    }
+
+    // Daily fighting bonus: 1 free 🎖️ on first damage of the day
+    if (!bohBonusClaimed) {
+      bohBadges += 1
+      bohBonusClaimed = true
+      if (_econFlowHook) _econFlowHook('daily_fight_bonus', 1, 'created', 'badgesOfHonor')
+    }
+
+    // Tiered threshold + diminishing returns
+    const baseThreshold = s.level <= 10 ? 2000 : s.level <= 20 ? 5000 : 10000
+    const diminish = Math.pow(2, Math.max(0, bohToday - 5))
+    const effectiveThreshold = baseThreshold * diminish
+    let bohAccum = s.bohDamageAccumulator + finalDamage
+    let bohEarned = 0
+    while (bohAccum >= effectiveThreshold && bohEarned < 3) {
+      bohAccum -= effectiveThreshold
+      bohEarned++
+    }
+    if (bohEarned > 0) {
+      bohBadges += bohEarned
+      bohToday += bohEarned
+      if (_econFlowHook) _econFlowHook('damage_threshold', bohEarned, 'created', 'badgesOfHonor')
+    }
+    ;(updates as any).badgesOfHonor = bohBadges
+    ;(updates as any).bohDamageAccumulator = bohAccum
+    ;(updates as any).bohEarnedFromDamageToday = bohToday
+    ;(updates as any).bohDailyBonusClaimed = bohBonusClaimed
+
     // 7% accumulative loot chance
     let newPool = s.lootChancePool + 7
     let boxesGranted = Math.floor(newPool / 100)
@@ -399,13 +452,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   buyResource: (resource, amount, cost) => {
+    let bought = false
     set((s) => {
       if (s.money < cost) return {}
+      bought = true
       return {
         money: s.money - cost,
         [resource]: (s as any)[resource] + amount,
       }
     })
+    if (bought) {
+      if (_econFlowHook) _econFlowHook('market_buy', cost, 'destroyed', 'money')
+      if (_econFlowHook) _econFlowHook('market_buy', amount, 'created', resource)
+    }
   },
 
   buyItem: (itemKey, amount, cost) => {
@@ -418,6 +477,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         [itemKey]: ((s[itemKey] as number) || 0) + amount,
       } as Partial<PlayerState>
     })
+    if (success) {
+      if (_econFlowHook) _econFlowHook('shop_buy', cost, 'destroyed', 'money')
+      if (_econFlowHook) _econFlowHook('shop_buy', amount, 'created', itemKey as string)
+    }
     return success
   },
 
@@ -432,6 +495,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         [itemKey]: currentAmount - amount,
       } as Partial<PlayerState>
     })
+    if (success) {
+      if (_econFlowHook) _econFlowHook('shop_sell', price, 'created', 'money')
+      if (_econFlowHook) _econFlowHook('shop_sell', amount, 'destroyed', itemKey as string)
+    }
     return success
   },
 
@@ -439,7 +506,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (!validateEarn(amount, 'earnMoney')) return
     set((s) => ({ money: s.money + amount }))
     // Track in economy ledger
-    if (_econFlowHook) _econFlowHook('player_earn', amount, 'created')
+    if (_econFlowHook) _econFlowHook('player_earn', amount, 'created', 'money')
     // War Cards: check money milestones
     const s = get()
     const wc = useWarCardsStore.getState()
@@ -550,8 +617,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
     }),
 
-  addScrap: (amount) =>
-    set((s) => ({ scrap: s.scrap + amount })),
+  addScrap: (amount) => {
+    set((s) => ({ scrap: s.scrap + amount }))
+    if (_econFlowHook) _econFlowHook('scrap_gain', amount, 'created', 'scrap')
+  },
 
   spendMoney: (amount) => {
     if (!validateSpend(amount, 'spendMoney')) return false
@@ -559,7 +628,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (s.money < amount) return false
     set({ money: s.money - amount })
     // Track in economy ledger
-    if (_econFlowHook) _econFlowHook('player_spend', amount, 'destroyed')
+    if (_econFlowHook) _econFlowHook('player_spend', amount, 'destroyed', 'money')
     return true
   },
 
@@ -567,6 +636,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const s = get()
     if (s.materialX < amount) return false
     set({ materialX: s.materialX - amount })
+    if (_econFlowHook) _econFlowHook('player_spend', amount, 'destroyed', 'materialX')
     return true
   },
 
@@ -574,6 +644,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const s = get()
     if (s.oil < amount) return false
     set({ oil: s.oil - amount })
+    if (_econFlowHook) _econFlowHook('player_spend', amount, 'destroyed', 'oil')
     return true
   },
 
@@ -581,6 +652,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const s = get()
     if (s.scrap < amount) return false
     set({ scrap: s.scrap - amount })
+    if (_econFlowHook) _econFlowHook('player_spend', amount, 'destroyed', 'scrap')
     return true
   },
 
@@ -588,6 +660,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const s = get()
     if (s.bitcoin < amount) return false
     set({ bitcoin: s.bitcoin - amount })
+    if (_econFlowHook) _econFlowHook('player_spend', amount, 'destroyed', 'bitcoin')
     return true
   },
 
@@ -595,6 +668,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const s = get()
     if (s.badgesOfHonor < amount) return false
     set({ badgesOfHonor: s.badgesOfHonor - amount })
+    if (_econFlowHook) _econFlowHook('player_spend', amount, 'destroyed', 'badgesOfHonor')
+    return true
+  },
+
+  addResource: (key, amount, source) => {
+    if (amount <= 0) return
+    set((s) => ({ [key]: ((s as any)[key] || 0) + amount } as any))
+    if (_econFlowHook) _econFlowHook(source, amount, 'created', key)
+  },
+
+  removeResource: (key, amount, source) => {
+    if (amount <= 0) return false
+    const s = get()
+    const current = (s as any)[key] || 0
+    if (current < amount) return false
+    set({ [key]: current - amount } as any)
+    if (_econFlowHook) _econFlowHook(source, amount, 'destroyed', key)
     return true
   },
 
@@ -613,8 +703,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
     }
 
-    // Normal tick regen (5% per 30min economy tick)
-    const p = 0.05
+    // Normal tick regen (~4.17% per 30min economy tick → fills in 12h = 24 ticks)
+    const p = 1 / 24
     return {
       stamina: Math.min(state.maxStamina, state.stamina + (state.maxStamina * p)),
       hunger: Math.min(state.maxHunger, state.hunger + (state.maxHunger * p)),

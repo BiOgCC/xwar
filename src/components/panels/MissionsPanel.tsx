@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   useMissionStore,
   MISSION_DEFS,
@@ -9,6 +9,18 @@ import {
   type CosmeticRarity,
 } from '../../stores/missionStore'
 import { usePlayerStore } from '../../stores/playerStore'
+import { useUIStore } from '../../stores/uiStore'
+
+/* ── Navigation map: where each mission card sends the player ── */
+const MISSION_NAV_MAP: Record<MissionId, () => void> = {
+  work:     () => { useUIStore.getState().setProfileDefaultTab('work');       useUIStore.getState().setActivePanel('profile') },
+  produce:  () => { useUIStore.getState().setProfileDefaultTab('companies');  useUIStore.getState().setActivePanel('profile') },
+  fight:    () => { useUIStore.getState().setWarDefaultTab('battles');        useUIStore.getState().setActivePanel('combat') },
+  eat:      () => { useUIStore.getState().setProfileDefaultTab('inventory');  useUIStore.getState().setActivePanel('profile') },
+  cyber:    () => { useUIStore.getState().setWarDefaultTab('operations');     useUIStore.getState().setActivePanel('cyberwarfare') },
+  military: () => { useUIStore.getState().setActivePanel('military') },
+  market:   () => { useUIStore.getState().setActivePanel('market') },
+}
 
 /* ═══════════════════════════════════════════════
    MISSIONS PANEL — Daily Ops + OP Shop
@@ -40,12 +52,17 @@ function MissionCard({ missionId }: { missionId: MissionId }) {
     store.claimMission(missionId)
   }
 
+  const handleNavigate = useCallback(() => {
+    MISSION_NAV_MAP[missionId]()
+  }, [missionId])
+
   return (
-    <div className={`mission-card${done ? ' mission-card--done' : ''}${claimed ? ' mission-card--claimed' : ''}`}>
+    <div className={`mission-card mission-card--clickable${done ? ' mission-card--done' : ''}${claimed ? ' mission-card--claimed' : ''}`}>
       <div className="mission-card__icon">{def.icon}</div>
-      <div className="mission-card__body">
+      <div className="mission-card__body mission-card__nav" onClick={handleNavigate} title={`Go to ${def.name}`}>
         <div className="mission-card__header">
           <span className="mission-card__name">{def.name}</span>
+          <span className="mission-card__go">GO ➜</span>
           <span className="mission-card__counter">
             {progress.current >= target ? target : progress.current}/{target}
           </span>

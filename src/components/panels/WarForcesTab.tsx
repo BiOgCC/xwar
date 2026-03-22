@@ -5,6 +5,7 @@ import { usePlayerStore, getMilitaryRank } from '../../stores/playerStore'
 import { useWorldStore, ADJACENCY_MAP } from '../../stores/worldStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useInventoryStore, TIER_COLORS, type WeaponSubtype, type EquipItem } from '../../stores/inventoryStore'
+import { getCountryDistance, getAttackOilCost } from '../../utils/geography'
 import CountryFlag from '../shared/CountryFlag'
 import { RANK_ICONS } from './warHelpers'
 
@@ -500,16 +501,19 @@ export default function ForcesTab({ iso }: { iso: string }) {
                           w.status === 'active' &&
                           ((w.attacker === iso && w.defender === code) || (w.defender === iso && w.attacker === code))
                         )
+                        const dist = getCountryDistance(army.countryCode, code)
+                        const cost = getAttackOilCost(dist)
+                        const canAfford = army.vault.oil >= cost
                         return (
                           <button
                             key={code}
-                            className={`war-target-btn ${!atWar ? 'war-target-btn--disabled' : ''}`}
-                            disabled={!atWar}
+                            className={`war-target-btn ${!atWar || !canAfford ? 'war-target-btn--disabled' : ''}`}
+                            disabled={!atWar || !canAfford}
                             onClick={() => handleLaunchAttack(army.id, code)}
-                            title={atWar ? `Attack ${country.name}` : `Not at war with ${country.name}`}
+                            title={!atWar ? `Not at war with ${country.name}` : !canAfford ? `Not enough oil (${cost}🛢️ needed)` : `Attack ${country.name}`}
                           >
                             <span className="war-target-flag"><CountryFlag iso={code} size={16} /></span>
-                            <span className="war-target-name">{country.name}</span>
+                            <span className="war-target-name">{country.name} (🛢️{cost})</span>
                             {!atWar && <span className="war-target-peace">☮️</span>}
                           </button>
                         )

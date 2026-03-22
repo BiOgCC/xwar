@@ -32,10 +32,7 @@ export interface DivisionTemplate {
     materialX: number
     scrap: number
   }
-  upkeepCost: {
-    oil: number
-    materialX: number
-  }
+
   trainingTime: number
   popCost: number          // Pop Cap cost: infantry=1, mechanized=2
   seats: number            // Transport capacity: how many infantry divs this unit can carry
@@ -54,7 +51,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 24.0, dodgeMult: 1.30, armorMult: 1.30,
     manpowerCost: 200, trainingTime: 25,
     recruitCost: { money: 40000, oil: 400, materialX: 0, scrap: 200 },
-    upkeepCost: { oil: 40, materialX: 15 },
+
     popCost: 1, seats: 0,
     attackSpeed: 1.5,
   },
@@ -65,18 +62,18 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 28.8, dodgeMult: 0.90, armorMult: 1.30,
     manpowerCost: 350, trainingTime: 30,
     recruitCost: { money: 60000, oil: 600, materialX: 0, scrap: 350 },
-    upkeepCost: { oil: 60, materialX: 25 },
+
     popCost: 1, seats: 0,
     attackSpeed: 1,
   },
   sniper: {
     id: 'sniper', name: 'Sniper Division', icon: '/assets/divisions/sniper.png', category: 'land', group: 'infantry',
     description: 'Precision unit. Devastating critical hits from range.',
-    atkDmgMult: 0.13, hitRate: 0.70, critRateMult: 1.56, critDmgMult: 2.50,
+    atkDmgMult: 0.13, hitRate: 0.70, critRateMult: 1.30, critDmgMult: 2.50,
     healthMult: 24.0, dodgeMult: 1.60, armorMult: 1.20,
     manpowerCost: 150, trainingTime: 40,
     recruitCost: { money: 80000, oil: 500, materialX: 0, scrap: 400 },
-    upkeepCost: { oil: 50, materialX: 30 },
+
     popCost: 1, seats: 0,
     attackSpeed: 0.6,
   },
@@ -87,7 +84,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 30.0, dodgeMult: 0.70, armorMult: 1.30,
     manpowerCost: 250, trainingTime: 35,
     recruitCost: { money: 100000, oil: 800, materialX: 0, scrap: 500 },
-    upkeepCost: { oil: 80, materialX: 40 },
+
     popCost: 1, seats: 0,
     attackSpeed: 0.8,
   },
@@ -100,7 +97,7 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 30.0, dodgeMult: 1.50, armorMult: 1.50,
     manpowerCost: 150, trainingTime: 35,
     recruitCost: { money: 100000, oil: 1500, materialX: 0, scrap: 400 },
-    upkeepCost: { oil: 150, materialX: 60 },
+
     popCost: 2, seats: 0,
     attackSpeed: 1.3,
   },
@@ -111,18 +108,18 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 36.0, dodgeMult: 0.80, armorMult: 2.00,
     manpowerCost: 200, trainingTime: 50,
     recruitCost: { money: 150000, oil: 2500, materialX: 0, scrap: 600 },
-    upkeepCost: { oil: 250, materialX: 100 },
+
     popCost: 2, seats: 1,
     attackSpeed: 0.5,
   },
   jet: {
     id: 'jet', name: 'Jet Fighters', icon: '/assets/divisions/jet.png', category: 'air', group: 'mechanized',
     description: 'Air superiority. Precise strikes with massive criticals.',
-    atkDmgMult: 0.26, hitRate: 0.80, critRateMult: 1.75, critDmgMult: 2.80,
+    atkDmgMult: 0.26, hitRate: 0.80, critRateMult: 1.40, critDmgMult: 2.80,
     healthMult: 26.0, dodgeMult: 1.40, armorMult: 1.20,
     manpowerCost: 100, trainingTime: 60,
     recruitCost: { money: 200000, oil: 3000, materialX: 0, scrap: 700 },
-    upkeepCost: { oil: 300, materialX: 120 },
+
     popCost: 2, seats: 2,
     attackSpeed: 0.7,
   },
@@ -133,20 +130,20 @@ export const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
     healthMult: 40.0, dodgeMult: 0.70, armorMult: 2.50,
     manpowerCost: 250, trainingTime: 60,
     recruitCost: { money: 250000, oil: 4000, materialX: 0, scrap: 800 },
-    upkeepCost: { oil: 400, materialX: 150 },
+
     popCost: 2, seats: 5,
     attackSpeed: 0.4,
   },
   submarine: {
     id: 'submarine', name: 'Submarine Fleet', icon: '/assets/divisions/warship.png', category: 'naval', group: 'mechanized',
     description: 'Deep sea stealth. Colossal hit rate and armor.',
-    atkDmgMult: 0.35, hitRate: 0.85, critRateMult: 1.50, critDmgMult: 2.50,
+    atkDmgMult: 0.35, hitRate: 0.85, critRateMult: 1.50, critDmgMult: 2.10,
     healthMult: 50.0, dodgeMult: 1.20, armorMult: 3.00,
     manpowerCost: 300, trainingTime: 80,
     recruitCost: { money: 300000, oil: 6000, materialX: 0, scrap: 1200 },
-    upkeepCost: { oil: 600, materialX: 250 },
+
     popCost: 2, seats: 6,
-    attackSpeed: 0.3,
+    attackSpeed: 0.45,
   },
 }
 

@@ -3,7 +3,7 @@
 // Shared between frontend stores and backend
 // ══════════════════════════════════════════════
 
-export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike' | 'quick_battle'
+export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike' | 'quick_battle' | 'revolt'
 
 export interface CombatLogEntry {
   tick: number

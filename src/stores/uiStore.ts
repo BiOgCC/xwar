@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type PanelType = 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'social_club' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'foreign_country' | 'casino' | 'bounty' | 'stocks' | 'alliance' | null
+export type PanelType = 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'social_club' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'armed_forces' | 'foreign_country' | 'casino' | 'bounty' | 'stocks' | 'alliance' | 'settings' | 'help' | 'history' | 'diplomacy' | 'chat' | null
 export type ResourceViewMode = 'deposits' | 'strategic' | 'political'
 
 export interface Notification {
@@ -36,6 +36,7 @@ export interface UIState {
   chatMessages: ChatMessage[]
   floatingTexts: FloatingText[]
   profileDefaultTab: string | null
+  warDefaultTab: string | null
   resourceViewMode: ResourceViewMode
   selectedForeignCountry: string | null
   setActivePanel: (panel: PanelType) => void
@@ -43,6 +44,7 @@ export interface UIState {
   goBack: () => void
   setPanelFullscreen: (v: boolean) => void
   setProfileDefaultTab: (tab: string | null) => void
+  setWarDefaultTab: (tab: string | null) => void
   cycleResourceView: () => void
   setForeignCountry: (code: string | null) => void
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void
@@ -68,6 +70,7 @@ export const useUIStore = create<UIState>((set) => ({
   notifications: [],
   floatingTexts: [],
   profileDefaultTab: null,
+  warDefaultTab: null,
   resourceViewMode: 'political' as ResourceViewMode,
   chatMessages: [
     {
@@ -109,6 +112,7 @@ export const useUIStore = create<UIState>((set) => ({
   setPanelFullscreen: (v) => set({ panelFullscreen: v }),
 
   setProfileDefaultTab: (tab) => set({ profileDefaultTab: tab }),
+  setWarDefaultTab: (tab) => set({ warDefaultTab: tab }),
 
   setForeignCountry: (code) => set({ selectedForeignCountry: code }),
 

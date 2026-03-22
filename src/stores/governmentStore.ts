@@ -7,8 +7,10 @@ import { useInventoryStore } from './inventoryStore'
 import { useMarketStore } from './market'
 import { api } from '../api/client'
 
-import type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government } from '../types/government.types'
-export type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government }
+import type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government, ContributionEntry, CitizenContributions } from '../types/government.types'
+export type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government, ContributionEntry, CitizenContributions }
+import { computePoliticalPower, resolveElectionResults, aggregateContributionsSinceJoin, MIN_COALITION_SIZE, PP_ROLLING_WINDOW_MS, type WeightedVote } from '../engine/elections'
+export { computePoliticalPower, resolveElectionResults, MIN_COALITION_SIZE, PP_ROLLING_WINDOW_MS }
 
 // Re-export for backward compatibility
 export type { NationalFund, NationalFundKey }
@@ -86,6 +88,9 @@ export interface GovernmentState {
   playerDismissals: Record<string, { count: number; resetAt: number }>  // playerId → daily dismiss tracking
   militaryContracts: MilitaryContract[]
   nextElectionAt: number
+  // ── Weighted Democracy (PP) ──
+  citizenContributions: Record<string, CitizenContributions>  // citizenId → rolling contribution log
+  electionVotes: Record<string, WeightedVote[]>  // countryCode → votes cast this cycle
 
   fetchGovernment: (countryCode: string) => Promise<void>
   setTaxRate: (countryCode: string, taxRate: number) => Promise<{success: boolean, message: string}>
@@ -94,6 +99,10 @@ export interface GovernmentState {
 
   registerCandidate: (countryId: string, citizenId: string, name: string) => void
   voteForCandidate: (countryCode: string, candidateName: string) => Promise<{success: boolean, message: string}>
+  // ── Weighted Democracy (PP) actions ──
+  recordContribution: (citizenId: string, type: 'damage' | 'production' | 'donation', amount: number) => void
+  getPoliticalPower: (citizenId: string) => number
+  castWeightedVote: (countryCode: string, voterId: string, candidateId: string) => { success: boolean; message: string }
   proposeLaw: (law: Omit<Law, 'id' | 'votesFor' | 'votesAgainst' | 'status' | 'proposedAt' | 'expiresAt'>) => void
   voteOnLaw: (lawId: string, voterId: string, vote: 'for' | 'against') => void
   resolveElections: () => void
@@ -131,6 +140,8 @@ export interface GovernmentState {
   recruitEquipmentFromMarket: (countryCode: string, orderId: string) => { success: boolean; message: string }
   buyCasesForCountry: (countryCode: string, quantity: number) => { success: boolean; message: string }
   appointRole: (countryCode: string, targetId: string, role: 'vicepresident' | 'minister' | 'congress' | 'citizen') => { success: boolean; message: string }
+  // Revolt system
+  canTriggerRevolt: (countryCode: string, playerId: string) => boolean
 }
 
 // Helper to create mock citizens
@@ -206,6 +217,8 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   playerDismissals: {},
   militaryContracts: [],
   nextElectionAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+  citizenContributions: {},
+  electionVotes: {},
 
   registerCandidate: (countryId, citizenId, name) => set((state) => {
     const gov = state.governments[countryId]
@@ -214,7 +227,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     return {
       governments: {
         ...state.governments,
-        [countryId]: { ...gov, candidates: [...gov.candidates, { id: citizenId, name, votes: 0 }] }
+        [countryId]: { ...gov, candidates: [...gov.candidates, { id: citizenId, name, votes: 0, weightedVotes: 0, voterIds: [] }] }
       }
     }
   }),
@@ -332,17 +345,36 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     Object.keys(newGovs).forEach(countryId => {
       const gov = newGovs[countryId]
       if (gov.candidates.length === 0) return
-      const sorted = [...gov.candidates].sort((a, b) => b.votes - a.votes)
-      const newPresident = sorted[0].id
-      const newCongress = sorted.slice(1, 6).map(c => c.id)
-      newGovs[countryId] = {
-        ...gov,
-        president: newPresident,
-        congress: newCongress.length > 0 ? newCongress : gov.congress,
-        candidates: []
+
+      // Use weighted democracy engine
+      const votes = state.electionVotes[countryId] || []
+      const candidateNames: Record<string, string> = {}
+      gov.candidates.forEach(c => { candidateNames[c.id] = c.name })
+
+      const result = resolveElectionResults(votes, candidateNames, MIN_COALITION_SIZE)
+
+      if (result.winnerId) {
+        const newPresident = result.winnerId
+        // Congress = next top candidates (up to 5), from rankings
+        const newCongress = result.rankings
+          .slice(1, 6)
+          .map(c => c.id)
+        newGovs[countryId] = {
+          ...gov,
+          president: newPresident,
+          congress: newCongress.length > 0 ? newCongress : gov.congress,
+          candidates: [],
+        }
+      } else {
+        // No winner — keep current president, reset candidates
+        newGovs[countryId] = { ...gov, candidates: [] }
       }
     })
-    return { governments: newGovs, nextElectionAt: Date.now() + 30 * 24 * 60 * 60 * 1000 }
+    return {
+      governments: newGovs,
+      nextElectionAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      electionVotes: {},  // Reset votes for next cycle
+    }
   }),
 
   resolveLaws: () => set((state) => {
@@ -1263,5 +1295,81 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
 
     const roleLabel = role === 'vicepresident' ? 'Vice President' : role.charAt(0).toUpperCase() + role.slice(1)
     return { success: true, message: `${citizen.name} appointed as ${roleLabel}!` }
+  },
+
+  // ── Revolt System ──
+  canTriggerRevolt: (countryCode, playerId) => {
+    const gov = get().governments[countryCode]
+    if (!gov) return false
+    const citizen = gov.citizens.find(c => c.id === playerId)
+    if (!citizen) return false
+    return citizen.role === 'president' || citizen.role === 'vicepresident' || citizen.role === 'minister'
+  },
+
+  // ── Weighted Democracy (PP) Implementation ──
+
+  recordContribution: (citizenId, type, amount) => {
+    if (amount <= 0) return
+    const state = get()
+    const existing = state.citizenContributions[citizenId] || { citizenId, entries: [] }
+    const entry: ContributionEntry = { type, amount, timestamp: Date.now() }
+    set({
+      citizenContributions: {
+        ...state.citizenContributions,
+        [citizenId]: {
+          citizenId,
+          entries: [...existing.entries, entry],
+        },
+      },
+    })
+  },
+
+  getPoliticalPower: (citizenId) => {
+    const state = get()
+    const record = state.citizenContributions[citizenId]
+    if (!record || record.entries.length === 0) {
+      return computePoliticalPower({ damage: 0, itemsProduced: 0, donations: 0 })
+    }
+    // Find citizen's joinedAt from their country government
+    let joinedAt = 0
+    for (const gov of Object.values(state.governments)) {
+      const citizen = gov.citizens.find(c => c.id === citizenId)
+      if (citizen) { joinedAt = citizen.joinedAt; break }
+    }
+    const contributions = aggregateContributionsSinceJoin(record.entries, joinedAt, Date.now())
+    return computePoliticalPower(contributions)
+  },
+
+  castWeightedVote: (countryCode, voterId, candidateId) => {
+    const state = get()
+    const gov = state.governments[countryCode]
+    if (!gov) return { success: false, message: 'Government not found.' }
+
+    // Voter must be a citizen
+    const citizen = gov.citizens.find(c => c.id === voterId)
+    if (!citizen) return { success: false, message: 'You are not a citizen of this country.' }
+
+    // Candidate must exist
+    const candidate = gov.candidates.find(c => c.id === candidateId)
+    if (!candidate) return { success: false, message: 'Candidate not found.' }
+
+    // Check if voter already voted this cycle
+    const existingVotes = state.electionVotes[countryCode] || []
+    if (existingVotes.some(v => v.voterId === voterId)) {
+      return { success: false, message: 'You have already voted this election cycle.' }
+    }
+
+    // Compute voter's PP
+    const pp = get().getPoliticalPower(voterId)
+
+    const vote: WeightedVote = { voterId, candidateId, weight: pp }
+    set({
+      electionVotes: {
+        ...state.electionVotes,
+        [countryCode]: [...existingVotes, vote],
+      },
+    })
+
+    return { success: true, message: `Vote cast with ${pp.toFixed(1)} Political Power!` }
   },
 }))

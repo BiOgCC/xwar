@@ -33,20 +33,33 @@ function playSound(tier: AnnouncerTier) {
 // Keys stored: "firstblood", "holyshit_R3", "random90_R3"
 export type AnnouncerPlayed = Set<string>
 
+const globalAnnouncerState = new Map<string, AnnouncerPlayed>()
+
 /**
+ * @param battleId       - ID of the battle
+ * @param isOwnBattle    - whether the player's country is involved in this battle
  * @param ratio          - damageRatio (0 = def dominating, 1 = atk dominating)
- * @param played         - Set of already-played keys for this battle
  * @param battleAgeMs    - milliseconds since battle started
  * @param currentRound   - current round number (1-based)
  */
 export function checkAnnouncerThresholds(
+  battleId: string,
+  isOwnBattle: boolean,
   ratio: number,
-  played: AnnouncerPlayed,
   battleAgeMs: number,
   currentRound: number,
 ) {
+  // Only play on own battles
+  if (!isOwnBattle) return
+
   // Only trigger after 5 minutes (300,000 ms)
   if (battleAgeMs < 300_000) return
+
+  let played = globalAnnouncerState.get(battleId)
+  if (!played) {
+    played = new Set()
+    globalAnnouncerState.set(battleId, played)
+  }
 
   // The "domination" value: how far either side is from center
   // ratio=0.73 → maxDom=0.73, ratio=0.27 → maxDom=0.73 (defender)

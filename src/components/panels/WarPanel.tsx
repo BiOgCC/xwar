@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useArmyStore } from '../../stores/army'
 import { useBattleStore } from '../../stores/battleStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
+import { useUIStore } from '../../stores/uiStore'
 import WarOverviewTab from './WarOverviewTab'
 import WarRecruitTab from './WarRecruitTab'
 import WarForcesTab from './WarForcesTab'
@@ -12,15 +13,28 @@ import '../../styles/war.css'
 type WarTab = 'overview' | 'recruit' | 'armies' | 'battles'
 
 export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: boolean; setPanelFullscreen?: (v: boolean) => void }) {
-  const [tab, setTab] = useState<WarTab>('overview')
-  const [editingMotd, setEditingMotd] = useState(false)
   const armyStore = useArmyStore()
   const battleStore = useBattleStore()
   const player = usePlayerStore()
   const iso = player.countryCode || 'US'
+  const warDefaultTab = useUIStore(s => s.warDefaultTab)
 
   const myDivisions = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
   const activeBattles = Object.values(battleStore.battles).filter(b => b.status === 'active')
+
+  const [tab, setTab] = useState<WarTab>(() => {
+    if (warDefaultTab && ['overview', 'recruit', 'armies', 'battles'].includes(warDefaultTab)) return warDefaultTab as WarTab
+    return activeBattles.length > 0 ? 'battles' : 'overview'
+  })
+  const [editingMotd, setEditingMotd] = useState(false)
+
+  // When warDefaultTab changes externally (e.g. clicking Recruit in ActionBar), switch tab
+  useEffect(() => {
+    if (warDefaultTab && ['overview', 'recruit', 'armies', 'battles'].includes(warDefaultTab)) {
+      setTab(warDefaultTab as WarTab)
+      useUIStore.getState().setWarDefaultTab(null)
+    }
+  }, [warDefaultTab])
 
   const govStore = useGovernmentStore()
   const gov = govStore.governments[iso]

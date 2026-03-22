@@ -7,10 +7,10 @@ import { usePlayerStore } from '../../stores/playerStore'
 export default function FoodGrid() {
   const player = usePlayerStore()
 
-  const foods: { key: 'bread' | 'sushi' | 'wagyu'; icon: React.ReactNode; label: string; stam: number; count: number }[] = [
-    { key: 'bread', icon: <img src="/assets/food/bread.png" alt="Bread" style={{ width: '16px', height: '16px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, label: 'Bread', stam: 10, count: player.bread },
-    { key: 'sushi', icon: <img src="/assets/food/sushi.png" alt="Sushi" style={{ width: '16px', height: '16px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, label: 'Sushi', stam: 20, count: player.sushi },
-    { key: 'wagyu', icon: <img src="/assets/food/wagyu.png" alt="Wagyu" style={{ width: '16px', height: '16px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, label: 'Wagyu', stam: 30, count: player.wagyu },
+  const foods: { key: 'bread' | 'sushi' | 'wagyu'; icon: React.ReactNode; label: string; pct: number; count: number }[] = [
+    { key: 'bread', icon: <img src="/assets/food/bread.png" alt="Bread" style={{ width: '16px', height: '16px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, label: 'Bread', pct: 15, count: player.bread },
+    { key: 'sushi', icon: <img src="/assets/food/sushi.png" alt="Sushi" style={{ width: '16px', height: '16px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, label: 'Sushi', pct: 30, count: player.sushi },
+    { key: 'wagyu', icon: <img src="/assets/food/wagyu.png" alt="Wagyu" style={{ width: '16px', height: '16px', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />, label: 'Wagyu', pct: 45, count: player.wagyu },
   ]
 
   return (
@@ -37,7 +37,7 @@ export default function FoodGrid() {
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>{f.icon} {f.label}</span>
-            <span style={{ fontSize: '8px', color: f.count > 0 ? '#22d38a' : '#475569' }}>+{f.stam} STA ({f.count})</span>
+            <span style={{ fontSize: '8px', color: f.count > 0 ? '#22d38a' : '#475569' }}>+{f.pct}% STA ({f.count})</span>
           </button>
         ))}
       </div>

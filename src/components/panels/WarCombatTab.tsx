@@ -8,6 +8,7 @@ import { useUIStore } from '../../stores/uiStore'
 import BattleAvatar from '../shared/BattleAvatar'
 import CountryFlag from '../shared/CountryFlag'
 import { getCountryTerrain } from '../../data/terrainMap'
+import { getCountryDistance, getAttackOilCost } from '../../utils/geography'
 import { AnimatedNumber, fmtElapsed, fmtTicks } from './warHelpers'
 
 const BattleScene3D = React.lazy(() => import('./BattleScene3D'))
@@ -30,6 +31,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
   // Combat tick timer
   const [combatTickLeft, setCombatTickLocal] = useState(() => useBattleStore.getState().combatTickLeft)
   const [viewingRound, setViewingRound] = useState<{ battleId: string; roundIdx: number } | null>(null)
+  const [combatTexts, setCombatTexts] = useState<Record<string, { atk: { id: string, text: string, color: string }[], def: { id: string, text: string, color: string }[] }>>({})
   React.useEffect(() => {
     const unsub = useBattleStore.subscribe((state) => { setCombatTickLocal(state.combatTickLeft) })
     return unsub
@@ -118,9 +120,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
       {!panelFullscreen && (
         <div className="war-combat-food" style={{ display: 'flex', gap: '3px', marginBottom: '6px' }}>
           {[
-            { key: 'bread', icon: '🍞', label: 'Bread', count: player.bread, sta: 10, heal: 1 },
-            { key: 'sushi', icon: '🍣', label: 'Sushi', count: player.sushi, sta: 20, heal: 2 },
-            { key: 'wagyu', icon: '🥩', label: 'Wagyu', count: player.wagyu, sta: 30, heal: 3 },
+            { key: 'bread', icon: '🍞', label: 'Bread', count: player.bread, sta: '15%', heal: 1 },
+            { key: 'sushi', icon: '🍣', label: 'Sushi', count: player.sushi, sta: '30%', heal: 2 },
+            { key: 'wagyu', icon: '🥩', label: 'Wagyu', count: player.wagyu, sta: '45%', heal: 3 },
           ].map(f => (
             <button key={f.key} disabled={f.count <= 0}
               onClick={() => {
@@ -188,9 +190,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
             {/* Food Grid */}
             <div style={{ display: 'flex', gap: '4px' }}>
               {[
-                { key: 'bread', count: player.bread, sta: 10, heal: 1 },
-                { key: 'sushi', count: player.sushi, sta: 20, heal: 2 },
-                { key: 'wagyu', count: player.wagyu, sta: 30, heal: 3 },
+                { key: 'bread', count: player.bread, sta: '15%', heal: 1 },
+                { key: 'sushi', count: player.sushi, sta: '30%', heal: 2 },
+                { key: 'wagyu', count: player.wagyu, sta: '45%', heal: 3 },
               ].map(f => (
                 <button key={f.key} disabled={f.count <= 0}
                   onClick={() => {
@@ -257,6 +259,32 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
         const countries = useWorldStore.getState().countries
         const atkClr = countries.find(c => c.code === battle.attackerId)?.color || '#3b82f6'
         const defClr = countries.find(c => c.code === battle.defenderId)?.color || '#ef4444'
+
+        const evaluateSupportCost = (targetSide: 'attacker' | 'defender') => {
+          if (iso === battle.attackerId || iso === battle.defenderId) return null
+          
+          const opponent = targetSide === 'attacker' ? battle.defenderId : battle.attackerId
+          const myCountryObj = countries.find(c => c.code === iso)
+          const targetObj = countries.find(c => c.code === (targetSide === 'attacker' ? battle.attackerId : battle.defenderId))
+          const opponentObj = countries.find(c => c.code === opponent)
+          
+          const isAlliedOpponent = myCountryObj?.empire && opponentObj?.empire && myCountryObj.empire === opponentObj.empire
+          if (isAlliedOpponent) return 'BLOCKED'
+          
+          const isSupportingAlly = myCountryObj?.empire && targetObj?.empire && myCountryObj.empire === targetObj.empire
+          const isAtWar = useWorldStore.getState().wars.some(w => w.status === 'active' && ((w.attacker === iso && w.defender === opponent) || (w.attacker === opponent && w.defender === iso)))
+          
+          const dist = getCountryDistance(iso, opponent)
+          let oil = getAttackOilCost(dist) / 10000
+          
+          if (!isSupportingAlly && !isAtWar) {
+            oil *= 2
+          }
+          return Number(oil.toFixed(2))
+        }
+        
+        const atkSupportCost = evaluateSupportCost('attacker')
+        const defSupportCost = evaluateSupportCost('defender')
 
         const activeRd = battle.rounds[battle.rounds.length - 1]
         const tickAtkDmg = battle.currentTick?.attackerDamage || 0
@@ -437,42 +465,122 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
             </div>
 
             {/* Battle Avatar Animation */}
-            <BattleAvatar
-              attackerFlag={battle.attackerId}
-              defenderFlag={battle.defenderId}
-              attackerName={getCountryName(battle.attackerId)}
-              defenderName={getCountryName(battle.defenderId)}
-              isActive={battle.status === 'active'}
-              atkIntensity={atkIntensity}
-              defIntensity={defIntensity}
-              defenderCountry={battle.defenderId}
-              attackerColor={atkClr}
-              defenderColor={defClr}
-              critSide={critSide}
-              hitSide={hitSide}
-              atkDominantType={getDominantType(battle.attacker.engagedDivisionIds)}
-              defDominantType={getDominantType(battle.defender.engagedDivisionIds)}
-              damageRatio={atkPct / 100}
-              battleStartedAt={battle.startedAt}
-              currentRound={battle.rounds.length}
-              terrain={getCountryTerrain(battle.defenderId)}
-            />
+            <div style={{ position: 'relative' }}>
+              {/* Attacker Damage Carousel */}
+              <div style={{ position: 'absolute', left: '15px', top: '25px', bottom: '15px', width: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', pointerEvents: 'none', zIndex: 10, alignItems: 'flex-start', gap: '2px', clipPath: 'inset(0px -50px -50px -50px)' }}>
+                {combatTexts[battle.id]?.atk.map(dmg => (
+                  <div key={dmg.id} style={{ fontFamily: 'var(--font-display)', fontSize: '8px', fontWeight: 900, color: dmg.color, textShadow: '0 0 2px rgba(0,0,0,0.8), 0 1px 1px rgba(0,0,0,0.8)', animation: 'rolling-text-anim 2.5s ease-out forwards', willChange: 'transform, opacity' }}>
+                    {dmg.text}
+                  </div>
+                ))}
+              </div>
+              <BattleAvatar
+                battleId={battle.id}
+                isOwnBattle={iso === battle.attackerId || iso === battle.defenderId}
+                attackerFlag={battle.attackerId}
+                defenderFlag={battle.defenderId}
+                attackerName={getCountryName(battle.attackerId)}
+                defenderName={getCountryName(battle.defenderId)}
+                isActive={battle.status === 'active'}
+                atkIntensity={atkIntensity}
+                defIntensity={defIntensity}
+                defenderCountry={battle.defenderId}
+                attackerColor={atkClr}
+                defenderColor={defClr}
+                critSide={critSide}
+                hitSide={hitSide}
+                atkDominantType={getDominantType(battle.attacker.engagedDivisionIds)}
+                defDominantType={getDominantType(battle.defender.engagedDivisionIds)}
+                damageRatio={atkPct / 100}
+                battleStartedAt={battle.startedAt}
+                currentRound={battle.rounds.length}
+                terrain={getCountryTerrain(battle.defenderId)}
+              />
+              {/* Defender Damage Carousel */}
+              <div style={{ position: 'absolute', right: '15px', top: '25px', bottom: '15px', width: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', pointerEvents: 'none', zIndex: 10, alignItems: 'flex-end', gap: '2px', clipPath: 'inset(0px -50px -50px -50px)' }}>
+                {combatTexts[battle.id]?.def.map(dmg => (
+                  <div key={dmg.id} style={{ fontFamily: 'var(--font-display)', fontSize: '8px', fontWeight: 900, color: dmg.color, textShadow: '0 0 2px rgba(0,0,0,0.8), 0 1px 1px rgba(0,0,0,0.8)', animation: 'rolling-text-anim 2.5s ease-out forwards', willChange: 'transform, opacity' }}>
+                    {dmg.text}
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Fight Buttons — always visible */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '4px' }}>
-              <button disabled={player.stamina < 5}
-                style={{ padding: '8px 0', background: `${atkClr}15`, border: `2px solid ${atkClr}66`, borderRadius: '2px', color: atkClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id); if (r.isCrit) { setCritSide('atk'); setTimeout(() => setCritSide(null), 500) }; setHitSide('def'); setTimeout(() => setHitSide(null), 300); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : atkClr) }}
+              <button disabled={player.stamina < 5 || atkSupportCost === 'BLOCKED'}
+                style={{ padding: '8px 0', background: `${atkClr}15`, border: `2px solid ${atkClr}66`, borderRadius: '2px', color: atkClr, cursor: atkSupportCost === 'BLOCKED' ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s', opacity: atkSupportCost === 'BLOCKED' ? 0.5 : 1 }}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  const r = battleStore.playerAttack(battle.id, 'attacker'); 
+                  if (r.message.includes('Too fast') || r.message.includes('stamina') || r.message.includes('country is not') || r.message.includes('only support') || r.message.includes('Not enough oil') || r.message.includes('at war')) {
+                    ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, '#ef4444');
+                    return;
+                  }
+                  if (r.isCrit) { setCritSide('atk'); setTimeout(() => setCritSide(null), 500) } 
+                  setHitSide('def'); setTimeout(() => setHitSide(null), 300); 
+                  const id = Date.now().toString() + Math.random().toString();
+                  
+                  let text = `${r.damage}`;
+                  let color = atkClr;
+                  if ((r as any).isMiss) { text = 'MISS'; color = '#94a3b8'; }
+                  else if ((r as any).isDodged) { text = 'DODGE'; color = '#ffffff'; }
+                  else if (r.isCrit) { text = `${Math.floor(r.damage)}!`; color = '#f59e0b'; }
+                  
+                  setCombatTexts(prev => {
+                    const b = prev[battle.id] || { atk: [], def: [] };
+                    return { ...prev, [battle.id]: { ...b, atk: [...b.atk.slice(-7), { id, text, color }] } };
+                  });
+                  setTimeout(() => {
+                    setCombatTexts(prev => {
+                      const b = prev[battle.id];
+                      if (!b) return prev;
+                      return { ...prev, [battle.id]: { ...b, atk: b.atk.filter(x => x.id !== id) } };
+                    });
+                  }, 2500);
+                }}
               >
-                ATTACK
-                <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
+                SUPPORT
+                <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>
+                  5 STAMINA {atkSupportCost === 'BLOCKED' ? '• ALLY TARGET' : atkSupportCost !== null ? `• ${atkSupportCost} 🛢️` : ''}
+                </div>
               </button>
-              <button disabled={player.stamina < 5}
-                style={{ padding: '8px 0', background: `${defClr}15`, border: `2px solid ${defClr}66`, borderRadius: '2px', color: defClr, cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s' }}
-                onClick={(e) => { e.stopPropagation(); const r = battleStore.playerAttack(battle.id); if (r.isCrit) { setCritSide('def'); setTimeout(() => setCritSide(null), 500) }; setHitSide('atk'); setTimeout(() => setHitSide(null), 300); ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.isCrit ? '#f59e0b' : defClr) }}
+              <button disabled={player.stamina < 5 || defSupportCost === 'BLOCKED'}
+                style={{ padding: '8px 0', background: `${defClr}15`, border: `2px solid ${defClr}66`, borderRadius: '2px', color: defClr, cursor: defSupportCost === 'BLOCKED' ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s', opacity: defSupportCost === 'BLOCKED' ? 0.5 : 1 }}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  const r = battleStore.playerAttack(battle.id, 'defender'); 
+                  if (r.message.includes('Too fast') || r.message.includes('stamina') || r.message.includes('country is not') || r.message.includes('only support') || r.message.includes('Not enough oil') || r.message.includes('at war')) {
+                    ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, '#ef4444');
+                    return;
+                  }
+                  if (r.isCrit) { setCritSide('def'); setTimeout(() => setCritSide(null), 500) } 
+                  setHitSide('atk'); setTimeout(() => setHitSide(null), 300); 
+                  const id = Date.now().toString() + Math.random().toString();
+                  
+                  let text = `${r.damage}`;
+                  let color = defClr;
+                  if ((r as any).isMiss) { text = 'MISS'; color = '#94a3b8'; }
+                  else if ((r as any).isDodged) { text = 'DODGE'; color = '#ffffff'; }
+                  else if (r.isCrit) { text = `${Math.floor(r.damage)}!`; color = '#f59e0b'; }
+                  
+                  setCombatTexts(prev => {
+                    const b = prev[battle.id] || { atk: [], def: [] };
+                    return { ...prev, [battle.id]: { ...b, def: [...b.def.slice(-7), { id, text, color }] } };
+                  });
+                  setTimeout(() => {
+                    setCombatTexts(prev => {
+                      const b = prev[battle.id];
+                      if (!b) return prev;
+                      return { ...prev, [battle.id]: { ...b, def: b.def.filter(x => x.id !== id) } };
+                    });
+                  }, 2500);
+                }}
               >
-                DEFEND
-                <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>5 STAMINA</div>
+                SUPPORT
+                <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>
+                  5 STAMINA {defSupportCost === 'BLOCKED' ? '• ALLY TARGET' : defSupportCost !== null ? `• ${defSupportCost} 🛢️` : ''}
+                </div>
               </button>
             </div>
 
@@ -565,15 +673,15 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
 
             {/* Division Deploy List — grouped by type */}
             {(() => {
-              const readyDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === iso && d.status === 'ready')
+              const readyDivs = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso && d.status === 'ready')
               const engagedIds = (mySide === 'attacker' ? battle.attacker : battle.defender).engagedDivisionIds
               const engagedDivs = engagedIds.map(id => armyStore.divisions[id]).filter(Boolean)
 
               // Group all my country's divs by type
-              const allMyDivs = Object.values(armyStore.divisions).filter(d => d.countryCode === iso && d.status !== 'destroyed')
+              const allMyDivs = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso && d.status !== 'destroyed')
               const typeMap = new Map<string, { ready: typeof readyDivs; engaged: typeof engagedDivs; total: typeof allMyDivs }>()
               
-              for (const d of allMyDivs) {
+              for (const d of allMyDivs as any[]) {
                 if (!typeMap.has(d.type)) typeMap.set(d.type, { ready: [], engaged: [], total: [] })
                 const g = typeMap.get(d.type)!
                 g.total.push(d)
@@ -614,7 +722,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                           disabled={!canRecall}
                           onClick={(e) => {
                             e.stopPropagation()
-                            const divToRecall = group.engaged[group.engaged.length - 1]
+                            const divToRecall = group.engaged[group.engaged.length - 1] as any
                             if (divToRecall) {
                               const r = battleStore.recallDivisionFromBattle(battle.id, divToRecall.id, mySide)
                               ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#3b82f6' : '#ef4444')
@@ -633,7 +741,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                           disabled={!canDeploy}
                           onClick={(e) => {
                             e.stopPropagation()
-                            const divToDeploy = group.ready[0]
+                            const divToDeploy = group.ready[0] as any
                             if (divToDeploy) {
                               const r = battleStore.deployDivisionsToBattle(battle.id, [divToDeploy.id], mySide)
                               ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
@@ -808,9 +916,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
           {/* Food Grid */}
           <div style={{ display: 'flex', gap: '4px' }}>
             {[
-              { key: 'bread', count: player.bread, sta: 10, heal: 1 },
-              { key: 'sushi', count: player.sushi, sta: 20, heal: 2 },
-              { key: 'wagyu', count: player.wagyu, sta: 30, heal: 3 },
+              { key: 'bread', count: player.bread, sta: '15%', heal: 1 },
+              { key: 'sushi', count: player.sushi, sta: '30%', heal: 2 },
+              { key: 'wagyu', count: player.wagyu, sta: '45%', heal: 3 },
             ].map(f => (
               <button key={f.key} disabled={f.count <= 0}
                 onClick={() => {

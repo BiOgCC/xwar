@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useSocialClubStore } from '../../stores/socialClubStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import CountryFlag from '../shared/CountryFlag'
+import ChatPanel from './ChatPanel'
 
 type SocialTab = 'club' | 'wall' | 'pact' | 'articles' | 'mentorship' | 'chat'
 
@@ -37,7 +38,7 @@ export default function SocialClubPanel() {
         {tab === 'pact' && <BloodPactTab />}
         {tab === 'articles' && <ArticlesTab />}
         {tab === 'mentorship' && <MentorshipTab />}
-        {tab === 'chat' && <ChatTab />}
+        {tab === 'chat' && <ChatPanel />}
       </div>
     </div>
   )
@@ -587,44 +588,3 @@ function MentorshipTab() {
   )
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   CHAT TAB (Placeholder for Socket.IO)
-   ═══════════════════════════════════════════════════════════════════ */
-function ChatTab() {
-  const [channel, setChannel] = useState<'general' | 'war' | 'trade'>('general')
-  const channels = [
-    { id: 'general' as const, icon: '💬', label: '#general' },
-    { id: 'war' as const, icon: '⚔️', label: '#war' },
-    { id: 'trade' as const, icon: '💰', label: '#trade' },
-  ]
-
-  return (
-    <div className="sc-chat">
-      <div className="sc-chat__channels">
-        {channels.map(c => (
-          <button
-            key={c.id}
-            className={`sc-chat__channel ${channel === c.id ? 'sc-chat__channel--active' : ''}`}
-            onClick={() => setChannel(c.id)}
-          >
-            {c.icon} {c.label}
-          </button>
-        ))}
-      </div>
-      <div className="sc-chat__messages">
-        <div className="sc-chat__placeholder">
-          <div className="sc-chat__placeholder-icon">💬</div>
-          <div className="sc-chat__placeholder-title">Global Chat Coming Soon</div>
-          <div className="sc-chat__placeholder-desc">
-            Real-time chat channels powered by Socket.IO will be available in a future update.
-            For now, use the Wall and Articles to communicate with other players.
-          </div>
-        </div>
-      </div>
-      <div className="sc-chat__input-wrap">
-        <input className="sc-input" placeholder={`Message ${channels.find(c => c.id === channel)?.label}...`} disabled />
-        <button className="sc-btn sc-btn--primary" disabled>Send</button>
-      </div>
-    </div>
-  )
-}

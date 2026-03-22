@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useWorldStore } from '../../stores/worldStore'
 import { useAuthStore } from '../../stores/authStore'
+import ResourceIcon from '../shared/ResourceIcon'
 
 interface TopBarProps {
   timeLeft: number
@@ -92,10 +93,20 @@ export default function TopBar({ timeLeft, onManualTick }: TopBarProps) {
       </div>
       <div className="hud-topbar__right">
         <div className="hud-wealth-display" style={{ display: 'flex', gap: '16px', marginRight: '16px', alignItems: 'center' }}>
-          <span style={{ color: '#22d38a', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '14px' }}>
+          <span style={{ color: '#94a3b8', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }} title="Scrap">
+            <ResourceIcon resourceKey="scrap" size={14} /> {Math.floor(player.scrap).toLocaleString()}
+          </span>
+          <span style={{ color: '#a855f7', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }} title="Material X">
+            <ResourceIcon resourceKey="materialX" size={14} /> {Math.floor(player.materialX).toLocaleString()}
+          </span>
+          <span style={{ color: '#3b82f6', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }} title="Oil">
+            <ResourceIcon resourceKey="oil" size={14} /> {Math.floor(player.oil).toLocaleString()}
+          </span>
+          <div style={{ width: '1px', height: '16px', background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+          <span style={{ color: '#22d38a', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '12px', whiteSpace: 'nowrap' }}>
             ${player.money.toLocaleString()}
           </span>
-          <span style={{ color: '#f59e0b', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '14px' }}>
+          <span style={{ color: '#f59e0b', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '12px', whiteSpace: 'nowrap' }}>
             ₿ {player.bitcoin.toLocaleString()}
           </span>
         </div>
