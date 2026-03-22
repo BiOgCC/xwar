@@ -394,6 +394,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       bohBadges += 1
       bohBonusClaimed = true
       if (_econFlowHook) _econFlowHook('daily_fight_bonus', 1, 'created', 'badgesOfHonor')
+      // 🎖️ Play metal-falling SFX
+      import('../utils/soundFx').then(({ playBohSound }) => playBohSound()).catch(() => {})
     }
 
     // Tiered threshold + diminishing returns
@@ -410,6 +412,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       bohBadges += bohEarned
       bohToday += bohEarned
       if (_econFlowHook) _econFlowHook('damage_threshold', bohEarned, 'created', 'badgesOfHonor')
+      // 🎖️ Play metal-falling SFX
+      import('../utils/soundFx').then(({ playBohSound }) => playBohSound()).catch(() => {})
     }
     ;(updates as any).badgesOfHonor = bohBadges
     ;(updates as any).bohDamageAccumulator = bohAccum
@@ -681,6 +685,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (amount <= 0) return
     set((s) => ({ [key]: ((s as any)[key] || 0) + amount } as any))
     if (_econFlowHook) _econFlowHook(source, amount, 'created', key)
+    // 🎖️ Play metal-falling SFX when earning a Badge of Honor
+    if (key === 'badgesOfHonor') {
+      import('../utils/soundFx').then(({ playBohSound }) => playBohSound()).catch(() => {})
+    }
   },
 
   removeResource: (key, amount, source) => {

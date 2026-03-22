@@ -751,6 +751,119 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           // Refine region positions
           useRegionStore.getState().updateBoundsFromGeoJSON(geojson, 'adm0_a3')
 
+          // ── OCEAN BASE LAYER (real ocean shapes from oceans.geojson) ──
+          fetch('/data/oceans.geojson')
+            .then(r => r.json())
+            .then((oceansGeoJson: any) => {
+              m.addSource('xwar-ocean-base', {
+                type: 'geojson',
+                data: oceansGeoJson,
+                tolerance: 1.5,
+              })
+
+              // Insert this layer BELOW the state fill so the ocean shapes
+              // provide a rich water background under the land polygons
+              m.addLayer({
+                id: 'xwar-ocean-base-fill',
+                type: 'fill',
+                source: 'xwar-ocean-base',
+                paint: {
+                  'fill-color': '#0a1e3d',
+                  'fill-opacity': 0.55,
+                },
+              }, 'xwar-ocean-fill')  // insert before the strategic ocean blocks
+
+              // Subtle ocean outline for definition
+              m.addLayer({
+                id: 'xwar-ocean-base-border',
+                type: 'line',
+                source: 'xwar-ocean-base',
+                paint: {
+                  'line-color': '#1a3a5c',
+                  'line-width': 0.5,
+                  'line-opacity': 0.4,
+                },
+              }, 'xwar-ocean-fill')
+            })
+            .catch((err: any) => console.warn('Could not load oceans.geojson:', err))
+
+          // ── TEST SEA ROUTE: Azores → New York (pre-computed via searoute-js) ──
+          fetch('/data/test-route-azores-ny.geojson')
+            .then(r => r.json())
+            .then((route: any) => {
+              m.addSource('xwar-test-route', {
+                type: 'geojson',
+                data: route,
+              })
+
+              // Glow layer (wider, blurred)
+              m.addLayer({
+                id: 'xwar-test-route-glow',
+                type: 'line',
+                source: 'xwar-test-route',
+                paint: {
+                  'line-color': '#00e5ff',
+                  'line-width': 5,
+                  'line-opacity': 0.25,
+                  'line-blur': 4,
+                },
+              })
+
+              // Core dashed line
+              m.addLayer({
+                id: 'xwar-test-route-line',
+                type: 'line',
+                source: 'xwar-test-route',
+                paint: {
+                  'line-color': '#00e5ff',
+                  'line-width': 2,
+                  'line-opacity': 0.85,
+                  'line-dasharray': [4, 3],
+                },
+              })
+
+              // Endpoint markers (Azores & New York)
+              const endpointGeoJson: any = {
+                type: 'FeatureCollection',
+                features: [
+                  { type: 'Feature', properties: { label: 'Azores' }, geometry: { type: 'Point', coordinates: [-27.22, 38.73] } },
+                  { type: 'Feature', properties: { label: 'New York' }, geometry: { type: 'Point', coordinates: [-74.00, 40.71] } },
+                ],
+              }
+              m.addSource('xwar-test-route-endpoints', { type: 'geojson', data: endpointGeoJson })
+              m.addLayer({
+                id: 'xwar-test-route-dots',
+                type: 'circle',
+                source: 'xwar-test-route-endpoints',
+                paint: {
+                  'circle-radius': 5,
+                  'circle-color': '#00e5ff',
+                  'circle-stroke-color': '#ffffff',
+                  'circle-stroke-width': 2,
+                },
+              })
+              m.addLayer({
+                id: 'xwar-test-route-labels',
+                type: 'symbol',
+                source: 'xwar-test-route-endpoints',
+                layout: {
+                  'text-field': ['get', 'label'],
+                  'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                  'text-size': 12,
+                  'text-offset': [0, 1.5],
+                  'text-anchor': 'top',
+                },
+                paint: {
+                  'text-color': '#00e5ff',
+                  'text-halo-color': 'rgba(0,0,0,0.8)',
+                  'text-halo-width': 1.5,
+                },
+              })
+
+              console.log('✅ Test sea route rendered: Azores → New York (' + Math.round(route.properties?.length || 0) + ' nm)')
+            })
+            .catch((err: any) => console.warn('Could not load test sea route:', err))
+
           setMapLoaded(true)
         })
         .catch(() => { setMapLoaded(true) })
