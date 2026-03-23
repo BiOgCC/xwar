@@ -14,7 +14,7 @@ export const MILITARY_SKILLS: { key: MilitarySkill; label: string; icon: string;
   { key: 'stamina', label: 'Stamina', icon: '⚡', desc: 'Increases max stamina bar (+20 per level)' },
   { key: 'hunger', label: 'Hunger', icon: '🍖', desc: 'Increases max hunger bar (+1 per level)' },
   { key: 'armor', label: 'Armor', icon: '🛡️', desc: 'Reduces incoming damage (% mitigation, +5 armor per level)' },
-  { key: 'dodge', label: 'Dodge', icon: '💨', desc: 'Chance to avoid damage (+3% per level)' },
+  { key: 'dodge', label: 'Agility', icon: '💨', desc: 'Chance to avoid damage (+3% per level)' },
 ]
 
 export const ECONOMIC_SKILLS: { key: EconomicSkill; label: string; icon: string; desc: string }[] = [

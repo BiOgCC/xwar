@@ -89,4 +89,12 @@ export interface Battle {
   defenderOrder: TacticalOrder
   orderMessage: string
   motd: string
+  /** Per-player adrenaline meter (0–100) for manual attack skill expression */
+  playerAdrenaline: Record<string, number>
+  /** Per-player surge state: { until: timestamp, order: TacticalOrder } */
+  playerSurge: Record<string, { until: number; order: TacticalOrder }>
+  /** Per-player crash debuff: { until: timestamp } */
+  playerCrash: Record<string, { until: number }>
+  /** Per-player timestamp when adrenaline first hit 100 (for crash timer) */
+  playerAdrenalinePeakAt: Record<string, number>
 }

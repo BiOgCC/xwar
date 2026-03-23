@@ -2826,7 +2826,7 @@
 .ctab-log__sub { color: rgba(100,116,139,0.8); font-size: 8px; }
 .ctab-log__val { margin-left: auto; font-family: var(--font-display); font-weight: 700; }
 
-.ctab-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; z-index: 500; }
+.ctab-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; z-index: 10000; }
 .ctab-modal { background: linear-gradient(180deg, #131e30 0%, #0d1624 100%); border: 1px solid rgba(34,211,138,0.25); border-radius: 14px; padding: 20px; width: 90%; max-width: 380px; max-height: 80vh; overflow-y: auto; box-shadow: 0 16px 48px rgba(0,0,0,0.7), 0 0 32px rgba(34,211,138,0.08); }
 .ctab-modal__title { font-family: var(--font-display); font-size: 13px; font-weight: 900; color: #22d38a; letter-spacing: 0.08em; margin-bottom: 14px; text-shadow: 0 0 12px rgba(34,211,138,0.4); }
 .ctab-build-list { display: flex; flex-direction: column; gap: 8px; }

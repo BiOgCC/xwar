@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useArmyStore, DIVISION_TEMPLATES } from '../../../stores/army'
+import { useArmyStore, DIVISION_TEMPLATES, type Division } from '../../../stores/army'
+import type { Army } from '../../../stores/army/types'
 import { useBattleStore, getCountryName } from '../../../stores/battleStore'
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useWorldStore } from '../../../stores/worldStore'
@@ -25,13 +26,13 @@ export default function AFCountryTab({ iso }: { iso: string }) {
   const gov = govStore.governments[iso]
   const isPresident = gov?.president === player.name
 
-  const myDivisions = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
+  const myDivisions = (Object.values(armyStore.divisions) as Division[]).filter((d: Division) => d.countryCode === iso)
   const activeBattles = Object.values(battleStore.battles).filter(b => b.status === 'active')
-  const totalManpower = myDivisions.reduce((s, d) => s + d.manpower, 0)
-  const readyDivs = myDivisions.filter(d => d.status === 'ready').length
-  const trainingDivs = myDivisions.filter(d => d.status === 'training').length
-  const inCombatDivs = myDivisions.filter(d => d.status === 'in_combat').length
-  const destroyedDivs = myDivisions.filter(d => d.status === 'destroyed').length
+  const totalManpower = myDivisions.reduce((s: number, d: Division) => s + d.manpower, 0)
+  const readyDivs = myDivisions.filter((d: Division) => d.status === 'ready').length
+  const trainingDivs = myDivisions.filter((d: Division) => d.status === 'training').length
+  const inCombatDivs = myDivisions.filter((d: Division) => d.status === 'in_combat').length
+  const destroyedDivs = myDivisions.filter((d: Division) => d.status === 'destroyed').length
 
   const popCap = armyStore.getPlayerPopCap()
   const popPct = popCap.max > 0 ? (popCap.used / popCap.max) * 100 : 0
@@ -39,7 +40,7 @@ export default function AFCountryTab({ iso }: { iso: string }) {
 
   // Star breakdown
   const starsCount = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
-  myDivisions.forEach(d => { starsCount[d.starQuality as keyof typeof starsCount]++ })
+  myDivisions.forEach((d: Division) => { starsCount[d.starQuality as keyof typeof starsCount]++ })
 
   // Combat Power
   let totalDpt = 0
@@ -47,9 +48,9 @@ export default function AFCountryTab({ iso }: { iso: string }) {
   let totalArmor = 0
   let totalEvasion = 0
   let activeDivCount = 0
-  myDivisions.forEach(d => {
+  myDivisions.forEach((d: Division) => {
     if (d.status === 'ready' || d.status === 'training' || d.status === 'in_combat') {
-      const t = DIVISION_TEMPLATES?.[d.type]
+      const t = DIVISION_TEMPLATES?.[d.type as keyof typeof DIVISION_TEMPLATES]
       if (t) {
         const effAtk = t.atkDmgMult * (1 + parseFloat(String(d.statModifiers?.atkDmgMult || 0)))
         const effSpeed = (t.attackSpeed || 1.0) * (1 + parseFloat(String(d.statModifiers?.attackSpeed || 0)))
@@ -65,24 +66,24 @@ export default function AFCountryTab({ iso }: { iso: string }) {
   const avgDpt = activeDivCount > 0 ? Math.floor(totalDpt / activeDivCount) : 0
 
   // Top division
-  let topDiv = myDivisions[0]
-  myDivisions.forEach(d => { if (d.killCount > (topDiv?.killCount || 0)) topDiv = d })
+  let topDiv: Division | undefined = myDivisions[0]
+  myDivisions.forEach((d: Division) => { if ((d as any).killCount > ((topDiv as any)?.killCount || 0)) topDiv = d })
 
   // Composition
   const comp = { land: 0, air: 0, naval: 0 }
-  myDivisions.forEach(d => { if (d.category in comp) comp[d.category as keyof typeof comp]++ })
+  myDivisions.forEach((d: Division) => { if ((d as any).category in comp) comp[(d as any).category as keyof typeof comp]++ })
 
   // Equipment Status
-  const fullyGeared = myDivisions.filter(d => d.equipment?.length === 3).length
-  const someGear = myDivisions.filter(d => (d.equipment?.length || 0) > 0 && (d.equipment?.length || 0) < 3).length
-  const noGear = myDivisions.filter(d => !d.equipment || d.equipment.length === 0).length
+  const fullyGeared = myDivisions.filter((d: Division) => d.equipment?.length === 3).length
+  const someGear = myDivisions.filter((d: Division) => (d.equipment?.length || 0) > 0 && (d.equipment?.length || 0) < 3).length
+  const noGear = myDivisions.filter((d: Division) => !d.equipment || d.equipment.length === 0).length
 
   // Experience
-  const avgExp = myDivisions.length > 0 ? Math.floor(myDivisions.reduce((s, d) => s + (d.experience || 0), 0) / myDivisions.length) : 0
+  const avgExp = myDivisions.length > 0 ? Math.floor(myDivisions.reduce((s: number, d: Division) => s + (d.experience || 0), 0) / myDivisions.length) : 0
   const avgLevel = Math.floor(avgExp / 10) + 1
 
   // Military Readiness Score
-  const healthyPct = myDivisions.length > 0 ? myDivisions.filter(d => d.health >= d.maxHealth * 0.7).length / myDivisions.length : 0
+  const healthyPct = myDivisions.length > 0 ? myDivisions.filter((d: Division) => d.health >= d.maxHealth * 0.7).length / myDivisions.length : 0
   const gearPct = myDivisions.length > 0 ? fullyGeared / myDivisions.length : 0
   const vetPct = Math.min(1, avgLevel / 10)
   const readiness = Math.floor((healthyPct * 40 + gearPct * 30 + vetPct * 20 + (readyDivs > 0 ? 10 : 0)))
@@ -92,7 +93,7 @@ export default function AFCountryTab({ iso }: { iso: string }) {
   const vault = country?.forceVault || { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
 
   // All armies in this country
-  const countryArmies = Object.values(armyStore.armies).filter(a => a.countryCode === iso)
+  const countryArmies = (Object.values(armyStore.armies) as Army[]).filter((a: Army) => a.countryCode === iso)
 
   const s = (label: string, value: string | number, color = '#e2e8f0') => (
     <div style={{
@@ -170,10 +171,10 @@ export default function AFCountryTab({ iso }: { iso: string }) {
           <div style={{ fontSize: '10px', color: '#64748b', textAlign: 'center', padding: '8px' }}>No military forces created yet.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {countryArmies.map(army => {
-              const divs = army.divisionIds.map(id => armyStore.divisions[id]).filter(Boolean)
-              const readyCount = divs.filter(d => d.status === 'ready').length
-              const combatCount = divs.filter(d => d.status === 'in_combat').length
+            {countryArmies.map((army: Army) => {
+              const divs = army.divisionIds.map((id: string) => armyStore.divisions[id]).filter(Boolean) as Division[]
+              const readyCount = divs.filter((d: Division) => d.status === 'ready').length
+              const combatCount = divs.filter((d: Division) => d.status === 'in_combat').length
               return (
                 <div key={army.id} style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',

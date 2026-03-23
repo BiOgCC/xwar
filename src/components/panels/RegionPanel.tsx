@@ -364,7 +364,7 @@ export default function RegionPanel() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 12 }}>
                 {[
                   { label: 'ATK BONUS', value: `+${((homelandBonus.atkMult - 1) * 100).toFixed(0)}%` },
-                  { label: 'DODGE', value: `+${((homelandBonus.dodgeMult - 1) * 100).toFixed(0)}%` },
+                  { label: 'AGILITY', value: `+${((homelandBonus.dodgeMult - 1) * 100).toFixed(0)}%` },
                   { label: 'DMG MULT', value: `+${((homelandBonus.playerDmgMult - 1) * 100).toFixed(0)}%` },
                 ].map(b => (
                   <div key={b.label} className="hud-card" style={{ padding: '6px', margin: 0, textAlign: 'center' }}>

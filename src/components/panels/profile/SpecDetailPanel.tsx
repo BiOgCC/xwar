@@ -121,8 +121,8 @@ function getTierBonuses(specKey: SpecKey): string[] {
       '+1% Country DMG & Prod',
       '+1% Country DMG, Prod & Prosp',
       '+2% Country DMG, Prod, Prosp & Ind',
-      '+2% All Country Bonuses + Dodge',
-      '+3% All Country Bonuses + Dodge',
+      '+2% All Country Bonuses + Agility',
+      '+3% All Country Bonuses + Agility',
     ]
     case 'mer': return [
       '—',

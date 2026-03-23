@@ -15,6 +15,7 @@ import TopBar from './components/layout/TopBar'
 import NewsTicker from './components/layout/NewsTicker'
 import PanelRouter from './components/layout/PanelRouter'
 import DailyRewardPopup from './components/shared/DailyRewardPopup'
+import WelcomeKitModal from './components/shared/WelcomeKitModal'
 import AntiBotChallenge from './components/shared/AntiBotChallenge'
 import { COUNTRY_ISO } from './data/countries'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -236,6 +237,9 @@ function App() {
 
       {/* Daily Login Reward Popup */}
       <DailyRewardPopup />
+
+      {/* Welcome Kit (one-time) */}
+      <WelcomeKitModal />
 
       {/* Anti-Bot Verification Popup */}
       <AntiBotChallenge />

@@ -249,7 +249,7 @@ export default function AFPmcTab({ iso }: { iso: string }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
                 {[
                   { Icon: Plane, label: 'AIR', val: pmcAura.air, buff: `+${pmcAura.critDmgPct}%`, stat: 'CRIT DMG', color: '#60a5fa' },
-                  { Icon: Users, label: 'GROUND', val: pmcAura.ground, buff: `+${pmcAura.dodgePct}%`, stat: 'DODGE', color: '#3b82f6' },
+                  { Icon: Users, label: 'GROUND', val: pmcAura.ground, buff: `+${pmcAura.dodgePct}%`, stat: 'AGILITY', color: '#3b82f6' },
                   { Icon: Shield, label: 'ARMOR', val: pmcAura.tanks, buff: `+${pmcAura.attackPct}%`, stat: 'ATK', color: '#f59e0b' },
                   { Icon: Ship, label: 'NAVY', val: pmcAura.navy, buff: `+${pmcAura.precisionPct}%`, stat: 'PREC', color: '#a78bfa' },
                 ].map(cat => (

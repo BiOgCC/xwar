@@ -1,6 +1,6 @@
-import React, { useState, Suspense } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useArmyStore, DIVISION_TEMPLATES, type DivisionType } from '../../stores/army'
-import { useBattleStore, getCountryName, TACTICAL_ORDERS } from '../../stores/battleStore'
+import { useBattleStore, getCountryName, getPlayerCombatStats, TACTICAL_ORDERS } from '../../stores/battleStore'
 import type { TacticalOrder } from '../../stores/battleStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useWorldStore } from '../../stores/worldStore'
@@ -19,6 +19,10 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
   const armyStore = useArmyStore()
   const player = usePlayerStore()
   const ui = useUIStore()
+  // Armor-based stamina cost for SUPPORT buttons
+  const cs = getPlayerCombatStats()
+  const armorMit = cs.armorBlock / (cs.armorBlock + 100)
+  const staCost = Math.max(1, Math.ceil(5 * (1 - armorMit)))
   const [expandedBattles, setExpandedBattles] = useState<Set<string>>(new Set())
   const [deployCount, setDeployCount] = useState<Record<string, number>>({})
   const [editingOrderMsg, setEditingOrderMsg] = useState<Record<string, boolean>>({})
@@ -40,6 +44,19 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
   // Crit visual effect tracking
   const [critSide, setCritSide] = useState<'atk' | 'def' | null>(null)
   const [hitSide, setHitSide] = useState<'atk' | 'def' | null>(null)
+
+  // Adrenaline decay interval — runs per active battle
+  const activeBattleIds = Object.values(battleStore.battles).filter(b => b.status === 'active').map(b => b.id)
+  useEffect(() => {
+    if (activeBattleIds.length === 0) return
+    const iv = setInterval(() => {
+      const pName = usePlayerStore.getState().name
+      activeBattleIds.forEach(bid => {
+        useBattleStore.getState().tickAdrenalineDecay(bid, pName)
+      })
+    }, 1000)
+    return () => clearInterval(iv)
+  }, [activeBattleIds.join(',')])
 
   // Determine dominant division type for tracer variation
   const getDominantType = (divIds: string[]): 'infantry' | 'tank' | 'jet' | 'warship' | 'submarine' => {
@@ -508,12 +525,12 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
 
             {/* Fight Buttons — always visible */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '4px' }}>
-              <button disabled={player.stamina < 5 || atkSupportCost === 'BLOCKED'}
+              <button disabled={player.stamina < staCost || atkSupportCost === 'BLOCKED'}
                 style={{ padding: '8px 0', background: `${atkClr}15`, border: `2px solid ${atkClr}66`, borderRadius: '2px', color: atkClr, cursor: atkSupportCost === 'BLOCKED' ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s', opacity: atkSupportCost === 'BLOCKED' ? 0.5 : 1 }}
                 onClick={(e) => { 
                   e.stopPropagation(); 
                   const r = battleStore.playerAttack(battle.id, 'attacker'); 
-                  if (r.message.includes('Too fast') || r.message.includes('stamina') || r.message.includes('country is not') || r.message.includes('only support') || r.message.includes('Not enough oil') || r.message.includes('at war')) {
+                  if (r.message.includes('Too fast') || r.message.includes('Not enough stamina') || r.message.includes('country is not') || r.message.includes('only support') || r.message.includes('Not enough oil') || r.message.includes('at war')) {
                     ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, '#ef4444');
                     return;
                   }
@@ -523,8 +540,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                   
                   let text = `${r.damage}`;
                   let color = atkClr;
-                  if ((r as any).isMiss) { text = 'MISS'; color = '#94a3b8'; }
-                  else if ((r as any).isDodged) { text = 'DODGE'; color = '#ffffff'; }
+                  if (r.isMiss) { text = `${r.damage} 💨`; color = '#94a3b8'; }
+                  else if (r.isDodged && r.isCrit) { text = `${Math.floor(r.damage)}⚡!`; color = '#22d38a'; }
+                  else if (r.isDodged) { text = `${r.damage}⚡!`; color = '#22d38a'; }
                   else if (r.isCrit) { text = `${Math.floor(r.damage)}!`; color = '#f59e0b'; }
                   
                   setCombatTexts(prev => {
@@ -542,15 +560,15 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               >
                 SUPPORT
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>
-                  5 STAMINA {atkSupportCost === 'BLOCKED' ? '• ALLY TARGET' : atkSupportCost !== null ? `• ${atkSupportCost} 🛢️` : ''}
+                  {staCost} STAMINA {atkSupportCost === 'BLOCKED' ? '• ALLY TARGET' : atkSupportCost !== null ? `• ${atkSupportCost} 🛢️` : ''}
                 </div>
               </button>
-              <button disabled={player.stamina < 5 || defSupportCost === 'BLOCKED'}
+              <button disabled={player.stamina < staCost || defSupportCost === 'BLOCKED'}
                 style={{ padding: '8px 0', background: `${defClr}15`, border: `2px solid ${defClr}66`, borderRadius: '2px', color: defClr, cursor: defSupportCost === 'BLOCKED' ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900, letterSpacing: '2px', textTransform: 'uppercase' as const, transition: 'all 0.15s', opacity: defSupportCost === 'BLOCKED' ? 0.5 : 1 }}
                 onClick={(e) => { 
                   e.stopPropagation(); 
                   const r = battleStore.playerAttack(battle.id, 'defender'); 
-                  if (r.message.includes('Too fast') || r.message.includes('stamina') || r.message.includes('country is not') || r.message.includes('only support') || r.message.includes('Not enough oil') || r.message.includes('at war')) {
+                  if (r.message.includes('Too fast') || r.message.includes('Not enough stamina') || r.message.includes('country is not') || r.message.includes('only support') || r.message.includes('Not enough oil') || r.message.includes('at war')) {
                     ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, '#ef4444');
                     return;
                   }
@@ -560,8 +578,9 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                   
                   let text = `${r.damage}`;
                   let color = defClr;
-                  if ((r as any).isMiss) { text = 'MISS'; color = '#94a3b8'; }
-                  else if ((r as any).isDodged) { text = 'DODGE'; color = '#ffffff'; }
+                  if (r.isMiss) { text = `${r.damage} 💨`; color = '#94a3b8'; }
+                  else if (r.isDodged && r.isCrit) { text = `${Math.floor(r.damage)}⚡!`; color = '#22d38a'; }
+                  else if (r.isDodged) { text = `${r.damage}⚡!`; color = '#22d38a'; }
                   else if (r.isCrit) { text = `${Math.floor(r.damage)}!`; color = '#f59e0b'; }
                   
                   setCombatTexts(prev => {
@@ -579,10 +598,80 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               >
                 SUPPORT
                 <div style={{ fontSize: '7px', fontWeight: 600, opacity: 0.6, letterSpacing: '0.5px', marginTop: '1px' }}>
-                  5 STAMINA {defSupportCost === 'BLOCKED' ? '• ALLY TARGET' : defSupportCost !== null ? `• ${defSupportCost} 🛢️` : ''}
+                  {staCost} STAMINA {defSupportCost === 'BLOCKED' ? '• ALLY TARGET' : defSupportCost !== null ? `• ${defSupportCost} 🛢️` : ''}
                 </div>
               </button>
             </div>
+
+            {/* ══ Adrenaline Bar ══ */}
+            {(() => {
+              const pName = player.name
+              const adr = battle.playerAdrenaline?.[pName] || 0
+              const surgeState = battle.playerSurge?.[pName]
+              const isSurging = surgeState && Date.now() < surgeState.until
+              const crashState = battle.playerCrash?.[pName]
+              const isCrashed = crashState && Date.now() < crashState.until
+              const canSurge = adr >= 80 && !isSurging
+              const isHot = adr >= 80
+              const isPeak = adr >= 100
+
+              // Surge synergy label based on active order
+              const mySide2: 'attacker' | 'defender' = (player.countryCode || 'US') === battle.attackerId ? 'attacker' : 'defender'
+              const activeOrder = mySide2 === 'attacker' ? battle.attackerOrder : battle.defenderOrder
+              const synergyLabel: Record<string, string> = {
+                charge: '+60% ATK', precision: '+40% GUARANTEED CRIT', blitz: '+30% (5s)',
+                fortify: '+40% DMG', none: '+40% DMG',
+              }
+
+              return (
+                <div style={{ margin: '4px 0', position: 'relative' }}>
+                  {/* Bar background */}
+                  <div style={{
+                    height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px',
+                    overflow: 'hidden', border: `1px solid ${isPeak ? 'rgba(251,191,36,0.5)' : isHot ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.08)'}`,
+                    transition: 'border-color 0.3s',
+                  }}>
+                    <div style={{
+                      width: `${adr}%`, height: '100%',
+                      background: isCrashed ? 'linear-gradient(90deg, #ef4444, #dc2626)'
+                        : isSurging ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                        : isPeak ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
+                        : isHot ? 'linear-gradient(90deg, #3b82f6, #f59e0b)'
+                        : 'linear-gradient(90deg, #1e3a5f, #3b82f6)',
+                      borderRadius: '4px', transition: 'width 0.3s ease, background 0.3s',
+                      boxShadow: isHot ? '0 0 8px rgba(245,158,11,0.4)' : 'none',
+                      animation: isPeak ? 'adrenaline-pulse 0.6s infinite' : isHot ? 'adrenaline-pulse 1.2s infinite' : 'none',
+                    }} />
+                  </div>
+                  {/* Labels row */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px', minHeight: '14px' }}>
+                    <span style={{
+                      fontSize: '7px', fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '1px',
+                      color: isCrashed ? '#ef4444' : isSurging ? '#fbbf24' : isHot ? '#f59e0b' : '#64748b',
+                    }}>
+                      {isCrashed ? '💥 CRASHED -20%' : isSurging ? `⚡ SURGE ACTIVE (${activeOrder !== 'none' ? activeOrder.toUpperCase() : 'BASE'})` : `ADRENALINE ${adr}`}
+                    </span>
+                    {/* SURGE button */}
+                    {canSurge && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); battleStore.activateSurge(battle.id) }}
+                        style={{
+                          padding: '2px 10px', border: '1px solid rgba(245,158,11,0.6)', borderRadius: '3px',
+                          cursor: 'pointer', fontSize: '8px', fontWeight: 900, fontFamily: 'var(--font-display)',
+                          letterSpacing: '1px', color: '#0a0a0a',
+                          background: 'linear-gradient(90deg, #f59e0b, #fbbf24)',
+                          animation: 'adrenaline-pulse 0.8s infinite',
+                          boxShadow: '0 0 12px rgba(245,158,11,0.4)',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        ⚡ SURGE {synergyLabel[activeOrder] || '+40% DMG'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* === Collapsible Section === */}
             {isExpanded && (<>

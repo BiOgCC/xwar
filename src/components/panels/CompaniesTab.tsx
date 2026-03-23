@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { usePlayerStore } from '../../stores/playerStore'
 import InventorySummary from '../shared/InventorySummary'
 import { useSkillsStore } from '../../stores/skillsStore'
@@ -520,8 +521,8 @@ export default function CompaniesTab() {
         </>
       )}
 
-      {/* ── BUILD MODAL ──────────────────────────────── */}
-      {showBuild && (
+      {/* ── BUILD MODAL (portalled to body) ──────────── */}
+      {showBuild && createPortal(
         <div className="ctab-modal-overlay" onClick={() => setShowBuild(false)}>
           <div className="ctab-modal" onClick={e => e.stopPropagation()}>
             <div className="ctab-modal__title">🏗️ BUILD COMPANY</div>
@@ -556,7 +557,8 @@ export default function CompaniesTab() {
             </div>
             <button className="ctab-modal__cancel" onClick={() => setShowBuild(false)}>Cancel</button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

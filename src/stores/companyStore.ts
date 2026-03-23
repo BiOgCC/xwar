@@ -289,13 +289,24 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       return false
     }
 
-    const res = await api.post<{ success: boolean, company: Company }>('/company/create', { type }).catch(() => null)
-    if (!res || !res.success) return false
-
+    // Spend resources first
     player.spendMoney(template.buildCost.money)
     if (!usePlayerStore.getState().spendBitcoin(template.buildCost.bitcoin)) return false
 
-    const newComp: Company = res.company
+    // Try API; fall back to local creation if unavailable
+    const res = await api.post<{ success: boolean, company: Company }>('/company/create', { type }).catch(() => null)
+
+    const newComp: Company = (res && res.success && res.company)
+      ? res.company
+      : {
+          id: `comp-${++companyCounter}-${Date.now()}`,
+          type,
+          level: 1,
+          autoProduction: false,
+          productionProgress: 0,
+          productionMax: template.baseProductionMax,
+          location: player.countryCode || 'US',
+        }
 
     set((s) => ({ companies: [...s.companies, newComp] }))
     usePlayerStore.setState((s) => ({ companiesOwned: s.companiesOwned + 1 }))

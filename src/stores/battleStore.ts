@@ -48,6 +48,7 @@ export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; desc: strin
   blitz: { label: 'BLITZ', desc: '+25% speed, -10% hit, -10% armor', effects: { atkMult: 1, armorMult: 0.90, dodgeMult: 1, hitBonus: -0.10, critBonus: 0, speedMult: 0.75 }, color: '#22d38a' },
 }
 
+
 // ====== HELPERS ======
 
 const POINTS_TO_WIN_ROUND = 600
@@ -99,6 +100,10 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     defenderOrder: 'none' as TacticalOrder,
     orderMessage: '',
     motd: '',
+    playerAdrenaline: {},
+    playerSurge: {},
+    playerCrash: {},
+    playerAdrenalinePeakAt: {},
   }
 }
 
@@ -114,11 +119,15 @@ export interface BattleState {
   launchHOIBattle: (attackerArmyId: string, defenderCountryCode: string, type?: BattleType) => { success: boolean; message: string; battleId?: string }
   processHOICombatTick: () => void
 
-  playerAttack: (battleId: string, side?: 'attacker' | 'defender') => { damage: number; isCrit: boolean; message: string }
+  playerAttack: (battleId: string, side?: 'attacker' | 'defender') => { damage: number; isCrit: boolean; isMiss?: boolean; isDodged?: boolean; message: string }
   playerDefend: (battleId: string, side?: 'attacker' | 'defender') => { blocked: number; message: string }
   deployDivisionsToBattle: (battleId: string, divisionIds: string[], side: 'attacker' | 'defender') => { success: boolean; message: string }
   removeDivisionsFromBattle: (battleId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
   recallDivisionFromBattle: (battleId: string, divisionId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
+
+  // Adrenaline system
+  activateSurge: (battleId: string) => void
+  tickAdrenalineDecay: (battleId: string, playerName: string) => void
 
   combatTickLeft: number
   setCombatTickLeft: (val: number) => void
@@ -181,8 +190,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (!attackerArmy) return { success: false, message: 'Army not found.' }
 
     const attackerDivs = attackerArmy.divisionIds
-      .map(id => armyStore.divisions[id])
-      .filter(d => d && d.status === 'ready')
+      .map((id: string) => armyStore.divisions[id])
+      .filter((d: Division | undefined): d is Division => !!d && d.status === 'ready')
 
     if (attackerDivs.length === 0) return { success: false, message: 'No ready divisions in this army.' }
 
@@ -198,14 +207,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
 
     // Auto-defense: fetch all ready divisions for the defending country (across all armies + unassigned)
-    const allDefenderDivs = Object.values(armyStore.divisions)
-      .filter(d => d.countryCode === defenderCountryCode && d.status === 'ready')
-    const defenderDivIds = allDefenderDivs.map(d => d.id)
+    const allDefenderDivs = (Object.values(armyStore.divisions) as Division[])
+      .filter((d: Division) => d.countryCode === defenderCountryCode && d.status === 'ready')
+    const defenderDivIds = allDefenderDivs.map((d: Division) => d.id)
 
     const id = `hoi_battle_${Date.now()}`
     const now = Date.now()
     const targetName = getCountryName(defenderCountryCode)
-    const atkDivIds = attackerDivs.map(d => d.id)
+    const atkDivIds = attackerDivs.map((d: Division) => d.id)
 
     const battle: Battle = {
       id, type, attackerId: attackerArmy.countryCode, defenderId: defenderCountryCode,
@@ -241,25 +250,29 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       defenderOrder: 'none' as TacticalOrder,
       orderMessage: '',
       motd: '',
+      playerAdrenaline: {},
+      playerSurge: {},
+      playerCrash: {},
+      playerAdrenalinePeakAt: {},
     }
 
     // Mark divisions as in_combat
-    attackerDivs.forEach(d => {
-      useArmyStore.setState(s => ({
+    attackerDivs.forEach((d: Division) => {
+      useArmyStore.setState((s: any) => ({
         divisions: { ...s.divisions, [d.id]: { ...s.divisions[d.id], status: 'in_combat' } }
       }))
     })
     defenderDivIds.forEach(divId => {
       const div = armyStore.divisions[divId]
       if (div) {
-        useArmyStore.setState(s => ({
+        useArmyStore.setState((s: any) => ({
           divisions: { ...s.divisions, [divId]: { ...s.divisions[divId], status: 'in_combat' } }
         }))
       }
     })
 
     // Deduct oil cost
-    useArmyStore.setState(s => {
+    useArmyStore.setState((s: any) => {
       const armyToUpdate = s.armies[attackerArmyId]
       if (!armyToUpdate) return s
       return {
@@ -480,24 +493,24 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
         if (side === 'attacker') {
           // Attackers: deploy all ready divisions for the country
-          eligible = Object.values(armyStore.divisions)
-            .filter(d => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0)
-            .map(d => d.id)
+          eligible = (Object.values(armyStore.divisions) as Division[])
+            .filter((d: Division) => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0)
+            .map((d: Division) => d.id)
         } else {
           // Defenders: respect autodefense limits
 
           // 1) Armed Forces ALWAYS deploy (not subject to country limit)
-          const afEligible = Object.values(armyStore.divisions)
-            .filter(d => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
+          const afEligible = (Object.values(armyStore.divisions) as Division[])
+            .filter((d: Division) => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
               && armedForceIds.includes(d.id))
-            .map(d => d.id)
+            .map((d: Division) => d.id)
 
           // 2) Per-army autodefense: collect divisions from armies with autoDefenseLimit != 0
           const armyEligible: string[] = []
-          Object.values(armyStore.armies).forEach(army => {
+          ;(Object.values(armyStore.armies) as any[]).forEach((army: any) => {
             if (army.countryCode !== expectedCountry) return
             if (army.autoDefenseLimit === 0) return  // this army has autodefense OFF
-            const armyReadyDivs = army.divisionIds.filter(did => {
+            const armyReadyDivs = army.divisionIds.filter((did: string) => {
               const d = armyStore.divisions[did]
               return d && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
                 && !armedForceIds.includes(did)  // don't double-count armed forces
@@ -511,12 +524,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
           // 3) Country-level unassigned divisions (not in any army) — only if country limit allows
           const unassignedEligible = countryAutoDefLimit !== 0
-            ? Object.values(armyStore.divisions)
-                .filter(d => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
+            ? (Object.values(armyStore.divisions) as Division[])
+                .filter((d: Division) => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
                   && !armedForceIds.includes(d.id)
                   && (d.stance === 'first_line_defense' || d.stance === 'unassigned')
-                  && !Object.values(armyStore.armies).some(a => a.divisionIds.includes(d.id)))
-                .map(d => d.id)
+                  && !(Object.values(armyStore.armies) as any[]).some((a: any) => a.divisionIds.includes(d.id)))
+                .map((d: Division) => d.id)
             : []
 
           // Combine: armed forces + army contributions + unassigned
@@ -538,7 +551,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         // Mark as in_combat with deployedAtTick for recall cooldown
         const currentTick = battle.ticksElapsed || 0
         ids.forEach(id => {
-          useArmyStore.setState(s => ({
+          useArmyStore.setState((s: any) => ({
             divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat', deployedAtTick: currentTick } }
           }))
         })
@@ -569,7 +582,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
       // --- Compute Army Composition Aura for both sides ---
       const findArmyForDiv = (divId: string) => {
-        return Object.values(armyStore.armies).find(a => a.divisionIds.includes(divId))
+        return (Object.values(armyStore.armies) as any[]).find((a: any) => a.divisionIds.includes(divId))
       }
       const atkArmy = atkDivIds.length > 0 ? findArmyForDiv(atkDivIds[0]) : null
       const defArmy = defDivIds.length > 0 ? findArmyForDiv(defDivIds[0]) : null
@@ -667,7 +680,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       atkDivIds.forEach(divId => {
         const d = armyStore.divisions[divId]
         if (d && d.experience < 100) {
-          useArmyStore.setState(s => ({
+          useArmyStore.setState((s: any) => ({
             divisions: { ...s.divisions, [divId]: { ...s.divisions[divId], experience: Math.min(100, d.experience + 0.5) } }
           }))
         }
@@ -1096,7 +1109,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         ;[...battle.attacker.divisionIds, ...battle.defender.divisionIds].forEach(id => {
           const d = finalArmyStore.divisions[id]
           if (d && d.status === 'in_combat') {
-            useArmyStore.setState(s => ({
+            useArmyStore.setState((s: any) => ({
               divisions: {
                 ...s.divisions,
                 [id]: {
@@ -1198,7 +1211,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (!battle || battle.status !== 'active') return { damage: 0, isCrit: false, message: 'No active battle.' }
 
     const player = usePlayerStore.getState()
-    if (player.stamina < 5) return { damage: 0, isCrit: false, message: 'Not enough stamina (5 required).' }
+    const cs = getPlayerCombatStats()
+    // Armor mitigation reduces stamina cost: armor/(armor+100)
+    const armorMit = cs.armorBlock / (cs.armorBlock + 100)
+    const staCost = Math.max(1, Math.ceil(5 * (1 - armorMit)))
+    if (player.stamina < staCost) return { damage: 0, isCrit: false, message: `Not enough stamina (${staCost} required).` }
 
     // ── Side Selection & Validation ──
     const playerCountry = player.countryCode || 'US'
@@ -1274,11 +1291,101 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       }
     }
 
-    player.consumeBar('stamina', 5)
+    // cs already computed above (before stamina check)
 
-    const cs = getPlayerCombatStats()
+    // ══ NON-DETERMINISTIC DAMAGE SYSTEM ══
+
+    // 0. Dodge check FIRST — dodge = FREE full-damage hit (no stamina cost)
+    //    8-13% chance to dodge the stamina cost entirely
+    const dodgeChance = 8 + Math.random() * 5
+    const isDodge = Math.random() * 100 < dodgeChance
+    if (isDodge) console.log(`[DODGE] Free hit! dodgeChance=${dodgeChance.toFixed(1)}%`)
+
+    // Consume stamina only if NOT a dodge — armor reduces cost
+    if (!isDodge) {
+      player.consumeBar('stamina', staCost)
+    }
+
+    // ── ADRENALINE BUILD: runs on every attack (hit, miss, or dodge) ──
+    const playerName = player.name
+    const now = Date.now()
+    const currentAdr = battle.playerAdrenaline?.[playerName] || 0
+    let newAdr = Math.min(100, currentAdr + 5)
+    let newPeakAt = battle.playerAdrenalinePeakAt?.[playerName] || 0
+    let newCrash = battle.playerCrash?.[playerName]
+    // Start peak timer when hitting 100
+    if (newAdr >= 100 && !newPeakAt) newPeakAt = now
+    // Crash detection: at 100 for 20+ seconds → crash
+    if (newAdr >= 100 && newPeakAt && now - newPeakAt > 20000) {
+      newAdr = 0
+      newPeakAt = 0
+      newCrash = { until: now + 8000 }
+    }
+    // Persist adrenaline state immediately
+    set(s => {
+      const b = s.battles[battleId]
+      if (!b) return s
+      return { battles: { ...s.battles, [battleId]: {
+        ...b,
+        playerAdrenaline: { ...(b.playerAdrenaline || {}), [playerName]: newAdr },
+        playerAdrenalinePeakAt: { ...(b.playerAdrenalinePeakAt || {}), [playerName]: newPeakAt },
+        playerCrash: newCrash ? { ...(b.playerCrash || {}), [playerName]: newCrash } : (b.playerCrash || {}),
+      }}}
+    })
+
+    // 1. Miss check — glancing blow (50% base damage, costs stamina)
+    //    Miss chance = 100 - hitRate (10% at max gear, 50% with no precision)
+    const missRoll = Math.random() * 100
+    if (!isDodge && missRoll >= cs.hitRate) {
+      const missDmg = Math.max(1, Math.floor(cs.attackDamage * 0.50 * (0.7 + Math.random() * 0.3)))
+      get().addDamage(battleId, side, missDmg, false, false, player.name)
+      import('../api/client').then(({ battleAttack }) => battleAttack(battleId).catch(() => {}))
+      return { damage: missDmg, isCrit: false, isMiss: true, message: `💨 Glancing blow! ${missDmg} damage.` }
+    }
+
+    // 1. Base damage with range (70%–130% of attackDamage)
+    const baseRoll = 0.70 + Math.random() * 0.60
+    let damage = Math.floor(cs.attackDamage * baseRoll)
+
+    // 2. Crit check (stacks with range, but guaranteed floor at 100% base)
     const isCrit = Math.random() * 100 < cs.critRate
-    let damage = isCrit ? Math.floor(cs.attackDamage * cs.critMultiplier) : cs.attackDamage
+    if (isCrit) {
+      damage = Math.floor(damage * cs.critMultiplier)
+      // Crit floor: never lower than full base attackDamage
+      damage = Math.max(damage, cs.attackDamage)
+    }
+
+    // 3. Adrenaline surge/crash damage modifiers
+    const surgeState = battle.playerSurge?.[playerName]
+    const isSurging = surgeState && now < surgeState.until
+    let surgeMult = 1.0
+    let surgeMsg = ''
+    if (isSurging) {
+      const order = surgeState.order
+      if (order === 'charge') surgeMult = 1.60
+      else if (order === 'precision') surgeMult = 1.40
+      else if (order === 'blitz') surgeMult = 1.30
+      else surgeMult = 1.40
+      surgeMsg = ' ⚡ SURGE!'
+    }
+    // Precision+Surge: force crit if not already
+    const precisionSurgeCrit = isSurging && surgeState!.order === 'precision' && !isCrit
+    if (precisionSurgeCrit) {
+      damage = Math.floor(damage * cs.critMultiplier)
+      damage = Math.max(damage, cs.attackDamage)
+    }
+    damage = Math.floor(damage * surgeMult)
+
+    // Crash debuff: -20% if crashed
+    const crashState = battle.playerCrash?.[playerName]
+    const isCrashed = crashState && now < crashState.until
+    if (isCrashed) {
+      damage = Math.floor(damage * 0.80)
+      surgeMsg = ' 💥 CRASHED!'
+    }
+
+    // Ensure minimum 1 damage
+    damage = Math.max(1, damage)
 
     // Revolt Homeland Bonus: +30% player damage for citizens of the occupied land
     if (battle.type === 'revolt' && battle.regionId && side === 'attacker') {
@@ -1286,9 +1393,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       damage = Math.floor(damage * bonus.playerDmgMult)
     }
 
-    get().addDamage(battleId, side, damage, isCrit, false, player.name)
+    get().addDamage(battleId, side, damage, isCrit || precisionSurgeCrit, false, player.name)
 
-    // ── #4 FIX: Hero buff only for YOUR side in YOUR battle ──
+    // ── Hero buff only for YOUR side in YOUR battle ──
     usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
 
     // Degrade equipped items durability
@@ -1326,9 +1433,66 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     import('../api/client').then(({ battleAttack }) => battleAttack(battleId).catch(() => {}))
     return {
       damage,
-      isCrit,
-      message: (isCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`) + dropMsg,
+      isCrit: isCrit || precisionSurgeCrit,
+      isDodged: isDodge,
+      message: (isDodge ? `🎯 FREE HIT! ${damage} damage (no stamina cost)!` : isCrit || precisionSurgeCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`) + surgeMsg + dropMsg,
     }
+  },
+
+  // ══ ADRENALINE: Surge Activation ══
+  activateSurge: (battleId: string) => {
+    const player = usePlayerStore.getState()
+    const battle = get().battles[battleId]
+    if (!battle) return
+    const pName = player.name
+    const adr = (battle.playerAdrenaline || {})[pName] || 0
+    if (adr < 80) return  // Not enough adrenaline
+
+    // Detect player's side and snapshot the active order for synergy
+    const playerCountry = player.countryCode || 'US'
+    const side: 'attacker' | 'defender' = playerCountry === battle.attackerId ? 'attacker' : 'defender'
+    const order = side === 'attacker' ? battle.attackerOrder : battle.defenderOrder
+
+    // Blitz surge is shorter but already has speed synergy
+    const duration = order === 'blitz' ? 5000 : 10000
+
+    set(s => {
+      const b = s.battles[battleId]
+      if (!b) return s
+      return { battles: { ...s.battles, [battleId]: {
+        ...b,
+        playerAdrenaline: { ...(b.playerAdrenaline || {}), [pName]: 0 },
+        playerSurge: { ...(b.playerSurge || {}), [pName]: { until: Date.now() + duration, order } },
+        playerAdrenalinePeakAt: { ...(b.playerAdrenalinePeakAt || {}), [pName]: 0 },
+      }}}
+    })
+  },
+
+  // ══ ADRENALINE: Decay Tick (called every 1s from UI) ══
+  tickAdrenalineDecay: (battleId: string, playerName: string) => {
+    set(s => {
+      const b = s.battles[battleId]
+      if (!b) return s
+      const current = (b.playerAdrenaline || {})[playerName] || 0
+      if (current <= 0) return s
+      const now = Date.now()
+      const next = Math.max(0, current - 3)  // -3 per second
+      // Track peak-at timestamp
+      let peakAt = (b.playerAdrenalinePeakAt || {})[playerName] || 0
+      if (current >= 100 && !peakAt) peakAt = now
+      // Check crash: was at 100 for > 20s
+      if (current >= 100 && peakAt > 0 && now - peakAt > 20000) {
+        return { battles: { ...s.battles, [battleId]: { ...b,
+          playerAdrenaline: { ...(b.playerAdrenaline || {}), [playerName]: 0 },
+          playerCrash: { ...(b.playerCrash || {}), [playerName]: { until: now + 8000 } },
+          playerAdrenalinePeakAt: { ...(b.playerAdrenalinePeakAt || {}), [playerName]: 0 },
+        }}}
+      }
+      return { battles: { ...s.battles, [battleId]: { ...b,
+        playerAdrenaline: { ...(b.playerAdrenaline || {}), [playerName]: next },
+        playerAdrenalinePeakAt: { ...(b.playerAdrenalinePeakAt || {}), [playerName]: peakAt },
+      }}}
+    })
   },
 
   playerDefend: (battleId, _forceSide) => {
@@ -1469,7 +1633,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // Mark divisions as in_combat with deployment timestamp
     const deployedAtTick = get().battles[battleId]?.ticksElapsed || 0
     validIds.forEach(id => {
-      useArmyStore.setState(s => ({
+      useArmyStore.setState((s: any) => ({
         divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat', deployedAtTick } }
       }))
     })
@@ -1518,7 +1682,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     // Set divisions to 'recovering'
     sideData.engagedDivisionIds.forEach(id => {
-      useArmyStore.setState(s => {
+      useArmyStore.setState((s: any) => {
         const d = s.divisions[id]
         if (!d || d.status === 'destroyed') return s
         return {
@@ -1569,7 +1733,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
 
     // Set division to 'recovering'
-    useArmyStore.setState(s => {
+    useArmyStore.setState((s: any) => {
       const d = s.divisions[divisionId]
       if (!d || d.status === 'destroyed') return s
       return { divisions: { ...s.divisions, [divisionId]: { ...d, status: 'recovering', trainingProgress: 0 } } }

@@ -216,7 +216,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   level: 12,
   experience: 450,
   experienceToNext: 150, // Level 12 is in tier 11-20 → 150 XP needed
-  skillPoints: 49,
+  skillPoints: 5,
 
   stamina: 120,
   maxStamina: 120,

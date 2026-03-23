@@ -56,7 +56,7 @@ export default function ProfileSpecBars() {
     { key: 'eco' as SpecKey, icon: <Briefcase {...ICON_PROPS} color="#38bdf8" />, name: 'Economic', tier: eco, color: '#38bdf8', trackClass: 'ptab-spec-card__eco', border: 'rgba(56,189,248,0.2)',
       bonus: ecoB.extraCompanySlots > 0 ? `+${ecoB.extraCompanySlots} Companies${ecoB.productionPercent > 0 ? `, +${ecoB.productionPercent}% Prod` : ''}` : '' },
     { key: 'pol' as SpecKey, icon: <Landmark {...ICON_PROPS} color="#a855f7" />, name: 'Politician', tier: pol, color: '#a855f7', trackClass: 'ptab-spec-card__mil', border: 'rgba(168,85,247,0.2)',
-      bonus: polB.countryDamage > 0 ? `Country: +${polB.countryDamage}% DMG/Prod/Prosp/Ind${polB.countryDodge > 0 ? '/Dodge' : ''} (as Pres.)` : '' },
+      bonus: polB.countryDamage > 0 ? `Country: +${polB.countryDamage}% DMG/Prod/Prosp/Ind${polB.countryDodge > 0 ? '/Agility' : ''} (as Pres.)` : '' },
     { key: 'mer' as SpecKey, icon: <Crosshair {...ICON_PROPS} color="#22d38a" />, name: 'Mercenary', tier: mer, color: '#22d38a', trackClass: 'ptab-spec-card__eco', border: 'rgba(34,211,138,0.2)',
       bonus: merB.abroadDamagePercent > 0 ? `+${merB.abroadDamagePercent}% Abroad DMG${merB.lootChancePercent > 0 ? `, +${merB.lootChancePercent}% Loot` : ''}` : '' },
     { key: 'inf' as SpecKey, icon: <Sparkles {...ICON_PROPS} color="#eab308" />, name: 'Influencer', tier: inf, color: '#eab308', trackClass: 'ptab-spec-card__eco', border: 'rgba(234,179,8,0.2)',
