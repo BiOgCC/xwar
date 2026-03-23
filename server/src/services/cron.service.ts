@@ -19,6 +19,8 @@ import { runFastCombatPipeline } from './tick/fast-combat.pipeline.js'
 import { runMediumSimPipeline } from './tick/medium-sim.pipeline.js'
 import { runSlowEconomyPipeline } from './tick/slow-economy.pipeline.js'
 import { runDailyJobsPipeline } from './tick/daily-jobs.pipeline.js'
+import { runLeyLinePipeline } from '../pipelines/leyline.pipeline.js'
+import { runLeyLineEngine } from '../pipelines/leyline.engine.js'
 
 /**
  * Initialize all cron jobs.
@@ -35,6 +37,18 @@ export function initCronJobs() {
       await runFastCombatPipeline()
     } catch (err) {
       logger.error(err, '[CRON][FAST-COMBAT] Pipeline error:')
+    }
+  })
+
+  // ═══════════════════════════════════════════════
+  //  LEY LINE ENGINE — every 30 seconds
+  //  (between fast-combat 15s and slow-economy 30m)
+  // ═══════════════════════════════════════════════
+  cron.schedule('*/30 * * * * *', async () => {
+    try {
+      await runLeyLinePipeline()
+    } catch (err) {
+      logger.error(err, '[CRON][LEY-LINE] Pipeline error:')
     }
   })
 
@@ -160,6 +174,7 @@ export function initCronJobs() {
 
   logger.info('[CRON] All pipelines initialized:')
   logger.info('  ⚔️  Fast Combat     — every 15s  (training, recovery)')
+  logger.info('  ⚡ Ley Line Engine  — every 30s  (ownership, buffs, activation)')
   logger.info('  📈 Medium Sim      — every 60s  (stocks, bonds)')
   logger.info('  🏭 Slow Economy    — every 30m  (bars, companies, market, salary)')
   logger.info('  🎯 Raid Boss Tick  — every 10s  (boss auto-damage, timer)')
@@ -173,6 +188,17 @@ export function initCronJobs() {
   logger.info('      • Election tally    — every 6h')
   logger.info('      • Region resolve    — every 60s')
   logger.info('      • Cyber restore     — every 30m')
+
+  // Warm-start: run the ley line engine once immediately so the cache
+  // is populated before the first API request arrives
+  setImmediate(async () => {
+    try {
+      await runLeyLineEngine()
+      logger.info('[CRON] Ley line cache warm-start complete')
+    } catch (err) {
+      logger.warn({ err }, '[CRON] Ley line warm-start failed (non-fatal)')
+    }
+  })
 }
 
 // ═══════════════════════════════════════════════
@@ -214,6 +240,12 @@ async function processRaidBossTick() {
       status,
       finishedAt: now,
     }).where(eq(raidEvents.id, event.id))
+
+    // Broadcast raid result
+    try {
+    const { emitGameEvent: emit } = await import('../index.js')
+      emit('raid:expired', { raidId: event.id, bossName: event.name, status })
+    } catch { /* ws may not be running */ }
 
     // Pay out winners
     const participants = await db.select().from(raidParticipants)
@@ -307,5 +339,11 @@ async function trySpawnRaidBoss() {
   })
 
   logger.info(`[RAID] 🎯 Boss spawned: ${tmpl.name} (${tmpl.rank}) in ${country}, bounty: $${bounty.toLocaleString()}`)
+
+  // Broadcast to all clients
+  try {
+    const { emitGameEvent: emit } = await import('../index.js')
+    emit('raid:spawned', { raidId: (await db.select({ id: raidEvents.id }).from(raidEvents).orderBy(raidEvents.startedAt).limit(1))[0]?.id, bossName: tmpl.name, rank: tmpl.rank, countryCode: country, bounty, expiresAt: expiresAt.toISOString() })
+  } catch { /* ws may not be running */ }
 }
 

@@ -72,76 +72,53 @@ export const ARCHETYPE_META: Record<LeyLineArchetype, { label: string; color: st
   convergence: { label: 'Line of Convergence', color: '#a855f7' }, // purple
 }
 
-// ═══════════════════════════════════════════════════════════════
-// NORTH AMERICA
-// ═══════════════════════════════════════════════════════════════
-
-const NA_PROSPERITY: LeyLineDef = {
-  id: 'NA-PROSPERITY',
-  name: 'The Atlantic Corridor',
-  continent: 'north_america',
-  archetype: 'prosperity',
-  blocks: [
-    // Canadian Maritimes (4)
-    'CA-NL', 'CA-QC', 'CA-NB', 'CA-NS',
-    // US East Coast (16)
-    'US-ME', 'US-NH', 'US-VT', 'US-MA', 'US-CT', 'US-RI',
-    'US-NY', 'US-NJ', 'US-PA', 'US-DE', 'US-MD',
-    'US-VA', 'US-NC', 'US-SC', 'US-GA', 'US-FL',
-  ],
-  bonuses: {
-    taxIncome:        0.25,
-    populationGrowth: 0.15,
-  },
-  tradeoffs: {
-    defenderBonus: -0.15,
-  },
-}
-
-const NA_DOMINION: LeyLineDef = {
-  id: 'NA-DOMINION',
-  name: 'The Great Lakes Forge',
-  continent: 'north_america',
-  archetype: 'dominion',
-  blocks: [
-    // Cross-border industrial belt (8 regions, 2 countries)
-    'CA-ON', 'US-MI', 'US-OH', 'US-IN', 'US-IL', 'US-WI', 'US-MN', 'CA-MB',
-  ],
-  bonuses: {
-    weaponProduction:   0.20,
-    troopMovementSpeed: 0.10,
-  },
-  tradeoffs: {
-    foodYield: -0.15,
-  },
-}
-
-const NA_CONVERGENCE: LeyLineDef = {
-  id: 'NA-CONVERGENCE',
-  name: 'The Pacific Rim',
-  continent: 'north_america',
-  archetype: 'convergence',
-  blocks: [
-    // West coast spanning 3 countries (5 regions)
-    'CA-BC', 'US-WA', 'US-OR', 'US-CA', 'MX-BC',
-  ],
-  bonuses: {
-    researchSpeed:  0.15,
-    matxExtraction: 0.10,
-  },
-  tradeoffs: {
-    armyUpkeep: 0.10, // +10% army upkeep cost
-  },
-}
-
 // ── All Ley Line definitions ──
 
+// ── Russia / Eurasia ──
+
+const RU_DOMINION: LeyLineDef = {
+  id:        'RU-DOMINION',
+  name:      'The Siberian Spine',
+  continent: 'asia',
+  archetype: 'dominion',
+  blocks: [
+    'RU-MO', 'RU-UR', 'RU-TY', 'RU-KH', 'RU-IR', 'RU-SK', 'RU-FE',
+  ],
+  bonuses:   { weaponProduction: 0.20, troopMovementSpeed: 0.15, deploymentRange: 0.10 },
+  tradeoffs: { armyUpkeep: 0.10 },
+}
+
+const RU_PROSPERITY: LeyLineDef = {
+  id:        'RU-PROSPERITY',
+  name:      'The Iron Silk Road',
+  continent: 'europe',
+  archetype: 'prosperity',
+  blocks: [
+    'RU-WR', 'RU-MO', 'RU-VG', 'RU-OM', 'RU-NV', 'RU-AL',
+  ],
+  bonuses:   { taxIncome: 0.20, oilExtraction: 0.25, tradeIncome: 0.15 },
+  tradeoffs: { defenderBonus: -0.10 },
+}
+
+const RU_CONVERGENCE: LeyLineDef = {
+  id:        'RU-CONVERGENCE',
+  name:      'The Arctic Veil',
+  continent: 'europe',
+  archetype: 'convergence',
+  blocks: [
+    'RU-KR', 'RU-AR', 'RU-KO', 'RU-TY', 'RU-MG', 'RU-KM',
+  ],
+  bonuses:   { researchSpeed: 0.15, navalSupport: 0.20, resourceExtraction: 0.10 },
+  tradeoffs: { foodYield: -0.20, populationGrowth: -0.10 },
+}
+
 export const LEY_LINE_DEFS: LeyLineDef[] = [
-  NA_PROSPERITY,
-  NA_DOMINION,
-  NA_CONVERGENCE,
-  // South America, Europe, Africa, Asia, Oceania — TBD after prototype
+  RU_DOMINION,
+  RU_PROSPERITY,
+  RU_CONVERGENCE,
+  // NA / SA / AF / AS-other / OC — future
 ]
+
 
 // ── Continental Resonance definitions ──
 

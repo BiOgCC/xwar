@@ -68,6 +68,15 @@ export async function countryAutoIncome() {
     WHERE population > 0
   `)
   logger.info('[DAILY] Country auto-income distributed.')
+
+  // Emit fund:update to each country room
+  const emit = await getEmitter()
+  if (emit) {
+    const funds = await db.execute(sql`SELECT code, fund FROM countries`)
+    for (const row of funds as unknown as Array<{ code: string; fund: Record<string, number> }>) {
+      emit('fund:update', { countryCode: row.code, money: row.fund?.money ?? 0, oil: row.fund?.oil ?? 0 }, `country:${row.code}`)
+    }
+  }
 }
 
 /**
@@ -186,6 +195,7 @@ export async function tallyElections() {
 
     // Socket.IO broadcast
     const emit = await getEmitter()
+    if (emit) emit('election:result', { winner, countryCode: gov.country_code, tally }, `country:${gov.country_code}`)
     if (emit) emit('news', { type: 'election_result', headline: `🗳️ ${winner} elected president of ${gov.country_code}!`, countryCode: gov.country_code })
   }
 
@@ -298,6 +308,12 @@ export async function restoreCyberEffects() {
     await db.execute(sql`
       UPDATE cyber_ops SET status = 'expired' WHERE id = ${op.id}
     `)
+
+    // Emit route:restored if this was a trade route disruption
+    if (op.operation_id === 'logistics_disruption') {
+      const emitFn = await getEmitter()
+      if (emitFn) emitFn('route:restored', { routeId: op.result?.targetRoute ?? op.target_country })
+    }
   }
 
   logger.info(`[DAILY] Cyber effects restoration complete. Processed ${rows.length} ops.`)

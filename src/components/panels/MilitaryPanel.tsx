@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useWorldStore } from '../../stores/worldStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -10,8 +10,67 @@ import {
   type MilitaryPillar,
   type MilitaryOperationDef,
 } from '../../stores/militaryStore'
-import { useArmyStore } from '../../stores/army'
+import { useArmyStore, type Army } from '../../stores/army'
 import RegionPicker from '../shared/RegionPicker'
+
+// ── Sub-component: Force Autodefense ───────────────────────────────
+// Extracted to satisfy React rules-of-hooks (no hooks inside callbacks/IIFEs)
+function ForceAutodefense({ iso }: { iso: string }) {
+  const armyStore = useArmyStore()
+  const playerArmies = Object.values(armyStore.armies).filter((a): a is Army => !!a && (a as Army).countryCode === iso)
+  if (playerArmies.length === 0) return null
+
+  return (
+    <div className="war-card" style={{ borderColor: 'rgba(34,211,138,0.15)' }}>
+      <div className="war-card__title" style={{ marginBottom: '8px' }}>🛡️ FORCE AUTODEFENSE</div>
+      <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '8px' }}>
+        Set how many divisions each military force auto-deploys on defense.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {playerArmies.map((army: Army) => {
+          const armyDivCount = army.divisionIds.filter((did: string) => {
+            const d = armyStore.divisions[did]
+            return d && d.status === 'ready'
+          }).length
+          const limit = army.autoDefenseLimit ?? 0
+          const sv = limit === -1 ? armyDivCount + 1 : limit
+          const label = limit === -1 ? 'ALL' : limit === 0 ? 'OFF' : `${limit}`
+          const color = limit === 0 ? '#ef4444' : limit === -1 ? '#22d38a' : '#3b82f6'
+          return (
+            <div key={army.id} style={{
+              padding: '8px', borderRadius: '5px',
+              background: 'rgba(255,255,255,0.02)',
+              border: `1px solid ${color}25`,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>⚔️ {army.name}</span>
+                <span style={{ fontSize: '8px', color: '#64748b' }}>{armyDivCount} div{armyDivCount !== 1 ? 's' : ''} ready</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="range" min={0} max={armyDivCount + 1} value={sv}
+                  onChange={e => {
+                    const v = parseInt(e.target.value)
+                    armyStore.setArmyAutoDefenseLimit(army.id, v > armyDivCount ? -1 : v)
+                  }}
+                  style={{ flex: 1, accentColor: color, cursor: 'pointer' }}
+                />
+                <div style={{
+                  minWidth: '36px', textAlign: 'center', padding: '3px 6px', borderRadius: '3px',
+                  fontSize: '10px', fontWeight: 900,
+                  background: `${color}18`, border: `1px solid ${color}40`, color,
+                }}>{label}</div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: '#475569', marginTop: '2px' }}>
+                <span>OFF</span><span>ALL</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 type ViewMode = 'operations' | 'active' | 'reports'
 
@@ -32,8 +91,26 @@ export default function MilitaryPanel() {
   const [viewMode, setViewMode] = useState<ViewMode>('operations')
   const [expandedOp, setExpandedOp] = useState<string | null>(null)
 
-  const [targetCountry, setTargetCountry] = useState('')
-  const [targetRegion, setTargetRegion] = useState('')
+  // ── Map targeting bridge ──
+  // targetCountry/Region are driven by clicking on the map while this panel is open.
+  // They live in uiStore so the map click handler can write them.
+  const mapTargetCountry = useUIStore(s => s.mapTargetCountry)
+  const mapTargetRegion  = useUIStore(s => s.mapTargetRegion)
+  const mapTargetRegionName = useUIStore(s => s.mapTargetRegionName)
+  const setMapTarget     = useUIStore(s => s.setMapTarget)
+
+  // Local override for manual dropdown selection (keeps backward compat)
+  const [manualCountry, setManualCountry] = useState('')
+  const [manualRegion, setManualRegion]   = useState('')
+
+  // Effective target: prefer map target, fall back to manual
+  const targetCountry = mapTargetCountry ?? manualCountry
+  const targetRegion  = mapTargetRegion  ?? manualRegion
+
+  // When map target changes, clear any manual override
+  useEffect(() => {
+    if (mapTargetCountry) { setManualCountry(''); setManualRegion('') }
+  }, [mapTargetCountry])
 
   const iso = player.countryCode || 'US'
 
@@ -103,7 +180,64 @@ export default function MilitaryPanel() {
           </div>
 
           {/* Target Selection */}
-          <div className="war-card" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <div className="war-card" style={{
+            borderColor: targetCountry ? 'rgba(6,182,212,0.3)' : 'rgba(255,255,255,0.08)',
+            transition: 'border-color 0.3s',
+            position: 'relative',
+          }}>
+
+            {/* Map targeting mode banner */}
+            {!targetCountry && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '10px 12px', borderRadius: '6px',
+                background: 'rgba(6,182,212,0.06)',
+                border: '1px dashed rgba(6,182,212,0.3)',
+                marginBottom: '8px',
+                animation: 'pulse-glow 2s ease-in-out infinite',
+              }}>
+                <span style={{ fontSize: '16px' }}>🗺️</span>
+                <div>
+                  <div style={{ fontSize: '9px', fontWeight: 800, color: '#06b6d4', letterSpacing: '0.5px' }}>
+                    CLICK ON THE MAP TO SET TARGET
+                  </div>
+                  <div style={{ fontSize: '8px', color: '#475569', marginTop: '1px' }}>
+                    Or select manually below
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Active map target display */}
+            {targetCountry && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 10px', borderRadius: '6px', marginBottom: '8px',
+                background: 'rgba(6,182,212,0.08)',
+                border: '1px solid rgba(6,182,212,0.3)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '14px' }}>🎯</span>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 800, color: '#06b6d4' }}>
+                      {world.countries.find(c => c.code === targetCountry)?.name ?? targetCountry}
+                    </div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8', marginTop: '1px' }}>
+                      {mapTargetRegionName ?? (targetRegion ? 'Region selected' : 'No region')}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setMapTarget(null, null, null); setManualCountry(''); setManualRegion('') }}
+                  style={{
+                    background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
+                    color: '#ef4444', borderRadius: '4px', cursor: 'pointer',
+                    fontSize: '9px', fontWeight: 700, padding: '3px 8px',
+                  }}
+                >✕ CLEAR</button>
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px' }}>
               <div>
                 <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 'bold', marginBottom: '3px' }}>
@@ -112,21 +246,26 @@ export default function MilitaryPanel() {
                 <select
                   className="war-input"
                   value={targetCountry}
-                  onChange={e => { setTargetCountry(e.target.value); setTargetRegion('') }}
-                  style={{ fontSize: '10px' }}
+                  onChange={e => {
+                    const v = e.target.value
+                    setMapTarget(null, null, null)  // clear map target
+                    setManualCountry(v)
+                    setManualRegion('')
+                  }}
+                  style={{ fontSize: '10px', borderColor: targetCountry ? 'rgba(6,182,212,0.4)' : undefined }}
                 >
                   <option value="" disabled>Select Country...</option>
-                  {world.countries.filter(c => c.code !== iso).map(c => (
+                  {world.countries.filter(c => c.code !== (player.countryCode || 'US')).map(c => (
                     <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
                   ))}
                 </select>
               </div>
 
-              {targetCountry && (
+              {targetCountry && !mapTargetRegion && (
                 <RegionPicker
                   countryCode={targetCountry}
-                  value={targetRegion}
-                  onChange={setTargetRegion}
+                  value={manualRegion}
+                  onChange={setManualRegion}
                   label="📍 TARGET REGION"
                   className="war-input"
                 />
@@ -278,72 +417,7 @@ export default function MilitaryPanel() {
           </div>
 
           {/* Force Autodefense Section */}
-          {(() => {
-            const armyStore = useArmyStore()
-            const playerArmies = Object.values(armyStore.armies).filter(a => a.countryCode === iso)
-            if (playerArmies.length === 0) return null
-            return (
-              <div className="war-card" style={{ borderColor: 'rgba(34,211,138,0.15)' }}>
-                <div className="war-card__title" style={{ marginBottom: '8px' }}>🛡️ FORCE AUTODEFENSE</div>
-                <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '8px' }}>
-                  Set how many divisions each military force auto-deploys on defense.
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {playerArmies.map(army => {
-                    const armyDivCount = army.divisionIds.filter(did => {
-                      const d = armyStore.divisions[did]
-                      return d && d.status === 'ready'
-                    }).length
-                    const limit = army.autoDefenseLimit ?? 0
-                    const sv = limit === -1 ? armyDivCount + 1 : limit
-                    const label = limit === -1 ? 'ALL' : limit === 0 ? 'OFF' : `${limit}`
-                    const color = limit === 0 ? '#ef4444' : limit === -1 ? '#22d38a' : '#3b82f6'
-
-                    return (
-                      <div key={army.id} style={{
-                        padding: '8px', borderRadius: '5px',
-                        background: 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${color}25`,
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                          <span style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>
-                            ⚔️ {army.name}
-                          </span>
-                          <span style={{ fontSize: '8px', color: '#64748b' }}>
-                            {armyDivCount} div{armyDivCount !== 1 ? 's' : ''} ready
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <input
-                            type="range"
-                            min={0}
-                            max={armyDivCount + 1}
-                            value={sv}
-                            onChange={e => {
-                              const v = parseInt(e.target.value)
-                              armyStore.setArmyAutoDefenseLimit(army.id, v > armyDivCount ? -1 : v)
-                            }}
-                            style={{ flex: 1, accentColor: color, cursor: 'pointer' }}
-                          />
-                          <div style={{
-                            minWidth: '36px', textAlign: 'center', padding: '3px 6px', borderRadius: '3px',
-                            fontSize: '10px', fontWeight: 900,
-                            background: `${color}18`, border: `1px solid ${color}40`, color,
-                          }}>
-                            {label}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: '#475569', marginTop: '2px' }}>
-                          <span>OFF</span>
-                          <span>ALL</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })()}
+          <ForceAutodefense iso={iso} />
         </>
       )}
 

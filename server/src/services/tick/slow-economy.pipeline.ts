@@ -10,7 +10,27 @@
  * All operations use batch SQL — O(1) regardless of player count.
  */
 import { db } from '../../db/connection.js'
-import { sql } from 'drizzle-orm'
+import { sql, and, lte } from 'drizzle-orm'
+import { armies, armyMembers, players, newsEvents } from '../../db/schema.js'
+import { logger } from '../../utils/logger.js'
+
+// Lazy emitter — avoids circular dep at module load time
+let _emitGameEvent: ((event: string, data: unknown, room?: string) => void) | null = null
+async function getEmitter() {
+  if (!_emitGameEvent) {
+    try {
+      const mod = await import('../../index.js')
+      _emitGameEvent = mod.emitGameEvent
+    } catch { /* ws role may not be running */ }
+  }
+  return _emitGameEvent
+}
+
+interface SalaryRecipient {
+  playerId: string
+  role: string
+  amount: number
+}
 
 /**
  * Regenerate player bars: stamina, hunger, entrepreneurship, work.
@@ -57,21 +77,168 @@ async function cleanupMarketOrders() {
 
 /**
  * Distribute salary for armies whose distribution interval has elapsed.
- * Moves salary_pool to soldier balances based on the army's split mode.
- * 
- * For the 'equal' split (most common), batch SQL handles it directly.
- * Complex modes (by-rank, by-damage) are processed row-by-row.
+ * Weighted: commander = 1.5x share, all others = 1.0x share.
+ * Runs in a per-army transaction. Emits salary:paid to each player room.
  */
 async function distributeSalaries() {
-  // For now, just reset the distribution timer for armies whose interval has passed.
-  // Full salary distribution requires reading army members and computing splits,
-  // which will be a dedicated service method.
-  await db.execute(sql`
-    UPDATE armies
-    SET last_salary_at = NOW()
-    WHERE last_salary_at + (salary_interval_hours || ' hours')::interval <= NOW()
-      AND salary_interval_hours > 0
+  const now = new Date()
+
+  // Find armies due for salary
+  const dueArmies = await db
+    .select()
+    .from(armies)
+    .where(
+      and(
+        sql`${armies.salaryIntervalHours} > 0`,
+        lte(
+          sql`${armies.lastSalaryAt} + (${armies.salaryIntervalHours} || ' hours')::interval`,
+          sql`NOW()`,
+        ),
+      ),
+    )
+
+  if (dueArmies.length === 0) return
+
+  const emit = await getEmitter()
+
+  for (const army of dueArmies) {
+    try {
+      // Load members
+      const members = await db.select().from(armyMembers).where(sql`${armyMembers.armyId} = ${army.id}`)
+      if (members.length === 0) {
+        await db.update(armies).set({ lastSalaryAt: now }).where(sql`${armies.id} = ${army.id}`)
+        continue
+      }
+
+      // Read army fund money
+      const fundRaw = army.vault as Record<string, number> | null
+      const totalPool = fundRaw?.money ?? 0
+      if (totalPool <= 0) {
+        await db.update(armies).set({ lastSalaryAt: now }).where(sql`${armies.id} = ${army.id}`)
+        continue
+      }
+
+      // Compute weighted shares: commander = 1.5 weight, all others = 1.0
+      const weights = members.map(m => ({ playerId: m.playerId, role: m.role ?? 'private', weight: m.role === 'commander' ? 1.5 : 1.0 }))
+      const totalWeight = weights.reduce((s, w) => s + w.weight, 0)
+      const perWeight = Math.floor(totalPool / totalWeight)
+
+      const recipients: SalaryRecipient[] = weights.map(w => ({
+        playerId: w.playerId,
+        role: w.role,
+        amount: Math.floor(perWeight * w.weight),
+      }))
+
+      const totalPaid = recipients.reduce((s, r) => s + r.amount, 0)
+
+      // Transactional: deduct from army vault + pay each member
+      await db.transaction(async (tx) => {
+        // Deduct from army vault
+        const newFund = { ...(fundRaw ?? {}), money: Math.max(0, totalPool - totalPaid) }
+        await tx.update(armies).set({
+          vault: newFund,
+          lastSalaryAt: now,
+        }).where(sql`${armies.id} = ${army.id}`)
+
+        // Pay each member
+        for (const r of recipients) {
+          if (r.amount <= 0) continue
+          await tx.update(players).set({
+            money: sql`${players.money} + ${r.amount}`,
+          }).where(sql`${players.id} = ${r.playerId}`)
+        }
+
+        // News event
+        await tx.insert(newsEvents).values({
+          type: 'salary_paid',
+          headline: `💰 Army "${army.name}" paid salaries: $${totalPaid.toLocaleString()} to ${recipients.length} soldiers`,
+          body: null,
+          countryCode: army.countryCode,
+          data: { armyId: army.id, totalPaid, recipients: recipients.length },
+        })
+      })
+
+      // Emit per-player socket events
+      if (emit) {
+        for (const r of recipients) {
+          if (r.amount > 0) {
+            emit('salary:paid', { amount: r.amount, armyName: army.name, role: r.role }, `player:${r.playerId}`)
+          }
+        }
+      }
+
+      logger.info(`[SALARY] Army "${army.name}" paid $${totalPaid} to ${recipients.length} members`)
+    } catch (e) {
+      logger.error(e, `[SALARY] Failed to distribute salary for army ${army.id}`)
+    }
+  }
+}
+
+// Maintenance cost per company level
+const MAINTENANCE_COST: Record<number, number> = { 1: 500, 2: 1200, 3: 2500, 4: 5000, 5: 10000, 6: 20000 }
+
+/**
+ * Charge company maintenance for companies whose next_maintenance_due <= NOW().
+ * Deducts from owner's money. Disables company for 48h if owner can't pay.
+ * Emits company:disabled to owner's player room.
+ */
+async function chargeCompanyMaintenance() {
+  // Find companies due for maintenance, joined with owner balance
+  const due = await db.execute(sql`
+    SELECT c.id, c.type, c.level, c.owner_id, c.location,
+           p.money AS owner_money, p.name AS owner_name
+    FROM companies c
+    JOIN players p ON p.id = c.owner_id
+    WHERE (c.next_maintenance_due IS NULL OR c.next_maintenance_due <= NOW())
+      AND (c.disabled_until IS NULL OR c.disabled_until <= NOW())
+      AND c.owner_id IS NOT NULL
   `)
+
+  const rows = (due as unknown as { rows: Array<{ id: string; type: string; level: number; owner_id: string; owner_money: number; owner_name: string; location: string }> }).rows ?? []
+  if (rows.length === 0) return
+
+  const emit = await getEmitter()
+  const nextDue = new Date(Date.now() + 30 * 60 * 1000) // next tick
+
+  for (const row of rows) {
+    const cost = MAINTENANCE_COST[row.level] ?? 500
+    try {
+      await db.transaction(async (tx) => {
+        if (row.owner_money >= cost) {
+          // Can pay — deduct and update schedule
+          await tx.execute(sql`UPDATE players SET money = money - ${cost} WHERE id = ${row.owner_id}`)
+          await tx.execute(sql`UPDATE companies SET next_maintenance_due = ${nextDue} WHERE id = ${row.id}`)
+        } else {
+          // Cannot pay — disable company 48h
+          const disabledUntil = new Date(Date.now() + 48 * 60 * 60 * 1000)
+          await tx.execute(sql`
+            UPDATE companies
+            SET disabled_until = ${disabledUntil},
+                next_maintenance_due = ${disabledUntil}
+            WHERE id = ${row.id}
+          `)
+          await tx.insert(newsEvents).values({
+            type: 'company_disabled',
+            headline: `🏭 ${row.owner_name}'s company disabled (unpaid maintenance $${cost})`,
+            body: null,
+            countryCode: row.location ?? null,
+            data: { companyId: row.id, companyType: row.type, cost, ownerId: row.owner_id },
+          })
+          // Emit to owner's socket room
+          if (emit) {
+            emit('company:disabled', {
+              companyId: row.id,
+              companyName: row.type,
+              reason: `Maintenance cost $${cost} — insufficient funds`,
+            }, `player:${row.owner_id}`)
+          }
+          logger.warn(`[MAINTENANCE] Company ${row.id} (${row.type}) disabled for ${row.owner_name} — owed $${cost}, had $${row.owner_money}`)
+        }
+      })
+    } catch (e) {
+      logger.error(e, `[MAINTENANCE] Failed to process company ${row.id}`)
+    }
+  }
 }
 
 /**
@@ -85,14 +252,14 @@ export async function runSlowEconomyPipeline() {
   await tickCompanyProduction()
   await cleanupMarketOrders()
 
-  try {
-    await distributeSalaries()
-  } catch (e) {
-    console.warn('[SLOW-ECONOMY] Salary distribution error:', e)
-  }
+  try { await distributeSalaries() }
+  catch (e) { logger.warn({ err: e }, '[SLOW-ECONOMY] Salary distribution error') }
+
+  try { await chargeCompanyMaintenance() }
+  catch (e) { logger.warn({ err: e }, '[SLOW-ECONOMY] Maintenance error') }
 
   const elapsed = Date.now() - start
   if (elapsed > 10000) {
-    console.warn(`[SLOW-ECONOMY] Pipeline took ${elapsed}ms (>10s threshold)`)
+    logger.warn(`[SLOW-ECONOMY] Pipeline took ${elapsed}ms (>10s threshold)`)
   }
 }

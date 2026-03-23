@@ -14,7 +14,8 @@ import {
   Package,
   Croissant,
   Fish,
-  Beef
+  Beef,
+  Anchor
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { usePlayerStore } from '../../stores/playerStore'
@@ -339,6 +340,19 @@ export default function ActionBar() {
           <span className="action-bar__icon"><Medal {...ICON_PROPS} /></span>
           <span className="action-bar__label">MILITARY</span>
           <span className="action-bar__status action-bar__status--neutral">OPS</span>
+        </button>
+      </div>
+
+      {/* ═══ TRADE LANES ═══ */}
+      <div className="action-bar__slot">
+        <button
+          className={`action-bar__btn${activePanel === 'trade_routes' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => togglePanel('trade_routes')}
+          title="Maritime Trade Routes"
+        >
+          <span className="action-bar__icon"><Anchor {...ICON_PROPS} /></span>
+          <span className="action-bar__label">TRADE</span>
+          <span className="action-bar__status action-bar__status--neutral">LANES</span>
         </button>
       </div>
 

@@ -9,6 +9,9 @@ import { useGovernmentStore } from '../../stores/governmentStore'
 import { useMarketStore, RESOURCE_BY_KEY } from '../../stores/marketStore'
 import { useLeyLineStore } from '../../stores/leyLineStore'
 import { ARCHETYPE_META } from '../../data/leyLineRegistry'
+import { OWNERSHIP_COLORS, type NodeOwnershipState } from '../../types/leyLine'
+import { useAllianceStore } from '../../stores/allianceStore'
+import { useWorldStore as _useWorldStore } from '../../stores/worldStore'
 import type { Division } from '../../stores/army/types'
 import CountryFlag from '../shared/CountryFlag'
 
@@ -160,6 +163,22 @@ export default function RegionPanel() {
         const leyLines = useLeyLineStore.getState().getLinesForRegion(region.id)
         const isDenial = useLeyLineStore.getState().isDenialTarget(region.id)
         if (leyLines.length === 0) return null
+
+        // derive player's context once for color coding
+        const playerISO    = player.countryCode || null
+        const allianceState = useAllianceStore.getState()
+        const playerAllianceId = allianceState.playerAllianceId
+        const playerAlliance   = playerAllianceId
+          ? allianceState.alliances.find(a => a.id === playerAllianceId)
+          : null
+
+        function getOwnerState(ownerCC: string | null): NodeOwnershipState {
+          if (!ownerCC) return 'unowned'
+          if (ownerCC === playerISO) return 'self'
+          if (playerAlliance?.members.some(m => m.countryCode === ownerCC)) return 'ally'
+          return 'neutral'
+        }
+
         return (
           <div className="hud-card" style={{ borderColor: 'rgba(168,85,247,0.25)' }}>
             <div className="hud-card__title" style={{ color: '#a855f7', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -174,11 +193,39 @@ export default function RegionPanel() {
               {leyLines.map(line => {
                 const meta = ARCHETYPE_META[line.def.archetype]
                 const completionPct = Math.round(line.completion * 100)
+
+                // Derive ownershipState for THIS region's controlling country
+                const thisRegionOwner = region.controlledBy ?? null
+                const ownerState      = getOwnerState(thisRegionOwner)
+                const dotColor        = OWNERSHIP_COLORS[ownerState]
+
+                // Status string below the completion bar
+                const totalBlocks = line.def.blocks.length
+                const securedCount = line.def.blocks.filter(b => {
+                  const r = regions.find(rr => rr.id === b)
+                  if (!r) return false
+                  const s = getOwnerState(r.controlledBy)
+                  return s === 'self' || s === 'ally'
+                }).length
+                const isCritical = !line.active &&
+                  ownerState !== 'self' && ownerState !== 'ally' &&
+                  securedCount === totalBlocks - 1
+
+                let statusLine: React.ReactNode
+                if (line.active) {
+                  statusLine = <span style={{ color: '#22d38a' }}>Active — bonuses applied to {line.heldBy}</span>
+                } else if (isCritical) {
+                  statusLine = <span style={{ color: '#fbbf24' }}>⚡ You are the missing link</span>
+                } else {
+                  statusLine = <span style={{ color: '#64748b' }}>{securedCount} of {totalBlocks} regions secured</span>
+                }
+
                 return (
                   <div key={line.def.id} style={{ padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'rgba(0,0,0,0.3)', border: `1px solid ${meta.color}33` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: meta.color, boxShadow: line.active ? `0 0 8px ${meta.color}` : 'none' }} />
+                        {/* Dot now uses ownershipState color, not static archetype color */}
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, boxShadow: line.active ? `0 0 8px ${dotColor}` : 'none' }} />
                         <span style={{ fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700, color: meta.color, letterSpacing: '0.05em' }}>
                           {line.def.name}
                         </span>
@@ -193,6 +240,10 @@ export default function RegionPanel() {
                     {/* Completion bar */}
                     <div style={{ width: '100%', height: 3, borderRadius: 2, background: 'rgba(0,0,0,0.5)', overflow: 'hidden' }}>
                       <div style={{ width: `${completionPct}%`, height: '100%', borderRadius: 2, background: line.active ? '#22d38a' : meta.color, opacity: line.active ? 1 : 0.6, transition: 'width 0.5s ease' }} />
+                    </div>
+                    {/* Status string */}
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 8, marginTop: 5, letterSpacing: '0.04em' }}>
+                      {statusLine}
                     </div>
                     {line.active && line.effectiveness < 1.0 && (
                       <div style={{ fontFamily: 'var(--font-display)', fontSize: 7, color: 'var(--accent-warning)', marginTop: 4, letterSpacing: '0.05em' }}>

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type PanelType = 'region' | 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'social_club' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'armed_forces' | 'foreign_country' | 'casino' | 'bounty' | 'stocks' | 'alliance' | 'settings' | 'help' | 'history' | 'diplomacy' | 'chat' | null
+export type PanelType = 'region' | 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'social_club' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'armed_forces' | 'foreign_country' | 'casino' | 'bounty' | 'stocks' | 'alliance' | 'settings' | 'help' | 'history' | 'diplomacy' | 'chat' | 'trade_routes' | null
 export type ResourceViewMode = 'deposits' | 'strategic' | 'political'
 
 export interface Notification {
@@ -42,6 +42,10 @@ export interface UIState {
   resourceViewMode: ResourceViewMode
   selectedForeignCountry: string | null
   selectedRegionId: string | null
+  // Map → Military panel targeting bridge
+  mapTargetCountry: string | null   // ISO code
+  mapTargetRegion: string | null    // region id
+  mapTargetRegionName: string | null
   setSelectedRegionId: (id: string | null) => void
   setActivePanel: (panel: PanelType) => void
   togglePanel: (panel: PanelType) => void
@@ -53,6 +57,7 @@ export interface UIState {
   setAfDefaultTab: (tab: string | null) => void
   cycleResourceView: () => void
   setForeignCountry: (code: string | null) => void
+  setMapTarget: (country: string | null, regionId: string | null, regionName: string | null) => void
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void
   removeNotification: (id: string) => void
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
@@ -72,6 +77,9 @@ export const useUIStore = create<UIState>((set) => ({
   panelFullscreen: false,
   selectedForeignCountry: null,
   selectedRegionId: null,
+  mapTargetCountry: null,
+  mapTargetRegion: null,
+  mapTargetRegionName: null,
   showModal: false,
   modalContent: null,
   notifications: [],
@@ -127,6 +135,11 @@ export const useUIStore = create<UIState>((set) => ({
 
   setForeignCountry: (code) => set({ selectedForeignCountry: code }),
   setSelectedRegionId: (id) => set({ selectedRegionId: id }),
+  setMapTarget: (country, regionId, regionName) => set({
+    mapTargetCountry: country,
+    mapTargetRegion: regionId,
+    mapTargetRegionName: regionName,
+  }),
 
   cycleResourceView: () => set((state) => {
     const modes: ResourceViewMode[] = ['deposits', 'strategic', 'political']

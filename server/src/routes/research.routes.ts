@@ -5,9 +5,10 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { countries, governments, players, countryResearch } from '../db/schema.js'
+import { countries, governments, players, countryResearch, newsEvents } from '../db/schema.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
+import { MILITARY_UNLOCKS, ECONOMY_UNLOCKS, unlockType } from '../config/research-unlocks.js'
 
 const router = Router()
 
@@ -151,3 +152,118 @@ router.post('/unlock', requireAuth as any, validate(unlockSchema), async (req, r
 })
 
 export default router
+
+// ── Additional endpoints using the new unlock registry ─────────────────────────
+
+// GET /api/research/available
+router.get('/available', requireAuth as any, async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const [player] = await db.select({ countryCode: players.countryCode })
+      .from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player?.countryCode) {
+      res.status(400).json({ error: 'Player has no country', code: 'NO_COUNTRY' }); return
+    }
+    const [research] = await db.select().from(countryResearch)
+      .where(eq(countryResearch.countryCode, player.countryCode)).limit(1)
+    const militaryDone = (research?.militaryUnlocked ?? []) as string[]
+    const economyDone  = (research?.economyUnlocked  ?? []) as string[]
+    const currentQueue = research?.currentResearch as { key: string; type: string; startedAt: string; durationMs: number; endsAt: string } | null
+    res.json({
+      success: true,
+      countryCode: player.countryCode,
+      currentResearch: currentQueue,
+      military: Object.entries(MILITARY_UNLOCKS).map(([key, def]) => ({
+        key, type: 'military', ...def,
+        unlocked: militaryDone.includes(key),
+        inProgress: currentQueue?.key === key,
+      })),
+      economy: Object.entries(ECONOMY_UNLOCKS).map(([key, def]) => ({
+        key, type: 'economy', ...def,
+        unlocked: economyDone.includes(key),
+        inProgress: currentQueue?.key === key,
+      })),
+    })
+  } catch (err) {
+    console.error('[RESEARCH] available error:', err)
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL' })
+  }
+})
+
+// POST /api/research/start — start a research item from the unlock registry
+router.post('/start', requireAuth as any, validate(z.object({ unlockKey: z.string() })), async (req, res) => {
+  try {
+    const { unlockKey } = req.body
+    const { playerId, playerName } = (req as AuthRequest).player!
+    const type = unlockType(unlockKey)
+    if (!type) { res.status(400).json({ error: 'Unknown unlock key', code: 'UNKNOWN_UNLOCK' }); return }
+    const def = (type === 'military' ? MILITARY_UNLOCKS : ECONOMY_UNLOCKS)[unlockKey]
+    if (!def) { res.status(400).json({ error: 'Unknown unlock key', code: 'UNKNOWN_UNLOCK' }); return }
+    const [player] = await db.select({ countryCode: players.countryCode, money: players.money })
+      .from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player?.countryCode) { res.status(400).json({ error: 'Player has no country', code: 'NO_COUNTRY' }); return }
+    if ((player.money ?? 0) < def.cost) {
+      res.status(400).json({ error: `Insufficient funds. Research costs $${def.cost.toLocaleString()}`, code: 'INSUFFICIENT_FUNDS' }); return
+    }
+    const [research] = await db.select().from(countryResearch)
+      .where(eq(countryResearch.countryCode, player.countryCode)).limit(1)
+    const currentQueue = research?.currentResearch as { key: string } | null
+    if (currentQueue) {
+      res.status(409).json({ error: `Research in progress: ${currentQueue.key}`, code: 'RESEARCH_IN_PROGRESS' }); return
+    }
+    const done = ((type === 'military' ? research?.militaryUnlocked : research?.economyUnlocked) ?? []) as string[]
+    if (done.includes(unlockKey)) { res.status(409).json({ error: 'Already unlocked', code: 'ALREADY_UNLOCKED' }); return }
+    const now = new Date()
+    const endsAt = new Date(now.getTime() + def.researchDurationMs)
+    const queue = { key: unlockKey, type, startedAt: now.toISOString(), durationMs: def.researchDurationMs, endsAt: endsAt.toISOString() }
+    await db.transaction(async (tx) => {
+      await tx.update(players).set({ money: (player.money ?? 0) - def.cost }).where(eq(players.id, playerId))
+      await tx.insert(countryResearch).values({ countryCode: player.countryCode!, currentResearch: queue })
+        .onConflictDoUpdate({ target: countryResearch.countryCode, set: { currentResearch: queue } })
+      await tx.insert(newsEvents).values({
+        type: 'research_started',
+        headline: `🔬 ${playerName} started research: ${def.label} (${player.countryCode})`,
+        body: null, countryCode: player.countryCode,
+        data: { unlockKey, type, endsAt: endsAt.toISOString() },
+      })
+    })
+    res.json({ success: true, unlockKey, endsAt: endsAt.toISOString(), cost: def.cost })
+  } catch (err) {
+    console.error('[RESEARCH] start error:', err)
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL' })
+  }
+})
+
+// GET /api/research/status — current queue + auto-complete if done
+router.get('/status', requireAuth as any, async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const [player] = await db.select({ countryCode: players.countryCode })
+      .from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player?.countryCode) { res.status(400).json({ error: 'Player has no country', code: 'NO_COUNTRY' }); return }
+    let [research] = await db.select().from(countryResearch)
+      .where(eq(countryResearch.countryCode, player.countryCode)).limit(1)
+    const now = new Date()
+    let currentQ = research?.currentResearch as { key: string; type: 'military'|'economy'; endsAt: string } | null
+    if (currentQ && new Date(currentQ.endsAt) <= now) {
+      const field = currentQ.type === 'military' ? 'military_unlocked' : 'economy_unlocked'
+      const done = ((currentQ.type === 'military' ? research?.militaryUnlocked : research?.economyUnlocked) ?? []) as string[]
+      if (!done.includes(currentQ.key)) {
+        await db.execute(sql`UPDATE country_research SET ${sql.raw(field)} = ${JSON.stringify([...done, currentQ.key])}::jsonb, current_research = NULL WHERE country_code = ${player.countryCode}`)
+      } else {
+        await db.update(countryResearch).set({ currentResearch: null }).where(eq(countryResearch.countryCode, player.countryCode!))
+      }
+      currentQ = null
+      ;[research] = await db.select().from(countryResearch).where(eq(countryResearch.countryCode, player.countryCode!)).limit(1)
+    }
+    res.json({
+      success: true, countryCode: player.countryCode,
+      currentResearch: currentQ,
+      militaryUnlocked: (research?.militaryUnlocked ?? []) as string[],
+      economyUnlocked: (research?.economyUnlocked ?? []) as string[],
+    })
+  } catch (err) {
+    console.error('[RESEARCH] status error:', err)
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL' })
+  }
+})

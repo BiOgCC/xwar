@@ -329,6 +329,7 @@ export const companies = pgTable('companies', {
   productionMax:    integer('production_max').default(100),
   location:         varchar('location', { length: 4 }).references(() => countries.code),
   disabledUntil:    timestamp('disabled_until'),
+  nextMaintenanceDue: timestamp('next_maintenance_due'),
 }, (table) => ({
   ownerIdx: index('idx_companies_owner').on(table.ownerId),
   locationIdx: index('idx_companies_location').on(table.location),
@@ -674,6 +675,7 @@ export const navalOperations = pgTable('naval_operations', {
   warshipId:    uuid('warship_id').notNull(),
   playersJoined: jsonb('players_joined').default([]), // array of string (playerName)
   status:       varchar('status', { length: 16 }).default('recruiting'),
+  battleId:     varchar('battle_id', { length: 128 }),
   launchedAt:   timestamp('launched_at'),
   createdAt:    timestamp('created_at').defaultNow(),
 })
@@ -689,5 +691,82 @@ export const countryResearch = pgTable('country_research', {
   countryCode:      varchar('country_code', { length: 4 }).primaryKey().references(() => countries.code),
   militaryUnlocked: jsonb('military_unlocked').default([]),
   economyUnlocked:  jsonb('economy_unlocked').default([]),
+  currentResearch:  jsonb('current_research').default(null),  // { key, type, startedAt, durationMs }
+})
+
+// ═══════════════════════════════════════════════
+//  TRADE ROUTE STATE (server-authoritative disruption / objectives)
+// ═══════════════════════════════════════════════
+
+export const tradeRouteState = pgTable('trade_route_state', {
+  routeId:          varchar('route_id', { length: 64 }).primaryKey(),
+  disruptedUntil:   timestamp('disrupted_until'),
+  disruptedBy:      uuid('disrupted_by').references(() => players.id),
+  disruptedReason:  varchar('disrupted_reason', { length: 128 }),
+  strategicTargetOf: uuid('strategic_target_of').references(() => players.id),
+  partialIncomeMultiplier: numeric('partial_income_multiplier', { precision: 4, scale: 2 }).default('1.0'),
+  updatedAt:        timestamp('updated_at').defaultNow(),
+})
+
+// ═══════════════════════════════════════════════
+//  REGION OWNERSHIP (server-authoritative)
+//  Written by region capture events, read by ley line engine.
+// ═══════════════════════════════════════════════
+
+export const regionOwnership = pgTable('region_ownership', {
+  regionId:    varchar('region_id', { length: 16 }).primaryKey(),  // e.g. 'US-CA'
+  countryCode: varchar('country_code', { length: 4 }).references(() => countries.code),
+  allianceId:  uuid('alliance_id'),
+  capturedAt:  timestamp('captured_at').defaultNow(),
+  updatedAt:   timestamp('updated_at').defaultNow(),
+}, (t) => ({
+  countryIdx: index('idx_region_ownership_country').on(t.countryCode),
+}))
+
+// ═══════════════════════════════════════════════
+//  LEY LINE STATE (computed per-line per engine tick)
+// ═══════════════════════════════════════════════
+
+export const leyLineState = pgTable('ley_line_state', {
+  lineId:           varchar('line_id', { length: 32 }).primaryKey(),   // 'NA-PROSPERITY'
+  isActive:         boolean('is_active').default(false),
+  activatedAt:      timestamp('activated_at'),
+  deactivatedAt:    timestamp('deactivated_at'),
+  controllerType:   varchar('controller_type', { length: 16 }),        // 'country'|'alliance'|'split'
+  controllerIds:    jsonb('controller_ids').default([]),                // string[]
+  effectiveness:    numeric('effectiveness', { precision: 4, scale: 2 }).default('1.0'),
+  appliedBonuses:   jsonb('applied_bonuses').default({}),
+  appliedTradeoffs: jsonb('applied_tradeoffs').default({}),
+  completionPct:    numeric('completion_pct', { precision: 5, scale: 1 }).default('0'),
+  updatedAt:        timestamp('updated_at').defaultNow(),
+})
+
+// ═══════════════════════════════════════════════
+//  LEY LINE NODE STATE (per-node, for fast API dot rendering)
+// ═══════════════════════════════════════════════
+
+export const leyLineNodeState = pgTable('ley_line_node_state', {
+  regionId:    varchar('region_id', { length: 16 }).notNull(),
+  lineId:      varchar('line_id', { length: 32 }).notNull(),
+  ownerCode:   varchar('owner_code', { length: 4 }),
+  isCritical:  boolean('is_critical').default(false),
+  updatedAt:   timestamp('updated_at').defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.regionId, t.lineId] }),
+  lineIdx: index('idx_ley_node_line').on(t.lineId),
+}))
+
+// ═══════════════════════════════════════════════
+//  COUNTRY LEY LINE BUFF (merged bonus totals per country)
+// ═══════════════════════════════════════════════
+
+export const countryLeyLineBuff = pgTable('country_ley_line_buff', {
+  countryCode:     varchar('country_code', { length: 4 }).primaryKey().references(() => countries.code),
+  activeLineIds:   jsonb('active_line_ids').default([]),
+  mergedBonuses:   jsonb('merged_bonuses').default({}),
+  mergedTradeoffs: jsonb('merged_tradeoffs').default({}),
+  resonanceLevel:  varchar('resonance_level', { length: 16 }),
+  resonanceBonus:  jsonb('resonance_bonus').default({}),
+  computedAt:      timestamp('computed_at').defaultNow(),
 })
 

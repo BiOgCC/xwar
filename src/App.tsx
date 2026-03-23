@@ -38,7 +38,7 @@ function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const player = usePlayerStore()
   const world = useWorldStore()
-  const { floatingTexts, setActivePanel, setForeignCountry, setSelectedRegionId } = useUIStore()
+  const { floatingTexts, setActivePanel, setForeignCountry, setSelectedRegionId, setMapTarget } = useUIStore()
   const [mousePos, setMousePos] = useState({ lat: '0.00° N', lng: '0.00° E' })
   const mapRef = useRef<GameMapHandle>(null)
   const [selectedWarRegion, setSelectedWarRegion] = useState<Region | null>(null)
@@ -79,8 +79,25 @@ function App() {
   }, [])
 
   const handleRegionClick = useCallback((region: Region) => {
-    const currentId = useUIStore.getState().selectedRegionId
-    if (currentId === region.id) {
+    const { selectedRegionId, activePanel } = useUIStore.getState()
+
+    // ── Military targeting mode: any click → set map target ──
+    if (activePanel === 'military' && !region.isOcean) {
+      const playerIso = usePlayerStore.getState().countryCode || 'US'
+      // Can only target foreign countries
+      if (region.countryCode !== playerIso) {
+        setMapTarget(region.countryCode, region.id, region.name)
+        useUIStore.getState().addFloatingText(
+          `🎯 Target: ${region.name}`,
+          window.innerWidth / 2,
+          window.innerHeight / 2,
+          '#06b6d4'
+        )
+        return
+      }
+    }
+
+    if (selectedRegionId === region.id) {
       // Already selected → open country tab
       if (region.isOcean) return
       const playerIso = usePlayerStore.getState().countryCode || 'US'
@@ -94,7 +111,7 @@ function App() {
     }
     setSelectedRegionId(region.id)
     setActivePanel('region')
-  }, [setSelectedRegionId, setActivePanel, setForeignCountry])
+  }, [setSelectedRegionId, setActivePanel, setForeignCountry, setMapTarget])
 
   const handleRegionDoubleClick = useCallback((region: Region) => {
     if (region.isOcean) return // Usually nothing special on double click for ocean

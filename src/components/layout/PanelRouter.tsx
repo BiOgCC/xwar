@@ -26,10 +26,11 @@ import HelpPanel from '../panels/HelpPanel'
 import HistoryPanel from '../panels/HistoryPanel'
 import DiplomacyPanel from '../panels/DiplomacyPanel'
 import RegionPanel from '../panels/RegionPanel'
+import TradeRoutePanel from '../panels/TradeRoutePanel'
 import {
   User, Backpack, BarChart2, Factory, CircleDollarSign,
   Gamepad2, Target, TrendingUp, Handshake, Landmark,
-  ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText
+  ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText, Anchor
 } from 'lucide-react'
 
 const SIDEBAR_ICON_PROPS = { color: '#22d38a', size: 16, strokeWidth: 2 }
@@ -56,6 +57,7 @@ function getSidebarIcon(id: string) {
     case 'diplomacy': return <Handshake {...SIDEBAR_ICON_PROPS} />
     case 'history': return <ScrollText {...SIDEBAR_ICON_PROPS} />
     case 'region': return <Target {...SIDEBAR_ICON_PROPS} />
+    case 'trade_routes': return <Anchor {...SIDEBAR_ICON_PROPS} />
     default: return <User {...SIDEBAR_ICON_PROPS} />
   }
 }
@@ -267,6 +269,8 @@ export default function PanelRouter() {
               ? '📜 WAR HISTORY'
               : activePanel === 'diplomacy'
               ? '🤝 DIPLOMACY'
+              : activePanel === 'trade_routes'
+              ? '⚓ MARITIME TRADE ROUTES'
               : activePanel === 'armed_forces'
               ? '🪖 ARMED FORCES'
 
@@ -386,6 +390,7 @@ export default function PanelRouter() {
               )}
             </>
           )}
+          {activePanel === 'trade_routes' && <TradeRoutePanel />}
           {activePanel === 'government' && <GovernmentPanel />}
           {activePanel === 'cyberwarfare' && <CyberwarfarePanel />}
           {activePanel === 'missions' && <MissionsPanel />}

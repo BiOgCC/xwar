@@ -314,6 +314,66 @@ export const useLeyLineStore = create<LeyLineState>(() => ({
 }))
 
 // ═══════════════════════════════════════════════════════════════
+// SERVER SYNC — Fetch authoritative state from backend
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Payload shape returned by GET /api/ley-lines.
+ * Kept local to this module — not exported.
+ */
+interface ServerLeyLineSnapshot {
+  lines: Array<{
+    id:               string
+    name:             string
+    archetype:        string
+    isActive:         boolean
+    completionPct:    number
+    effectiveness:    number
+    controllerIds:    string[]
+    appliedBonuses:   Record<string, number>
+    appliedTradeoffs: Record<string, number>
+    nodes: Array<{ regionId: string; ownerCode: string | null; isCritical: boolean }>
+  }>
+  computedAt: string | null
+}
+
+// Quick in-memory cache of last server snapshot (does not need Zustand)
+let _serverSnapshot: ServerLeyLineSnapshot | null = null
+let _lastFetchAt = 0
+
+/**
+ * Fetch ley line state from the backend API and cache it.
+ * Safe to call frequently — debounced to 15s.
+ * Non-throwing: failures are silent.
+ */
+export async function fetchLeyLineStateFromServer(): Promise<void> {
+  if (Date.now() - _lastFetchAt < 15_000) return
+  _lastFetchAt = Date.now()
+  try {
+    const res = await fetch('/api/ley-lines', { credentials: 'include' })
+    if (!res.ok) return
+    _serverSnapshot = await res.json() as ServerLeyLineSnapshot
+  } catch { /* non-fatal */ }
+}
+
+/**
+ * Handle a real-time `leyline:state` Socket.IO event.
+ * Call this from your socket listener in App.tsx / socketStore.
+ */
+export function syncLeyLineStateFromServer(payload: ServerLeyLineSnapshot): void {
+  _serverSnapshot = payload
+}
+
+/**
+ * Returns the server snapshot if available, or null.
+ * Use this in GameMap.tsx / RegionPanel.tsx to get the authoritative node states
+ * (ownerCode, isCritical) without recomputing locally.
+ */
+export function getServerLeyLineSnapshot(): ServerLeyLineSnapshot | null {
+  return _serverSnapshot
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EXPORTED COMBAT HELPERS (used by battleStore)
 // ═══════════════════════════════════════════════════════════════
 
@@ -339,3 +399,4 @@ export function computeLeyLineCombatMods(countryCode: string): { damageMult: num
     armorMult:  Math.max(0.1, armorMult),
   }
 }
+

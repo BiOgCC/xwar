@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client'
 import { getAuthToken } from './client'
+import { syncLeyLineStateFromServer } from '../stores/leyLineStore'
 
 const SOCKET_URL = 'http://localhost:3001'
 
@@ -18,10 +19,25 @@ class SocketManager {
 
     this.socket.on('connect', () => {
       console.log('[WS] Connected to XWAR Server:', this.socket?.id)
+      // Auto-join ley line broadcast room
+      this.socket?.emit('join:leylines')
     })
 
     this.socket.on('disconnect', () => {
       console.log('[WS] Disconnected from server')
+    })
+
+    // ── Ley Line real-time events ──
+    this.socket.on('leyline:state', (payload: unknown) => {
+      syncLeyLineStateFromServer(payload as Parameters<typeof syncLeyLineStateFromServer>[0])
+    })
+
+    this.socket.on('leyline:activated', (payload: { lineId: string; lineName: string; archetype: string }) => {
+      console.log(`[LEY LINE] ⚡ ${payload.lineName} activated (${payload.archetype})`)
+    })
+
+    this.socket.on('leyline:deactivated', (payload: { lineId: string; lineName: string }) => {
+      console.log(`[LEY LINE] 💀 ${payload.lineName} deactivated`)
     })
   }
 

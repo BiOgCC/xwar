@@ -26,6 +26,9 @@ import dailyRoutes from './routes/daily.routes.js'
 import navalRoutes from './routes/naval.routes.js'
 import researchRoutes from './routes/research.routes.js'
 import raidRoutes from './routes/raid.routes.js'
+import tradeRouteRoutes from './routes/trade-routes.routes.js'
+import adminRoutes from './routes/admin.routes.js'
+import leyLineRoutes from './routes/leylines.router.js'
 
 import { generalLimiter, authLimiter, casinoLimiter } from './middleware/rateLimit.js'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -88,6 +91,9 @@ if (runApi) {
   app.use('/api/naval', navalRoutes)
   app.use('/api/research', researchRoutes)
   app.use('/api/raid', raidRoutes)
+  app.use('/api/trade-routes', tradeRouteRoutes)
+  app.use('/api/admin', authLimiter, adminRoutes)
+  app.use('/api/ley-lines', leyLineRoutes)
 
   // ── Global error handler (must be AFTER routes) ──
   app.use(errorHandler)
@@ -98,12 +104,32 @@ if (runWs && io) {
   io.on('connection', (socket) => {
     logger.info(`[WS] Client connected: ${socket.id}`)
 
+    // Personal room — allows targeted salary:paid, company:disabled events
+    socket.on('authenticate', (playerId: string) => {
+      if (typeof playerId === 'string' && playerId.length > 0) {
+        socket.join(`player:${playerId}`)
+        logger.info(`[WS] ${socket.id} joined personal room player:${playerId}`)
+      }
+    })
+
+    // Country room — fund:update, election:result, battle:started broadcasts
+    socket.on('join:country', (countryCode: string) => {
+      if (typeof countryCode === 'string' && countryCode.length >= 2) {
+        socket.join(`country:${countryCode}`)
+      }
+    })
+
     socket.on('join:battle', (battleId: string) => {
       socket.join(`battle:${battleId}`)
     })
 
     socket.on('join:market', () => {
       socket.join('market')
+    })
+
+    // Global ley line updates
+    socket.on('join:leylines', () => {
+      socket.join('leylines')
     })
 
     socket.on('disconnect', () => {
