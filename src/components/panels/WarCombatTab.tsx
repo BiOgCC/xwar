@@ -617,7 +617,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
 
               // Surge synergy label based on active order
               const mySide2: 'attacker' | 'defender' = (player.countryCode || 'US') === battle.attackerId ? 'attacker' : 'defender'
-              const activeOrder = mySide2 === 'attacker' ? battle.attackerOrder : battle.defenderOrder
+              const activeOrder = (mySide2 === 'attacker' ? battle.attackerOrder : battle.defenderOrder) || 'none'
               const synergyLabel: Record<string, string> = {
                 charge: '+60% ATK', precision: '+40% GUARANTEED CRIT', blitz: '+30% (5s)',
                 fortify: '+40% DMG', none: '+40% DMG',

@@ -104,6 +104,7 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     playerSurge: {},
     playerCrash: {},
     playerAdrenalinePeakAt: {},
+    vengeanceBuff: { attacker: -1, defender: -1 },
   }
 }
 
@@ -254,6 +255,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       playerSurge: {},
       playerCrash: {},
       playerAdrenalinePeakAt: {},
+      vengeanceBuff: { attacker: -1, defender: -1 },
     }
 
     // Mark divisions as in_combat
@@ -637,11 +639,19 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         // Accumulate time — fire as many times as attackSpeed allows (order speedMult)
         const as = (tAtkSpeed - eq.bonusSpeed) * atkOrd.speedMult
         cooldowns[divId] = (cooldowns[divId] || 0) + 1.0
+
+        // 🔥 DESPERATION: +25% ATK, +15% crit when HP < 30%
+        const atkStrength = div.health / div.maxHealth
+        const atkDesperate = atkStrength > 0 && atkStrength < 0.30
+        // ⚡ VENGEANCE: +20% ATK, +10% hit for 3 ticks after ally dies
+        const atkVengeanceActive = (battle.vengeanceBuff?.attacker ?? -1) >= tick
+
         while (cooldowns[divId] >= as) {
           cooldowns[divId] -= as
           const atkDivLevel = Math.floor((div.experience || 0) / 10)
-          // Hit check (order hitBonus + aura precisionPct + equip hitRate + research hitRate applied)
-          if (Math.random() > Math.min(0.95, tHitRate + atkDivLevel * 0.01 + atkOrd.hitBonus + atkAura.precisionPct / 100 + eq.bonusHitRate + atkMilBonus.hitRateBonus)) {
+          // Hit check (order hitBonus + aura precisionPct + equip hitRate + research hitRate + vengeance applied)
+          const atkVengeanceHitBonus = atkVengeanceActive ? 0.10 : 0
+          if (Math.random() > Math.min(0.95, tHitRate + atkDivLevel * 0.01 + atkOrd.hitBonus + atkAura.precisionPct / 100 + eq.bonusHitRate + atkMilBonus.hitRateBonus + atkVengeanceHitBonus)) {
             atkMisses++
             divEvents.push({ divName: div.name, side: 'atk', event: 'miss' })
             continue
@@ -654,7 +664,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const ps = usePlayerStore.getState()
           const atkOwnerBuff = div.ownerId === ps.name && ps.heroBuffTicksLeft > 0 && ps.heroBuffBattleId === battle.id
           if (atkOwnerBuff) dmg = Math.floor(dmg * 1.10)
-          const effectiveCritRate = deviate((playerStats.critRate + atkOrd.critBonus + eq.bonusCritRate) * (tCritRate + atkDivLevel * 0.01))
+          // Crit check — Desperation boosts crit rate by 15%
+          let effectiveCritRate = deviate((playerStats.critRate + atkOrd.critBonus + eq.bonusCritRate) * (tCritRate + atkDivLevel * 0.01))
+          if (atkDesperate) effectiveCritRate *= 1.15
           if (Math.random() * 100 < effectiveCritRate) {
             // Apply aura crit damage bonus + equip crit dmg
             const effectiveCritMult = playerStats.critMultiplier * (tCritDmg + atkDivLevel * 0.01) * (1 + atkAura.critDmgPct / 100) * atkMilBonus.critDmgBonus + eq.bonusCritDmg / 100
@@ -662,9 +674,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             atkCrits++
             divEvents.push({ divName: div.name, side: 'atk', event: 'crit', dmg })
           }
-          const strength = div.health / div.maxHealth
-          dmg = Math.floor(dmg * strength)
+          dmg = Math.floor(dmg * atkStrength)
           dmg = Math.floor(dmg * atkOrd.atkMult)
+          // 🔥 DESPERATION: +25% ATK boost
+          if (atkDesperate) dmg = Math.floor(dmg * 1.25)
+          // ⚡ VENGEANCE: +20% ATK boost
+          if (atkVengeanceActive) dmg = Math.floor(dmg * 1.20)
           // Apply Alliance Vanguard Bonus (dynamic, scales with level)
           const atkAllianceState = useAllianceStore.getState()
           const atkAlliance = atkAllianceState.alliances.find(a => a.members.some(m => m.name === battle.attackerId))
@@ -709,11 +724,19 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         const deq = getDivisionEquipBonus(d)
         const defAS = (dAtkSpeed - deq.bonusSpeed) * defOrd.speedMult
         cooldowns[divId] = (cooldowns[divId] || 0) + 1.0
+
+        // 🔥 DESPERATION: +25% ATK, +15% crit when HP < 30%
+        const defStrength = d.health / d.maxHealth
+        const defDesperate = defStrength > 0 && defStrength < 0.30
+        // ⚡ VENGEANCE: +20% ATK, +10% hit for 3 ticks after ally dies
+        const defVengeanceActive = (battle.vengeanceBuff?.defender ?? -1) >= tick
+
         while (cooldowns[divId] >= defAS) {
           cooldowns[divId] -= defAS
           const defDivLevel = Math.floor((d.experience || 0) / 10)
-          // Hit check (order hitBonus + aura precisionPct + equip hitRate + research hitRate applied)
-          if (Math.random() > Math.min(0.95, dHitRate + defDivLevel * 0.01 + defOrd.hitBonus + defAura.precisionPct / 100 + deq.bonusHitRate + defMilBonus.hitRateBonus)) {
+          // Hit check (order hitBonus + aura precisionPct + equip hitRate + research hitRate + vengeance applied)
+          const defVengeanceHitBonus = defVengeanceActive ? 0.10 : 0
+          if (Math.random() > Math.min(0.95, dHitRate + defDivLevel * 0.01 + defOrd.hitBonus + defAura.precisionPct / 100 + deq.bonusHitRate + defMilBonus.hitRateBonus + defVengeanceHitBonus)) {
             defMisses++
             divEvents.push({ divName: d.name, side: 'def', event: 'miss' })
             continue
@@ -726,7 +749,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           const dps = usePlayerStore.getState()
           const defOwnerBuff = d.ownerId === dps.name && dps.heroBuffTicksLeft > 0 && dps.heroBuffBattleId === battle.id
           if (defOwnerBuff) dmg = Math.floor(dmg * 1.10)
-          const effectiveCritRate = deviate((playerStats.critRate + defOrd.critBonus + deq.bonusCritRate) * (dCritRate + defDivLevel * 0.01))
+          // Crit check — Desperation boosts crit rate by 15%
+          let effectiveCritRate = deviate((playerStats.critRate + defOrd.critBonus + deq.bonusCritRate) * (dCritRate + defDivLevel * 0.01))
+          if (defDesperate) effectiveCritRate *= 1.15
           if (Math.random() * 100 < effectiveCritRate) {
             // Apply aura crit damage bonus + equip crit dmg
             const effectiveCritMult = playerStats.critMultiplier * (dCritDmg + defDivLevel * 0.01) * (1 + defAura.critDmgPct / 100) * defMilBonus.critDmgBonus + deq.bonusCritDmg / 100
@@ -734,9 +759,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             defCrits++
             divEvents.push({ divName: d.name, side: 'def', event: 'crit', dmg })
           }
-          const strength = d.health / d.maxHealth
-          dmg = Math.floor(dmg * strength)
+          dmg = Math.floor(dmg * defStrength)
           dmg = Math.floor(dmg * defOrd.atkMult)
+          // 🔥 DESPERATION: +25% ATK boost
+          if (defDesperate) dmg = Math.floor(dmg * 1.25)
+          // ⚡ VENGEANCE: +20% ATK boost
+          if (defVengeanceActive) dmg = Math.floor(dmg * 1.20)
           // Apply Alliance Sentinel Bonus (dynamic, scales with level)
           const defAllianceState = useAllianceStore.getState()
           const defAlliance = defAllianceState.alliances.find(a => a.members.some(m => m.name === battle.defenderId))
@@ -772,6 +800,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             return
           }
           const totalDefArmor = ((playerStats.armorBlock || 0) + defEq.bonusArmor) * tmpl.armorMult * defOrderFx.armorMult * defMilBonus.armorBonus * defLeyLine.armorMult
+            * ((d.health / d.maxHealth) < 0.30 ? 0.90 : 1.0)  // 🔥 DESPERATION: -10% armor when HP < 30%
           const defArmorMit = totalDefArmor / (totalDefArmor + 100)
           let finalDmg = Math.max(1, Math.floor(basePerDiv * (1 - defArmorMit)))
           finalDmg = Math.max(1, Math.floor(finalDmg / 1.35)) // healthMult divider x1.35
@@ -797,6 +826,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             return
           }
           const totalAtkArmor = ((playerStats.armorBlock || 0) + atkEq.bonusArmor) * tmpl.armorMult * atkOrderFx.armorMult * atkMilBonus.armorBonus * atkLeyLine.armorMult
+            * ((d.health / d.maxHealth) < 0.30 ? 0.90 : 1.0)  // 🔥 DESPERATION: -10% armor when HP < 30%
           const atkArmorMit = totalAtkArmor / (totalAtkArmor + 100)
           let finalDmg = Math.max(1, Math.floor(basePerDiv * (1 - atkArmorMit)))
           finalDmg = Math.max(1, Math.floor(finalDmg / 1.35)) // healthMult divider x1.35
@@ -930,6 +960,18 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           debrisScrap += debris.scrap; debrisMatX += debris.materialX; debrisBoxes += debris.militaryBox ? 1 : 0
         }
       })
+
+      // ⚡ VENGEANCE: When an allied division is destroyed, surviving allies get buffed for 3 ticks
+      if (atkDestroyed > 0 && !battle.vengeanceBuff) battle.vengeanceBuff = { attacker: -1, defender: -1 }
+      if (atkDestroyed > 0) {
+        battle.vengeanceBuff.attacker = tick + 3  // attacker lost divs → attacker survivors get vengeance
+        newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚡ VENGEANCE! Attacker divisions rage — +20% ATK, +10% hit for 3 ticks!` })
+      }
+      if (defDestroyed > 0) {
+        battle.vengeanceBuff.defender = tick + 3  // defender lost divs → defender survivors get vengeance
+        newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `⚡ VENGEANCE! Defender divisions rage — +20% ATK, +10% hit for 3 ticks!` })
+      }
+
       // Deposit debris into the region
       if ((debrisScrap > 0 || debrisMatX > 0 || debrisBoxes > 0) && battle.regionId) {
         useRegionStore.getState().addDebris(battle.regionId, debrisScrap, debrisMatX, debrisBoxes)
@@ -1356,7 +1398,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
 
     // 3. Adrenaline surge/crash damage modifiers
-    const surgeState = battle.playerSurge?.[playerName]
+    // Re-read battle from store — the adrenaline set() above and activateSurge() may have mutated it
+    const freshBattle = get().battles[battleId]
+    const surgeState = freshBattle?.playerSurge?.[playerName]
     const isSurging = surgeState && now < surgeState.until
     let surgeMult = 1.0
     let surgeMsg = ''
@@ -1377,7 +1421,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     damage = Math.floor(damage * surgeMult)
 
     // Crash debuff: -20% if crashed
-    const crashState = battle.playerCrash?.[playerName]
+    const crashState = freshBattle?.playerCrash?.[playerName]
     const isCrashed = crashState && now < crashState.until
     if (isCrashed) {
       damage = Math.floor(damage * 0.80)
@@ -1446,14 +1490,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (!battle) return
     const pName = player.name
     const adr = (battle.playerAdrenaline || {})[pName] || 0
-    if (adr < 80) return  // Not enough adrenaline
+    if (adr < 80) return
 
-    // Detect player's side and snapshot the active order for synergy
     const playerCountry = player.countryCode || 'US'
     const side: 'attacker' | 'defender' = playerCountry === battle.attackerId ? 'attacker' : 'defender'
-    const order = side === 'attacker' ? battle.attackerOrder : battle.defenderOrder
-
-    // Blitz surge is shorter but already has speed synergy
+    const order = (side === 'attacker' ? battle.attackerOrder : battle.defenderOrder) || 'none'
     const duration = order === 'blitz' ? 5000 : 10000
 
     set(s => {

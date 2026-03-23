@@ -1,0 +1,68 @@
+===========================================================
+  XWAR Division Combat Simulation -- Mirror Match
+===========================================================
+
+Config:
+  Battles:      1000
+  Composition:  assault, assault, sniper, tank
+  Div Level:    5 (50 XP)
+  Skill Level:  5 (all skills)
+  Desperation:  ON (HP<30% -> +25%ATK +15%crit -10%armor)
+  Vengeance:    ON (ally dies -> +20%ATK +10%hit 3 ticks)
+
+-----------------------------------------------------------
+  WIN RATES
+-----------------------------------------------------------
+  Attacker:  510 wins (51.0%)
+  Defender:  490 wins (49.0%)
+  Draws:     0 (0.0%)
+  Fairness:  BALANCED (2.0% delta)
+
+-----------------------------------------------------------
+  DAMAGE
+-----------------------------------------------------------
+  Avg ATK dmg: 203737
+  Avg DEF dmg: 198841
+  Dmg ratio:   1.025
+
+-----------------------------------------------------------
+  DIVISION LOSSES (per battle avg)
+-----------------------------------------------------------
+  Avg ATK divs destroyed: 2.20 / 4
+  Avg DEF divs destroyed: 2.29 / 4
+
+-----------------------------------------------------------
+  BATTLE DURATION
+-----------------------------------------------------------
+  Avg ticks: 633.1 (~158.3 min)
+  <200      0
+  200-400   0
+  400-600  #################### 485
+  600-800  ##################### 515
+  800+      0
+
+-----------------------------------------------------------
+  COMEBACK MECHANICS
+-----------------------------------------------------------
+  DESPERATION procs:  1223354 total (1223.4 avg/battle)
+  VENGEANCE procs:    42047 total (42.0 avg/battle)
+  COMEBACK wins:      515 / 1000 (51.5%)
+
+-----------------------------------------------------------
+  DETERMINISM CHECK (10 sample battles)
+-----------------------------------------------------------
+  # 1 ATK   500 ticks  ATK:    384585  DEF:     42648  Lost:0/4
+  # 2 ATK   756 ticks  ATK:    229666  DEF:    148734  Lost:1/4 *COMEBACK*
+  # 3 DEF   758 ticks  ATK:    157500  DEF:    226049  Lost:4/1 *COMEBACK*
+  # 4 ATK   502 ticks  ATK:    323142  DEF:     45302  Lost:0/4
+  # 5 DEF   501 ticks  ATK:     45342  DEF:    315840  Lost:4/0
+  # 6 ATK   503 ticks  ATK:    292665  DEF:     50100  Lost:0/4
+  # 7 ATK   509 ticks  ATK:    134486  DEF:     67023  Lost:3/4
+  # 8 DEF   503 ticks  ATK:     50558  DEF:    287202  Lost:4/0
+  # 9 DEF   508 ticks  ATK:     61092  DEF:    169291  Lost:4/3
+  #10 DEF   758 ticks  ATK:    172717  DEF:    208725  Lost:4/1 *COMEBACK*
+
+  Winners vary: YES (non-deterministic)
+  Damage spread: 157.8% -> High variance
+
+===========================================================

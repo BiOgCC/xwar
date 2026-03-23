@@ -97,4 +97,6 @@ export interface Battle {
   playerCrash: Record<string, { until: number }>
   /** Per-player timestamp when adrenaline first hit 100 (for crash timer) */
   playerAdrenalinePeakAt: Record<string, number>
+  /** Per-side Vengeance buff: tracks expiry tick when an allied division is destroyed */
+  vengeanceBuff: Record<'attacker' | 'defender', number>  // side → tick when buff expires
 }
