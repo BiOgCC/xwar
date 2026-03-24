@@ -63,7 +63,7 @@ export const players = pgTable('players', {
   bitcoin:       integer('bitcoin').default(0),
   lootBoxes:     integer('loot_boxes').default(0),
   militaryBoxes: integer('military_boxes').default(0),
-  staminaPills:  integer('stamina_pills').default(0),
+  magicTea:     integer('stamina_pills').default(0),
   energyLeaves:  integer('energy_leaves').default(0),
   badgesOfHonor: integer('badges_of_honor').default(0),
   lootChancePool: integer('loot_chance_pool').default(0),

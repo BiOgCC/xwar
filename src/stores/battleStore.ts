@@ -1509,12 +1509,16 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       return { damage: missDmg, isCrit: false, isMiss: true, message: `💨 Glancing blow! ${missDmg} damage.` }
     }
 
-    // 1. Base damage with range (70%–130% of attackDamage)
-    const baseRoll = 0.70 + Math.random() * 0.60
+    // 1. Base damage with range (93%–108% of attackDamage → 15% max variance)
+    const baseRoll = 0.93 + Math.random() * 0.15
     let damage = Math.floor(cs.attackDamage * baseRoll)
 
     // 2. Crit check (stacks with range, but guaranteed floor at 100% base)
-    const isCrit = Math.random() * 100 < cs.critRate
+    // Magic Tea buff: +10% crit rate
+    const teaPs = usePlayerStore.getState()
+    const magicTeaBuffActive = now < teaPs.magicTeaBuffUntil
+    const magicTeaCritBonus = magicTeaBuffActive ? 10 : 0
+    const isCrit = Math.random() * 100 < (cs.critRate + magicTeaCritBonus)
     if (isCrit) {
       damage = Math.floor(damage * cs.critMultiplier)
       // Crit floor: never lower than full base attackDamage
@@ -1550,6 +1554,16 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (isCrashed) {
       damage = Math.floor(damage * 0.80)
       surgeMsg = ' 💥 CRASHED!'
+    }
+
+    // 🍵 Magic Tea buff: +80% damage / debuff: -90% damage
+    const magicTeaDebuffActive = !magicTeaBuffActive && now < teaPs.magicTeaDebuffUntil
+    if (magicTeaBuffActive) {
+      damage = Math.floor(damage * 1.80)
+      surgeMsg += ' 🍵 TEA BUFF!'
+    } else if (magicTeaDebuffActive) {
+      damage = Math.floor(damage * 0.10)
+      surgeMsg += ' 🍵 TEA HANGOVER!'
     }
 
     // Ensure minimum 1 damage

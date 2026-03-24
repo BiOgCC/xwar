@@ -53,7 +53,7 @@ export interface SimAgent {
   lootBoxes: number
   militaryBoxes: number
   badgesOfHonor: number
-  staminaPills: number
+  magicTea: number
 
   // Bars (regen each tick)
   stamina: number

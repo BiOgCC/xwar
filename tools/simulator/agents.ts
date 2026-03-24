@@ -28,7 +28,7 @@ export function createAgent(countryCode: string, strategy: AgentStrategy, level:
     bread: 50, sushi: 20, wagyu: 10,
     wheat: 200, fish: 100, steak: 100,
     greenBullets: 100, blueBullets: 50, purpleBullets: 20, redBullets: 5,
-    lootBoxes: 3, militaryBoxes: 2, badgesOfHonor: 3, staminaPills: 0,
+    lootBoxes: 3, militaryBoxes: 2, badgesOfHonor: 3, magicTea: 0,
     stamina: 120, maxStamina: 120,
     hunger: 6, maxHunger: 6,
     work: 120, maxWork: 120,

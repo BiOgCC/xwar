@@ -25,10 +25,10 @@ export default function MarketCryptoTab({ showFb }: MarketCryptoTabProps) {
   const player = usePlayerStore()
 
   const handleBuyGear = async (tier: 't4' | 't5' | 't6', price: number) => {
-    if (player.bitcoin < price) {
-      showFb('Not enough Bitcoin.', false); return
+    if (player.badgesOfHonor < price) {
+      showFb('Not enough Badges of Honor.', false); return
     }
-    usePlayerStore.getState().spendBitcoin(price)
+    usePlayerStore.getState().spendBadgesOfHonor(price)
     
     const slots = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots'] as const
     const slot = slots[Math.floor(Math.random() * slots.length)]
@@ -53,15 +53,15 @@ export default function MarketCryptoTab({ showFb }: MarketCryptoTabProps) {
   }
 
   const handleBuyDivision = async (type: any, price: number, label: string) => {
-    if (player.bitcoin < price) {
-      showFb('Not enough Bitcoin.', false); return
+    if (player.badgesOfHonor < price) {
+      showFb('Not enough Badges of Honor.', false); return
     }
-    usePlayerStore.getState().spendBitcoin(price)
+    usePlayerStore.getState().spendBadgesOfHonor(price)
     
     const t = DIVISION_TEMPLATES[type as keyof typeof DIVISION_TEMPLATES]
     const { star, modifiers } = rollStarQuality(1000000) // Guaranteed high rolls
     const newDiv = {
-      id: `div_crypto_${Date.now()}_${Math.random()}`, type, name: label,
+      id: `div_badge_${Date.now()}_${Math.random()}`, type, name: label,
       category: t.category, ownerId: player.name, countryCode: player.countryCode || 'US',
       manpower: getEffectiveManpower(t), maxManpower: getEffectiveManpower(t),
       health: getEffectiveHealth(t), maxHealth: getEffectiveHealth(t),
@@ -79,9 +79,8 @@ export default function MarketCryptoTab({ showFb }: MarketCryptoTabProps) {
 
   return (
     <>
-      <div className="market-section-title" style={{ color: '#eab308', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <img src="/assets/items/icon_bitcoin.png" style={{ width: '18px', height: '18px', filter: 'brightness(0) invert(1)' }} alt="BTC" />
-        BLACK MARKET — PREMIUM EQUIPMENT
+      <div className="market-section-title" style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        🎖️ BADGE MARKET — PREMIUM EQUIPMENT
       </div>
       <div className="ptab-gear-grid" style={{ marginBottom: 24 }}>
         {GEAR_BOXES.map(box => {
@@ -101,10 +100,10 @@ export default function MarketCryptoTab({ showFb }: MarketCryptoTabProps) {
                <div style={{ padding: '8px', textAlign: 'center', background: 'rgba(0,0,0,0.5)', borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 'auto' }}>
                   <button onClick={() => handleBuyGear(box.tier, box.price)} style={{
                     width: '100%', padding: '6px', fontSize: '11px', fontWeight: 900, fontFamily: 'var(--font-display)',
-                    background: 'rgba(234,179,8,0.2)', border: '1px solid rgba(234,179,8,0.5)', borderRadius: '4px',
-                    color: '#eab308', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                    background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.5)', borderRadius: '4px',
+                    color: '#10b981', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
                   }}>
-                    BUY ₿ {box.price}
+                    BUY 🎖️ {box.price}
                   </button>
                </div>
             </div>
@@ -112,35 +111,34 @@ export default function MarketCryptoTab({ showFb }: MarketCryptoTabProps) {
         })}
       </div>
 
-      <div className="market-section-title" style={{ color: '#eab308', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <img src="/assets/items/icon_bitcoin.png" style={{ width: '18px', height: '18px', filter: 'brightness(0) invert(1)' }} alt="BTC" />
-        BLACK MARKET — ELITE DIVISIONS
+      <div className="market-section-title" style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        🎖️ BADGE MARKET — ELITE DIVISIONS
       </div>
       <div className="war-recruit-grid">
         {ELITE_DIVISIONS.map(div => {
           const t = DIVISION_TEMPLATES[div.type as keyof typeof DIVISION_TEMPLATES]
           return (
-            <div key={div.type} className="war-recruit-card" style={{ borderColor: 'rgba(234,179,8,0.4)', boxShadow: '0 0 15px rgba(234,179,8,0.15)' }}>
+            <div key={div.type} className="war-recruit-card" style={{ borderColor: 'rgba(16,185,129,0.4)', boxShadow: '0 0 15px rgba(16,185,129,0.15)' }}>
                <div className="war-recruit-card__header">
                   {t?.icon && <img src={t.icon} alt={div.label} style={{ width: '28px', height: '28px', objectFit: 'contain' }} className="war-recruit-card__icon" />}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                     <div style={{ fontSize: '13px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#eab308' }}>{div.label}</div>
+                     <div style={{ fontSize: '13px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#10b981' }}>{div.label}</div>
                      <div style={{ fontSize: '8px', fontStyle: 'italic', color: '#94a3b8' }}>Instant Deployment • High Rolls</div>
                   </div>
                </div>
                <div className="war-recruit-card__stats">
                   <div className="war-recruit-stat"><span>Troops</span><span className="war-recruit-stat__val">{t.manpowerCost}</span></div>
                   <div className="war-recruit-stat"><span>Base HP</span><span className="war-recruit-stat__val">{t.healthMult * 100}</span></div>
-                  <div className="war-recruit-stat"><span>Level</span><span className="war-recruit-stat__val" style={{ color: '#f59e0b' }}>5</span></div>
-                  <div className="war-recruit-stat"><span>Stars</span><span className="war-recruit-stat__val" style={{ color: '#eab308' }}>Guaranteed High</span></div>
+                  <div className="war-recruit-stat"><span>Level</span><span className="war-recruit-stat__val" style={{ color: '#10b981' }}>5</span></div>
+                  <div className="war-recruit-stat"><span>Stars</span><span className="war-recruit-stat__val" style={{ color: '#10b981' }}>Guaranteed High</span></div>
                </div>
                <div style={{ padding: '8px', marginTop: 'auto' }}>
                   <button className="war-recruit-btn" onClick={() => handleBuyDivision(div.type, div.price, div.label)} style={{
                     width: '100%', height: '36px', fontSize: '12px', fontWeight: 900, fontFamily: 'var(--font-display)',
-                    background: 'rgba(234,179,8,0.2)', borderColor: 'rgba(234,179,8,0.5)', color: '#eab308', 
+                    background: 'rgba(16,185,129,0.2)', borderColor: 'rgba(16,185,129,0.5)', color: '#10b981', 
                     display: 'flex', alignItems: 'center', justifyContent: 'center'
                   }}>
-                    BUY ₿ {div.price}
+                    BUY 🎖️ {div.price}
                   </button>
                </div>
             </div>

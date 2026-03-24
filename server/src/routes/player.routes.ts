@@ -376,7 +376,7 @@ router.post('/daily-reward', async (req, res) => {
       updates.lootBoxes = (player.lootBoxes ?? 0) + 1
     } else if (newStreak === 4) {
       grantedMoney = 150_000
-      updates.staminaPills = (player.staminaPills ?? 0) + 2
+      updates.magicTea = (player.magicTea ?? 0) + 2
     } else if (newStreak === 5) {
       grantedMoney = 200_000
       updates.militaryBoxes = (player.militaryBoxes ?? 0) + 1

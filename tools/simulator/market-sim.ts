@@ -26,7 +26,7 @@ export const RESOURCE_DEFS = [
   { id: 'lootBoxes',     basePrice: 34.79, category: 'Cases' },
   { id: 'militaryBoxes', basePrice: 3.46,  category: 'Cases' },
   { id: 'badgesOfHonor', basePrice: 15.00, category: 'Military' },
-  { id: 'staminaPills',  basePrice: 31.70, category: 'Buffs' },
+  { id: 'magicTea',  basePrice: 31.70, category: 'Buffs' },
   { id: 'energyLeaves',  basePrice: 0.07,  category: 'Buffs' },
 ] as const
 

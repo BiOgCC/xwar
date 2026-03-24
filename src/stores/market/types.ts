@@ -23,7 +23,7 @@ export type ResourceId =
   | 'blueBullets' | 'greenBullets' | 'purpleBullets' | 'redBullets'
   | 'lootBoxes' | 'militaryBoxes'
   | 'badgesOfHonor'
-  | 'staminaPills' | 'energyLeaves'
+  | 'magicTea' | 'energyLeaves'
 
 // ── Resource Metadata ──
 export interface ResourceDef {
@@ -61,7 +61,7 @@ export const RESOURCE_DEFS: ResourceDef[] = [
   // Military
   { id: 'badgesOfHonor', name: 'Badge of Honor', icon: '🎖️', category: 'Military', playerKey: 'badgesOfHonor', basePrice: 15.00 },
   // Buffs
-  { id: 'staminaPills', name: 'Stamina Pill', icon: '💊', category: 'Buffs', playerKey: 'staminaPills', basePrice: 31.70 },
+  { id: 'magicTea', name: 'Magic Tea', icon: '🍵', category: 'Buffs', playerKey: 'magicTea', basePrice: 31.70 },
   { id: 'energyLeaves', name: 'Energy Leaf',  icon: '🍃', category: 'Buffs', playerKey: 'energyLeaves', basePrice: 0.07 },
 ]
 

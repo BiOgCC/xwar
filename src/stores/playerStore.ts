@@ -66,8 +66,12 @@ export interface PlayerState {
   lootBoxes: number
   militaryBoxes: number
   badgesOfHonor: number
-  staminaPills: number
+  magicTea: number
   energyLeaves: number
+
+  // Magic Tea buff/debuff timestamps
+  magicTeaBuffUntil: number   // +80% damage, +10% crit rate for 12h
+  magicTeaDebuffUntil: number // -90% damage for 12h after buff expires
   lootChancePool: number
 
   // BOH combat farming state
@@ -122,6 +126,7 @@ export interface PlayerState {
   attack: () => { damage: number, isCrit: boolean, isDodged: boolean }
   equipAmmo: (type: 'none' | 'green' | 'blue' | 'purple' | 'red') => void
   consumeFood: (type: 'bread' | 'sushi' | 'wagyu') => boolean
+  consumeMagicTea: () => boolean
   buyResource: (resource: 'food' | 'oil' | 'materialX', amount: number, cost: number) => void
   buyItem: (itemKey: keyof PlayerState, amount: number, cost: number) => boolean
   sellItem: (itemKey: keyof PlayerState, amount: number, price: number) => boolean
@@ -204,8 +209,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   lootBoxes: 5,
   militaryBoxes: 5,
   badgesOfHonor: 5,
-  staminaPills: 0,
+  magicTea: 0,
   energyLeaves: 0,
+  magicTeaBuffUntil: 0,
+  magicTeaDebuffUntil: 0,
   lootChancePool: 0,
 
   bohDamageAccumulator: 0,
@@ -268,6 +275,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       import('../api/client').then(({ eatFoodApi }) => eatFoodApi(type).catch(() => {}))
     }
     return consumed
+  },
+
+  consumeMagicTea: () => {
+    if (!rateLimiter.check('consumeMagicTea')) return false
+    const s = get()
+    if (s.magicTea <= 0) return false
+    // Can't stack — already have an active buff or debuff
+    const now = Date.now()
+    if (now < s.magicTeaBuffUntil || now < s.magicTeaDebuffUntil) return false
+    const TWELVE_HOURS = 12 * 60 * 60 * 1000
+    const buffUntil = now + TWELVE_HOURS
+    const debuffUntil = buffUntil + TWELVE_HOURS
+    set({
+      magicTea: s.magicTea - 1,
+      magicTeaBuffUntil: buffUntil,
+      magicTeaDebuffUntil: debuffUntil,
+    })
+    return true
   },
 
   attack: () => {

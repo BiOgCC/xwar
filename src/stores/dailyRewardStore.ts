@@ -25,7 +25,7 @@ export const DAILY_REWARDS: DailyReward[] = [
   { day: 1, label: 'Day 1', icon: '🎁', money: 50_000, bitcoin: 1, items: [{ type: 'bread', amount: 5 }] },
   { day: 2, label: 'Day 2', icon: '🎁', money: 75_000, bitcoin: 1, items: [{ type: 'sushi', amount: 5 }] },
   { day: 3, label: 'Day 3', icon: '🎁', money: 100_000, bitcoin: 1, items: [{ type: 'wagyu', amount: 5 }], lootBoxes: 1 },
-  { day: 4, label: 'Day 4', icon: '🎁', money: 150_000, bitcoin: 1, items: [{ type: 'staminaPills', amount: 2 }] },
+  { day: 4, label: 'Day 4', icon: '🎁', money: 150_000, bitcoin: 1, items: [{ type: 'magicTea', amount: 2 }] },
   { day: 5, label: 'Day 5', icon: '🎁', money: 200_000, bitcoin: 1, militaryBoxes: 1, badgesOfHonor: 1 },
   { day: 6, label: 'Day 6', icon: '🎁', money: 300_000, bitcoin: 1 },
   { day: 7, label: 'Day 7', icon: '🏆', money: 500_000, bitcoin: 1, t5Item: true, badgesOfHonor: 1 },

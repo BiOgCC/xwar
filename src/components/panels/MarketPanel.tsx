@@ -13,7 +13,7 @@ import MarketHistoryTab from './market/MarketHistoryTab'
 import MarketCryptoTab from './market/MarketCryptoTab'
 
 const TAB_DEFS = [
-  { key: 'crypto' as const, icon: '/assets/items/icon_bitcoin.png', label: 'Black Mkt' },
+  { key: 'crypto' as const, icon: '/assets/icons/badge.png', label: 'Badge Mkt' },
   { key: 'trading' as const, icon: '/assets/icons/market.png', label: 'Market' },
   { key: 'equipment' as const, icon: '/assets/icons/gear.png', label: 'Gear' },
   ...(ENABLE_DIVISIONS ? [{ key: 'divisions' as const, icon: '/assets/icons/divs.png', label: 'Divs' }] : []),
@@ -73,7 +73,7 @@ export default function MarketPanel() {
             className={`market-tab ${tab === t.key ? 'market-tab--active' : ''}`}
           >
             <span className="market-tab__icon">
-              <img src={t.icon} alt={t.label} style={{ width: 18, height: 18, objectFit: 'contain', filter: t.key === 'crypto' ? 'brightness(0) invert(1)' : undefined }} />
+              <img src={t.icon} alt={t.label} style={{ width: 18, height: 18, objectFit: 'contain' }} />
             </span>
             {t.label}
           </button>

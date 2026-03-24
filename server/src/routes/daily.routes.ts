@@ -18,7 +18,7 @@ const REWARDS = [
   { day: 1, money: 50_000,  items: { bread: 5 } },
   { day: 2, money: 75_000,  items: { sushi: 5 } },
   { day: 3, money: 100_000, items: { wagyu: 5 }, lootBoxes: 1 },
-  { day: 4, money: 150_000, items: { staminaPills: 2 } },
+  { day: 4, money: 150_000, items: { magicTea: 2 } },
   { day: 5, money: 200_000, militaryBoxes: 1 },
   { day: 6, money: 300_000, bitcoin: 3 },
   { day: 7, money: 500_000, t5Item: true },
@@ -128,12 +128,12 @@ router.post('/claim', requireAuth as any, async (req, res) => {
           bread: players.bread,
           sushi: players.sushi,
           wagyu: players.wagyu,
-          staminaPills: players.staminaPills,
+          magicTea: players.magicTea,
         }
         const col = colMap[key]
         if (col) {
           await db.update(players).set({
-            [key === 'staminaPills' ? 'staminaPills' : key]: sql`${col} + ${amount}`,
+            [key === 'magicTea' ? 'magicTea' : key]: sql`${col} + ${amount}`,
           }).where(eq(players.id, playerId))
         }
       }
