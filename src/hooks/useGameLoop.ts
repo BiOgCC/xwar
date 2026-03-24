@@ -13,6 +13,7 @@ import { useWorldStore } from '../stores/worldStore'
 import { useTradeRouteStore } from '../stores/tradeRouteStore'
 import { checkTimeSanity } from '../engine/AntiExploit'
 import { wrapStoreWithIntegrityCheck } from '../engine/storeFreeze'
+import { ENABLE_DIVISIONS } from '../config/features'
 
 // Register economy flow hook: playerStore -> worldStore
 registerEconFlowHook((source, amount, type, resource) => {
@@ -40,21 +41,20 @@ export function useGameLoop() {
     // ── Start the clock (idempotent — safe to call multiple times) ──
     gameClock.start()
 
-    // Spawn NPC test battles on first mount
-    try { useBattleStore.getState().spawnNPCBattles() } catch (e) { console.warn('[NPC] spawnNPCBattles:', e) }
+    // Spawn NPC test battles on first mount (divisions only)
+    if (ENABLE_DIVISIONS) {
+      try { useBattleStore.getState().spawnNPCBattles() } catch (e) { console.warn('[NPC] spawnNPCBattles:', e) }
+    }
 
     // ── Subscribe phase handlers ──
     const unsubs: (() => void)[] = []
 
-    // COMBAT (15s) — battle resolution + revolt pressure + raid boss ticks
+    // COMBAT (15s) — battle resolution + revolt pressure
     unsubs.push(gameClock.subscribe('combat', () => {
-      try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
+      if (ENABLE_DIVISIONS) {
+        try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
+      }
       try { useRegionStore.getState().processRevoltTick() } catch (e) { console.warn('[Revolt] processRevoltTick:', e) }
-      try {
-        import('../stores/bountyStore').then(m => {
-          m.useBountyStore.getState().processRaidTicks()
-        })
-      } catch (e) { console.warn('[RaidBoss] processRaidTicks:', e) }
     }))
 
     // MILITARY — no longer needs a tick (lobby-based quick battles now)
@@ -68,10 +68,12 @@ export function useGameLoop() {
       } catch (e) { console.warn('[Cyber]:', e) }
     }))
 
-    // TRAINING (15s) — army training progress
-    unsubs.push(gameClock.subscribe('training', () => {
-      try { useArmyStore.getState().processTrainingTick() } catch (e) { console.warn('[Training]:', e) }
-    }))
+    // TRAINING (15s) — army training progress (divisions only)
+    if (ENABLE_DIVISIONS) {
+      unsubs.push(gameClock.subscribe('training', () => {
+        try { useArmyStore.getState().processTrainingTick() } catch (e) { console.warn('[Training]:', e) }
+      }))
+    }
 
     // GOVERNMENT (15s) — shop spawn, contract maturity
     unsubs.push(gameClock.subscribe('government', () => {
@@ -79,7 +81,7 @@ export function useGameLoop() {
         const playerCountry = usePlayerStore.getState().countryCode || 'US'
         const govStore = useGovernmentStore.getState()
         govStore.cleanExpiredListings(playerCountry)
-        govStore.spawnShopDivisions(playerCountry)
+        if (ENABLE_DIVISIONS) govStore.spawnShopDivisions(playerCountry)
         govStore.processContractMaturity()
       } catch (e) { console.warn('[Government]:', e) }
     }))
@@ -126,11 +128,7 @@ export function useGameLoop() {
           m.useAllianceStore.getState().processTreatySnapshot()
         })
       } catch (e) { console.warn('[Economy] alliance treaty:', e) }
-      try {
-        import('../stores/bountyStore').then(m => {
-          m.useBountyStore.getState().rotateNPCBounties()
-        })
-      } catch (e) { console.warn('[Economy] bounty rotation:', e) }
+
       // Daily checks: war cards, company maintenance, fund snapshot
       try {
         const player = usePlayerStore.getState()

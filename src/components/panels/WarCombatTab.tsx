@@ -354,7 +354,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                       <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', fontFamily: 'var(--font-display)', animation: 'pulse 2s infinite' }}>HERO</div>
                     )}
                     <div className="war-battle-country">{getCountryName(battle.attackerId)}</div>
-                    <div className="war-battle-meta">{battle.attacker.engagedDivisionIds.length} divs</div>
+
                   </div>
                   <span className="war-battle-rounds">{battle.attackerRoundsWon}</span>
                 </div>
@@ -383,7 +383,7 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
                       <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', fontFamily: 'var(--font-display)', animation: 'pulse 2s infinite' }}>HERO</div>
                     )}
                     <div className="war-battle-country">{getCountryName(battle.defenderId)}</div>
-                    <div className="war-battle-meta">{battle.defender.engagedDivisionIds.length} divs</div>
+
                   </div>
                   <span className="war-battle-flag"><CountryFlag iso={battle.defenderId} size={20} /></span>
                 </div>
@@ -673,303 +673,69 @@ function CombatTab({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: 
               )
             })()}
 
-            {/* === Collapsible Section === */}
+            {/* === Collapsible Section — Top Damage Ladder === */}
             {isExpanded && (<>
-
-            {/* Tactical Battle Orders */}
-            <div style={{ marginTop: '4px', marginBottom: '4px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', padding: '6px 8px' }}>
-              <div style={{ fontSize: '8px', fontWeight: 900, color: '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '6px' }}>TACTICAL ORDERS</div>
-              {/* Per-side order rows */}
-              {(['attacker', 'defender'] as const).map(side => {
-                const currentOrder = side === 'attacker' ? (battle.attackerOrder || 'none') : (battle.defenderOrder || 'none')
-                const otherSideOrder = side === 'attacker' ? (battle.defenderOrder || 'none') : (battle.attackerOrder || 'none')
-                const sideColor = side === 'attacker' ? atkClr : defClr
-                // Disable this side if the OTHER side has an active order
-                const sideDisabled = otherSideOrder !== 'none'
-                return (
-                  <div key={side} style={{ marginBottom: '4px', opacity: sideDisabled ? 0.35 : 1 }}>
-                    <div style={{ fontSize: '7px', fontWeight: 900, color: sideColor, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '3px', borderLeft: `2px solid ${sideColor}`, paddingLeft: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span>{side.toUpperCase()}: {TACTICAL_ORDERS[currentOrder].label}</span>
-                      {currentOrder !== 'none' && <span style={{ fontSize: '6px', color: '#94a3b8', fontWeight: 600 }}>{TACTICAL_ORDERS[currentOrder].desc}</span>}
-                      {player.heroBuffTicksLeft > 0 && player.heroBuffBattleId === battle.id && ((side === 'attacker' && iso === battle.attackerId) || (side === 'defender' && iso === battle.defenderId)) && (
-                        <span style={{ fontSize: '7px', fontWeight: 900, color: '#0a0a0a', background: 'linear-gradient(90deg, #f59e0b, #fbbf24)', padding: '1px 5px', borderRadius: '2px', letterSpacing: '0.5px', animation: 'pulse 2s infinite', marginLeft: 'auto' }}>HERO +10%</span>
-                      )}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '2px' }}>
-                      {(['charge', 'fortify', 'precision', 'blitz'] as TacticalOrder[]).map(ord => {
-                        const o = TACTICAL_ORDERS[ord]
-                        const isActive = currentOrder === ord
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '6px' }}>
+                {/* Attacker Side Ladder */}
+                <div style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${atkClr}22`, borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ fontSize: '8px', fontWeight: 900, color: atkClr, padding: '5px 8px', borderBottom: `1px solid ${atkClr}22`, borderLeft: `2px solid ${atkClr}`, fontFamily: 'var(--font-display)', letterSpacing: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>⚔️ {getCountryName(battle.attackerId).toUpperCase()}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px' }}>{(battle.attacker.damageDealt || 0).toLocaleString()}</span>
+                  </div>
+                  <div style={{ padding: '4px 6px' }}>
+                    {(() => {
+                      const dealers = Object.entries(battle.attackerDamageDealers || {}).sort((a, b) => b[1] - a[1]).slice(0, 5)
+                      const maxDmg = dealers[0]?.[1] || 1
+                      if (dealers.length === 0) return <div style={{ fontSize: '8px', color: '#475569', textAlign: 'center', padding: '8px 0' }}>No damage yet</div>
+                      return dealers.map(([name, dmg], i) => {
+                        const isMe = name === player.name
+                        const pct = (dmg / maxDmg) * 100
+                        const medalColor = i === 0 ? '#f59e0b' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : '#475569'
                         return (
-                          <button key={ord}
-                            disabled={sideDisabled}
-                            onClick={(e) => { e.stopPropagation(); if (!sideDisabled) battleStore.setBattleOrder(battle.id, side, isActive ? 'none' : ord) }}
-                            style={{
-                              padding: '3px 2px', border: `1px solid ${isActive ? o.color : 'rgba(255,255,255,0.08)'}`,
-                              borderRadius: '2px', cursor: sideDisabled ? 'not-allowed' : 'pointer', fontSize: '7px', fontWeight: 800,
-                              fontFamily: 'var(--font-display)', letterSpacing: '0.5px',
-                              background: isActive ? `${o.color}20` : 'rgba(255,255,255,0.03)',
-                              color: isActive ? o.color : '#64748b',
-                              boxShadow: isActive ? `0 0 6px ${o.color}33` : 'none',
-                              transition: 'all 0.15s',
-                            }}
-                          >{o.label}</button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })}
-              {/* Order Message */}
-              <div style={{ marginTop: '4px' }}>
-                {editingOrderMsg[battle.id] ? (
-                  <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
-                    <input
-                      type="text" placeholder="COMMANDER ORDER..." maxLength={100}
-                      value={battle.orderMessage || ''}
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => battleStore.setBattleOrderMessage(battle.id, e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') setEditingOrderMsg(prev => ({ ...prev, [battle.id]: false })) }}
-                      style={{
-                        flex: 1, padding: '3px 6px', fontSize: '8px',
-                        fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.5px',
-                        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)',
-                        borderRadius: '3px', color: '#e2e8f0', outline: 'none',
-                      }}
-                    />
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: false })) }}
-                      style={{ padding: '2px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer', background: 'rgba(59,130,246,0.2)', color: '#3b82f6', fontSize: '10px', fontWeight: 700 }}
-                    >OK</button>
-                  </div>
-                ) : battle.orderMessage ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: true })) }}
-                  >
-                    <div style={{ flex: 1, fontSize: '8px', letterSpacing: '0.8px', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#a78bfa', padding: '2px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: '2px', borderLeft: '2px solid #a78bfa' }}>
-                      {battle.orderMessage}
-                    </div>
-                    <span style={{ fontSize: '8px', color: '#475569' }}>EDIT</span>
-                  </div>
-                ) : (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingOrderMsg(prev => ({ ...prev, [battle.id]: true })) }}
-                    style={{ width: '100%', padding: '2px 6px', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '3px', cursor: 'pointer', background: 'transparent', fontSize: '7px', color: '#475569', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.5px' }}
-                  >+ ADD ORDER MESSAGE</button>
-                )}
-              </div>
-            </div>
-
-            {/* Division Deploy List — grouped by type */}
-            {(() => {
-              const readyDivs = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso && d.status === 'ready')
-              const engagedIds = (mySide === 'attacker' ? battle.attacker : battle.defender).engagedDivisionIds
-              const engagedDivs = engagedIds.map(id => armyStore.divisions[id]).filter(Boolean)
-
-              // Group all my country's divs by type
-              const allMyDivs = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso && d.status !== 'destroyed')
-              const typeMap = new Map<string, { ready: typeof readyDivs; engaged: typeof engagedDivs; total: typeof allMyDivs }>()
-              
-              for (const d of allMyDivs as any[]) {
-                if (!typeMap.has(d.type)) typeMap.set(d.type, { ready: [], engaged: [], total: [] })
-                const g = typeMap.get(d.type)!
-                g.total.push(d)
-                if (d.status === 'ready') g.ready.push(d)
-                if (engagedIds.includes(d.id)) g.engaged.push(d)
-              }
-
-              const types = Array.from(typeMap.entries())
-              if (types.length === 0) return <div style={{ fontSize: '8px', color: '#475569', padding: '4px', textAlign: 'center' }}>No divisions available</div>
-
-              return (
-                <div style={{ marginBottom: '4px' }}>
-                  {types.map(([type, group]) => {
-                    const template = DIVISION_TEMPLATES[type as keyof typeof DIVISION_TEMPLATES]
-                    const deployedCount = group.engaged.length
-                    const totalCount = group.total.length
-                    const canDeploy = group.ready.length > 0
-                    const canRecall = group.engaged.length > 0
-
-                    return (
-                      <div key={type} style={{
-                        display: 'flex', alignItems: 'center', gap: '4px',
-                        padding: '3px 6px', marginBottom: '2px',
-                        background: deployedCount > 0 ? 'rgba(245,158,11,0.06)' : 'rgba(255,255,255,0.02)',
-                        borderRadius: '3px', border: `1px solid ${deployedCount > 0 ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.06)'}`,
-                      }}>
-                        {/* Count badge */}
-                        <div style={{
-                          minWidth: '28px', textAlign: 'center', fontSize: '9px', fontWeight: 800,
-                          fontFamily: 'var(--font-mono)',
-                          color: deployedCount > 0 ? '#f59e0b' : '#64748b',
-                        }}>
-                          {deployedCount}/{totalCount}
-                        </div>
-
-                        {/* - button (recall) */}
-                        <button
-                          disabled={!canRecall}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            const divToRecall = group.engaged[group.engaged.length - 1] as any
-                            if (divToRecall) {
-                              const r = battleStore.recallDivisionFromBattle(battle.id, divToRecall.id, mySide)
-                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#3b82f6' : '#ef4444')
-                            }
-                          }}
-                          style={{
-                            width: '18px', height: '18px', border: 'none', borderRadius: '3px', cursor: canRecall ? 'pointer' : 'not-allowed',
-                            background: canRecall ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.03)',
-                            color: canRecall ? '#ef4444' : '#334155', fontSize: '11px', fontWeight: 900,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                          }}
-                        >−</button>
-
-                        {/* + button (deploy) */}
-                        <button
-                          disabled={!canDeploy}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            const divToDeploy = group.ready[0] as any
-                            if (divToDeploy) {
-                              const r = battleStore.deployDivisionsToBattle(battle.id, [divToDeploy.id], mySide)
-                              ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, r.success ? '#f59e0b' : '#ef4444')
-                            }
-                          }}
-                          style={{
-                            width: '18px', height: '18px', border: 'none', borderRadius: '3px', cursor: canDeploy ? 'pointer' : 'not-allowed',
-                            background: canDeploy ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.03)',
-                            color: canDeploy ? '#3b82f6' : '#334155', fontSize: '11px', fontWeight: 900,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                          }}
-                        >+</button>
-
-                        {/* Division type info */}
-                        <img src={template?.icon} alt="" style={{ width: '14px', height: '14px', objectFit: 'contain' }} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '8px', fontWeight: 700, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                            {template?.name || type}
+                          <div key={name} style={{ padding: '3px 0', borderLeft: isMe ? '2px solid #f59e0b' : '2px solid transparent', paddingLeft: '4px', marginBottom: '2px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '1px' }}>
+                              <span style={{ fontSize: '9px', fontWeight: 900, color: medalColor, width: '14px', fontFamily: 'var(--font-display)' }}>#{i + 1}</span>
+                              <span style={{ fontSize: '8px', fontWeight: isMe ? 800 : 600, color: isMe ? '#fbbf24' : '#e2e8f0', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                              <span style={{ fontSize: '8px', fontWeight: 700, color: isMe ? '#fbbf24' : '#94a3b8', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{dmg.toLocaleString()}</span>
+                            </div>
+                            <div style={{ height: '3px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px' }}>
+                              <div style={{ height: '100%', width: `${pct}%`, background: isMe ? '#f59e0b' : atkClr, borderRadius: '2px', transition: 'width 0.5s ease' }} />
+                            </div>
                           </div>
-                        </div>
-                        {deployedCount > 0 && (
-                          <span style={{ fontSize: '7px', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '1px 4px', borderRadius: '2px' }}>
-                            IN BATTLE
-                          </span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })()}
-
-            {/* Expanded Details */}
-            
-              <div className="war-battle-details" style={{ marginTop: '6px' }}>
-
-                {/* Deployed Divisions — Military Style */}
-                <div style={{ marginBottom: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{ fontSize: '8px', fontWeight: 900, color: atkClr, padding: '4px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', borderLeft: `2px solid ${atkClr}`, fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>ATTACKER DIVISIONS</div>
-                  <div style={{ padding: '2px 8px' }}>
-                  {battle.attacker.engagedDivisionIds.map((id, idx) => {
-                    const d = armyStore.divisions[id]
-                    if (!d) return null
-                    const template = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
-                    const strPct = Math.floor((d.health / d.maxHealth) * 100)
-                    return (
-                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', fontSize: '8px', fontFamily: 'var(--font-mono, monospace)', borderBottom: idx < battle.attacker.engagedDivisionIds.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}>
-                        <img src={template?.icon} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
-                        <span style={{ color: '#e2e8f0', fontWeight: 700, flex: 1 }}>{d.name}</span>
-                        <span style={{ color: '#94a3b8', fontWeight: 600 }}>{d.health}/{d.maxHealth}</span>
-                        <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '1px', overflow: 'hidden' }}>
-                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#3b82f6' : strPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.8s ease, background 0.5s ease' }} />
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {battle.attacker.engagedDivisionIds.length === 0 && <div style={{ fontSize: '8px', color: '#475569', padding: '4px 0' }}>No divisions deployed</div>}
+                        )
+                      })
+                    })()}
                   </div>
                 </div>
-
-                <div style={{ marginBottom: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{ fontSize: '8px', fontWeight: 900, color: defClr, padding: '4px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', borderLeft: `2px solid ${defClr}`, fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>DEFENDER DIVISIONS</div>
-                  <div style={{ padding: '2px 8px' }}>
-                  {battle.defender.engagedDivisionIds.map((id, idx) => {
-                    const d = armyStore.divisions[id]
-                    if (!d) return null
-                    const template = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
-                    const strPct = Math.floor((d.health / d.maxHealth) * 100)
-                    return (
-                      <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 0', fontSize: '8px', fontFamily: 'var(--font-mono, monospace)', borderBottom: idx < battle.defender.engagedDivisionIds.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none' }}>
-                        <img src={template?.icon} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain' }} />
-                        <span style={{ color: '#e2e8f0', fontWeight: 700, flex: 1 }}>{d.name}</span>
-                        <span style={{ color: '#94a3b8', fontWeight: 600 }}>{d.health}/{d.maxHealth}</span>
-                        <div style={{ width: '50px', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '1px', overflow: 'hidden' }}>
-                          <div style={{ width: `${strPct}%`, height: '100%', background: strPct > 50 ? '#3b82f6' : strPct > 20 ? '#f59e0b' : '#ef4444', transition: 'width 0.8s ease, background 0.5s ease' }} />
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {battle.defender.engagedDivisionIds.length === 0 && <div style={{ fontSize: '8px', color: '#475569', padding: '4px 0' }}>No divisions deployed</div>}
+                {/* Defender Side Ladder */}
+                <div style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${defClr}22`, borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ fontSize: '8px', fontWeight: 900, color: defClr, padding: '5px 8px', borderBottom: `1px solid ${defClr}22`, borderRight: `2px solid ${defClr}`, fontFamily: 'var(--font-display)', letterSpacing: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>🛡️ {getCountryName(battle.defenderId).toUpperCase()}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px' }}>{(battle.defender.damageDealt || 0).toLocaleString()}</span>
                   </div>
-                </div>
-
-                {/* Stats Comparison — Military */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{ padding: '6px 8px', borderLeft: `2px solid ${atkClr}` }}>
-                    <div style={{ fontSize: '8px', fontWeight: 900, color: atkClr, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '4px' }}>ATTACKER</div>
-                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}>DMG <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(battle.attacker.damageDealt || 0).toLocaleString()}</span></div>
-                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}>KIA <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(battle.attacker.manpowerLost || 0).toLocaleString()}</span></div>
-                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}>DST <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{battle.attacker.divisionsDestroyed}</span></div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid rgba(255,255,255,0.05)', borderRight: '1px solid rgba(255,255,255,0.05)', padding: '0 10px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 900, color: '#64748b', fontFamily: 'var(--font-display)' }}>{fmtElapsed(battle.startedAt)}</span>
-                  </div>
-                  <div style={{ padding: '6px 8px', borderRight: `2px solid ${defClr}`, textAlign: 'right' }}>
-                    <div style={{ fontSize: '8px', fontWeight: 900, color: defClr, fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '4px' }}>DEFENDER</div>
-                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}><span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(battle.defender.damageDealt || 0).toLocaleString()}</span> DMG</div>
-                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}><span style={{ color: '#e2e8f0', fontWeight: 700 }}>{(battle.defender.manpowerLost || 0).toLocaleString()}</span> KIA</div>
-                    <div style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono, monospace)' }}><span style={{ color: '#e2e8f0', fontWeight: 700 }}>{battle.defender.divisionsDestroyed}</span> DST</div>
-                  </div>
-                </div>
-
-                {/* Combat Log — Military Terminal */}
-                <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', overflow: 'hidden' }}>
-                  <div style={{ padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>▌ COMBAT LOG</span>
-                    <span style={{ fontSize: '8px', color: '#64748b' }}>{battle.combatLog.length} entries</span>
-                  </div>
-                  <div style={{ maxHeight: '260px', overflowY: 'auto', padding: '2px 0', fontFamily: 'var(--font-mono, "JetBrains Mono", "Fira Code", monospace)', fontSize: '9px', lineHeight: '1.5' }}>
-                    {battle.combatLog.length === 0 && (
-                      <div style={{ padding: '16px', textAlign: 'center', color: '#475569', fontSize: '10px' }}>⏳ Waiting for first combat tick...</div>
-                    )}
-                    {battle.combatLog.slice(-20).reverse().map((entry, i) => {
-                      // Color & prefix by type+side
-                      const isAtk = entry.side === 'attacker'
-                      let color = '#94a3b8'
-                      let prefix = '[---]'
-                      let bgTint = 'transparent'
-                      if (entry.type === 'damage' && isAtk) { color = '#f87171'; prefix = '[ATK]'; bgTint = 'rgba(239,68,68,0.04)' }
-                      else if (entry.type === 'damage' && !isAtk) { color = '#60a5fa'; prefix = '[DEF]'; bgTint = 'rgba(59,130,246,0.04)' }
-                      else if ((entry.type as string) === 'dodge') { color = '#fbbf24'; prefix = '[DGE]'; bgTint = 'rgba(251,191,36,0.04)' }
-                      else if ((entry.type as string) === 'crit') { color = '#fb923c'; prefix = '[CRT]'; bgTint = 'rgba(251,146,60,0.06)' }
-                      else if (entry.type === 'destroyed') { color = '#64748b'; prefix = '[KIA]'; bgTint = 'rgba(100,116,139,0.06)' }
-                      else if ((entry.type as string) === 'reinforcement') { color = '#3b82f6'; prefix = '[RNF]'; bgTint = 'rgba(59,130,246,0.04)' }
-                      else if (entry.type === 'phase_change') { color = '#a78bfa'; prefix = '[SYS]'; bgTint = 'rgba(167,139,250,0.04)' }
-                      // Alternating row
-                      const rowBg = i % 2 === 0 ? bgTint : `rgba(255,255,255,0.015)`
-                      // Highlight numbers in message
-                      const msgParts = entry.message.replace(/^[⚔️🛡️💨💀🚀⏸️\s]+/, '').replace(/T\d+:\s*/, '').split(/(\d+)/g)
-                      return (
-                        <div key={`${entry.timestamp}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 8px', background: rowBg, borderLeft: `2px solid ${color}` }}>
-                          <span style={{ fontSize: '7px', fontWeight: 700, color: '#94a3b8', background: 'rgba(0,0,0,0.4)', padding: '1px 4px', borderRadius: '3px', flexShrink: 0, fontFamily: 'var(--font-mono, monospace)' }}>{fmtTicks(entry.tick)}</span>
-                          <span style={{ fontWeight: 800, color, flexShrink: 0, letterSpacing: '0.5px' }}>{prefix}</span>
-                          <span style={{ color: '#94a3b8' }}>
-                            {msgParts.map((p, j) => /^\d+$/.test(p) ? <span key={j} style={{ color: '#e2e8f0', fontWeight: 700 }}>{p}</span> : <span key={j}>{p}</span>)}
-                          </span>
-                        </div>
-                      )
-                    })}
+                  <div style={{ padding: '4px 6px' }}>
+                    {(() => {
+                      const dealers = Object.entries(battle.defenderDamageDealers || {}).sort((a, b) => b[1] - a[1]).slice(0, 5)
+                      const maxDmg = dealers[0]?.[1] || 1
+                      if (dealers.length === 0) return <div style={{ fontSize: '8px', color: '#475569', textAlign: 'center', padding: '8px 0' }}>No damage yet</div>
+                      return dealers.map(([name, dmg], i) => {
+                        const isMe = name === player.name
+                        const pct = (dmg / maxDmg) * 100
+                        const medalColor = i === 0 ? '#f59e0b' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : '#475569'
+                        return (
+                          <div key={name} style={{ padding: '3px 0', borderLeft: isMe ? '2px solid #f59e0b' : '2px solid transparent', paddingLeft: '4px', marginBottom: '2px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '1px' }}>
+                              <span style={{ fontSize: '9px', fontWeight: 900, color: medalColor, width: '14px', fontFamily: 'var(--font-display)' }}>#{i + 1}</span>
+                              <span style={{ fontSize: '8px', fontWeight: isMe ? 800 : 600, color: isMe ? '#fbbf24' : '#e2e8f0', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                              <span style={{ fontSize: '8px', fontWeight: 700, color: isMe ? '#fbbf24' : '#94a3b8', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>{dmg.toLocaleString()}</span>
+                            </div>
+                            <div style={{ height: '3px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px' }}>
+                              <div style={{ height: '100%', width: `${pct}%`, background: isMe ? '#f59e0b' : defClr, borderRadius: '2px', transition: 'width 0.5s ease' }} />
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
                   </div>
                 </div>
               </div>

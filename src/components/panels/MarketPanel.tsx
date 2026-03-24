@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useInventoryStore } from '../../stores/inventoryStore'
 import { useUIStore } from '../../stores/uiStore'
+import { ENABLE_DIVISIONS } from '../../config/features'
 import '../../styles/market.css'
 import ResourceIcon from '../shared/ResourceIcon'
 import MarketTradingTab from './market/MarketTradingTab'
@@ -15,7 +16,7 @@ const TAB_DEFS = [
   { key: 'crypto' as const, icon: '/assets/items/icon_bitcoin.png', label: 'Black Mkt' },
   { key: 'trading' as const, icon: '/assets/icons/market.png', label: 'Market' },
   { key: 'equipment' as const, icon: '/assets/icons/gear.png', label: 'Gear' },
-  { key: 'divisions' as const, icon: '/assets/icons/divs.png', label: 'Divs' },
+  ...(ENABLE_DIVISIONS ? [{ key: 'divisions' as const, icon: '/assets/icons/divs.png', label: 'Divs' }] : []),
   { key: 'orders' as const, icon: '/assets/icons/orders.png', label: 'Orders' },
   { key: 'history' as const, icon: '/assets/icons/history.png', label: 'History' },
 ]

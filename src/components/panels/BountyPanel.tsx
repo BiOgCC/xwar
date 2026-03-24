@@ -1,53 +1,11 @@
 import { useState, useMemo, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
-import { useBountyStore, type RaidBossEvent } from '../../stores/bountyStore'
+import { useBountyStore } from '../../stores/bountyStore'
 import { useUIStore } from '../../stores/uiStore'
 import { api } from '../../api/client'
-import BountyBattleCard from '../shared/BountyBattleCard'
 import '../../styles/bounty.css'
 
-type BountyTab = 'board' | 'npc_hunts' | 'place' | 'history'
-
-const INITIAL_VISIBLE = 2
-
-function NpcHuntList({ raidEvents }: { raidEvents: RaidBossEvent[] }) {
-  const [expanded, setExpanded] = useState(false)
-
-  if (raidEvents.length === 0) {
-    return (
-      <div className="bounty-npc-list">
-        <div className="bounty-empty">No raid bosses active. Check back soon — new targets spawn every 12 hours.</div>
-      </div>
-    )
-  }
-
-  const alwaysVisible = raidEvents.slice(0, INITIAL_VISIBLE)
-  const hidden = raidEvents.slice(INITIAL_VISIBLE)
-  const hiddenCount = hidden.length
-
-  return (
-    <div className="bounty-npc-list">
-      {alwaysVisible.map(evt => (
-        <BountyBattleCard key={evt.id} event={evt} />
-      ))}
-
-      {hiddenCount > 0 && (
-        <button
-          className="bounty-expand-btn"
-          onClick={() => setExpanded(prev => !prev)}
-        >
-          {expanded
-            ? '▼ SHOW LESS'
-            : `▲ SHOW ${hiddenCount} MORE BATTLE${hiddenCount > 1 ? 'S' : ''}`}
-        </button>
-      )}
-
-      {expanded && hidden.map(evt => (
-        <BountyBattleCard key={evt.id} event={evt} />
-      ))}
-    </div>
-  )
-}
+type BountyTab = 'board' | 'place' | 'history'
 
 export default function BountyPanel() {
   const player = usePlayerStore()
@@ -79,8 +37,6 @@ export default function BountyPanel() {
 
   useEffect(() => {
     bounty.fetchActiveBounties()
-    bounty.fetchActiveRaid()
-    bounty.rotateNPCBounties()
     api.get('/player/all')
       .then((res: any) => {
         if (res.success && res.players) {
@@ -88,12 +44,6 @@ export default function BountyPanel() {
         }
       })
       .catch(err => console.error('Failed to load player directory:', err))
-
-    // Poll raid boss state every 10s
-    const raidPoll = setInterval(() => {
-      bounty.fetchActiveRaid()
-    }, 10_000)
-    return () => clearInterval(raidPoll)
   }, [])
 
   const filteredPlayers = useMemo(() => {
@@ -162,19 +112,13 @@ export default function BountyPanel() {
           className={`bounty-tab ${tab === 'board' ? 'bounty-tab--active' : ''}`}
           onClick={() => setTab('board')}
         >
-          PvP Active ({activeBounties.length})
-        </button>
-        <button
-          className={`bounty-tab bounty-tab--npc ${tab === 'npc_hunts' ? 'bounty-tab--active' : ''}`}
-          onClick={() => setTab('npc_hunts')}
-        >
-          🎯 RAID BOSS ({bounty.raidEvents.filter(e => e.status === 'active').length})
+          ACTIVE ({activeBounties.length})
         </button>
         <button
           className={`bounty-tab ${tab === 'place' ? 'bounty-tab--active' : ''}`}
           onClick={() => setTab('place')}
         >
-          PvP Bounty sign
+          PLACE BOUNTY
         </button>
         <button
           className={`bounty-tab ${tab === 'history' ? 'bounty-tab--active' : ''}`}
@@ -189,11 +133,6 @@ export default function BountyPanel() {
         <div className={`bounty-message bounty-message--${messageType}`}>
           {message}
         </div>
-      )}
-
-      {/* ═══ NPC BOUNTY HUNTS ═══ */}
-      {tab === 'npc_hunts' && (
-        <NpcHuntList raidEvents={bounty.raidEvents} />
       )}
 
       {/* ═══ ACTIVE BOUNTIES ═══ */}

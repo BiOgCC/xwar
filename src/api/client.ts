@@ -441,29 +441,7 @@ export async function getArmyInfo(armyId: string) {
   return api.get<any>(`/army/${armyId}`)
 }
 
-// ── Raid Boss API ────────────────────────────────────────────
 
-export async function getActiveRaid() {
-  return api.get<{ success: boolean; event: any | null; participants: any[] }>('/raid/active')
-}
-
-export async function raidAttack(eventId: string) {
-  return api.post<{
-    success: boolean; damage: number; isCrit: boolean;
-    totalHunterDmg: number; totalBossDmg: number; message: string
-  }>('/raid/attack', { eventId })
-}
-
-export async function raidFund(eventId: string, amount: number) {
-  return api.post<{
-    success: boolean; funded: number; bossDmg: number;
-    totalHunterDmg: number; totalBossDmg: number; supportPool: number; message: string
-  }>('/raid/fund', { eventId, amount })
-}
-
-export async function getRaidHistory() {
-  return api.get<{ success: boolean; events: any[] }>('/raid/history')
-}
 
 // ── Health ───────────────────────────────────────────────────
 

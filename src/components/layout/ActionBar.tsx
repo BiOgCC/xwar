@@ -23,6 +23,7 @@ import { useBattleStore } from '../../stores/battleStore'
 import { useCompanyStore, COMPANY_TEMPLATES } from '../../stores/companyStore'
 import { useMissionStore } from '../../stores/missionStore'
 import { useArmyStore } from '../../stores/army'
+import { ENABLE_DIVISIONS } from '../../config/features'
 import CompanyIcon from '../companies/CompanyIcon'
 import '../../styles/actionbar.css'
 
@@ -301,6 +302,7 @@ export default function ActionBar() {
       </div>
 
       {/* ═══ MY FORCES ═══ */}
+      {ENABLE_DIVISIONS && (
       <div className="action-bar__slot">
         <button
           className={`action-bar__btn${activePanel === 'armed_forces' ? ' action-bar__btn--active' : ''}`}
@@ -314,6 +316,7 @@ export default function ActionBar() {
           </span>
         </button>
       </div>
+      )}
 
       {/* ═══ CYBER ═══ */}
       <div className="action-bar__slot">

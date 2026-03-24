@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { ENABLE_DIVISIONS } from '../config/features'
 
 export interface SidebarItem {
   id: string
@@ -25,7 +26,9 @@ const DEFAULT_BOTTOM: SidebarItem[] = [
   { id: 'missions', icon: '📋', label: 'MISSIONS' },
   { id: 'combat', icon: '⚔️', label: 'COMBAT' },
   { id: 'cyberwarfare', icon: '🖥️', label: 'CYBER' },
-  { id: 'armed_forces', icon: '🪖', label: 'ARMED FORCES' },
+  ...(ENABLE_DIVISIONS ? [
+    { id: 'armed_forces', icon: '🪖', label: 'ARMED FORCES' },
+  ] : []),
   { id: 'military', icon: '🎖️', label: 'DUELS' },
   { id: 'prestige', icon: '⭐', label: 'PRESTIGE' },
   { id: 'diplomacy', icon: '🕊️', label: 'DIPLOMACY' },
@@ -74,6 +77,14 @@ export const useSidebarLayoutStore = create<SidebarLayoutState>()(
     }),
     {
       name: 'xwar-sidebar-layout',
+      onRehydrateStorage: () => (state) => {
+        // When divisions are disabled, remove armed_forces and military from persisted layout
+        if (!ENABLE_DIVISIONS && state) {
+          const divisionIds = ['armed_forces']
+          state.topItems = state.topItems.filter(i => !divisionIds.includes(i.id))
+          state.bottomItems = state.bottomItems.filter(i => !divisionIds.includes(i.id))
+        }
+      },
     }
   )
 )

@@ -2,6 +2,7 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useArmyStore } from '../../stores/army'
 import { useUIStore } from '../../stores/uiStore'
+import { ENABLE_DIVISIONS } from '../../config/features'
 import { Landmark, Flag, Swords, UserPlus, BarChart3, Crosshair, Check } from 'lucide-react'
 import AFCountryTab from './armedforces/AFCountryTab'
 import AFPmcTab from './armedforces/AFPmcTab'
@@ -17,6 +18,7 @@ type AFTab = 'country' | 'pmc' | 'own' | 'recruit' | 'market' | 'fight'
 type SourceFilter = 'own' | 'country' | 'pmc'
 
 export default function ArmedForcesPanel() {
+  if (!ENABLE_DIVISIONS) return null
   const player = usePlayerStore()
   const armyStore = useArmyStore()
   const ui = useUIStore()
@@ -35,8 +37,8 @@ export default function ArmedForcesPanel() {
     }
   }, [])
 
-  const myDivisions = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
-  const myArmies = Object.values(armyStore.armies).filter(a => a.countryCode === iso)
+  const myDivisions = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso)
+  const myArmies = (Object.values(armyStore.armies) as any[]).filter((a: any) => a.countryCode === iso)
 
   const showFb = (msg: string, ok = true) => {
     setFeedback(msg)

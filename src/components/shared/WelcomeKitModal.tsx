@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useInventoryStore, generateStats, WEAPON_SUBTYPES, TIER_COLORS, TIER_LABELS } from '../../stores/inventoryStore'
 import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/army'
+import { ENABLE_DIVISIONS } from '../../config/features'
 import type { EquipTier, EquipSlot, EquipCategory, EquipItem } from '../../types/inventory.types'
 import type { DivisionType } from '../../stores/army/types'
 
@@ -83,50 +84,52 @@ export default function WelcomeKitModal() {
     const gear = buildFullGearKit()
     gear.forEach(item => useInventoryStore.getState().addItem(item))
 
-    // 4. Grant one of each division type (free, skip cost/pop checks)
-    const player = usePlayerStore.getState()
-    const armyStore = useArmyStore.getState()
-    const playerCountry = player.countryCode || 'US'
-    const armies = armyStore.getArmiesForCountry(playerCountry)
-    const armyId = armies.length > 0 ? armies[0].id : undefined
+    // 4. Grant one of each division type (free, skip cost/pop checks) — divisions only
+    if (ENABLE_DIVISIONS) {
+      const player = usePlayerStore.getState()
+      const armyStore = useArmyStore.getState()
+      const playerCountry = player.countryCode || 'US'
+      const armies = armyStore.getArmiesForCountry(playerCountry)
+      const armyId = armies.length > 0 ? armies[0].id : undefined
 
-    DIV_TYPES.forEach(type => {
-      // Bypass cost — directly create the division
-      const template = DIVISION_TEMPLATES[type]
-      const id = `wk-div-${type}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
-      const division = {
-        id, type, name: `${template.name} (Kit)`,
-        category: template.category,
-        ownerId: player.name,
-        countryCode: playerCountry,
-        manpower: template.manpowerCost,
-        maxManpower: template.manpowerCost,
-        health: Math.floor(template.healthMult * 100),
-        maxHealth: Math.floor(template.healthMult * 100),
-        equipment: [] as string[],
-        experience: 0,
-        stance: 'unassigned' as const,
-        autoTrainingEnabled: false,
-        status: 'ready' as const,
-        trainingProgress: 0,
-        recoveryTicksNeeded: 0,
-        readyAt: 0,
-        reinforcing: false,
-        reinforceProgress: 0,
-        killCount: 0,
-        battlesSurvived: 0,
-        starQuality: 3 as 1 | 2 | 3 | 4 | 5,
-        statModifiers: { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0 },
-        deployedToPMC: false,
-      }
-      useArmyStore.setState((s: any) => ({
-        divisions: { ...s.divisions, [id]: division },
-      }))
-      // Assign to first army if exists
-      if (armyId) {
-        useArmyStore.getState().assignDivisionToArmy(id, armyId)
-      }
-    })
+      DIV_TYPES.forEach(type => {
+        // Bypass cost — directly create the division
+        const template = DIVISION_TEMPLATES[type]
+        const id = `wk-div-${type}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+        const division = {
+          id, type, name: `${template.name} (Kit)`,
+          category: template.category,
+          ownerId: player.name,
+          countryCode: playerCountry,
+          manpower: template.manpowerCost,
+          maxManpower: template.manpowerCost,
+          health: Math.floor(template.healthMult * 100),
+          maxHealth: Math.floor(template.healthMult * 100),
+          equipment: [] as string[],
+          experience: 0,
+          stance: 'unassigned' as const,
+          autoTrainingEnabled: false,
+          status: 'ready' as const,
+          trainingProgress: 0,
+          recoveryTicksNeeded: 0,
+          readyAt: 0,
+          reinforcing: false,
+          reinforceProgress: 0,
+          killCount: 0,
+          battlesSurvived: 0,
+          starQuality: 3 as 1 | 2 | 3 | 4 | 5,
+          statModifiers: { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0 },
+          deployedToPMC: false,
+        }
+        useArmyStore.setState((s: any) => ({
+          divisions: { ...s.divisions, [id]: division },
+        }))
+        // Assign to first army if exists
+        if (armyId) {
+          useArmyStore.getState().assignDivisionToArmy(id, armyId)
+        }
+      })
+    }
 
     // DEV: localStorage.setItem(STORAGE_KEY, Date.now().toString())  // Re-enable for production
 
@@ -177,7 +180,7 @@ export default function WelcomeKitModal() {
               fontFamily: 'var(--font-display)', letterSpacing: 2,
             }}>KIT CLAIMED!</div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
-              All items, divisions, and resources have been added to your account.
+              All items{ENABLE_DIVISIONS ? ', divisions,' : ''} and resources have been added to your account.
             </div>
             <button
               onClick={() => setShow(false)}
@@ -260,7 +263,8 @@ export default function WelcomeKitModal() {
             ))}
           </div>
 
-          {/* Divisions Section */}
+          {/* Divisions Section — only when divisions are enabled */}
+          {ENABLE_DIVISIONS && (<>
           <div style={{
             fontSize: 9, fontWeight: 900, color: '#64748b',
             letterSpacing: 1.5, marginBottom: 6,
@@ -288,6 +292,7 @@ export default function WelcomeKitModal() {
               )
             })}
           </div>
+          </>)}
 
           {/* Claim Button */}
           <button

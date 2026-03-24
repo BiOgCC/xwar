@@ -4,6 +4,7 @@ import { useWorldStore } from '../stores/worldStore'
 import { useBattleStore } from '../stores/battleStore'
 import { useArmyStore } from '../stores/army'
 import { useUIStore } from '../stores/uiStore'
+import { ENABLE_DIVISIONS } from '../config/features'
 import { COUNTRY_ISO } from '../data/countries'
 import { COUNTRY_CENTROIDS, type GameMapHandle } from '../components/map/GameMap'
 
@@ -42,28 +43,30 @@ export function useAttack(mapRef: RefObject<GameMapHandle | null>) {
       return { action: 'war_declared', success: true }
     }
 
-    // ── Step 2: Find army with ready divisions → HOI battle ──
-    const myArmies = Object.values(army.armies).filter(a => a.countryCode === attackerIso)
-    const armyWithDivs = myArmies.find(a =>
-      a.divisionIds.some(id => army.divisions[id]?.status === 'ready')
-    )
+    // ── Step 2: Find army with ready divisions → HOI battle (divisions only) ──
+    if (ENABLE_DIVISIONS) {
+      const myArmies = (Object.values(army.armies) as any[]).filter((a: any) => a.countryCode === attackerIso)
+      const armyWithDivs = myArmies.find((a: any) =>
+        a.divisionIds.some((id: string) => army.divisions[id]?.status === 'ready')
+      )
 
-    if (armyWithDivs) {
-      const result = battle.launchHOIBattle(armyWithDivs.id, defenderIso, 'invasion')
+      if (armyWithDivs) {
+        const result = battle.launchHOIBattle(armyWithDivs.id, defenderIso, 'invasion')
 
-      if (result.success) {
-        // Fly camera to target
-        const coord = COUNTRY_CENTROIDS[targetCountryName] || COUNTRY_CENTROIDS['United States']
-        if (coord && mapRef.current) {
-          mapRef.current.flyTo(coord[0], coord[1], 4)
+        if (result.success) {
+          // Fly camera to target
+          const coord = COUNTRY_CENTROIDS[targetCountryName] || COUNTRY_CENTROIDS['United States']
+          if (coord && mapRef.current) {
+            mapRef.current.flyTo(coord[0], coord[1], 4)
+          }
         }
-      }
 
-      if (mouseEvent) {
-        ui.addFloatingText('⚔️ BATTLE LAUNCHED!', mouseEvent.clientX, mouseEvent.clientY, '#ef4444')
-      }
+        if (mouseEvent) {
+          ui.addFloatingText('⚔️ BATTLE LAUNCHED!', mouseEvent.clientX, mouseEvent.clientY, '#ef4444')
+        }
 
-      return { action: 'hoi_battle', success: result.success, battleId: result.battleId }
+        return { action: 'hoi_battle', success: result.success, battleId: result.battleId }
+      }
     }
 
     // ── Step 3: No divisions → launch battle + personal attack via battleStore ──

@@ -4,6 +4,7 @@ import { useBattleStore } from '../../stores/battleStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { useUIStore } from '../../stores/uiStore'
+import { ENABLE_DIVISIONS } from '../../config/features'
 import WarOverviewTab from './WarOverviewTab'
 import WarRecruitTab from './WarRecruitTab'
 import WarForcesTab from './WarForcesTab'
@@ -19,7 +20,7 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
   const iso = player.countryCode || 'US'
   const warDefaultTab = useUIStore(s => s.warDefaultTab)
 
-  const myDivisions = Object.values(armyStore.divisions).filter(d => d.countryCode === iso)
+  const myDivisions = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso)
   const activeBattles = Object.values(battleStore.battles).filter(b => b.status === 'active')
 
   const [tab, setTab] = useState<WarTab>(() => {
@@ -39,13 +40,15 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
   const govStore = useGovernmentStore()
   const gov = govStore.governments[iso]
   const shopCount = gov?.divisionShop?.length || 0
-  const claimableContracts = govStore.militaryContracts.filter(c => c.playerId === player.name && c.status === 'claimable').length
+  const claimableContracts = govStore.militaryContracts.filter((c: any) => c.playerId === player.name && c.status === 'claimable').length
   const recruitBadge = shopCount + claimableContracts || undefined
 
   const tabs: { id: WarTab; label: string; icon: string; isImg?: boolean; count?: number }[] = [
     { id: 'overview', label: 'HQ', icon: '🎯' },
-    { id: 'recruit', label: 'RECRUIT', icon: '/assets/icons/gear.png', isImg: true, count: recruitBadge },
-    { id: 'armies', label: 'FORCES', icon: '/assets/icons/divs.png', isImg: true, count: myDivisions.length },
+    ...(ENABLE_DIVISIONS ? [
+      { id: 'recruit' as WarTab, label: 'RECRUIT', icon: '/assets/icons/gear.png', isImg: true, count: recruitBadge },
+      { id: 'armies' as WarTab, label: 'FORCES', icon: '/assets/icons/divs.png', isImg: true, count: myDivisions.length },
+    ] : []),
     { id: 'battles', label: 'COMBAT', icon: '⚔️', count: activeBattles.length },
   ]
 
