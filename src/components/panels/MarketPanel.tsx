@@ -12,7 +12,9 @@ import MarketOrdersTab from './market/MarketOrdersTab'
 import MarketHistoryTab from './market/MarketHistoryTab'
 import MarketCryptoTab from './market/MarketCryptoTab'
 
+
 const TAB_DEFS = [
+
   { key: 'crypto' as const, icon: '/assets/icons/badge.png', label: 'Badge Mkt' },
   { key: 'trading' as const, icon: '/assets/icons/market.png', label: 'Market' },
   { key: 'equipment' as const, icon: '/assets/icons/gear.png', label: 'Gear' },
@@ -82,6 +84,7 @@ export default function MarketPanel() {
 
       {/* Tab content */}
       <div className="market-content">
+
         {tab === 'crypto' && <MarketCryptoTab showFb={showFb} />}
         {tab === 'trading' && <MarketTradingTab showFb={showFb} />}
         {tab === 'equipment' && <MarketGearTab showFb={showFb} />}

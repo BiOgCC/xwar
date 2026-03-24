@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { getStatIcon } from '../../shared/StatIcon'
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useSkillsStore } from '../../../stores/skillsStore'
 import {
@@ -457,7 +458,7 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                             padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)',
                           }}
                         >
-                          <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>{s.label}</span>
+                          <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>{getStatIcon(s.label, s.color, 12)}{s.label}</span>
                           <span style={{ color: s.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{s.val}</span>
                         </motion.div>
                       ))}

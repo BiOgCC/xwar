@@ -1,4 +1,5 @@
 import { usePlayerStore } from '../../../stores/playerStore'
+import { getStatIcon } from '../../shared/StatIcon'
 import { useInventoryStore, getItemImagePath, TIER_COLORS, TIER_LABELS } from '../../../stores/inventoryStore'
 import { usePrestigeStore, getPrestigeItemImage } from '../../../stores/prestigeStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -41,7 +42,7 @@ export default function InventoryGearDisplay({ onPickSlot, onPickAmmo }: Props) 
       <div key={item.id} className="ptab-gear-card" style={{borderColor:`${tc}30`,'--card-tier-color':tc} as React.CSSProperties} onClick={()=>onPickSlot(item.slot)}>
         <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">{item.slot.toUpperCase()}</span><span className="ptab-gear-card__tier" style={{color:tc}}>{tl.split(' ')[0]}</span></div>
         <div className="ptab-gear-card__img-wrap">{img?<img src={img} alt={item.name} className="ptab-gear-card__img" onError={e=>{e.currentTarget.style.display='none'}} />:<div style={{fontSize:'28px',opacity:0.4,filter:`drop-shadow(0 0 4px ${tc})`}}>?</div>}</div>
-        {se.length>0&&<div className="ptab-gear-card__stats">{se.map(s=><div key={s.label} className="ptab-gear-stat"><span className="ptab-gear-stat__label">{s.label}</span><span className="ptab-gear-stat__val" style={{color:s.color}}>{s.val}</span></div>)}</div>}
+        {se.length>0&&<div className="ptab-gear-card__stats">{se.map(s=><div key={s.label} className="ptab-gear-stat"><span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span><span className="ptab-gear-stat__val" style={{color:s.color}}>{s.val}</span></div>)}</div>}
         <div className="ptab-gear-card__footer"><div className="ptab-gear-card__dur-bar"><div className="ptab-gear-card__dur-fill" style={{width:`${dur}%`,background:dc}} /></div><div className="ptab-gear-card__dur-lbl" style={{color:dc}}>{dur.toFixed(0)}%</div></div>
       </div>
     )
@@ -77,7 +78,7 @@ export default function InventoryGearDisplay({ onPickSlot, onPickAmmo }: Props) 
           return (<div key="prestige" className="ptab-gear-card" style={{borderColor:`${pc}50`,'--card-tier-color':pc,background:`linear-gradient(to bottom, ${pc}10, transparent)`} as React.CSSProperties} onClick={()=>ui.setActivePanel('prestige')}>
             <div className="ptab-gear-card__top"><span className="ptab-gear-card__slot">PRESTIGE</span><span className="ptab-gear-card__tier" style={{color:pc}}>{p.category.toUpperCase()}</span></div>
             <div className="ptab-gear-card__img-wrap"><img src={getPrestigeItemImage(p.category)} alt="Prestige" style={{width:'40px',height:'40px',objectFit:'contain',filter:`drop-shadow(0 0 8px ${pc}66)`}} /></div>
-            {ps.length>0&&<div className="ptab-gear-card__stats">{ps.slice(0,3).map(s=><div key={s.label} className="ptab-gear-stat"><span className="ptab-gear-stat__label">{s.label}</span><span className="ptab-gear-stat__val" style={{color:s.color}}>{s.val}</span></div>)}</div>}
+            {ps.length>0&&<div className="ptab-gear-card__stats">{ps.slice(0,3).map(s=><div key={s.label} className="ptab-gear-stat"><span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span><span className="ptab-gear-stat__val" style={{color:s.color}}>{s.val}</span></div>)}</div>}
             <div className="ptab-gear-card__footer" style={{justifyContent:'center'}}><div className="ptab-gear-card__dur-lbl" style={{color:'#eab308'}}>INFINITE</div></div>
           </div>)
         })() : <div key="prestige_empty" className="ptab-gear-card" style={{borderColor:'rgba(234,179,8,0.2)',opacity:0.6}} onClick={()=>ui.setActivePanel('prestige')}><div className="ptab-gear-card__top"><span className="ptab-gear-card__slot" style={{color:'#eab308'}}>PRESTIGE</span></div><div className="ptab-gear-card__img-wrap"><img src="/assets/items/prestige_crown.png" alt="Prestige" style={{width:'36px',height:'36px',objectFit:'contain',opacity:0.3}} /></div></div>}

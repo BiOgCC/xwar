@@ -97,6 +97,7 @@ export interface InventoryState {
   fetchInventory: () => Promise<void>
   openLootBox: () => Promise<LootBoxResult | null>
   openMilitaryBox: () => Promise<LootBoxResult | null>
+  openSupplyBox: () => LootBoxResult | null
   dismantleItem: (itemId: string) => Promise<{ success: boolean; scrapGained: number; message: string }>
   sellItem: (itemId: string) => Promise<{ success: boolean; moneyGained: number; message: string }>
   equipItem: (itemId: string) => Promise<{ success: boolean; message: string }>
@@ -124,18 +125,19 @@ export function generateStats(category: EquipCategory, slot: EquipSlot, tier: Eq
     // T2: Gun (50-80 dmg, 6-10% crit)
     // T3: Rifle (81-120 dmg, 11-15% crit)
     // T4: Sniper (121-150 dmg, 16-20% crit)
-    // T5: Tank (151-199 dmg, 21-30% crit)  |  RPG (same stats)
-    // T6: Jet (200-300 dmg, 31-49% crit)   |  Warship (same stats)
+    // T5: Tank (151-199 dmg, 15-20% crit)  |  RPG (same stats)
+    // T6: Jet (200-300 dmg, 16-22% crit)   |  Warship (same stats)
+    // T7: Submarine (350-500 dmg, 18-25% crit)
     
     // Handle subtypes for T5 and T6 and T7
     if (tier === 't5' && weaponSubtype === 'rpg') {
-      return { name: 'RPG', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) }, weaponSubtype: 'rpg' }
+      return { name: 'RPG', stats: { damage: randomInt(151, 199), critRate: randomInt(15, 20) }, weaponSubtype: 'rpg' }
     }
     if (tier === 't6' && weaponSubtype === 'warship') {
-      return { name: 'Warship', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) }, weaponSubtype: 'warship' }
+      return { name: 'Warship', stats: { damage: randomInt(200, 300), critRate: randomInt(16, 22) }, weaponSubtype: 'warship' }
     }
     if (tier === 't7' && weaponSubtype === 'submarine') {
-      return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(40, 60) }, weaponSubtype: 'submarine' }
+      return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(18, 25) }, weaponSubtype: 'submarine' }
     }
     
     switch (tier) {
@@ -143,15 +145,15 @@ export function generateStats(category: EquipCategory, slot: EquipSlot, tier: Eq
       case 't2': return { name: 'Gun', stats: { damage: randomInt(50, 80), critRate: randomInt(6, 10) }, weaponSubtype: 'gun' }
       case 't3': return { name: 'Rifle', stats: { damage: randomInt(81, 120), critRate: randomInt(11, 15) }, weaponSubtype: 'rifle' }
       case 't4': return { name: 'Sniper', stats: { damage: randomInt(121, 150), critRate: randomInt(16, 20) }, weaponSubtype: 'sniper' }
-      case 't5': return { name: 'Tank', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) }, weaponSubtype: 'tank' }
-      case 't6': return { name: 'Jet', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) }, weaponSubtype: 'jet' }
-      case 't7': return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(40, 60) }, weaponSubtype: 'submarine' }
+      case 't5': return { name: 'Tank', stats: { damage: randomInt(151, 199), critRate: randomInt(15, 20) }, weaponSubtype: 'tank' }
+      case 't6': return { name: 'Jet', stats: { damage: randomInt(200, 300), critRate: randomInt(16, 22) }, weaponSubtype: 'jet' }
+      case 't7': return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(18, 25) }, weaponSubtype: 'submarine' }
     }
   } else if (category === 'vehicle') {
     if (tier === 't7') {
-      return { name: 'T7 Submarine', stats: { damage: randomInt(400, 550), critRate: randomInt(45, 65) } }
+      return { name: 'T7 Submarine', stats: { damage: randomInt(400, 550), critRate: randomInt(20, 28) } }
     } else if (tier === 't6') {
-      return { name: 'T6 Warship', stats: { damage: randomInt(301, 400), critRate: randomInt(40, 49) } }
+      return { name: 'T6 Warship', stats: { damage: randomInt(301, 400), critRate: randomInt(16, 22) } }
     } else {
       return { name: `T${tLevel} Vehicle`, stats: { damage: randomInt(10 * tLevel, 20 * tLevel) } } // Fallback
     }
@@ -345,28 +347,74 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const playerStore = usePlayerStore.getState()
     if (playerStore.militaryBoxes <= 0) return null
 
+    usePlayerStore.getState().removeResource('militaryBoxes', 1, 'milbox_open')
+
+    let item: any = null
     try {
       const res: any = await api.post('/inventory/open-box', { boxType: 'military' })
-      if (!res.success) return null
+      if (res.success && res.item) {
+        item = res.item
+      }
+    } catch(e) {
+      console.warn('Military box API unavailable, using local generation')
+    }
 
-      const { item } = res
-      usePlayerStore.getState().removeResource('militaryBoxes', 1, 'milbox_open')
-      if (item) set(s => ({ items: [...s.items, item] }))
+    // Local fallback: generate item client-side if API didn't return one
+    if (!item) {
+      item = rollMilitaryBoxItem()
+    }
 
-      set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
-      const inv = get()
-      const ps = usePlayerStore.getState()
-      useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-        totalDamageDone: ps.damageDone,
-        totalMoney: ps.money,
-        totalItemsProduced: ps.itemsProduced,
-        playerLevel: ps.level,
-        totalCasesOpened: inv.totalCasesOpened,
-        totalItemsDismantled: inv.totalItemsDismantled,
-      })
+    set(s => ({ items: [...s.items, item] }))
+    set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
+    const inv = get()
+    const ps = usePlayerStore.getState()
+    useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+      totalDamageDone: ps.damageDone,
+      totalMoney: ps.money,
+      totalItemsProduced: ps.itemsProduced,
+      playerLevel: ps.level,
+      totalCasesOpened: inv.totalCasesOpened,
+      totalItemsDismantled: inv.totalItemsDismantled,
+    })
 
-      return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0, badgesOfHonor: 0 }
-    } catch(e) { console.error('Milbox err', e); return null }
+    return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0, badgesOfHonor: 0 }
+  },
+
+  openSupplyBox: () => {
+    if (!rateLimiter.check('openSupplyBox')) return null
+    const playerStore = usePlayerStore.getState()
+    if (playerStore.supplyBoxes <= 0) return null
+
+    usePlayerStore.getState().removeResource('supplyBoxes', 1, 'supplybox_open')
+
+    // Supply Box drops: 30% bullets, 50% scraps, 20% food
+    const roll = Math.random() * 100
+    let rewardType: LootBoxRewardType = 'resources'
+    let scrap = 0, money = 0, oil = 0
+
+    if (roll < 50) {
+      // 50% chance: scraps (200-800)
+      scrap = 200 + Math.floor(Math.random() * 600)
+      usePlayerStore.getState().addResource('scrap', scrap, 'supply_box')
+    } else if (roll < 80) {
+      // 30% chance: random bullet type (10-30 bullets)
+      const bulletTypes = ['greenBullets', 'blueBullets', 'purpleBullets', 'redBullets'] as const
+      const bulletType = bulletTypes[Math.floor(Math.random() * bulletTypes.length)]
+      const bulletAmount = 10 + Math.floor(Math.random() * 20)
+      usePlayerStore.getState().addResource(bulletType, bulletAmount, 'supply_box')
+      // Encode bullet reward in money field for display purposes
+      money = bulletAmount // will be shown as bullet count in the reward reveal
+    } else {
+      // 20% chance: random food (50-150)
+      const foodTypes = ['bread', 'sushi', 'wagyu'] as const
+      const foodType = foodTypes[Math.floor(Math.random() * foodTypes.length)]
+      const foodAmount = 50 + Math.floor(Math.random() * 100)
+      usePlayerStore.getState().addResource(foodType, foodAmount, 'supply_box')
+      oil = foodAmount // encode food amount for display
+    }
+
+    set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
+    return { rewardType, scrap, money, oil, badgesOfHonor: 0 }
   },
 
   dismantleItem: async (itemId) => {

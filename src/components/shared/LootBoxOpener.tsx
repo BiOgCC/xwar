@@ -4,6 +4,8 @@ import { SPRINGS, TIER_FX, useScreenShake } from './AnimationSystem'
 import RewardReveal, { type RewardEntry } from './RewardReveal'
 import GameModal from './GameModal'
 import { getItemImagePath, type LootBoxResult } from '../../stores/inventoryStore'
+import BadgeOfHonorIcon from './BadgeOfHonorIcon'
+import { usePlayerStore } from '../../stores/playerStore'
 
 /* ═══════════════════════════════════════════════════
    LootBoxOpener — GameModal-Based Box Opening
@@ -17,7 +19,7 @@ interface LootBoxOpenerProps {
   isOpen: boolean
   onClose: () => void
   onOpenBox: () => Promise<LootBoxResult | null>
-  boxType?: 'civilian' | 'military'
+  boxType?: 'civilian' | 'military' | 'supply'
 }
 
 const BOX_THEMES = {
@@ -36,6 +38,14 @@ const BOX_THEMES = {
     gradient: 'linear-gradient(135deg, #ef4444, #dc2626)',
     bgTint: 'rgba(239,68,68,0.08)',
     borderTint: 'rgba(239,68,68,0.2)',
+  },
+  supply: {
+    image: '/assets/items/lootbox_civilian.png',
+    color: '#3b82f6',
+    title: 'SUPPLY BOX',
+    gradient: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+    bgTint: 'rgba(59,130,246,0.08)',
+    borderTint: 'rgba(59,130,246,0.2)',
   },
 }
 
@@ -88,7 +98,8 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
         label: result.item.slot.toUpperCase(),
         value: result.item.name,
         tier: result.item.tier,
-        icon: <img src={getItemImagePath(result.item.tier, result.item.slot, result.item.category, result.item.weaponSubtype, result.item.superforged) || ''} alt="item" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />,
+        stats: result.item.stats,
+        icon: <img src={getItemImagePath(result.item.tier, result.item.slot, result.item.category, result.item.weaponSubtype, result.item.superforged) || ''} alt="item" style={{ width: '72px', height: '72px', objectFit: 'contain' }} />,
       })
     }
     if (result.money > 0) {
@@ -120,7 +131,7 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
         type: 'item',
         label: 'BADGE OF HONOR',
         value: `+${result.badgesOfHonor}`,
-        icon: <span style={{ fontSize: '36px' }}>🎖️</span>,
+        icon: <BadgeOfHonorIcon size={36} />,
       })
     }
 
@@ -139,6 +150,22 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
     onClose()
   }, [onClose])
 
+  const handleOpenAnother = useCallback(async () => {
+    // Reset to idle and immediately trigger a new open
+    setPhase('idle')
+    setRewards([])
+    setIsOpening(false)
+    // Small delay then open again
+    await new Promise(r => setTimeout(r, 100))
+    handleOpenClick()
+  }, [handleOpenClick])
+
+  // How many boxes left
+  const player = usePlayerStore()
+  const boxCount = boxType === 'civilian' ? player.lootBoxes
+    : boxType === 'military' ? player.militaryBoxes
+    : (player.supplyBoxes ?? 0)
+
   // Phase 2: Reward reveal overlay (same as before)
   if (phase === 'reveal' && rewards.length > 0) {
     return (
@@ -147,6 +174,8 @@ export default function LootBoxOpener({ isOpen, onClose, onOpenBox, boxType = 'c
         isOpen={true}
         rewards={rewards}
         onClose={handleClose}
+        onOpenAnother={handleOpenAnother}
+        canOpenAnother={boxCount > 0}
         title={`${theme.title} REWARDS`}
       />
     )

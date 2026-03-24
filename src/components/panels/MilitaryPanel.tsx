@@ -12,6 +12,7 @@ import {
 } from '../../stores/militaryStore'
 import { useArmyStore, type Army } from '../../stores/army'
 import RegionPicker from '../shared/RegionPicker'
+import BadgeOfHonorIcon from '../shared/BadgeOfHonorIcon'
 
 // ── Sub-component: Force Autodefense ───────────────────────────────
 // Extracted to satisfy React rules-of-hooks (no hooks inside callbacks/IIFEs)
@@ -308,7 +309,7 @@ export default function MilitaryPanel() {
                           fontSize: '8px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px',
                           background: `${color}12`, color: color, border: `1px solid ${color}30`,
                         }}>
-                          1₿ + 1🎖️ → 1📦
+                          1₿ + 1<BadgeOfHonorIcon size={11} /> → 1📦
                         </span>
                       </div>
                       <div style={{ fontSize: '9px', color: '#94a3b8' }}>{op.description}</div>
@@ -350,7 +351,7 @@ export default function MilitaryPanel() {
                               border: `1px solid ${canAffordBadge ? 'rgba(34,211,138,0.2)' : 'rgba(239,68,68,0.2)'}`,
                               color: canAffordBadge ? '#22d38a' : '#ef4444',
                             }}>
-                              🎖️1 Badge
+                              <BadgeOfHonorIcon size={12} style={{ marginRight: '3px' }} />1 Badge
                             </div>
                           </div>
                           <div style={{ fontSize: '8px', color: '#64748b', marginTop: '4px', fontWeight: 600 }}>
@@ -386,7 +387,7 @@ export default function MilitaryPanel() {
                             boxShadow: canLaunch ? `0 0 12px ${color}20` : 'none',
                           }}
                         >
-                          {!hasTarget ? '🎯 SELECT TARGET FIRST' : !canAffordBoth ? '₿+🎖️ NEED BITCOIN & BADGE' : '⚔️ LAUNCH DUEL'}
+                          {!hasTarget ? '🎯 SELECT TARGET FIRST' : !canAffordBoth ? <span>₿+<BadgeOfHonorIcon size={12} /> NEED BITCOIN & BADGE</span> : '⚔️ LAUNCH DUEL'}
                         </button>
                       </div>
                     )}
@@ -401,8 +402,8 @@ export default function MilitaryPanel() {
               background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
               display: 'flex', justifyContent: 'space-around', fontSize: '9px', fontWeight: 700,
             }}>
-              <span style={{ color: canAffordBadge ? '#22d38a' : '#ef4444' }}>
-                🎖️ {player.badgesOfHonor}
+              <span style={{ color: canAffordBadge ? '#22d38a' : '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                <BadgeOfHonorIcon size={13} color={canAffordBadge ? '#22d38a' : '#ef4444'} /> {player.badgesOfHonor}
               </span>
               <span style={{ color: player.stamina > 0 ? '#3b82f6' : '#ef4444' }}>
                 ⚡ {Math.floor(player.stamina)}/{player.maxStamina}

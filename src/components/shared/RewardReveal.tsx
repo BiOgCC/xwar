@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { rewardItemVariants, SPRINGS, TIER_FX, useScreenShake } from './AnimationSystem'
-import { TIER_COLORS, TIER_LABELS, type EquipItem, type EquipTier } from '../../stores/inventoryStore'
+import { TIER_COLORS, TIER_LABELS, type EquipItem, type EquipTier, type EquipStats } from '../../stores/inventoryStore'
 import GameModal from './GameModal'
 
 /* ═══════════════════════════════════════════════════
@@ -15,16 +15,19 @@ interface RewardEntry {
   value: string
   tier?: EquipTier
   icon: React.ReactNode
+  stats?: EquipStats  // Item stats for hype display
 }
 
 interface RewardRevealProps {
   rewards: RewardEntry[]
   isOpen: boolean
   onClose: () => void
+  onOpenAnother?: () => void  // "Open Another" callback
+  canOpenAnother?: boolean    // Whether the player has more boxes
   title?: string
 }
 
-export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARDS' }: RewardRevealProps) {
+export default function RewardReveal({ rewards, isOpen, onClose, onOpenAnother, canOpenAnother, title = 'REWARDS' }: RewardRevealProps) {
   const [showRewards, setShowRewards] = useState(false)
   const [flashColor, setFlashColor] = useState<string | null>(null)
   const shake = useScreenShake()
@@ -32,7 +35,7 @@ export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARD
   // Find highest tier for screen effects
   const highestTier = useMemo(() => {
     const tiers = rewards.filter(r => r.tier).map(r => r.tier!)
-    const order: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
+    const order: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6', 't7']
     let best: EquipTier = 't1'
     for (const t of tiers) {
       if (order.indexOf(t) > order.indexOf(best)) best = t
@@ -65,7 +68,7 @@ export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARD
       // Flash for T4+
       if (highestTier === 't4') setFlashColor('purple')
       else if (highestTier === 't5') setFlashColor('gold')
-      else if (highestTier === 't6') setFlashColor('red')
+      else if (highestTier === 't6' || highestTier === 't7') setFlashColor('red')
     }, 300)
 
     return () => clearTimeout(timer)
@@ -77,6 +80,16 @@ export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARD
     const t = setTimeout(() => setFlashColor(null), 500)
     return () => clearTimeout(t)
   }, [flashColor])
+
+  // Stat display helpers
+  const STAT_DEFS: { key: keyof EquipStats; label: string; suffix: string; color: string }[] = [
+    { key: 'damage', label: 'DMG', suffix: '', color: '#f87171' },
+    { key: 'critRate', label: 'CRIT', suffix: '%', color: '#fb923c' },
+    { key: 'critDamage', label: 'C.DMG', suffix: '%', color: '#fbbf24' },
+    { key: 'armor', label: 'ARM', suffix: '%', color: '#94a3b8' },
+    { key: 'dodge', label: 'EVA', suffix: '%', color: '#34d399' },
+    { key: 'precision', label: 'ACC', suffix: '%', color: '#38bdf8' },
+  ]
 
   return (
     <GameModal isOpen={isOpen} onClose={onClose} size="md" glowColor={glowColor}>
@@ -114,12 +127,13 @@ export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARD
               hidden: {},
               visible: { transition: { staggerChildren: 0.12, delayChildren: 0.05 } },
             }}
-            style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}
+            style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}
           >
             {rewards.map((reward, i) => {
               const fx = reward.tier ? TIER_FX[reward.tier] : null
               const tierColor = reward.tier ? TIER_COLORS[reward.tier] : undefined
               const tierLabel = reward.tier ? TIER_LABELS[reward.tier] : undefined
+              const hasStats = reward.stats && Object.values(reward.stats).some(v => v && v > 0)
 
               return (
                 <motion.div
@@ -129,16 +143,27 @@ export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARD
                   style={{
                     '--card-glow': tierColor ? `${tierColor}20` : 'transparent',
                     borderColor: tierColor ? `${tierColor}40` : undefined,
+                    width: '100%',
+                    maxWidth: '320px',
+                    padding: hasStats ? '16px' : undefined,
                   } as React.CSSProperties}
                 >
-                  <div className="reward-card__icon">{reward.icon}</div>
+                  {/* Large icon for equipment */}
+                  <div className="reward-card__icon" style={{ 
+                    transform: reward.type === 'item' && reward.stats ? 'scale(1.4)' : undefined,
+                    marginBottom: reward.type === 'item' && reward.stats ? '8px' : undefined,
+                  }}>
+                    {reward.icon}
+                  </div>
+
                   <div className="reward-card__label">{reward.label}</div>
                   <div
                     className="reward-card__value"
-                    style={tierColor ? { color: tierColor } : undefined}
+                    style={tierColor ? { color: tierColor, fontSize: '16px', fontWeight: 900 } : undefined}
                   >
                     {reward.value}
                   </div>
+
                   {tierLabel && (
                     <div
                       className="reward-card__tier"
@@ -151,45 +176,102 @@ export default function RewardReveal({ rewards, isOpen, onClose, title = 'REWARD
                       {tierLabel}
                     </div>
                   )}
+
+                  {/* Item Stats — the hype section */}
+                  {hasStats && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.4 + i * 0.12 }}
+                      style={{
+                        marginTop: '10px', padding: '8px 12px', width: '100%',
+                        background: 'rgba(0,0,0,0.4)', borderRadius: '6px',
+                        border: `1px solid ${tierColor || '#ffffff'}20`,
+                      }}
+                    >
+                      {STAT_DEFS.filter(s => reward.stats![s.key] && reward.stats![s.key]! > 0).map(s => (
+                        <div key={s.key} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '3px 0', fontSize: '11px', fontFamily: 'var(--font-mono)',
+                        }}>
+                          <span style={{ color: '#64748b', fontWeight: 600, letterSpacing: '0.06em', fontSize: '10px' }}>{s.label}</span>
+                          <span style={{ color: s.color, fontWeight: 800, fontFamily: 'var(--font-display)', fontSize: '13px' }}>
+                            {s.key === 'damage' ? '' : '+'}{reward.stats![s.key]}{s.suffix}
+                          </span>
+                        </div>
+                      ))}
+                    </motion.div>
+                  )}
                 </motion.div>
               )
             })}
           </motion.div>
         )}
 
-        {/* Collect Button */}
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 + rewards.length * 0.12 }}
-          onClick={onClose}
-          style={{
-            marginTop: '16px',
-            background: `linear-gradient(135deg, ${glowColor}, ${glowColor}cc)`,
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '10px 32px',
-            fontSize: '13px',
-            fontWeight: 800,
-            fontFamily: 'var(--font-display)',
-            letterSpacing: '2px',
-            cursor: 'pointer',
-            boxShadow: `0 4px 20px ${glowColor}40`,
-            textTransform: 'uppercase' as const,
-            width: '100%',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'scale(1.05)'
-            e.currentTarget.style.boxShadow = `0 6px 30px ${glowColor}60`
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'scale(1)'
-            e.currentTarget.style.boxShadow = `0 4px 20px ${glowColor}40`
-          }}
-        >
-          🎁 COLLECT
-        </motion.button>
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+          {/* Open Another */}
+          {onOpenAnother && (
+            <motion.button
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 + rewards.length * 0.12 }}
+              onClick={onOpenAnother}
+              disabled={!canOpenAnother}
+              style={{
+                flex: 1,
+                background: canOpenAnother ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                color: canOpenAnother ? '#e2e8f0' : '#334155',
+                border: `1px solid ${canOpenAnother ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)'}`,
+                borderRadius: '8px',
+                padding: '10px 16px',
+                fontSize: '12px',
+                fontWeight: 800,
+                fontFamily: 'var(--font-display)',
+                letterSpacing: '1px',
+                cursor: canOpenAnother ? 'pointer' : 'not-allowed',
+                textTransform: 'uppercase' as const,
+              }}
+              onMouseOver={(e) => { if (canOpenAnother) e.currentTarget.style.background = 'rgba(255,255,255,0.12)' }}
+              onMouseOut={(e) => { e.currentTarget.style.background = canOpenAnother ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)' }}
+            >
+              🔄 OPEN ANOTHER
+            </motion.button>
+          )}
+
+          {/* Collect */}
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 + rewards.length * 0.12 }}
+            onClick={onClose}
+            style={{
+              flex: 1,
+              background: `linear-gradient(135deg, ${glowColor}, ${glowColor}cc)`,
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '12px',
+              fontWeight: 800,
+              fontFamily: 'var(--font-display)',
+              letterSpacing: '2px',
+              cursor: 'pointer',
+              boxShadow: `0 4px 20px ${glowColor}40`,
+              textTransform: 'uppercase' as const,
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)'
+              e.currentTarget.style.boxShadow = `0 6px 30px ${glowColor}60`
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'scale(1)'
+              e.currentTarget.style.boxShadow = `0 4px 20px ${glowColor}40`
+            }}
+          >
+            🎁 COLLECT
+          </motion.button>
+        </div>
       </div>
     </GameModal>
   )

@@ -1,4 +1,5 @@
 import { usePlayerStore } from '../../../stores/playerStore'
+import { getStatIcon } from '../../shared/StatIcon'
 import { useInventoryStore, getItemImagePath, TIER_COLORS, TIER_LABELS } from '../../../stores/inventoryStore'
 import { usePrestigeStore, getPrestigeItemImage } from '../../../stores/prestigeStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -125,7 +126,7 @@ export default function ProfileGearSection({ onPickSlot, onPickAmmo }: GearSecti
                   <div className="ptab-gear-card__stats">
                     {statEntries.map(s => (
                       <div key={s.label} className="ptab-gear-stat">
-                        <span className="ptab-gear-stat__label">{s.label}</span>
+                        <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
                         <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
                       </div>
                     ))}
@@ -161,7 +162,7 @@ export default function ProfileGearSection({ onPickSlot, onPickAmmo }: GearSecti
                   <div className="ptab-gear-card__stats">
                     {pStats.slice(0,3).map(s => (
                       <div key={s.label} className="ptab-gear-stat">
-                        <span className="ptab-gear-stat__label">{s.label}</span>
+                        <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
                         <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
                       </div>
                     ))}
@@ -210,8 +211,8 @@ export default function ProfileGearSection({ onPickSlot, onPickAmmo }: GearSecti
                   {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} /> : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>⚔️</div>}
                 </div>
                 <div className="ptab-gear-card__stats">
-                  {item.stats.damage && <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">DMG</span><span className="ptab-gear-stat__val" style={{ color: '#f87171' }}>{item.stats.damage}</span></div>}
-                  {item.stats.critRate && <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">CRIT</span><span className="ptab-gear-stat__val" style={{ color: '#fb923c' }}>{item.stats.critRate}%</span></div>}
+                  {item.stats.damage && <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">{getStatIcon('DMG', '#f87171') || 'DMG'}</span><span className="ptab-gear-stat__val" style={{ color: '#f87171' }}>{item.stats.damage}</span></div>}
+                  {item.stats.critRate && <div className="ptab-gear-stat"><span className="ptab-gear-stat__label">{getStatIcon('CRIT', '#fb923c') || 'CRIT'}</span><span className="ptab-gear-stat__val" style={{ color: '#fb923c' }}>{item.stats.critRate}%</span></div>}
                 </div>
                 <div className="ptab-gear-card__footer">
                   <div className="ptab-gear-card__dur-bar"><div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} /></div>

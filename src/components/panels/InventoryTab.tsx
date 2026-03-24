@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { getStatIcon } from '../shared/StatIcon'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePrestigeStore, getPrestigeItemImage } from '../../stores/prestigeStore'
@@ -16,6 +17,8 @@ import {
   SLOT_ICONS,
   getItemImagePath,
   SCRAP_VALUES,
+  WEAPON_SUBTYPES,
+  generateStats,
   type EquipItem,
   type EquipSlot,
   type EquipTier,
@@ -36,6 +39,7 @@ export default function InventoryTab() {
   const [showAmmoPicker, setShowAmmoPicker] = useState(false)
   const [showLootBox, setShowLootBox] = useState(false)
   const [showMilitaryBox, setShowMilitaryBox] = useState(false)
+  const [showSupplyBox, setShowSupplyBox] = useState(false)
 
   useEffect(() => {
     inventory.fetchInventory()
@@ -46,6 +50,7 @@ export default function InventoryTab() {
 
   const handleLootBoxOpen = useCallback(() => inventory.openLootBox(), [inventory])
   const handleMilitaryBoxOpen = useCallback(() => inventory.openMilitaryBox(), [inventory])
+  const handleSupplyBoxOpen = useCallback(async () => inventory.openSupplyBox(), [inventory])
 
   const handleEquipToggle = async () => {
     if (!selectedItem) return
@@ -117,7 +122,7 @@ export default function InventoryTab() {
                   <div className="ptab-gear-card__stats">
                     {statEntries.map(s => (
                       <div key={s.label} className="ptab-gear-stat">
-                        <span className="ptab-gear-stat__label">{s.label}</span>
+                        <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
                         <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
                       </div>
                     ))}
@@ -181,10 +186,90 @@ export default function InventoryTab() {
             <button className="comp-action comp-action--produce" style={{ margin: 0, width: 'auto', padding: '6px 16px', fontWeight: 'bold', fontSize: '11px', borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444', background: 'rgba(239,68,68,0.1)' }} disabled={player.militaryBoxes <= 0} onClick={() => player.militaryBoxes > 0 && setShowMilitaryBox(true)}>Open</button>
           </div>
         </div>
+          {/* Supply Box row */}
+          <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(59,130,246,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <img src="/assets/items/lootbox_civilian.png" alt="Supply Box" style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(59,130,246,0.3))' }} />
+              <div>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#3b82f6', letterSpacing: '0.08em', fontFamily: 'var(--font-display)' }}>SUPPLY</div>
+                <div style={{ fontSize: '18px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{player.supplyBoxes ?? 0}</div>
+              </div>
+            </div>
+            <button className="comp-action comp-action--produce" style={{ margin: 0, width: 'auto', padding: '6px 16px', fontWeight: 'bold', fontSize: '11px', borderColor: 'rgba(59,130,246,0.4)', color: '#3b82f6', background: 'rgba(59,130,246,0.1)' }} disabled={(player.supplyBoxes ?? 0) <= 0} onClick={() => (player.supplyBoxes ?? 0) > 0 && setShowSupplyBox(true)}>Open</button>
+          </div>
       </div>
 
       <LootBoxOpener isOpen={showLootBox} onClose={() => setShowLootBox(false)} onOpenBox={handleLootBoxOpen} boxType="civilian" />
       <LootBoxOpener isOpen={showMilitaryBox} onClose={() => setShowMilitaryBox(false)} onOpenBox={handleMilitaryBoxOpen} boxType="military" />
+      <LootBoxOpener isOpen={showSupplyBox} onClose={() => setShowSupplyBox(false)} onOpenBox={handleSupplyBoxOpen} boxType="supply" />
+
+      {/* Badge Market — inline */}
+      <div className="inv-section">
+        <div className="inv-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>🏅 BADGE MARKET <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>({player.badgesOfHonor ?? 0} badges)</span></div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {[
+            { label: 'Civilian Box', price: 2, resource: 'lootBoxes' as const, color: '#22d38a', icon: '/assets/items/lootbox_civilian.png' },
+            { label: 'Supply Box', price: 4, resource: 'supplyBoxes' as const, color: '#3b82f6', icon: '/assets/items/lootbox_civilian.png' },
+          ].map(b => (
+            <button key={b.label} disabled={(player.badgesOfHonor ?? 0) < b.price}
+              onClick={() => {
+                if ((player.badgesOfHonor ?? 0) < b.price) return
+                usePlayerStore.getState().spendBadgesOfHonor(b.price)
+                usePlayerStore.getState().addResource(b.resource, 1, 'badge_market')
+                ui.addFloatingText(`+1 ${b.label}`, window.innerWidth / 2, window.innerHeight / 2, b.color)
+              }}
+              style={{
+                flex: 1, minWidth: '120px', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px',
+                background: (player.badgesOfHonor ?? 0) >= b.price ? 'rgba(16,185,129,0.06)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${(player.badgesOfHonor ?? 0) >= b.price ? `${b.color}40` : 'rgba(255,255,255,0.06)'}`,
+                borderRadius: '6px', cursor: (player.badgesOfHonor ?? 0) >= b.price ? 'pointer' : 'not-allowed',
+                color: (player.badgesOfHonor ?? 0) >= b.price ? '#e2e8f0' : '#334155',
+              }}
+            >
+              <img src={b.icon} alt="" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: b.color }}>{b.label}</div>
+                <div style={{ fontSize: '9px', color: '#64748b' }}>🏅 {b.price} badges</div>
+              </div>
+            </button>
+          ))}
+          {([
+            { tier: 't2' as const, price: 3, label: 'T2 Gear', color: TIER_COLORS.t2 },
+            { tier: 't3' as const, price: 6, label: 'T3 Gear', color: TIER_COLORS.t3 },
+            { tier: 't4' as const, price: 12, label: 'T4 Gear', color: TIER_COLORS.t4 },
+          ] as const).map(g => (
+            <button key={g.tier} disabled={(player.badgesOfHonor ?? 0) < g.price}
+              onClick={() => {
+                if ((player.badgesOfHonor ?? 0) < g.price) return
+                usePlayerStore.getState().spendBadgesOfHonor(g.price)
+                const slots = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots'] as const
+                const slot = slots[Math.floor(Math.random() * slots.length)]
+                const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
+                const subtypes = WEAPON_SUBTYPES[g.tier]
+                const subtype = slot === 'weapon' ? subtypes[Math.floor(Math.random() * subtypes.length)] : undefined
+                const result = generateStats(category, slot, g.tier, subtype)
+                inventory.addItem({
+                  id: `eq_badge_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                  name: result.name, category, slot, tier: g.tier,
+                  weaponSubtype: result.weaponSubtype || subtype,
+                  stats: result.stats, location: 'inventory', equipped: false, durability: 100,
+                })
+                ui.addFloatingText(`+${result.name}`, window.innerWidth / 2, window.innerHeight / 2, g.color)
+              }}
+              style={{
+                flex: 1, minWidth: '90px', padding: '8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                background: (player.badgesOfHonor ?? 0) >= g.price ? `${g.color}10` : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${(player.badgesOfHonor ?? 0) >= g.price ? `${g.color}40` : 'rgba(255,255,255,0.06)'}`,
+                borderRadius: '6px', cursor: (player.badgesOfHonor ?? 0) >= g.price ? 'pointer' : 'not-allowed',
+                color: (player.badgesOfHonor ?? 0) >= g.price ? g.color : '#334155',
+              }}
+            >
+              <div style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'var(--font-display)' }}>{g.label}</div>
+              <div style={{ fontSize: '9px', color: '#64748b' }}>🏅 {g.price}</div>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Equipped Gear Display */}
       <InventoryGearDisplay onPickSlot={setPickerSlot} onPickAmmo={() => setShowAmmoPicker(true)} />
@@ -233,7 +318,7 @@ export default function InventoryTab() {
               selectedItem.stats.precision && { label: 'ACCURACY', val: `+${selectedItem.stats.precision}%`, color: '#38bdf8' },
             ].filter(Boolean).map((s: any) => (
               <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-                <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>{s.label}</span>
+                <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>{getStatIcon(s.label, s.color, 12)}{s.label}</span>
                 <span style={{ color: s.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{s.val}</span>
               </div>
             ))}

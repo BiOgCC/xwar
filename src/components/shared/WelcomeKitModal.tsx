@@ -20,7 +20,7 @@ const RESOURCES = [
   { key: 'wagyu', label: 'Wagyu', amount: 100_000, icon: '🥩' },
   { key: 'lootBoxes', label: 'Loot Boxes', amount: 50, icon: '📦' },
   { key: 'militaryBoxes', label: 'Military Boxes', amount: 50, icon: '🧰' },
-  { key: 'badgesOfHonor', label: 'Badges', amount: 100, icon: '🎖️' },
+  { key: 'badgesOfHonor', label: 'Badges', amount: 100, icon: '🏅' },
 ]
 
 const DIV_TYPES: DivisionType[] = ['recon', 'assault', 'sniper', 'rpg', 'jeep', 'tank', 'jet', 'warship', 'submarine']

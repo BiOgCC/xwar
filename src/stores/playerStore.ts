@@ -65,6 +65,7 @@ export interface PlayerState {
   companiesOwned: number
   lootBoxes: number
   militaryBoxes: number
+  supplyBoxes: number
   badgesOfHonor: number
   magicTea: number
   energyLeaves: number
@@ -208,6 +209,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   companiesOwned: 3,
   lootBoxes: 5,
   militaryBoxes: 5,
+  supplyBoxes: 0,
   badgesOfHonor: 5,
   magicTea: 0,
   energyLeaves: 0,

@@ -1,0 +1,70 @@
+﻿=================================================================
+           XWAR 50v50 COMBAT SIMULATION
+=================================================================
+Damage variance: 93%ÔÇô108% (15% total)
+Dodge: 8ÔÇô13% | Miss ÔåÆ 50% glancing | Points to win round: 600
+Best of 3 rounds | Player tiers: Newbie 40%, Mid 30%, Vet 20%, Whale 10%
+
+=== AGGREGATE (100 BATTLES) ===
+Attacker wins: 56 (56%) | Defender wins: 44 (44%)
+
+Avg ticks/battle: 783 | Avg rounds: 2.3
+Avg attacker total dmg: 1.886.308
+Avg defender total dmg: 1.797.964
+
+=================================================================
+           DETAILED SINGLE BATTLE BREAKDOWN
+=================================================================
+
+­ƒÅå WINNER: DEFENDER
+
+-- Round 1 (351 ticks) --------------------
+   Winner: DEFENDER
+   ATK: 511 pts | 749.859 dmg
+   DEF: 601 pts | 825.799 dmg
+-- Round 2 (368 ticks) --------------------
+   Winner: ATTACKER
+   ATK: 602 pts | 741.437 dmg
+   DEF: 595 pts | 839.384 dmg
+-- Round 3 (358 ticks) --------------------
+   Winner: DEFENDER
+   ATK: 547 pts | 714.280 dmg
+   DEF: 600 pts | 832.207 dmg
+
+Total: ATK 2.205.576 dmg | DEF 2.497.390 dmg
+
+-- TOP 10 ATTACKERS -----------------------
+  #  Name            Damage      Hits  Crits  Misses  Dodges
+   1 WATK22              336.366    324    253      31      33
+   2 WATK50              302.832    287    205      21      29
+   3 WATK07              255.625    296    162      29      29
+   4 WATK43              173.017    228    172      17      18
+   5 VATK27               89.281    153     88      16      21
+   6 VATK15               82.173    154     76      10      10
+   7 VATK29               79.615    134     77       5      14
+   8 VATK21               76.495    161     74      19      14
+   9 VATK36               66.293    123     63      11       9
+  10 VATK47               61.489    134     64      12      11
+
+-- TOP 10 DEFENDERS -----------------------
+  #  Name            Damage      Hits  Crits  Misses  Dodges
+   1 WDEF34              317.201    317    219      31      38
+   2 WDEF50              279.556    291    184      25      33
+   3 WDEF21              263.931    246    177      19      24
+   4 WDEF46              255.509    293    178      24      23
+   5 WDEF45              195.161    257    146      19      23
+   6 VDEF06               99.137    153     93       6      18
+   7 VDEF41               80.674    163     57      16      16
+   8 VDEF32               75.943    157     68      16      16
+   9 VDEF03               72.334    144     55      14      15
+  10 VDEF04               67.076    132     55      11      12
+
+-- PER-TIER STATS --------------------------
+  Newbie   (35 players) | avgDmg:     7545 | avgBaseDmg:  153 | critRate:  15.6% | hitRate:  57.6% | avgHits:   59 | avgCrits:  5.8 | avgMisses: 22.9
+  Mid      (41 players) | avgDmg:   23.448 | avgBaseDmg:  234 | critRate:  29.2% | hitRate:  78.8% | avgHits:   94 | avgCrits: 22.1 | avgMisses: 18.5
+  Veteran  (15 players) | avgDmg:   73.221 | avgBaseDmg:  341 | critRate:  49.9% | hitRate:  90.0% | avgHits:  144 | avgCrits: 67.4 | avgMisses: 12.3
+  Whale    ( 9 players) | avgDmg:  264.355 | avgBaseDmg:  452 | critRate:  72.4% | hitRate:  90.0% | avgHits:  282 | avgCrits: 188.4 | avgMisses: 24.0
+
+-- DAMAGE DISTRIBUTION (all players, single battle) --
+  Min: 5279 | P10: 6870 | P25: 8280 | Median: 21.266 | Mean: 47.030 | P75: 33.635 | P90: 99.137 | Max: 336.366
+  Whale/Newbie ratio: 63.7x

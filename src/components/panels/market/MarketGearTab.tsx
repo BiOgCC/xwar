@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { getStatIcon } from '../../shared/StatIcon'
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useInventoryStore, type EquipItem, TIER_COLORS, TIER_LABELS, TIER_ORDER, SLOT_ICONS, getItemImagePath } from '../../../stores/inventoryStore'
 import { useMarketStore } from '../../../stores/market'
@@ -91,7 +92,7 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
                         <div className="ptab-gear-card__stats">
                           {statEntries.map(s => (
                             <div key={s.label} className="ptab-gear-stat">
-                              <span className="ptab-gear-stat__label">{s.label}</span>
+                              <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
                               <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
                             </div>
                           ))}
@@ -145,7 +146,7 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
                   item.stats.precision && { label: 'ACCURACY', val: `+${item.stats.precision}%`, color: '#38bdf8' },
                 ].filter(Boolean).map((s: any) => (
                   <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-                    <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>{s.label}</span>
+                    <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>{getStatIcon(s.label, s.color, 12)}{s.label}</span>
                     <span style={{ color: s.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{s.val}</span>
                   </div>
                 ))}
@@ -280,7 +281,7 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
                     <div className="ptab-gear-card__stats">
                       {statEntries.map(s => (
                         <div key={s.label} className="ptab-gear-stat">
-                          <span className="ptab-gear-stat__label">{s.label}</span>
+                          <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
                           <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
                         </div>
                       ))}

@@ -14,6 +14,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { api } from '../../api/client'
 import BreachProtocol from './BreachProtocol'
 import RegionPicker from '../shared/RegionPicker'
+import BadgeOfHonorIcon from '../shared/BadgeOfHonorIcon'
 
 // ═══════════════════════════════════════════════
 //  TYPES
@@ -100,7 +101,7 @@ const FULL_OPS: FullOpDef[] = [
     cost: { scrap: 1000, materialX: 5000, oil: 2000, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 80, detectionChance: 30, durationMs: 0, playersRequired: 5,
     effectDescription: 'Report: National fund breakdown, citizen food & bullet reserves.' },
-  { id: 'military_intel', pillar: 'espionage', name: 'Military Intelligence Report', icon: '🎖️',
+  { id: 'military_intel', pillar: 'espionage', name: 'Military Intelligence Report', icon: 'mil_intel',
     description: 'Scan ports, airports, bunkers, military bases and report citizen-owned jets, warships & tanks.',
     cost: { scrap: 1500, materialX: 7000, oil: 2500, bitcoin: 1, badgesOfHonor: 1 }, targetType: 'country',
     successChance: 80, detectionChance: 30, durationMs: 0, playersRequired: 5,
@@ -584,7 +585,7 @@ export default function CyberwarfarePanel() {
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontWeight: 700, fontSize: '11px' }}>{fullOp.icon} {fullOp.name}</span>
+                            <span style={{ fontWeight: 700, fontSize: '11px' }}>{fullOp.icon === 'mil_intel' ? <BadgeOfHonorIcon size={13} /> : fullOp.icon} {fullOp.name}</span>
                             <span style={{
                               fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px',
                               background: canLaunch ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.05)',
@@ -628,7 +629,7 @@ export default function CyberwarfarePanel() {
                                 ₿ BTC: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{fullOp.cost.bitcoin}</span>
                               </div>
                               <div style={{ fontSize: '9px', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px', color: '#94a3b8' }}>
-                                🎖️ BOH: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{fullOp.cost.badgesOfHonor}</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><BadgeOfHonorIcon size={11} /> BOH: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{fullOp.cost.badgesOfHonor}</span></span>
                               </div>
                             </div>
 
