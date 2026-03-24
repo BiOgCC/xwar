@@ -256,7 +256,7 @@ function simulateRegionWar() {
         const playerDmg = atkStats.attackDamage
         const isCrit = Math.random() * 100 < atkStats.critRate
         const totalPlayerDmg = isCrit ? Math.floor(playerDmg * atkStats.critMultiplier) : playerDmg
-        const splashDmg = Math.floor(totalPlayerDmg * 4.2) // x4.2 splash
+        const splashDmg = Math.floor(totalPlayerDmg * 0.05) // x0.05 splash
         
         const aliveDefNow = defDivs.filter(d => d.alive)
         if (splashDmg > 0 && aliveDefNow.length > 0) {
@@ -274,7 +274,7 @@ function simulateRegionWar() {
         const playerDmg = defStats.attackDamage
         const isCrit = Math.random() * 100 < defStats.critRate
         const totalPlayerDmg = isCrit ? Math.floor(playerDmg * defStats.critMultiplier) : playerDmg
-        const splashDmg = Math.floor(totalPlayerDmg * 4.2) // x4.2 splash
+        const splashDmg = Math.floor(totalPlayerDmg * 0.05) // x0.05 splash
         
         const aliveAtkNow = atkDivs.filter(d => d.alive)
         if (splashDmg > 0 && aliveAtkNow.length > 0) {

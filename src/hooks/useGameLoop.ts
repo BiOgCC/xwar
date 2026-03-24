@@ -40,6 +40,9 @@ export function useGameLoop() {
     // ── Start the clock (idempotent — safe to call multiple times) ──
     gameClock.start()
 
+    // Spawn NPC test battles on first mount
+    try { useBattleStore.getState().spawnNPCBattles() } catch (e) { console.warn('[NPC] spawnNPCBattles:', e) }
+
     // ── Subscribe phase handlers ──
     const unsubs: (() => void)[] = []
 

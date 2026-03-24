@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { computeLeyLineCombatMods } from './leyLineStore'
 import { rateLimiter } from '../engine/AntiExploit'
 import { computePlayerCombatStats, aggregateEquipmentStats, computeBaseSkillStats, type PlayerCombatStats } from '../engine/stats'
-import { computeDivisionAttack, computeDamageToDefender, computePlayerAttack, deviate, EMPTY_STAR_MODS, EMPTY_EQUIP_BONUS, NO_ORDER, NO_AURA, type AuraBonus, type OrderEffects as EngineOrderEffects } from '../engine/combat'
+import { computePlayerAttack, deviate, EMPTY_STAR_MODS, EMPTY_EQUIP_BONUS, NO_ORDER, NO_AURA, type AuraBonus, type OrderEffects as EngineOrderEffects } from '../engine/combat'
 import { getWarRewards, getWarRewardShare } from '../engine/economy'
 import { useResearchStore } from './researchStore'
 import { useWorldStore } from './worldStore'
@@ -36,8 +36,8 @@ export function getBaseSkillStats(): PlayerCombatStats {
 }
 
 // ====== TYPES ======
-import type { BattleType, CombatLogEntry, BattleSide, BattleTick, DamageEvent, BattleRound, TacticalOrder, OrderEffects, Battle } from '../types/battle.types'
-export type { BattleType, CombatLogEntry, BattleSide, BattleTick, DamageEvent, BattleRound, TacticalOrder, OrderEffects, Battle }
+import type { BattleType, CombatLogEntry, BattleSide, BattleTick, BattleRound, TacticalOrder, OrderEffects, Battle } from '../types/battle.types'
+export type { BattleType, CombatLogEntry, BattleSide, BattleTick, BattleRound, TacticalOrder, OrderEffects, Battle }
 
 // ====== TACTICAL ORDERS ======
 export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; desc: string; effects: OrderEffects; color: string }> = {
@@ -137,12 +137,143 @@ export interface BattleState {
   setBattleMOTD: (battleId: string, motd: string) => void
   warMotd: string
   setWarMotd: (motd: string) => void
+
+  // NPC test battles
+  spawnNPCBattles: () => void
 }
 
 export const useBattleStore = create<BattleState>((set, get) => ({
   battles: {},
   warMotd: '',
   setWarMotd: (motd: string) => set({ warMotd: motd.substring(0, 200) }),
+
+  // ====== NPC TEST BATTLES ======
+  spawnNPCBattles: () => {
+    const NPC_BATTLE_COUNT = 10
+    const COMPOSITION: (keyof typeof DIVISION_TEMPLATES)[] = ['assault', 'assault', 'sniper', 'tank']
+    const NPC_EXP = 50  // level 5
+    const NPC_COUNTRIES = [
+      ['US', 'RU'], ['US', 'CN'], ['GB', 'DE'], ['FR', 'IT'],
+      ['JP', 'KR'], ['BR', 'AR'], ['IN', 'PK'], ['AU', 'NZ'],
+      ['CA', 'MX'], ['TR', 'EG'],
+    ]
+
+    // Don't re-spawn if NPC battles already exist
+    const existing = Object.values(get().battles).filter(b => b.id.startsWith('npc_battle_'))
+    if (existing.length >= NPC_BATTLE_COUNT) return
+
+    const newBattles: Record<string, Battle> = { ...get().battles }
+    const armyStore = useArmyStore.getState()
+    const newDivisions: Record<string, Division> = { ...armyStore.divisions }
+    const now = Date.now()
+    const maxStamina = 100  // NPC default
+
+    for (let i = 0; i < NPC_BATTLE_COUNT; i++) {
+      const [atkCountry, defCountry] = NPC_COUNTRIES[i % NPC_COUNTRIES.length]
+      const battleId = `npc_battle_${i + 1}`
+
+      // Create divisions for both sides
+      const atkDivIds: string[] = []
+      const defDivIds: string[] = []
+
+      COMPOSITION.forEach((type, j) => {
+        const template = DIVISION_TEMPLATES[type]
+        const hp = Math.floor(template.healthMult * maxStamina)
+        const mp = template.manpowerCost
+
+        const atkDivId = `npc_${battleId}_atk_${type}_${j}`
+        const defDivId = `npc_${battleId}_def_${type}_${j}`
+
+        const baseMods = { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0, attackSpeed: 0 }
+
+        const makeNPCDiv = (id: string, country: string, side: string): Division => ({
+          id,
+          type: type as any,
+          name: `${side.toUpperCase()} ${template.name} #${j + 1}`,
+          category: template.category,
+          ownerId: `NPC_${country}`,
+          countryCode: country,
+          manpower: mp, maxManpower: mp,
+          health: hp, maxHealth: hp,
+          equipment: [],
+          experience: NPC_EXP,
+          stance: 'unassigned' as const,
+          autoTrainingEnabled: false,
+          status: 'in_combat' as const,
+          trainingProgress: 0,
+          recoveryTicksNeeded: 0,
+          readyAt: 0,
+          reinforcing: false,
+          reinforceProgress: 0,
+          killCount: 0,
+          battlesSurvived: 0,
+          starQuality: 'standard' as any,
+          statModifiers: baseMods,
+          deployedToPMC: false,
+        })
+
+        newDivisions[atkDivId] = makeNPCDiv(atkDivId, atkCountry, 'ATK')
+        newDivisions[defDivId] = makeNPCDiv(defDivId, defCountry, 'DEF')
+        atkDivIds.push(atkDivId)
+        defDivIds.push(defDivId)
+      })
+
+      // Create battle
+      const atkName = getCountryName(atkCountry)
+      const defName = getCountryName(defCountry)
+
+      const battle: Battle = {
+        id: battleId,
+        type: 'invasion',
+        attackerId: atkCountry,
+        defenderId: defCountry,
+        regionName: `NPC #${i + 1}: ${atkName} vs ${defName}`,
+        startedAt: now,
+        ticksElapsed: 0,
+        status: 'active',
+        attacker: {
+          countryCode: atkCountry,
+          divisionIds: atkDivIds,
+          engagedDivisionIds: atkDivIds,
+          damageDealt: 0, manpowerLost: 0,
+          divisionsDestroyed: 0, divisionsRetreated: 0,
+        },
+        defender: {
+          countryCode: defCountry,
+          divisionIds: defDivIds,
+          engagedDivisionIds: defDivIds,
+          damageDealt: 0, manpowerLost: 0,
+          divisionsDestroyed: 0, divisionsRetreated: 0,
+        },
+        attackerRoundsWon: 0, defenderRoundsWon: 0,
+        rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }],
+        currentTick: { attackerDamage: 0, defenderDamage: 0 },
+        combatLog: [{
+          tick: 0, timestamp: now, type: 'phase_change', side: 'attacker',
+          message: `NPC Battle #${i + 1}: ${atkName} vs ${defName} — Mirror match (${COMPOSITION.join(', ')})`,
+        }],
+        attackerDamageDealers: {}, defenderDamageDealers: {},
+        damageFeed: [],
+        divisionCooldowns: {},
+        attackerOrder: 'none' as TacticalOrder,
+        defenderOrder: 'none' as TacticalOrder,
+        orderMessage: '',
+        motd: '',
+        playerAdrenaline: {},
+        playerSurge: {},
+        playerCrash: {},
+        playerAdrenalinePeakAt: {},
+        vengeanceBuff: { attacker: -1, defender: -1 },
+      }
+
+      newBattles[battleId] = battle
+    }
+
+    // Inject NPC divisions into army store
+    useArmyStore.setState({ divisions: newDivisions })
+    set({ battles: newBattles })
+    console.log(`[NPC] Spawned ${NPC_BATTLE_COUNT} NPC mirror-match battles`)
+  },
   combatTickLeft: 15,
   setCombatTickLeft: (val: number) => set({ combatTickLeft: val }),
   setBattleOrder: (battleId: string, side: 'attacker' | 'defender', order: TacticalOrder) => {
@@ -335,8 +466,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     const newFeed = [{ playerName, side, amount: finalAmount, isCrit, isDodged, time: now }, ...damageFeed].slice(0, 20)
 
-    // --- 420% of manual damage hurts opposing divisions (x4.2 splash) ---
-    const splashDmg = Math.floor(finalAmount * 4.20)
+    // --- 5% of manual damage hurts opposing divisions (x0.05 splash) ---
+    const splashDmg = Math.floor(finalAmount * 0.05)
     if (splashDmg > 0) {
       const armyStore = useArmyStore.getState()
       const oppositeDivIds = side === 'attacker'
@@ -1659,12 +1790,20 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     const armyStore = useArmyStore.getState()
 
-    // ── #2 FIX: Validate that divisions belong to the correct side's country ──
+    // ── Anti-grief: block deploying to the enemy side of a war ──
+    const playerCountry = usePlayerStore.getState().countryCode || 'US'
     const sideCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
+    const enemySide = side === 'attacker' ? battle.defenderId : battle.attackerId
+    const world = useWorldStore.getState()
+    const atWarWithSide = world.wars.some(w => w.status === 'active' &&
+      ((w.attacker === playerCountry && w.defender === sideCountry) || (w.attacker === sideCountry && w.defender === playerCountry)))
+    // Block if player is at war with the side they're trying to help (griefing prevention)
+    if (atWarWithSide) return { success: false, message: 'Cannot deploy to enemy side.' }
+
+    // ── Validate that divisions are deployable ──
     const validIds = divisionIds.filter(id => {
       const d = armyStore.divisions[id]
       if (!d) return false
-      if (d.countryCode !== sideCountry) return false // Division must belong to this side's country
       if (d.status !== 'ready' && d.status !== 'training') return false
       if (d.health <= 0) return false
       return true
