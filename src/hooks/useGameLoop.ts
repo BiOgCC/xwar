@@ -48,7 +48,6 @@ export function useGameLoop() {
 
     // COMBAT (15s) — battle resolution + revolt pressure + raid boss ticks
     unsubs.push(gameClock.subscribe('combat', () => {
-      try { useBattleStore.getState().resolveTicksAndRounds() } catch (e) { console.warn('[Combat] resolveTicksAndRounds:', e) }
       try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
       try { useRegionStore.getState().processRevoltTick() } catch (e) { console.warn('[Revolt] processRevoltTick:', e) }
       try {

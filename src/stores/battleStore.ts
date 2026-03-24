@@ -115,7 +115,6 @@ export interface BattleState {
 
   launchAttack: (attackerId: string, defenderId: string, regionName: string, type?: BattleType, regionId?: string) => void
   addDamage: (battleId: string, side: 'attacker' | 'defender', amount: number, isCrit: boolean, isDodged: boolean, playerName: string) => void
-  resolveTicksAndRounds: () => void
 
   launchHOIBattle: (attackerArmyId: string, defenderCountryCode: string, type?: BattleType) => { success: boolean; message: string; battleId?: string }
   processHOICombatTick: () => void
@@ -1369,12 +1368,6 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
   },
 
-  // ====== LEGACY TICK RESOLVER ======
-  resolveTicksAndRounds: () => {
-    // NOTE: processHOICombatTick, cyber, and military processing are called
-    // directly in App.tsx timer — do NOT call them here to avoid double-fire.
-    // Army training is handled by armyStore internally.
-  },
 
   // ====== PLAYER COMBAT ACTIONS ======
   playerAttack: (battleId, _forceSide) => {
