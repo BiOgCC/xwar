@@ -105,6 +105,7 @@ export function useGameLoop() {
       try { useCompanyStore.getState().processTick() } catch (e) { console.warn('[Economy] company:', e) }
       try { useRegionStore.getState().processOceanIncome() } catch (e) { console.warn('[Economy] ocean:', e) }
       try { useRegionStore.getState().processNavalPatrolIncome() } catch (e) { console.warn('[Economy] naval patrol:', e) }
+      try { useRegionStore.getState().processInfraOilTick() } catch (e) { console.warn('[Economy] infra oil:', e) }
       // ── Trade Route income (active = 100%, partial = 30%, disrupted = 0%) ──
       try {
         useTradeRouteStore.getState().tickDisruptions()     // clear expired disruptions first

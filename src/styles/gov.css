@@ -419,3 +419,331 @@
 .gov-content::-webkit-scrollbar-thumb:hover {
   background: rgba(34, 211, 138, 0.3);
 }
+
+/* ====== HERO HEADER ====== */
+
+.gov-hero {
+  position: relative;
+  padding: 18px 14px 14px;
+  background:
+    linear-gradient(180deg, rgba(120,60,20,0.25) 0%, rgba(8,12,18,0.95) 100%),
+    linear-gradient(135deg, rgba(180,100,40,0.12) 0%, transparent 60%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.gov-hero__flag {
+  flex-shrink: 0;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+
+.gov-hero__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.gov-hero__label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+
+.gov-hero__name {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.8px;
+  font-family: var(--font-display);
+  text-shadow: 0 1px 8px rgba(0,0,0,0.5);
+}
+
+/* ====== RANKINGS GRID ====== */
+
+.gov-rankings-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 6px;
+  margin-bottom: 2px;
+}
+
+.gov-rankings-header__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #e2e8f0;
+  font-family: var(--font-display);
+}
+
+.gov-rankings-header__arrow {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.gov-rankings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.gov-ranking-card {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 8px 8px 6px;
+  position: relative;
+}
+
+.gov-ranking-card__label {
+  font-size: 8px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gov-ranking-card__value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #e2e8f0;
+  font-family: var(--font-display);
+}
+
+.gov-ranking-card__value svg {
+  flex-shrink: 0;
+}
+
+.gov-ranking-card__rank {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 8px;
+  font-weight: 700;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 3px;
+  padding: 1px 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ====== DIPLOMACY SECTION ====== */
+
+.gov-diplomacy-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 6px;
+}
+
+.gov-diplomacy-header__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #e2e8f0;
+  font-family: var(--font-display);
+}
+
+.gov-diplomacy-header__info {
+  font-size: 10px;
+  color: #475569;
+  cursor: help;
+}
+
+.gov-diplomacy-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.gov-diplomacy-card {
+  border-radius: 8px;
+  padding: 10px;
+  border: 1px solid;
+  position: relative;
+}
+
+.gov-diplomacy-card--alliance {
+  background: rgba(34, 211, 138, 0.04);
+  border-color: rgba(34, 211, 138, 0.2);
+}
+
+.gov-diplomacy-card--enemy {
+  background: rgba(239, 68, 68, 0.04);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.gov-diplomacy-card__header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.gov-diplomacy-card__header--alliance {
+  color: #22d38a;
+}
+
+.gov-diplomacy-card__header--enemy {
+  color: #ef4444;
+}
+
+.gov-diplomacy-card__flags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.gov-diplomacy-card__stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.gov-diplomacy-card__stat {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.gov-diplomacy-card__stat--green {
+  color: #22d38a;
+}
+
+.gov-diplomacy-card__stat--amber {
+  color: #f59e0b;
+}
+
+.gov-diplomacy-card__stat--red {
+  color: #ef4444;
+}
+
+/* ====== ACTIVE WARS CARD ====== */
+
+.gov-active-wars {
+  background: rgba(34, 211, 138, 0.03);
+  border: 1px solid rgba(34, 211, 138, 0.12);
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 4px;
+}
+
+.gov-active-wars__header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #22d38a;
+  margin-bottom: 8px;
+}
+
+.gov-active-wars__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.gov-active-wars__pair {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  padding: 3px 4px;
+}
+
+.gov-active-wars__vs {
+  font-size: 7px;
+  color: #475569;
+  font-weight: 700;
+}
+
+/* ====== ACCOUNT STRIP ====== */
+
+.gov-account-strip {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 4px;
+}
+
+.gov-account-strip__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.gov-account-strip__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #e2e8f0;
+  font-family: var(--font-display);
+}
+
+.gov-account-strip__arrow {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.gov-account-strip__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gov-account-strip__value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 900;
+  color: #f59e0b;
+  font-family: var(--font-display);
+}
+
+.gov-account-strip__change {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #22d38a;
+  font-family: var(--font-display);
+}
+
+.gov-account-strip__bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.gov-account-strip__bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #3b82f6, #22d38a);
+  transition: width 0.3s;
+}

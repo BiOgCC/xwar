@@ -36,8 +36,8 @@ export function getBaseSkillStats(): PlayerCombatStats {
 }
 
 // ====== TYPES ======
-import type { BattleType, CombatLogEntry, BattleSide, BattleTick, BattleRound, TacticalOrder, OrderEffects, Battle } from '../types/battle.types'
-export type { BattleType, CombatLogEntry, BattleSide, BattleTick, BattleRound, TacticalOrder, OrderEffects, Battle }
+import type { BattleType, CombatLogEntry, BattleSide, BattleTick, BattleRound, TacticalOrder, OrderEffects, Battle, MercenaryContract } from '../types/battle.types'
+export type { BattleType, CombatLogEntry, BattleSide, BattleTick, BattleRound, TacticalOrder, OrderEffects, Battle, MercenaryContract }
 
 // ====== TACTICAL ORDERS ======
 export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; desc: string; effects: OrderEffects; color: string }> = {
@@ -105,6 +105,7 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     playerCrash: {},
     playerAdrenalinePeakAt: {},
     vengeanceBuff: { attacker: -1, defender: -1 },
+    mercenaryContracts: [],
   }
 }
 
@@ -137,6 +138,9 @@ export interface BattleState {
   warMotd: string
   setWarMotd: (motd: string) => void
 
+  // Mercenary contracts
+  createMercenaryContract: (battleId: string, side: 'attacker' | 'defender', ratePerHit: number, totalPool: number) => { success: boolean; message: string }
+
   // NPC test battles
   spawnNPCBattles: () => void
 }
@@ -145,6 +149,44 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   battles: {},
   warMotd: '',
   setWarMotd: (motd: string) => set({ warMotd: motd.substring(0, 200) }),
+
+  // ====== MERCENARY CONTRACTS ======
+  createMercenaryContract: (battleId, side, ratePerHit, totalPool) => {
+    const state = get()
+    const battle = state.battles[battleId]
+    if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
+    if (ratePerHit <= 0 || totalPool <= 0) return { success: false, message: 'Invalid amounts.' }
+
+    // Only president of the side's country can create
+    const countryCode = side === 'attacker' ? battle.attackerId : battle.defenderId
+    const gov = useGovernmentStore.getState().governments[countryCode]
+    const player = usePlayerStore.getState()
+    if (!gov || gov.president !== player.name) return { success: false, message: 'Only the president can fund mercenary contracts.' }
+
+    // Deduct from country treasury
+    const success = useWorldStore.getState().spendFromFund(countryCode, { money: totalPool })
+    if (!success) return { success: false, message: 'Not enough money in treasury.' }
+
+    const contract: MercenaryContract = {
+      id: `merc_${battleId}_${Date.now()}`,
+      side,
+      ratePerDamage: ratePerHit,
+      totalPool,
+      remaining: totalPool,
+      fundedBy: player.name,
+      countryCode,
+      createdAt: Date.now(),
+    }
+
+    set(s => ({
+      battles: { ...s.battles, [battleId]: {
+        ...s.battles[battleId],
+        mercenaryContracts: [...(s.battles[battleId].mercenaryContracts || []), contract],
+      }}
+    }))
+
+    return { success: true, message: `Mercenary contract funded: ${ratePerHit.toLocaleString()}/dmg, ${totalPool.toLocaleString()} pool` }
+  },
 
   // ====== NPC TEST BATTLES ======
   spawnNPCBattles: () => {
@@ -263,6 +305,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         playerCrash: {},
         playerAdrenalinePeakAt: {},
         vengeanceBuff: { attacker: -1, defender: -1 },
+        mercenaryContracts: [],
       }
 
       newBattles[battleId] = battle
@@ -386,6 +429,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       playerCrash: {},
       playerAdrenalinePeakAt: {},
       vengeanceBuff: { attacker: -1, defender: -1 },
+      mercenaryContracts: [],
     }
 
     // Mark divisions as in_combat
@@ -1388,40 +1432,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     let side: 'attacker' | 'defender'
 
     if (_forceSide) {
-      if (playerCountry === battle.attackerId && _forceSide !== 'attacker') {
-        return { damage: 0, isCrit: false, message: 'You can only support your own country!' }
-      } else if (playerCountry === battle.defenderId && _forceSide !== 'defender') {
-        return { damage: 0, isCrit: false, message: 'You can only support your own country!' }
-      } else if (playerCountry !== battle.attackerId && playerCountry !== battle.defenderId) {
-        // Foreigner
-        const world = useWorldStore.getState()
-        const myCountryObj = world.countries.find(c => c.code === playerCountry)
-        const attackerObj = world.countries.find(c => c.code === battle.attackerId)
-        const defenderObj = world.countries.find(c => c.code === battle.defenderId)
-
-        const isAlliedWithAttacker = myCountryObj?.empire && attackerObj?.empire && myCountryObj.empire === attackerObj.empire
-        const isAlliedWithDefender = myCountryObj?.empire && defenderObj?.empire && myCountryObj.empire === defenderObj.empire
-
-        if (_forceSide === 'attacker' && isAlliedWithDefender) {
-          return { damage: 0, isCrit: false, message: 'You are allied with the defender. You can only support your allies!' }
-        }
-        if (_forceSide === 'defender' && isAlliedWithAttacker) {
-          return { damage: 0, isCrit: false, message: 'You are allied with the attacker. You can only support your allies!' }
-        }
-
+      // Foreigners pay oil cost based on distance
+      if (playerCountry !== battle.attackerId && playerCountry !== battle.defenderId) {
         const opponentCountry = _forceSide === 'attacker' ? battle.defenderId : battle.attackerId
-        const isAtWar = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === opponentCountry) || (w.attacker === opponentCountry && w.defender === playerCountry)))
-        const isSupportingAlly = (_forceSide === 'attacker' && isAlliedWithAttacker) || (_forceSide === 'defender' && isAlliedWithDefender)
-        
         const distance = getCountryDistance(playerCountry, opponentCountry)
         let oilCost = getAttackOilCost(distance) / 10000
-        
-        if (!isSupportingAlly && !isAtWar) {
-          oilCost *= 2 // The user rule: If you are not at war, the cost is x2
-        }
-
         oilCost = Number(oilCost.toFixed(2))
-
         if (player.oil < oilCost) return { damage: 0, isCrit: false, message: `Not enough oil (${oilCost} required).` }
         player.spendOil(oilCost)
       }
@@ -1432,28 +1448,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       } else if (playerCountry === battle.defenderId) {
         side = 'defender'
       } else {
-        // Foreigner auto-detect
-        const world = useWorldStore.getState()
-        const atWarWithAttacker = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === battle.attackerId) || (w.attacker === battle.attackerId && w.defender === playerCountry)))
-        const atWarWithDefender = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === battle.defenderId) || (w.attacker === battle.defenderId && w.defender === playerCountry)))
-
-        if (atWarWithDefender && !atWarWithAttacker) {
-          side = 'attacker' // siding with attacker against defender
-          const distance = getCountryDistance(playerCountry, battle.defenderId)
-          const oilCost = Math.max(1, Math.floor(getAttackOilCost(distance) / 100))
-          if (player.oil < oilCost) return { damage: 0, isCrit: false, message: `Not enough oil (${oilCost} required for distance).` }
-          player.spendOil(oilCost)
-        } else if (atWarWithAttacker && !atWarWithDefender) {
-          side = 'defender' // siding with defender against attacker
-          const distance = getCountryDistance(playerCountry, battle.attackerId)
-          const oilCost = Math.max(1, Math.floor(getAttackOilCost(distance) / 100))
-          if (player.oil < oilCost) return { damage: 0, isCrit: false, message: `Not enough oil (${oilCost} required for distance).` }
-          player.spendOil(oilCost)
-        } else if (atWarWithAttacker && atWarWithDefender) {
-          return { damage: 0, isCrit: false, message: 'You are at war with both sides! Cannot auto-join.' }
-        } else {
-          return { damage: 0, isCrit: false, message: 'Your country is not in this battle nor at war with either side.' }
-        }
+        // Foreigner auto-detect: default to attacker side, pay oil cost
+        side = 'attacker'
+        const distance = getCountryDistance(playerCountry, battle.defenderId)
+        let oilCost = getAttackOilCost(distance) / 10000
+        oilCost = Number(oilCost.toFixed(2))
+        if (player.oil < oilCost) return { damage: 0, isCrit: false, message: `Not enough oil (${oilCost} required).` }
+        player.spendOil(oilCost)
       }
     }
 
@@ -1575,7 +1576,76 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       damage = Math.floor(damage * bonus.playerDmgMult)
     }
 
+    // 🏴 Military Unit Bonus: +5% base + 1% per member (capped at +20%)
+    let muBonusMsg = ''
+    try {
+      const { useMUStore } = require('./muStore')
+      const muBonus = useMUStore.getState().getMUDamageBonus()
+      if (muBonus > 1.0) {
+        damage = Math.floor(damage * muBonus)
+        muBonusMsg = ` 🏴 MU +${Math.round((muBonus - 1) * 100)}%`
+        // Track damage for MU rankings
+        useMUStore.getState().recordDamage(player.name, damage)
+      }
+    } catch (e) { /* MU store not loaded */ }
+
+    // ✈️ Infrastructure Bonus: +20% damage when using jet/warship/submarine equipment
+    // Jets require airport; warships/submarines require port
+    let infraBonusMsg = ''
+    try {
+      const equipped = useInventoryStore.getState().getEquipped()
+      const weaponItem = equipped.find(e => e.slot === 'weapon' || e.slot === 'vehicle')
+      const subtype = weaponItem?.weaponSubtype
+      if (subtype === 'jet' || subtype === 'warship' || subtype === 'submarine') {
+        // Check if battle region has the required infrastructure
+        const allRegions = useRegionStore.getState().regions
+        const battleRegion = battle.regionId
+          ? allRegions.find(r => r.id === battle.regionId) ?? null
+          : null
+        // Also check player's own country regions for active infra
+        const playerRegions = allRegions.filter(r => r.controlledBy === playerCountry)
+        const hasAirport = subtype === 'jet' && (
+          (battleRegion && battleRegion.airportLevel > 0 && battleRegion.infraEnabled?.airportLevel !== false) ||
+          playerRegions.some(r => r.airportLevel > 0 && r.infraEnabled?.airportLevel !== false)
+        )
+        const hasPort = (subtype === 'warship' || subtype === 'submarine') && (
+          (battleRegion && battleRegion.portLevel > 0 && battleRegion.infraEnabled?.portLevel !== false) ||
+          playerRegions.some(r => r.portLevel > 0 && r.infraEnabled?.portLevel !== false)
+        )
+        if (hasAirport || hasPort) {
+          damage = Math.floor(damage * 1.20)
+          const icon = subtype === 'jet' ? '✈️' : '🚢'
+          infraBonusMsg = ` ${icon} INFRA +20%`
+        }
+      }
+    } catch (e) { /* inventory not loaded */ }
+
     get().addDamage(battleId, side, damage, isCrit || precisionSurgeCrit, false, player.name)
+
+    // ── Mercenary Contract Payout (instant, based on damage dealt) ──
+    let mercPayMsg = ''
+    try {
+      const freshB = get().battles[battleId]
+      const contracts = freshB?.mercenaryContracts || []
+      for (const contract of contracts) {
+        if (contract.side === side && contract.remaining > 0) {
+          const payout = Math.min(Math.floor(damage * contract.ratePerDamage), contract.remaining)
+          if (payout <= 0) continue
+          player.earnMoney(payout)
+          // Decrement pool
+          set(s => {
+            const b = s.battles[battleId]
+            if (!b) return s
+            const updatedContracts = b.mercenaryContracts.map(c =>
+              c.id === contract.id ? { ...c, remaining: c.remaining - payout } : c
+            )
+            return { battles: { ...s.battles, [battleId]: { ...b, mercenaryContracts: updatedContracts } } }
+          })
+          mercPayMsg += ` [💰+${payout.toLocaleString()}]`
+          break // Only one contract payout per hit
+        }
+      }
+    } catch (e) { console.warn('[MercContract] Payout error', e) }
 
     // ── Hero buff only for YOUR side in YOUR battle ──
     usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
@@ -1617,7 +1687,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       damage,
       isCrit: isCrit || precisionSurgeCrit,
       isDodged: isDodge,
-      message: (isDodge ? `🎯 FREE HIT! ${damage} damage (no stamina cost)!` : isCrit || precisionSurgeCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`) + surgeMsg + dropMsg,
+      message: (isDodge ? `🎯 FREE HIT! ${damage} damage (no stamina cost)!` : isCrit || precisionSurgeCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`) + surgeMsg + muBonusMsg + infraBonusMsg + dropMsg + mercPayMsg,
     }
   },
 

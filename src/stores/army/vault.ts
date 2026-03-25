@@ -265,5 +265,80 @@ export function createVaultSlice(
 
       return { success: true, message: `Distributed ${totalDistributed} ${resource} to ${army.members.length} members ($${perMember} each).` }
     },
+
+    donateVaultToCountry: (armyId: string, resource: 'money' | 'oil' | 'materialX', amount: number) => {
+      const player = usePlayerStore.getState()
+      const state = get()
+      const army = state.armies[armyId]
+      if (!army) return { success: false, message: 'Army not found.' }
+
+      const member = army.members.find(m => m.playerId === player.name)
+      const isCommander = army.commanderId === player.name
+      const hasControl = isCommander || (member && ['colonel', 'general'].includes(member.role))
+      if (!hasControl)
+        return { success: false, message: 'Only Commander/Colonel can donate vault resources to country fund.' }
+
+      if (amount <= 0) return { success: false, message: 'Invalid amount.' }
+      if (army.vault[resource] < amount)
+        return { success: false, message: `Vault has ${army.vault[resource]} ${resource}, need ${amount}.` }
+
+      // Deduct from vault
+      set(s => ({
+        armies: {
+          ...s.armies,
+          [armyId]: {
+            ...s.armies[armyId],
+            vault: { ...s.armies[armyId].vault, [resource]: s.armies[armyId].vault[resource] - amount },
+          },
+        },
+      }))
+
+      // Add to country fund
+      const { useWorldStore } = require('../worldStore')
+      const fundKey = resource === 'money' ? 'money' : resource
+      useWorldStore.getState().addToFund(army.countryCode, fundKey, amount)
+
+      return { success: true, message: `Donated ${amount.toLocaleString()} ${resource} from vault to ${army.countryCode} national fund!` }
+    },
+
+    withdrawFromCountryToVault: (armyId: string, resource: 'money' | 'oil' | 'materialX', amount: number) => {
+      const player = usePlayerStore.getState()
+      const state = get()
+      const army = state.armies[armyId]
+      if (!army) return { success: false, message: 'Army not found.' }
+
+      // Must be country president AND in the army
+      const { useGovernmentStore } = require('../governmentStore')
+      const gov = useGovernmentStore.getState().governments[army.countryCode]
+      if (!gov || gov.president !== player.name)
+        return { success: false, message: 'Only the president can transfer from country fund to vault.' }
+
+      if (amount <= 0) return { success: false, message: 'Invalid amount.' }
+
+      // Check country fund balance
+      const { useWorldStore } = require('../worldStore')
+      const country = useWorldStore.getState().getCountry(army.countryCode)
+      if (!country) return { success: false, message: 'Country not found.' }
+
+      const fundKey = resource === 'money' ? 'money' : resource
+      if (country.fund[fundKey] < amount)
+        return { success: false, message: `National fund has ${country.fund[fundKey]} ${resource}, need ${amount}.` }
+
+      // Deduct from country fund
+      useWorldStore.getState().spendFromFund(army.countryCode, { [fundKey]: amount })
+
+      // Add to vault
+      set(s => ({
+        armies: {
+          ...s.armies,
+          [armyId]: {
+            ...s.armies[armyId],
+            vault: { ...s.armies[armyId].vault, [resource]: s.armies[armyId].vault[resource] + amount },
+          },
+        },
+      }))
+
+      return { success: true, message: `Transferred ${amount.toLocaleString()} ${resource} from ${army.countryCode} fund to vault!` }
+    },
   }
 }

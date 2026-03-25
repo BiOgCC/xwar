@@ -502,6 +502,8 @@ export interface ArmyState {
   sponsorDivision: (armyId: string, divisionType: DivisionType, targetPlayer: string) => { success: boolean; message: string }
   buyArmyBuff: (armyId: string, stat: ArmyBuff['stat'], percentage: number, durationMs: number, cost: number) => { success: boolean; message: string }
   distributeVaultToMembers: (armyId: string, resource: 'money' | 'oil' | 'materialX', amount: number) => { success: boolean; message: string }
+  donateVaultToCountry: (armyId: string, resource: 'money' | 'oil' | 'materialX', amount: number) => { success: boolean; message: string }
+  withdrawFromCountryToVault: (armyId: string, resource: 'money' | 'oil' | 'materialX', amount: number) => { success: boolean; message: string }
 
   // Deployment & Aura
   deployArmyToBattle: (armyId: string, battleId: string) => { success: boolean; message: string }

@@ -8,7 +8,7 @@ import {
   Shield,
   Monitor,
   Medal,
-  CircleDollarSign,
+  Zap,
   BarChart2,
   Backpack,
   Package,
@@ -50,6 +50,16 @@ export default function ActionBar() {
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Listen for keyboard shortcut events (keys 1-4)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const menuId = (e as CustomEvent).detail as string
+      setOpenMenu(prev => prev === menuId ? null : menuId)
+    }
+    window.addEventListener('xwar-actionbar-toggle', handler)
+    return () => window.removeEventListener('xwar-actionbar-toggle', handler)
   }, [])
 
   const toggle = (id: string) => setOpenMenu(openMenu === id ? null : id)
@@ -361,16 +371,16 @@ export default function ActionBar() {
 
       <div className="action-bar__sep" />
 
-      {/* ═══ BOUNTY ═══ */}
+      {/* ═══ LEY LINES ═══ */}
       <div className="action-bar__slot">
         <button
-          className={`action-bar__btn${activePanel === 'bounty' ? ' action-bar__btn--active' : ''}`}
-          onClick={() => { useUIStore.getState().setBountyDefaultTab('npc_hunts'); useUIStore.getState().setActivePanel('bounty') }}
-          title="Bounty"
+          className={`action-bar__btn${activePanel === 'ley_lines' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => togglePanel('ley_lines')}
+          title="Ley Lines"
         >
-          <span className="action-bar__icon"><CircleDollarSign {...ICON_PROPS} /></span>
-          <span className="action-bar__label">BOUNTY</span>
-          <span className="action-bar__status action-bar__status--neutral">HUNT</span>
+          <span className="action-bar__icon"><Zap {...ICON_PROPS} /></span>
+          <span className="action-bar__label">LEY</span>
+          <span className="action-bar__status action-bar__status--neutral">LINES</span>
         </button>
       </div>
 

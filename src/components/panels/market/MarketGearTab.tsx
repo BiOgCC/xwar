@@ -1,20 +1,24 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { getStatIcon } from '../../shared/StatIcon'
 import { usePlayerStore } from '../../../stores/playerStore'
-import { useInventoryStore, type EquipItem, TIER_COLORS, TIER_LABELS, TIER_ORDER, SLOT_ICONS, getItemImagePath } from '../../../stores/inventoryStore'
+import { useInventoryStore, type EquipItem, TIER_COLORS, TIER_LABELS, TIER_ORDER, SLOT_ICONS, getItemImagePath, ARMOR_SLOTS } from '../../../stores/inventoryStore'
 import { useMarketStore } from '../../../stores/market'
 import type { EquipTier, EquipSlot } from '../../../stores/inventoryStore'
 
-const RARITY_COLOR: Record<string, string> = {
-  red: '#ef4444', yellow: '#eab308', blue: '#3b82f6',
-  purple: '#a855f7', green: '#10b981', grey: '#64748b',
-}
-const TIER_RARITY: Record<string, string> = {
-  t1: 'grey', t2: 'green', t3: 'blue', t4: 'purple', t5: 'yellow', t6: 'red', t7: 'red'
-}
+/* ── Tier pricing defaults ── */
 const TIER_SELL_PRICE: Record<string, number> = {
   t1: 1200, t2: 5000, t3: 25000, t4: 90000, t5: 280000, t6: 830000, t7: 2500000
 }
+
+/* ── Slot display config (order matches reference) ── */
+const SLOT_CATEGORIES: { slot: EquipSlot; label: string }[] = [
+  { slot: 'weapon', label: 'Weapons' },
+  { slot: 'helmet', label: 'Helmets' },
+  { slot: 'chest', label: 'Chests' },
+  { slot: 'gloves', label: 'Gloves' },
+  { slot: 'legs', label: 'Pants' },
+  { slot: 'boots', label: 'Boots' },
+]
 
 interface MarketGearTabProps {
   showFb: (msg: string, ok?: boolean) => void
@@ -25,94 +29,294 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
   const inventory = useInventoryStore()
   const market = useMarketStore()
 
-  const [equipPrice, setEquipPrice] = useState<Record<string, number>>({})
-  const [equipSlotFilter, setEquipSlotFilter] = useState<string>('all')
-  const [equipTierFilter, setEquipTierFilter] = useState<string>('all')
   const [sellPopupItem, setSellPopupItem] = useState<EquipItem | null>(null)
   const [sellPopupPrice, setSellPopupPrice] = useState(0)
+  const [showSellPicker, setShowSellPicker] = useState(false)
+  const [detailOrder, setDetailOrder] = useState<any | null>(null)
+
+  /* ── Group listings by slot+tier ── */
+  const listings = market.getEquipmentListings()
+  const grouped = useMemo(() => {
+    const map: Record<string, typeof listings> = {}
+    for (const o of listings) {
+      if (!o.equipSnapshot) continue
+      const key = `${o.equipSnapshot.slot}:${o.equipSnapshot.tier}`
+      if (!map[key]) map[key] = []
+      map[key].push(o)
+    }
+    return map
+  }, [listings])
+
+  /* Helper: cheapest price for slot+tier */
+  const cheapest = (slot: string, tier: string) => {
+    const key = `${slot}:${tier}`
+    const list = grouped[key]
+    if (!list || list.length === 0) return null
+    return list.reduce((min, o) => o.totalPrice < min.totalPrice ? o : min, list[0])
+  }
+
+  const count = (slot: string, tier: string) => {
+    const key = `${slot}:${tier}`
+    return grouped[key]?.length ?? 0
+  }
+
+  /* Format price compactly */
+  const fmtPrice = (p: number) => {
+    if (p >= 1_000_000) return `${(p / 1_000_000).toFixed(1)}M`
+    if (p >= 1000) return `${(p / 1000).toFixed(1)}k`
+    return p.toString()
+  }
 
   return (
     <>
-      {/* YOUR EQUIPMENT — click to list */}
-      <div className="market-section-title">YOUR EQUIPMENT — CLICK TO LIST</div>
-      {inventory.items.filter(i => i.location === 'inventory').length === 0
-        ? <div className="market-empty">No equipment in inventory.</div>
-        : Object.entries(
-            inventory.items.filter(i => i.location === 'inventory').reduce<Record<string, EquipItem[]>>((acc, item) => {
-              const key = item.slot; acc[key] = acc[key] || []; acc[key].push(item); return acc
-            }, {})
-          ).map(([slot, items]) => (
-            <div key={slot} style={{ marginBottom: 12 }}>
-              <div className="market-resource-category__title">
-                {SLOT_ICONS[slot as EquipSlot]} {slot}
+      {/* Tax notice */}
+      <div className="gear-mkt-notice">
+        <span className="gear-mkt-notice__icon">ℹ️</span>
+        <div>
+          <strong>Taxed price</strong><br />
+          All prices displayed include a 1% market tax from your country{' '}
+          <img
+            src={`https://flagcdn.com/16x12/${player.countryCode?.toLowerCase() || 'us'}.png`}
+            alt=""
+            style={{ width: 14, height: 10, verticalAlign: 'middle', margin: '0 2px', borderRadius: 1 }}
+          />{' '}
+          {player.country || 'United States'}.
+        </div>
+      </div>
+
+      {/* Category sections */}
+      {SLOT_CATEGORIES.map(({ slot, label }) => (
+        <div key={slot} className="gear-mkt-category">
+          <div className="gear-mkt-category__title">{label}</div>
+          <div className="gear-mkt-row">
+            {TIER_ORDER.map(tier => {
+              const tierColor = TIER_COLORS[tier]
+              const imgUrl = getItemImagePath(tier, slot, slot === 'weapon' ? 'weapon' : 'armor', undefined, false)
+              const cheapestOrder = cheapest(slot, tier)
+              const qty = count(slot, tier)
+              return (
+                <div
+                  key={tier}
+                  className="gear-mkt-tile"
+                  style={{ '--tile-color': tierColor } as React.CSSProperties}
+                  onClick={() => {
+                    if (cheapestOrder) {
+                      setDetailOrder(cheapestOrder)
+                    }
+                  }}
+                  title={`${TIER_LABELS[tier]} ${label} — ${qty} listed`}
+                >
+                  <div className="gear-mkt-tile__img">
+                    {imgUrl ? (
+                      <img src={imgUrl} alt={`${tier} ${slot}`} onError={e => { e.currentTarget.style.display = 'none' }} />
+                    ) : (
+                      <span className="gear-mkt-tile__img-emoji">{SLOT_ICONS[slot]}</span>
+                    )}
+                  </div>
+                  <div className="gear-mkt-tile__price">
+                    <span style={{ fontSize: '8px', color: '#fbbf24' }}>💰</span>
+                    <span className="gear-mkt-tile__price-val">
+                      {cheapestOrder ? fmtPrice(cheapestOrder.totalPrice) : '—'}
+                    </span>
+                  </div>
+                  <div className={`gear-mkt-tile__qty ${qty > 0 ? 'gear-mkt-tile__qty--available' : 'gear-mkt-tile__qty--zero'}`}>
+                    {qty}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* + New item offer button */}
+      <button className="gear-mkt-offer-btn" onClick={() => setShowSellPicker(true)}>
+        + New item offer
+      </button>
+
+      {/* Bottom nav (pagination hint) */}
+      <div className="gear-mkt-nav">
+        <button className="gear-mkt-nav__btn" title="Previous">‹</button>
+        <button className="gear-mkt-nav__btn" title="Close">✕</button>
+      </div>
+
+      {/* ══════ DETAIL / BUY POPUP ══════ */}
+      {detailOrder && (() => {
+        const order = detailOrder
+        const snap = order.equipSnapshot
+        if (!snap) return null
+        const tierColor = TIER_COLORS[snap.tier as EquipTier] || '#94a3b8'
+        const tierLabel = TIER_LABELS[snap.tier as EquipTier] || snap.tier
+        const imgUrl = getItemImagePath(snap.tier as any, snap.slot as any, snap.category as any, snap.weaponSubtype as any, snap.superforged)
+        const isMine = order.playerId === player.name
+        const canBuy = !isMine && player.money >= order.totalPrice
+        const dur = Number(snap.durability ?? 100)
+        const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
+
+        const statEntries: { label: string; val: string; color: string }[] = []
+        if (snap.stats.damage) statEntries.push({ label: 'DMG', val: `${snap.stats.damage}`, color: '#f87171' })
+        if (snap.stats.critRate) statEntries.push({ label: 'CRIT', val: `${snap.stats.critRate}%`, color: '#fb923c' })
+        if (snap.stats.critDamage) statEntries.push({ label: 'C.DMG', val: `${snap.stats.critDamage}%`, color: '#fb923c' })
+        if (snap.stats.armor) statEntries.push({ label: 'ARM', val: `${snap.stats.armor}%`, color: '#94a3b8' })
+        if (snap.stats.dodge) statEntries.push({ label: 'EVA', val: `${snap.stats.dodge}%`, color: '#34d399' })
+        if (snap.stats.precision) statEntries.push({ label: 'ACC', val: `${snap.stats.precision}%`, color: '#38bdf8' })
+
+        // All listings for same slot+tier
+        const slotTierListings = grouped[`${snap.slot}:${snap.tier}`] || []
+        const currentIdx = slotTierListings.findIndex((o: any) => o.id === order.id)
+
+        return (
+          <div className="gear-mkt-detail-overlay" onClick={() => setDetailOrder(null)}>
+            <div className="inv-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '340px' }}>
+              {/* Hero image */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0 12px', marginBottom: '12px', background: `radial-gradient(ellipse at center, ${tierColor}10 0%, transparent 70%)` }}>
+                {imgUrl ? (
+                  <img src={imgUrl} alt={snap.name} style={{ width: '72px', height: '72px', objectFit: 'contain', filter: `drop-shadow(0 4px 16px ${tierColor}40)`, marginBottom: '8px' }} onError={e => { e.currentTarget.style.display = 'none' }} />
+                ) : (
+                  <div style={{ fontSize: '48px', marginBottom: '8px', opacity: 0.5 }}>{SLOT_ICONS[snap.slot as EquipSlot]}</div>
+                )}
+                <div style={{ fontSize: '14px', fontWeight: 800, fontFamily: 'var(--font-display)', color: tierColor, letterSpacing: '0.08em', textShadow: `0 0 12px ${tierColor}50` }}>{snap.name}</div>
+                <div style={{ fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)', color: '#64748b', letterSpacing: '0.1em', marginTop: '2px' }}>{tierLabel} • {snap.slot.toUpperCase()}</div>
               </div>
-              <div className="ptab-gear-grid">
-                {items.sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)).map(item => {
-                  const tierColor = TIER_COLORS[item.tier] || '#94a3b8'
-                  const tierLabel = TIER_LABELS[item.tier] || item.tier.toUpperCase()
-                  const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
-                  const dur = Number(item.durability ?? 100)
-                  const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
-                  const statEntries: { label: string; val: string; color: string }[] = []
-                  if (item.stats.damage) statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
-                  if (item.stats.critRate) statEntries.push({ label: 'CRIT', val: `${item.stats.critRate}%`, color: '#fb923c' })
-                  if (item.stats.critDamage) statEntries.push({ label: 'C.DMG', val: `${item.stats.critDamage}%`, color: '#fb923c' })
-                  if (item.stats.armor) statEntries.push({ label: 'ARM', val: `${item.stats.armor}%`, color: '#94a3b8' })
-                  if (item.stats.dodge) statEntries.push({ label: 'EVA', val: `${item.stats.dodge}%`, color: '#34d399' })
-                  if (item.stats.precision) statEntries.push({ label: 'ACC', val: `${item.stats.precision}%`, color: '#38bdf8' })
-                  return (
-                    <div
-                      key={item.id}
-                      className="ptab-gear-card"
-                      style={{
-                        borderColor: item.equipped ? 'rgba(132,204,22,0.4)' : `${tierColor}30`,
-                        '--card-tier-color': tierColor,
-                        boxShadow: item.equipped ? '0 0 8px rgba(132,204,22,0.15)' : undefined,
-                        cursor: item.equipped ? 'not-allowed' : 'pointer',
-                      } as React.CSSProperties}
+
+              {/* Stats */}
+              <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '10px 12px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                {statEntries.map(s => (
+                  <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+                    <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>{getStatIcon(s.label, s.color, 12)}{s.label}</span>
+                    <span style={{ color: s.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{s.val}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)', borderTop: '1px solid rgba(255,255,255,0.04)', marginTop: '4px', paddingTop: '6px' }}>
+                  <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>DURABILITY</span>
+                  <span style={{ color: durColor, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{dur.toFixed(0)}%</span>
+                </div>
+              </div>
+
+              {/* Price + seller + action */}
+              <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                <div style={{ fontSize: '20px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#fbbf24', marginBottom: '2px' }}>${order.totalPrice.toLocaleString()}</div>
+                <div style={{ fontSize: '9px', color: '#475569' }}>by {order.playerId}</div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <button onClick={async () => {
+                  if (isMine) { const r = await market.cancelOrder(order.id); showFb(r.message, r.success) }
+                  else { const r = await market.buyEquipment(order.id); showFb(r.message, r.success) }
+                  market.fetchListings()
+                  setDetailOrder(null)
+                }} style={{
+                  width: '100%', padding: '12px', fontSize: '12px', fontWeight: 900,
+                  fontFamily: 'var(--font-display)', letterSpacing: '1.5px',
+                  background: isMine ? 'rgba(239,68,68,0.12)' : canBuy ? 'linear-gradient(135deg, rgba(34,211,138,0.2), rgba(16,185,129,0.15))' : 'rgba(100,116,139,0.06)',
+                  border: `2px solid ${isMine ? 'rgba(239,68,68,0.5)' : canBuy ? 'rgba(34,211,138,0.5)' : 'rgba(100,116,139,0.2)'}`,
+                  borderRadius: '6px',
+                  color: isMine ? '#ef4444' : canBuy ? '#22d38a' : '#475569',
+                  cursor: isMine || canBuy ? 'pointer' : 'not-allowed',
+                  boxShadow: canBuy ? '0 0 16px rgba(34,211,138,0.2)' : undefined,
+                }}>
+                  {isMine ? '✕ DELIST' : canBuy ? '💰 BUY' : '⛔ INSUFFICIENT FUNDS'}
+                </button>
+
+                {/* Navigate between listings of same slot+tier */}
+                {slotTierListings.length > 1 && (
+                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                    <button
                       onClick={() => {
-                        if (!item.equipped) {
-                          setSellPopupItem(item)
-                          setSellPopupPrice(equipPrice[item.id] || TIER_SELL_PRICE[item.tier])
-                        }
+                        const prev = currentIdx > 0 ? currentIdx - 1 : slotTierListings.length - 1
+                        setDetailOrder(slotTierListings[prev])
                       }}
-                      title={item.equipped ? `${item.name} (EQUIPPED)` : `Click to list ${item.name}`}
-                    >
-                      {item.equipped && <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '7px', fontWeight: 900, color: '#84cc16', letterSpacing: '0.08em' }}>EQ</div>}
-                      <div className="ptab-gear-card__top">
-                        <span className="ptab-gear-card__slot">{item.slot.toUpperCase()}</span>
-                        <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
-                      </div>
-                      <div className="ptab-gear-card__img-wrap">
-                        {imgUrl
-                          ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} />
-                          : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>{SLOT_ICONS[item.slot]}</div>}
-                      </div>
-                      {statEntries.length > 0 && (
-                        <div className="ptab-gear-card__stats">
-                          {statEntries.map(s => (
-                            <div key={s.label} className="ptab-gear-stat">
-                              <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
-                              <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div className="ptab-gear-card__footer">
-                        <div className="ptab-gear-card__dur-bar">
-                          <div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} />
-                        </div>
-                        <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
-                      </div>
-                    </div>
-                  )
-                })}
+                      style={{ padding: '4px 12px', fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-display)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '3px', color: '#94a3b8', cursor: 'pointer' }}
+                    >‹ Prev</button>
+                    <span style={{ fontSize: '9px', color: '#475569', padding: '4px 8px', fontFamily: 'var(--font-display)' }}>{currentIdx + 1} / {slotTierListings.length}</span>
+                    <button
+                      onClick={() => {
+                        const next = currentIdx < slotTierListings.length - 1 ? currentIdx + 1 : 0
+                        setDetailOrder(slotTierListings[next])
+                      }}
+                      style={{ padding: '4px 12px', fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-display)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '3px', color: '#94a3b8', cursor: 'pointer' }}
+                    >Next ›</button>
+                  </div>
+                )}
+
+                <button onClick={() => setDetailOrder(null)} style={{
+                  width: '100%', padding: '6px', fontSize: '9px', fontWeight: 600,
+                  fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
+                  background: 'transparent', color: '#475569',
+                  border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', cursor: 'pointer',
+                }}>CLOSE</button>
               </div>
             </div>
-          ))
-      }
+          </div>
+        )
+      })()}
 
-      {/* SELL POPUP MODAL */}
+      {/* ══════ SELL PICKER POPUP ══════ */}
+      {showSellPicker && (
+        <div className="gear-mkt-detail-overlay" onClick={() => setShowSellPicker(false)}>
+          <div className="inv-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '380px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#e2e8f0', letterSpacing: '0.08em' }}>SELECT ITEM TO SELL</div>
+              <button onClick={() => setShowSellPicker(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+            </div>
+
+            {inventory.items.filter(i => i.location === 'inventory').length === 0 ? (
+              <div className="market-empty">No equipment in inventory.</div>
+            ) : (
+              <div className="gear-mkt-inv-picker">
+                {Object.entries(
+                  inventory.items.filter(i => i.location === 'inventory').reduce<Record<string, EquipItem[]>>((acc, item) => {
+                    const key = item.slot; acc[key] = acc[key] || []; acc[key].push(item); return acc
+                  }, {})
+                ).map(([slot, items]) => (
+                  <div key={slot}>
+                    <div className="gear-mkt-inv-slot-title">{SLOT_ICONS[slot as EquipSlot]} {slot}</div>
+                    <div className="gear-mkt-inv-row">
+                      {items.sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)).map(item => {
+                        const tierColor = TIER_COLORS[item.tier] || '#94a3b8'
+                        const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
+                        return (
+                          <div
+                            key={item.id}
+                            className="gear-mkt-tile"
+                            style={{
+                              '--tile-color': tierColor,
+                              cursor: item.equipped ? 'not-allowed' : 'pointer',
+                              opacity: item.equipped ? 0.4 : 1,
+                            } as React.CSSProperties}
+                            onClick={() => {
+                              if (!item.equipped) {
+                                setShowSellPicker(false)
+                                setSellPopupItem(item)
+                                setSellPopupPrice(TIER_SELL_PRICE[item.tier])
+                              }
+                            }}
+                            title={item.equipped ? `${item.name} (EQUIPPED)` : `Sell ${item.name}`}
+                          >
+                            {item.equipped && <div style={{ position: 'absolute', top: '3px', right: '3px', fontSize: '6px', fontWeight: 900, color: '#84cc16', zIndex: 2, letterSpacing: '0.08em' }}>EQ</div>}
+                            <div className="gear-mkt-tile__img">
+                              {imgUrl ? (
+                                <img src={imgUrl} alt={item.name} onError={e => { e.currentTarget.style.display = 'none' }} />
+                              ) : (
+                                <span className="gear-mkt-tile__img-emoji">{SLOT_ICONS[item.slot]}</span>
+                              )}
+                            </div>
+                            <div className="gear-mkt-tile__price">
+                              <span className="gear-mkt-tile__price-val" style={{ color: tierColor, fontSize: '7px' }}>{TIER_LABELS[item.tier]?.split(' ')[0]}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════ SELL POPUP MODAL (set price) ══════ */}
       {sellPopupItem && (() => {
         const item = sellPopupItem
         const tierColor = TIER_COLORS[item.tier] || '#94a3b8'
@@ -121,8 +325,7 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
         const dur = Number(item.durability ?? 100)
         const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            onClick={() => setSellPopupItem(null)}>
+          <div className="gear-mkt-detail-overlay" onClick={() => setSellPopupItem(null)}>
             <div className="inv-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '340px' }}>
               {/* Hero image */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0 12px', marginBottom: '12px', background: `radial-gradient(ellipse at center, ${tierColor}10 0%, transparent 70%)` }}>
@@ -133,27 +336,6 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
                 )}
                 <div style={{ fontSize: '14px', fontWeight: 800, fontFamily: 'var(--font-display)', color: tierColor, letterSpacing: '0.08em', textShadow: `0 0 12px ${tierColor}50` }}>{item.name}</div>
                 <div style={{ fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)', color: '#64748b', letterSpacing: '0.1em', marginTop: '2px' }}>{tierLabel} • {item.slot.toUpperCase()}</div>
-              </div>
-
-              {/* Stats */}
-              <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '10px 12px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                {[
-                  item.stats.damage && { label: 'DAMAGE', val: `${item.stats.damage}`, color: '#f87171' },
-                  item.stats.critRate && { label: 'CRIT RATE', val: `${item.stats.critRate}%`, color: '#fb923c' },
-                  item.stats.critDamage && { label: 'CRIT DMG', val: `+${item.stats.critDamage}%`, color: '#fb923c' },
-                  item.stats.armor && { label: 'ARMOR', val: `+${item.stats.armor}%`, color: '#94a3b8' },
-                  item.stats.dodge && { label: 'EVASION', val: `+${item.stats.dodge}%`, color: '#34d399' },
-                  item.stats.precision && { label: 'ACCURACY', val: `+${item.stats.precision}%`, color: '#38bdf8' },
-                ].filter(Boolean).map((s: any) => (
-                  <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-                    <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>{getStatIcon(s.label, s.color, 12)}{s.label}</span>
-                    <span style={{ color: s.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{s.val}</span>
-                  </div>
-                ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)', borderTop: '1px solid rgba(255,255,255,0.04)', marginTop: '4px', paddingTop: '6px' }}>
-                  <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>DURABILITY</span>
-                  <span style={{ color: durColor, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{dur.toFixed(0)}%</span>
-                </div>
               </div>
 
               {/* Price input */}
@@ -183,7 +365,6 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
               {/* Action buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <button onClick={async () => {
-                  setEquipPrice(p => ({ ...p, [item.id]: sellPopupPrice }))
                   const r = await market.placeEquipmentSellOrder(item.id, sellPopupPrice)
                   showFb(r.message, r.success)
                   if (r.success) { setSellPopupItem(null); market.fetchListings() }
@@ -206,117 +387,6 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
               </div>
             </div>
           </div>
-        )
-      })()}
-
-      {/* EQUIPMENT MARKETPLACE */}
-      <div className="market-section-title">⚔️ EQUIPMENT MARKETPLACE</div>
-
-      {/* Slot filter */}
-      <div className="market-filter-bar">
-        {['all', 'weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots'].map(s => (
-          <button key={s} onClick={() => setEquipSlotFilter(s)}
-            className={`market-filter-btn ${equipSlotFilter === s ? 'market-filter-btn--active' : ''}`}
-            style={equipSlotFilter === s ? { borderColor: '#3b82f6', background: 'rgba(59,130,246,0.12)', color: '#3b82f6' } : undefined}
-          >{s === 'all' ? '🔹 All' : `${SLOT_ICONS[s as EquipSlot] || ''} ${s}`}</button>
-        ))}
-      </div>
-
-      {/* Tier filter */}
-      <div className="market-filter-bar" style={{ marginBottom: 12 }}>
-        {['all', ...TIER_ORDER].map(t => {
-          const c = RARITY_COLOR[TIER_RARITY[t as EquipTier] || 'blue']
-          const active = equipTierFilter === t
-          return (
-            <button key={t} onClick={() => setEquipTierFilter(t)}
-              className={`market-filter-btn ${active ? 'market-filter-btn--active' : ''}`}
-              style={active ? { borderColor: c, background: `${c}18`, color: c } : undefined}
-            >{t === 'all' ? '🔹 All Tiers' : TIER_LABELS[t as EquipTier]}</button>
-          )
-        })}
-      </div>
-
-      {(() => {
-        let listings = market.getEquipmentListings()
-        if (equipSlotFilter !== 'all') listings = listings.filter(o => o.equipSnapshot?.slot === equipSlotFilter)
-        if (equipTierFilter !== 'all') listings = listings.filter(o => o.equipSnapshot?.tier === equipTierFilter)
-        const count = market.getEquipmentListings().length
-        if (count === 0) return <div className="market-empty">No equipment listed. Be the first to sell gear!</div>
-        if (listings.length === 0) return <div className="market-empty">No listings match filters ({count} total listings)</div>
-        return (
-          <>
-          <div className="market-filter-count">Showing {listings.length} of {count} listings</div>
-          <div className="ptab-gear-grid">
-            {listings.map(order => {
-              if (!order.equipSnapshot) return null
-              const snap = order.equipSnapshot
-              const tierColor = TIER_COLORS[snap.tier as EquipTier] || '#94a3b8'
-              const tierLabel = TIER_LABELS[snap.tier as EquipTier] || snap.tier
-              const imgUrl = getItemImagePath(snap.tier as any, snap.slot as any, snap.category as any, snap.weaponSubtype as any, snap.superforged)
-              const isMine = order.playerId === player.name
-              const canBuy = !isMine && player.money >= order.totalPrice
-              const dur = Number(snap.durability ?? 100)
-              const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
-              const statEntries: { label: string; val: string; color: string }[] = []
-              if (snap.stats.damage) statEntries.push({ label: 'DMG', val: `${snap.stats.damage}`, color: '#f87171' })
-              if (snap.stats.critRate) statEntries.push({ label: 'CRIT', val: `${snap.stats.critRate}%`, color: '#fb923c' })
-              if (snap.stats.critDamage) statEntries.push({ label: 'C.DMG', val: `${snap.stats.critDamage}%`, color: '#fb923c' })
-              if (snap.stats.armor) statEntries.push({ label: 'ARM', val: `${snap.stats.armor}%`, color: '#94a3b8' })
-              if (snap.stats.dodge) statEntries.push({ label: 'EVA', val: `${snap.stats.dodge}%`, color: '#34d399' })
-              if (snap.stats.precision) statEntries.push({ label: 'ACC', val: `${snap.stats.precision}%`, color: '#38bdf8' })
-              return (
-                <div key={order.id} className="ptab-gear-card" style={{
-                  borderColor: `${tierColor}30`, '--card-tier-color': tierColor,
-                } as React.CSSProperties}>
-                  <div className="ptab-gear-card__top">
-                    <span className="ptab-gear-card__slot">{snap.slot.toUpperCase()}</span>
-                    <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
-                  </div>
-                  <div className="ptab-gear-card__img-wrap">
-                    {imgUrl
-                      ? <img src={imgUrl} alt={snap.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} />
-                      : <div style={{ fontSize: '28px', opacity: 0.4 }}>{SLOT_ICONS[snap.slot as EquipSlot]}</div>}
-                  </div>
-                  {statEntries.length > 0 && (
-                    <div className="ptab-gear-card__stats">
-                      {statEntries.map(s => (
-                        <div key={s.label} className="ptab-gear-stat">
-                          <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
-                          <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="ptab-gear-card__footer">
-                    <div className="ptab-gear-card__dur-bar">
-                      <div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} />
-                    </div>
-                    <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
-                  </div>
-                  {/* Price + seller + action */}
-                  <div style={{ padding: '4px 6px', textAlign: 'center', background: 'rgba(0,0,0,0.3)', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 900, fontFamily: 'var(--font-display)', color: '#fbbf24', marginBottom: '2px' }}>${order.totalPrice.toLocaleString()}</div>
-                    <div style={{ fontSize: '7px', color: '#475569', marginBottom: '4px' }}>by {order.playerId}</div>
-                    <button onClick={async () => {
-                      if (isMine) { const r = await market.cancelOrder(order.id); showFb(r.message, r.success) }
-                      else { const r = await market.buyEquipment(order.id); showFb(r.message, r.success) }
-                      market.fetchListings()
-                    }} style={{
-                      width: '100%', padding: '5px', fontSize: '9px', fontWeight: 800,
-                      fontFamily: 'var(--font-display)', letterSpacing: '0.5px',
-                      border: `1px solid ${isMine ? 'rgba(239,68,68,0.4)' : canBuy ? 'rgba(34,211,138,0.4)' : 'rgba(100,116,139,0.2)'}`,
-                      borderRadius: '3px', cursor: isMine || canBuy ? 'pointer' : 'not-allowed',
-                      background: isMine ? 'rgba(239,68,68,0.12)' : canBuy ? 'rgba(34,211,138,0.12)' : 'rgba(100,116,139,0.06)',
-                      color: isMine ? '#ef4444' : canBuy ? '#22d38a' : '#475569',
-                    }}>
-                      {isMine ? '✕ DELIST' : canBuy ? '💰 BUY' : '⛔ NO $'}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          </>
         )
       })()}
     </>

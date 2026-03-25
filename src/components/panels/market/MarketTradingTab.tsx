@@ -193,10 +193,7 @@ export default function MarketTradingTab({ showFb }: MarketTradingTabProps) {
               className={`mkt-strip__item ${selected ? 'mkt-strip__item--active' : ''}`}
             >
               <div className="mkt-strip__icon">
-                {def.iconImage
-                  ? <img src={def.iconImage} alt={def.name} style={{ width: 22, height: 22, objectFit: 'contain' }} onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement!.textContent = def.icon }} />
-                  : <span style={{ fontSize: 16 }}>{def.icon}</span>
-                }
+                <ResourceIcon resourceKey={def.id} size={22} />
               </div>
               <div className="mkt-strip__price">{price < 1 ? price.toFixed(2) : price < 100 ? price.toFixed(1) : Math.floor(price)}</div>
               <div className={`mkt-strip__change ${change >= 0 ? 'mkt-strip__change--up' : 'mkt-strip__change--down'}`}>
@@ -220,10 +217,7 @@ export default function MarketTradingTab({ showFb }: MarketTradingTabProps) {
             {/* Resource header */}
             <div className="mkt-detail-header">
               <div className="mkt-detail-header__left">
-                {def.iconImage
-                  ? <img src={def.iconImage} alt={def.name} style={{ width: 28, height: 28, objectFit: 'contain' }} />
-                  : <span style={{ fontSize: 22 }}>{def.icon}</span>
-                }
+                <ResourceIcon resourceKey={def.id} size={28} />
                 <div>
                   <div className="mkt-detail-header__name">{def.name}</div>
                   <div className="mkt-detail-header__sub">🪙 {(ticker?.price || def.basePrice).toFixed(2)}</div>

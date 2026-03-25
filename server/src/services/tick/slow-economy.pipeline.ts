@@ -11,8 +11,20 @@
  */
 import { db } from '../../db/connection.js'
 import { sql, and, lte } from 'drizzle-orm'
-import { armies, armyMembers, players, newsEvents } from '../../db/schema.js'
+import { armies, armyMembers, players, newsEvents, companies, countries, regionalDeposits } from '../../db/schema.js'
 import { logger } from '../../utils/logger.js'
+
+// Map company types to deposit types for bonus matching
+const COMPANY_DEPOSIT_MAP: Record<string, string> = {
+  wheat_farm: 'wheat',
+  fish_farm: 'fish',
+  steak_farm: 'steak',
+  oil_refinery: 'oil',
+  materialx_refiner: 'materialx',
+  bakery: 'wheat',
+  sushi_bar: 'fish',
+  wagyu_grill: 'steak',
+}
 
 // Lazy emitter — avoids circular dep at module load time
 let _emitGameEvent: ((event: string, data: unknown, room?: string) => void) | null = null
@@ -48,19 +60,74 @@ async function regenBars() {
 
 /**
  * Accumulate production points for all active companies.
- * PP gained = company level per tick (capped at level 6 effective).
+ * PP gained = effectiveLevel × (1 + locationBonus/100)
+ * Location bonus comes from:
+ *   - Conquered resources: +5% per unique type, +0.5% 2nd, +0.25% 3rd+
+ *   - Active regional deposits matching the company's resource type
  * Skips prospection centers and disabled companies.
  */
 async function tickCompanyProduction() {
-  await db.execute(sql`
-    UPDATE companies SET
-      production_progress = production_progress + LEAST(level, 6)
-    WHERE auto_production = true
-      AND (disabled_until IS NULL OR disabled_until <= NOW())
+  // Fetch all eligible companies with their country data
+  const eligible = await db.execute(sql`
+    SELECT c.id, c.type, c.level, c.location,
+           co.conquered_resources,
+           co.active_deposit_bonus
+    FROM companies c
+    LEFT JOIN countries co ON co.code = c.location
+    WHERE c.type != 'prospection_center'
+      AND (c.disabled_until IS NULL OR c.disabled_until <= NOW())
   `)
-  // NOTE: Location-based bonuses (conquered resources, deposits) will be
-  // added when those calculations move fully server-side. For now, base
-  // production per level is sufficient for the tick.
+
+  const rows = (eligible as unknown as {
+    rows: Array<{
+      id: string; type: string; level: number; location: string;
+      conquered_resources: any; active_deposit_bonus: any;
+    }>
+  }).rows ?? []
+
+  if (rows.length === 0) return
+
+  // Fetch all active deposits for bonus matching
+  const activeDepositsResult = await db.execute(sql`
+    SELECT country_code, type, bonus FROM regional_deposits WHERE active = true
+  `)
+  const activeDeposits = (activeDepositsResult as unknown as {
+    rows: Array<{ country_code: string; type: string; bonus: number }>
+  }).rows ?? []
+
+  for (const row of rows) {
+    const effectiveLevel = Math.min(6, row.level || 1)
+    let locationBonus = 0
+
+    // Conquered resource bonus: +5% per unique type, +0.5% 2nd, +0.25% 3rd+
+    const conqueredResources = (row.conquered_resources as string[]) || []
+    if (conqueredResources.length > 0) {
+      const counts: Record<string, number> = {}
+      conqueredResources.forEach((r: string) => { counts[r] = (counts[r] || 0) + 1 })
+      Object.values(counts).forEach((count) => {
+        if (count >= 1) locationBonus += 5
+        if (count >= 2) locationBonus += 0.5
+        if (count >= 3) locationBonus += 0.25
+      })
+    }
+
+    // Active deposit bonus matching company type
+    const depositType = COMPANY_DEPOSIT_MAP[row.type]
+    if (depositType) {
+      const matchingDeposit = activeDeposits.find(
+        d => d.country_code === row.location && d.type === depositType
+      )
+      if (matchingDeposit) locationBonus += matchingDeposit.bonus
+    }
+
+    const pointsGenerated = effectiveLevel * (1 + locationBonus / 100)
+
+    await db.execute(sql`
+      UPDATE companies
+      SET production_progress = production_progress + ${Math.round(pointsGenerated * 100) / 100}
+      WHERE id = ${row.id}
+    `)
+  }
 }
 
 /**
@@ -174,72 +241,7 @@ async function distributeSalaries() {
   }
 }
 
-// Maintenance cost per company level
-const MAINTENANCE_COST: Record<number, number> = { 1: 500, 2: 1200, 3: 2500, 4: 5000, 5: 10000, 6: 20000 }
-
-/**
- * Charge company maintenance for companies whose next_maintenance_due <= NOW().
- * Deducts from owner's money. Disables company for 48h if owner can't pay.
- * Emits company:disabled to owner's player room.
- */
-async function chargeCompanyMaintenance() {
-  // Find companies due for maintenance, joined with owner balance
-  const due = await db.execute(sql`
-    SELECT c.id, c.type, c.level, c.owner_id, c.location,
-           p.money AS owner_money, p.name AS owner_name
-    FROM companies c
-    JOIN players p ON p.id = c.owner_id
-    WHERE (c.next_maintenance_due IS NULL OR c.next_maintenance_due <= NOW())
-      AND (c.disabled_until IS NULL OR c.disabled_until <= NOW())
-      AND c.owner_id IS NOT NULL
-  `)
-
-  const rows = (due as unknown as { rows: Array<{ id: string; type: string; level: number; owner_id: string; owner_money: number; owner_name: string; location: string }> }).rows ?? []
-  if (rows.length === 0) return
-
-  const emit = await getEmitter()
-  const nextDue = new Date(Date.now() + 30 * 60 * 1000) // next tick
-
-  for (const row of rows) {
-    const cost = MAINTENANCE_COST[row.level] ?? 500
-    try {
-      await db.transaction(async (tx) => {
-        if (row.owner_money >= cost) {
-          // Can pay — deduct and update schedule
-          await tx.execute(sql`UPDATE players SET money = money - ${cost} WHERE id = ${row.owner_id}`)
-          await tx.execute(sql`UPDATE companies SET next_maintenance_due = ${nextDue} WHERE id = ${row.id}`)
-        } else {
-          // Cannot pay — disable company 48h
-          const disabledUntil = new Date(Date.now() + 48 * 60 * 60 * 1000)
-          await tx.execute(sql`
-            UPDATE companies
-            SET disabled_until = ${disabledUntil},
-                next_maintenance_due = ${disabledUntil}
-            WHERE id = ${row.id}
-          `)
-          await tx.insert(newsEvents).values({
-            type: 'company_disabled',
-            headline: `🏭 ${row.owner_name}'s company disabled (unpaid maintenance $${cost})`,
-            body: null,
-            countryCode: row.location ?? null,
-            data: { companyId: row.id, companyType: row.type, cost, ownerId: row.owner_id },
-          })
-          // Emit to owner's socket room
-          if (emit) {
-            emit('company:disabled', {
-              companyId: row.id,
-              companyName: row.type,
-              reason: `Maintenance cost $${cost} — insufficient funds`,
-            }, `player:${row.owner_id}`)
-          }
-          logger.warn(`[MAINTENANCE] Company ${row.id} (${row.type}) disabled for ${row.owner_name} — owed $${cost}, had $${row.owner_money}`)
-        }
-      })
-    } catch (e) {
-      logger.error(e, `[MAINTENANCE] Failed to process company ${row.id}`)
-    }
-  }
-}
+// Maintenance removed — no-op (aligned with frontend)
 
 /**
  * Run all slow economy pipeline operations.
@@ -254,9 +256,6 @@ export async function runSlowEconomyPipeline() {
 
   try { await distributeSalaries() }
   catch (e) { logger.warn({ err: e }, '[SLOW-ECONOMY] Salary distribution error') }
-
-  try { await chargeCompanyMaintenance() }
-  catch (e) { logger.warn({ err: e }, '[SLOW-ECONOMY] Maintenance error') }
 
   const elapsed = Date.now() - start
   if (elapsed > 10000) {

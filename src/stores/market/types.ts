@@ -164,6 +164,8 @@ export interface MarketState {
   // Equipment
   placeEquipmentSellOrder: (equipItemId: string, price: number) => Promise<{ success: boolean; message: string }>
   buyEquipment: (orderId: string) => Promise<{ success: boolean; message: string }>
+  placeVaultEquipmentSellOrder: (armyId: string, equipItemId: string, price: number) => Promise<{ success: boolean; message: string }>
+  buyEquipmentToVault: (armyId: string, orderId: string) => Promise<{ success: boolean; message: string }>
 
   // Divisions
   placeDivisionSellOrder: (divisionId: string, price: number) => Promise<{ success: boolean; message: string }>

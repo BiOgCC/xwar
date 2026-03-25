@@ -8,6 +8,7 @@ import CountryFlag from '../shared/CountryFlag'
 import ProfilePanel from '../panels/ProfilePanel'
 import GovernmentPanel from '../panels/GovernmentPanel'
 import MilitaryPanel from '../panels/MilitaryPanel'
+import MUPanel from '../panels/MUPanel'
 import ArmedForcesPanel from '../panels/ArmedForcesPanel'
 import CyberwarfarePanel from '../panels/CyberwarfarePanel'
 import MissionsPanel from '../panels/MissionsPanel'
@@ -18,6 +19,7 @@ import MarketPanel from '../panels/MarketPanel'
 import CompaniesPanel from '../panels/CompaniesPanel'
 import CasinoPanel from '../panels/CasinoPanel'
 import BountyPanel from '../panels/BountyPanel'
+import LeyLinePanel from '../panels/LeyLinePanel'
 import StockMarketPanel from '../panels/StockMarketPanel'
 import AlliancePanel from '../panels/AlliancePanel'
 import SocialClubPanel from '../panels/SocialClubPanel'
@@ -30,7 +32,8 @@ import TradeRoutePanel from '../panels/TradeRoutePanel'
 import {
   User, Backpack, BarChart2, Factory, CircleDollarSign,
   Gamepad2, Target, TrendingUp, Handshake, Landmark,
-  ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText, Anchor
+  ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText, Anchor,
+  Beer, ChevronLeft, Flag, Zap
 } from 'lucide-react'
 
 const SIDEBAR_ICON_PROPS = { color: '#22d38a', size: 16, strokeWidth: 2 }
@@ -44,15 +47,17 @@ function getSidebarIcon(id: string) {
     case 'resources': return <CircleDollarSign {...SIDEBAR_ICON_PROPS} />
     case 'casino': return <Gamepad2 {...SIDEBAR_ICON_PROPS} />
     case 'bounty': return <Target {...SIDEBAR_ICON_PROPS} />
+    case 'ley_lines': return <Zap {...SIDEBAR_ICON_PROPS} />
     case 'stocks': return <TrendingUp {...SIDEBAR_ICON_PROPS} />
     case 'alliance': return <Handshake {...SIDEBAR_ICON_PROPS} />
-    case 'social_club': return <Landmark {...SIDEBAR_ICON_PROPS} />
+    case 'social_club': return <Beer {...SIDEBAR_ICON_PROPS} />
     case 'government': return <Landmark {...SIDEBAR_ICON_PROPS} />
     case 'missions': return <ClipboardList {...SIDEBAR_ICON_PROPS} />
     case 'combat': return <Swords {...SIDEBAR_ICON_PROPS} />
     case 'cyberwarfare': return <Monitor {...SIDEBAR_ICON_PROPS} />
     case 'armed_forces': return <Shield {...SIDEBAR_ICON_PROPS} />
     case 'military': return <Medal {...SIDEBAR_ICON_PROPS} />
+    case 'mu': return <Flag {...SIDEBAR_ICON_PROPS} />
     case 'prestige': return <Star {...SIDEBAR_ICON_PROPS} />
     case 'diplomacy': return <Handshake {...SIDEBAR_ICON_PROPS} />
     case 'history': return <ScrollText {...SIDEBAR_ICON_PROPS} />
@@ -63,12 +68,21 @@ function getSidebarIcon(id: string) {
 }
 
 
-/* ── 4 quick-access icons shown at the bottom of the panel ── */
+/* ── Hotkey mapping for sidebar shortcut badges ── */
+const SIDEBAR_HOTKEYS: Record<string, string> = {
+  combat: '5',
+  cyberwarfare: '6',
+  military: '7',
+  market: '8',
+}
+
+/* ── 5 quick-access icons shown at the bottom of the panel ── */
 const QUICK_NAV = [
-  { id: 'profile',      icon: '👤', label: 'PROFILE' },
-  { id: 'companies',    icon: '🏭', label: 'COMPS' },
-  { id: 'government',   icon: '🏛️', label: 'COUNTRY' },
-  { id: 'social_club',  icon: '🏛️', label: 'SOCIAL' },
+  { id: 'inventory',    icon: '🎒', label: 'Inventory' },
+  { id: 'mu',           icon: '🏴', label: 'MU' },
+  { id: 'combat',       icon: '⚔️', label: 'Battles' },
+  { id: 'market',       icon: '📊', label: 'Market' },
+  { id: 'companies',    icon: '🏭', label: 'Companies' },
 ]
 
 /* ── Sidebar panel sub-component (reused for top & bottom drag groups) ── */
@@ -184,7 +198,7 @@ export default function PanelRouter() {
 
   /* ── quick-nav click ── */
   const handleQuickNav = useCallback((id: string) => {
-    if (id === 'profile') { setProfileDefaultTab(null); setActivePanel('profile') }
+    if (id === 'profile') { setProfileDefaultTab('profile'); setActivePanel('profile') }
     else if (id === 'inventory') { setProfileDefaultTab('inventory'); setActivePanel('profile') }
     else if (id === 'companies') { setProfileDefaultTab('companies'); setActivePanel('profile') }
     else { setActivePanel(id as any) }
@@ -192,6 +206,7 @@ export default function PanelRouter() {
 
   const renderItem = useCallback((item: SidebarItem, _index: number, _panelId: PanelId) => {
     const isActive = (item.id === 'companies' || item.id === 'inventory') ? activePanel === 'profile' : activePanel === item.id
+    const hotkey = SIDEBAR_HOTKEYS[item.id]
     return (
       <button
         className={`hud-sidebar__item ${isActive ? 'hud-sidebar__item--active' : ''}`}
@@ -205,6 +220,7 @@ export default function PanelRouter() {
             : 'POLITICAL'
           : item.label}
         </span>
+        {hotkey && <span className="hud-sidebar__hotkey">{hotkey}</span>}
         {item.id === 'combat' && <span className="hud-sidebar__dot" />}
       </button>
     )
@@ -271,8 +287,12 @@ export default function PanelRouter() {
               ? '🤝 DIPLOMACY'
               : activePanel === 'trade_routes'
               ? '⚓ MARITIME TRADE ROUTES'
+              : activePanel === 'ley_lines'
+              ? '⚡ LEY LINE CORRIDORS'
               : activePanel === 'armed_forces'
               ? '🪖 ARMED FORCES'
+              : activePanel === 'mu'
+              ? '🏴 MILITARY UNIT'
 
               : activePanel === 'foreign_country' && selectedForeignCountry
               ? <><CountryFlag iso={selectedForeignCountry} size={18} style={{ marginRight: '6px' }} />{getCountryName(selectedForeignCountry).toUpperCase()}</>
@@ -281,6 +301,15 @@ export default function PanelRouter() {
               : activePanel?.toUpperCase()}
           </h3>
           <div className="hud-panel__actions">
+            {panelHistory.length > 0 && (
+              <button
+                className="hud-panel__back-btn"
+                onClick={goBack}
+                title="Go back (Backspace)"
+              >
+                <ChevronLeft size={16} strokeWidth={2} />
+              </button>
+            )}
             <button
               className="hud-panel__fullscreen-btn"
               onClick={() => setPanelFullscreen(!panelFullscreen)}
@@ -295,6 +324,7 @@ export default function PanelRouter() {
         <div className="hud-panel__body">
           {activePanel === 'profile' && <ProfilePanel />}
           {activePanel === 'military' && <MilitaryPanel />}
+          {activePanel === 'mu' && <MUPanel />}
           {activePanel === 'armed_forces' && <ArmedForcesPanel />}
           {activePanel === 'combat' && <WarPanel panelFullscreen={panelFullscreen} setPanelFullscreen={setPanelFullscreen} />}
           {activePanel === 'foreign_country' && <ForeignCountryPanel />}
@@ -302,6 +332,7 @@ export default function PanelRouter() {
           {activePanel === 'companies' && <CompaniesPanel />}
           {activePanel === 'casino' && <CasinoPanel />}
           {activePanel === 'bounty' && <BountyPanel />}
+          {activePanel === 'ley_lines' && <LeyLinePanel />}
           {activePanel === 'stocks' && <StockMarketPanel />}
           {activePanel === 'alliance' && <AlliancePanel />}
           {activePanel === 'region' && <RegionPanel />}
@@ -408,7 +439,7 @@ export default function PanelRouter() {
           {QUICK_NAV.map(q => (
             <button
               key={q.id}
-              className={`hud-panel__quicknav-btn ${(q.id === 'profile' || q.id === 'companies') ? (activePanel === 'profile' ? 'hud-panel__quicknav-btn--active' : '') : (activePanel === q.id ? 'hud-panel__quicknav-btn--active' : '')}`}
+              className={`hud-panel__quicknav-btn ${(q.id === 'profile' || q.id === 'companies' || q.id === 'inventory') ? (activePanel === 'profile' ? 'hud-panel__quicknav-btn--active' : '') : (activePanel === q.id ? 'hud-panel__quicknav-btn--active' : '')}`}
               onClick={() => handleQuickNav(q.id)}
               title={q.label}
             >
@@ -418,15 +449,7 @@ export default function PanelRouter() {
           ))}
         </div>
 
-        {panelHistory.length > 0 && (
-          <button
-            className="hud-panel__back-btn"
-            onClick={goBack}
-            title="Go back"
-          >
-            ◀
-          </button>
-        )}
+
       </aside>
     </div>
   )

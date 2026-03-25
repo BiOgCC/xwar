@@ -1535,3 +1535,242 @@
   padding: 8px 0;
   text-align: center;
 }
+
+
+/* ============================================
+   GEAR MARKET — Compressed eRepublik Layout
+   ============================================ */
+
+/* Tax notice banner */
+.gear-mkt-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 6px;
+  font-size: 10px;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+.gear-mkt-notice__icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #3b82f6;
+}
+.gear-mkt-notice strong {
+  color: #e2e8f0;
+  font-weight: 700;
+}
+
+/* Category section */
+.gear-mkt-category {
+  margin-bottom: 2px;
+}
+.gear-mkt-category__title {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: capitalize;
+  letter-spacing: 0.06em;
+  padding: 4px 2px 3px;
+}
+
+/* Row of tiles */
+.gear-mkt-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* Individual item tile */
+.gear-mkt-tile {
+  width: 64px;
+  background: rgba(8, 12, 18, 0.7);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+  position: relative;
+  flex-shrink: 0;
+}
+.gear-mkt-tile::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--tile-color, #64748b);
+  opacity: 0.7;
+}
+.gear-mkt-tile:hover {
+  transform: scale(1.08);
+  z-index: 2;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.5), 0 0 10px color-mix(in srgb, var(--tile-color, #64748b) 30%, transparent);
+  border-color: color-mix(in srgb, var(--tile-color, #64748b) 40%, transparent);
+}
+.gear-mkt-tile--selected {
+  border-color: #3b82f6;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
+}
+
+/* Tile image area */
+.gear-mkt-tile__img {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.03), rgba(0,0,0,0.4));
+  padding: 2px;
+}
+.gear-mkt-tile__img img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+.gear-mkt-tile__img-emoji {
+  font-size: 24px;
+  opacity: 0.5;
+  filter: drop-shadow(0 0 4px var(--tile-color, #64748b));
+}
+
+/* Tile price row */
+.gear-mkt-tile__price {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px 2px 1px;
+  background: rgba(0, 0, 0, 0.5);
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.gear-mkt-tile__price-icon {
+  width: 10px;
+  height: 10px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.gear-mkt-tile__price-val {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  color: #fbbf24;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tile quantity row */
+.gear-mkt-tile__qty {
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 0 2px;
+  background: rgba(0,0,0,0.3);
+}
+.gear-mkt-tile__qty--zero {
+  color: #475569;
+}
+.gear-mkt-tile__qty--available {
+  color: #22d38a;
+}
+
+/* Offer button */
+.gear-mkt-offer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 0;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 180ms ease;
+  margin-top: 6px;
+}
+.gear-mkt-offer-btn:hover {
+  color: #22d38a;
+  background: rgba(34,211,138,0.06);
+  border-color: rgba(34,211,138,0.3);
+}
+
+/* Bottom nav */
+.gear-mkt-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px 0;
+}
+.gear-mkt-nav__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 150ms ease;
+}
+.gear-mkt-nav__btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+/* Detail popup overlay */
+.gear-mkt-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: gear-mkt-fade-in 200ms ease;
+}
+@keyframes gear-mkt-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Sell inventory picker */
+.gear-mkt-inv-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34,211,138,0.25) transparent;
+}
+.gear-mkt-inv-slot-title {
+  font-family: var(--font-display);
+  font-size: 8px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 0;
+}
+.gear-mkt-inv-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}

@@ -3,6 +3,7 @@ import { usePlayerStore } from '../../../stores/playerStore'
 import { useMarketStore, RESOURCE_DEFS } from '../../../stores/market'
 import type { EquipSlot } from '../../../stores/inventoryStore'
 import { SLOT_ICONS, getItemImagePath } from '../../../stores/inventoryStore'
+import ResourceIcon from '../../shared/ResourceIcon'
 
 interface MarketOrdersTabProps {
   showFb: (msg: string, ok?: boolean) => void
@@ -30,9 +31,7 @@ export default function MarketOrdersTab({ showFb }: MarketOrdersTabProps) {
             let icon: React.ReactNode = null
             let itemName = ''
             if (o.itemType === 'resource' && def) {
-              icon = def.iconImage
-                ? <img src={def.iconImage} alt={def.name} style={{ width: 28, height: 28, objectFit: 'contain' }} />
-                : <span style={{ fontSize: 22 }}>{def.icon}</span>
+              icon = <ResourceIcon resourceKey={def.id} size={28} />
               itemName = def.name
             } else if (o.itemType === 'equipment' && o.equipSnapshot) {
               const imgUrl = getItemImagePath(o.equipSnapshot.tier as any, o.equipSnapshot.slot as any, o.equipSnapshot.category as any, o.equipSnapshot.weaponSubtype as any, o.equipSnapshot.superforged)

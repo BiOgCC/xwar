@@ -1141,6 +1141,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
               leyNodePopup.remove()
             })
           }
+
           let hoveredStateName: string | null = null
           let hoverRaf: number | null = null
 

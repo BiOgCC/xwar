@@ -16,10 +16,11 @@ type Set = StoreApi<MarketState>['setState']
 type Get = () => MarketState
 
 // ── Vault resource key mapping ──
-// ArmyVault keys: money, oil, ammo, jets, tanks, equipmentIds
-// Market resource keys that map to vault keys:
-const VAULT_RESOURCE_MAP: Record<string, 'money' | 'oil'> = {
+// ArmyVault keys: money, oil, materialX, ammo, jets, tanks, equipmentIds
+// Market resource keys that map to storable vault keys:
+const VAULT_RESOURCE_MAP: Record<string, 'money' | 'oil' | 'materialX'> = {
   oil: 'oil',
+  materialX: 'materialX',
 }
 
 export function placeCountryOrder(

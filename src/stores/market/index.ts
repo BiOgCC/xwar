@@ -24,7 +24,7 @@ import { mkTicker, mkId } from './helpers'
 
 // Slice functions
 import { placeResourceOrder, matchResourceOrders } from './resourceMarket'
-import { placeEquipmentSellOrder, buyEquipment } from './equipmentMarket'
+import { placeEquipmentSellOrder, buyEquipment, placeVaultEquipmentSellOrder, buyEquipmentToVault } from './equipmentMarket'
 import { placeDivisionSellOrder, placeVaultDivisionSellOrder, placeCountryDivisionSellOrder, buyDivision } from './divisionMarket'
 import { tickPrices } from './priceTicker'
 import { placeCountryOrder, placeForceVaultOrder } from './countryTrading'
@@ -85,7 +85,7 @@ function cancelOrderFn(
         if (order.source === 'country' && def.fundKey) {
           useWorldStore.getState().addToFund(order.countryCode, def.fundKey, remaining)
         } else if (order.source === 'force_vault' && order.armyId) {
-          const vaultKey = order.resourceId === 'oil' ? 'oil' : null
+          const vaultKey = order.resourceId === 'oil' ? 'oil' : order.resourceId === 'materialX' ? 'materialX' : null
           if (vaultKey) {
             useArmyStore.setState(s => {
               const army = s.armies[order.armyId!]
@@ -231,6 +231,8 @@ export const useMarketStore = create<MarketState>((set, get) => {
         return { success: true, message: res.message }
       } catch (e: any) { return { success: false, message: e.message } }
     },
+    placeVaultEquipmentSellOrder: async (armyId, equipItemId, price) => placeVaultEquipmentSellOrder(set, get, armyId, equipItemId, price),
+    buyEquipmentToVault: async (armyId, orderId) => buyEquipmentToVault(set, get, armyId, orderId),
 
     // Divisions
     placeDivisionSellOrder: async (divisionId, price) => {
@@ -239,12 +241,8 @@ export const useMarketStore = create<MarketState>((set, get) => {
         return { success: true, message: res.message }
       } catch (e: any) { return { success: false, message: e.message } }
     },
-    placeVaultDivisionSellOrder: async (armyId, divisionId, price) => {
-      return { success: false, message: 'Vault sales API not implemented yet' }
-    },
-    placeCountryDivisionSellOrder: async (countryCode, divisionId, price) => {
-      return { success: false, message: 'Country sales API not implemented yet' }
-    },
+    placeVaultDivisionSellOrder: async (armyId, divisionId, price) => placeVaultDivisionSellOrder(set, get, armyId, divisionId, price),
+    placeCountryDivisionSellOrder: async (countryCode, divisionId, price) => placeCountryDivisionSellOrder(set, get, countryCode, divisionId, price),
     buyDivision: async (orderId) => {
       try {
         const res: any = await api.post('/market/buy', { orderId })
@@ -254,14 +252,10 @@ export const useMarketStore = create<MarketState>((set, get) => {
     },
 
     // Force vault fund
-    placeForceVaultOrder: async (armyId, type, resourceId, amount, pricePerUnit) => {
-      return { success: false, message: 'Vault orders API not implemented yet' }
-    },
+    placeForceVaultOrder: async (armyId, type, resourceId, amount, pricePerUnit) => placeForceVaultOrder(set, get, armyId, type, resourceId, amount, pricePerUnit),
 
     // Country fund
-    placeCountryOrder: async (type, resourceId, amount, pricePerUnit) => {
-      return { success: false, message: 'Country orders API not implemented yet' }
-    },
+    placeCountryOrder: async (type, resourceId, amount, pricePerUnit) => placeCountryOrder(set, get, type, resourceId, amount, pricePerUnit),
 
     // Cancel (any type)
     cancelOrder: async (orderId) => {

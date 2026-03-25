@@ -34,12 +34,17 @@ export default function InventoryTab() {
   const ui = useUIStore()
 
   const [selectedItem, setSelectedItem] = useState<EquipItem | null>(null)
-  const [mode, setMode] = useState<'normal' | 'craft' | 'disarm'>('normal')
+  const [mode, setMode] = useState<'normal' | 'craft' | 'dismantle'>('normal')
   const [pickerSlot, setPickerSlot] = useState<EquipSlot | null>(null)
   const [showAmmoPicker, setShowAmmoPicker] = useState(false)
   const [showLootBox, setShowLootBox] = useState(false)
   const [showMilitaryBox, setShowMilitaryBox] = useState(false)
   const [showSupplyBox, setShowSupplyBox] = useState(false)
+
+  // Dismantle panel state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [collapsedTiers, setCollapsedTiers] = useState<Set<EquipTier>>(new Set())
+  const [isDismantling, setIsDismantling] = useState(false)
 
   useEffect(() => {
     inventory.fetchInventory()
@@ -47,6 +52,14 @@ export default function InventoryTab() {
     window.addEventListener('xwar-close-modal', onClose)
     return () => window.removeEventListener('xwar-close-modal', onClose)
   }, [])
+
+  // Reset selection when leaving dismantle mode
+  useEffect(() => {
+    if (mode !== 'dismantle') {
+      setSelectedIds(new Set())
+      setCollapsedTiers(new Set())
+    }
+  }, [mode])
 
   const handleLootBoxOpen = useCallback(() => inventory.openLootBox(), [inventory])
   const handleMilitaryBoxOpen = useCallback(() => inventory.openMilitaryBox(), [inventory])
@@ -68,233 +81,304 @@ export default function InventoryTab() {
     setSelectedItem(null)
   }
 
+  // ---------- Dismantle panel helpers ----------
+  const getDismantleItems = () =>
+    inventory.items.filter(i => i.location === 'inventory' && !i.equipped)
+
+  const getItemsByTier = (tier: EquipTier) =>
+    getDismantleItems().filter(i => i.tier === tier).sort((a, b) => a.slot.localeCompare(b.slot))
+
+  const toggleItemSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleTierSelection = (tier: EquipTier) => {
+    const tierItems = getItemsByTier(tier)
+    const tierIds = tierItems.map(i => i.id)
+    const allSelected = tierIds.every(id => selectedIds.has(id))
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (allSelected) {
+        tierIds.forEach(id => next.delete(id))
+      } else {
+        tierIds.forEach(id => next.add(id))
+      }
+      return next
+    })
+  }
+
+  const toggleTierCollapse = (tier: EquipTier) => {
+    setCollapsedTiers(prev => {
+      const next = new Set(prev)
+      if (next.has(tier)) next.delete(tier)
+      else next.add(tier)
+      return next
+    })
+  }
+
+  const handleDismantleAll = async () => {
+    if (selectedIds.size === 0 || isDismantling) return
+    setIsDismantling(true)
+    let totalScrap = 0
+    let count = 0
+    const ids = Array.from(selectedIds)
+    for (const id of ids) {
+      const r = await inventory.dismantleItem(id)
+      if (r.success) {
+        totalScrap += r.scrapGained
+        count++
+      }
+    }
+    setSelectedIds(new Set())
+    setIsDismantling(false)
+    if (count > 0) {
+      ui.addFloatingText(`+${totalScrap.toLocaleString()} SCRAP (${count} items)`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
+    }
+  }
+
+  const totalSelectedScrap = Array.from(selectedIds).reduce((sum, id) => {
+    const item = inventory.items.find(i => i.id === id)
+    return sum + (item ? (SCRAP_VALUES[item.tier] || 0) : 0)
+  }, 0)
+
+  // ---------- Dismantle panel render ----------
+  const renderDismantlePanel = () => {
+    const dismantleItems = getDismantleItems()
+    if (dismantleItems.length === 0) {
+      return (
+        <div className="inv-dismantle-panel">
+          <div className="inv-dismantle-empty">No unequipped items to dismantle.</div>
+        </div>
+      )
+    }
+
+    const tiersWithItems = TIER_ORDER.filter(t => getItemsByTier(t).length > 0)
+
+    return (
+      <div className="inv-dismantle-panel">
+        <div className="inv-dismantle-header">
+          <span className="inv-dismantle-header__title">⚙ SELECT ITEMS TO DISMANTLE</span>
+          <span className="inv-dismantle-header__count">{selectedIds.size} selected</span>
+        </div>
+
+        {tiersWithItems.map(tier => {
+          const tierItems = getItemsByTier(tier)
+          const tierColor = TIER_COLORS[tier]
+          const allSelected = tierItems.every(i => selectedIds.has(i.id))
+          const someSelected = tierItems.some(i => selectedIds.has(i.id))
+          const isCollapsed = collapsedTiers.has(tier)
+          const tierScrap = SCRAP_VALUES[tier]
+          const selectedInTier = tierItems.filter(i => selectedIds.has(i.id)).length
+
+          return (
+            <div key={tier} className="inv-dismantle-tier" style={{ '--tier-color': tierColor } as React.CSSProperties}>
+              <div className="inv-dismantle-tier__header" onClick={() => toggleTierCollapse(tier)}>
+                <div className="inv-dismantle-tier__left">
+                  <span className="inv-dismantle-tier__arrow" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
+                  <span className="inv-dismantle-tier__dot" style={{ background: tierColor }} />
+                  <span className="inv-dismantle-tier__label" style={{ color: tierColor }}>{TIER_LABELS[tier]}</span>
+                  <span className="inv-dismantle-tier__count">({tierItems.length})</span>
+                  {selectedInTier > 0 && <span className="inv-dismantle-tier__selected">✓{selectedInTier}</span>}
+                </div>
+                <button
+                  className={`inv-dismantle-tier__select-all ${allSelected ? 'inv-dismantle-tier__select-all--active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); toggleTierSelection(tier) }}
+                  style={{ borderColor: `${tierColor}60`, color: allSelected ? '#0a0e17' : tierColor, background: allSelected ? tierColor : `${tierColor}15` }}
+                >
+                  {allSelected ? '✓ ALL' : `SELECT ALL (${tierScrap * tierItems.length} scrap)`}
+                </button>
+              </div>
+              {!isCollapsed && (
+                <div className="inv-dismantle-grid">
+                  {tierItems.map(item => {
+                    const isSelected = selectedIds.has(item.id)
+                    const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
+                    return (
+                      <div
+                        key={item.id}
+                        className={`inv-dismantle-item ${isSelected ? 'inv-dismantle-item--selected' : ''}`}
+                        style={{
+                          borderColor: isSelected ? tierColor : `${tierColor}25`,
+                          boxShadow: isSelected ? `0 0 10px ${tierColor}30, inset 0 0 12px ${tierColor}08` : undefined,
+                        }}
+                        onClick={() => toggleItemSelection(item.id)}
+                      >
+                        {isSelected && <div className="inv-dismantle-item__check" style={{ background: tierColor }}>✓</div>}
+                        <div className="inv-dismantle-item__img-wrap">
+                          {imgUrl
+                            ? <img src={imgUrl} alt={item.name} className="inv-dismantle-item__img" onError={e => { e.currentTarget.style.display = 'none' }} />
+                            : <span style={{ fontSize: '20px', opacity: 0.4 }}>{SLOT_ICONS[item.slot]}</span>
+                          }
+                        </div>
+                        <div className="inv-dismantle-item__name">{item.name}</div>
+                        <div className="inv-dismantle-item__scrap" style={{ color: '#f59e0b' }}>+{tierScrap}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {/* Footer — Dismantle All */}
+        <div className="inv-dismantle-footer">
+          <div className="inv-dismantle-footer__info">
+            <span className="inv-dismantle-footer__label">Total scrap:</span>
+            <span className="inv-dismantle-footer__value" style={{ color: '#f59e0b' }}>{totalSelectedScrap.toLocaleString()}</span>
+          </div>
+          <button
+            className={`inv-dismantle-footer__btn ${selectedIds.size === 0 ? 'inv-dismantle-footer__btn--disabled' : ''}`}
+            disabled={selectedIds.size === 0 || isDismantling}
+            onClick={handleDismantleAll}
+          >
+            {isDismantling ? 'DISMANTLING...' : `DISMANTLE ALL (${selectedIds.size})`}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const getSortedItemsForSlot = (slot: EquipSlot) =>
     inventory.items.filter(i => i.location === 'inventory' && i.slot === slot).sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier))
 
-  const renderEquipmentCategoryRow = (slot: EquipSlot, title: string) => {
-    const items = getSortedItemsForSlot(slot)
-    if (items.length === 0) return null
+  const renderItemCard = (item: EquipItem) => {
+    const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
+    const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
+    const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
+    const dur = Number(item.durability ?? 100)
+    const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
+    const statEntries: { label: string; val: string; color: string }[] = []
+    if (item.stats.damage) statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
+    if (item.stats.critRate) statEntries.push({ label: 'CRIT', val: `${item.stats.critRate}%`, color: '#fb923c' })
+    if (item.stats.critDamage) statEntries.push({ label: 'C.DMG', val: `${item.stats.critDamage}%`, color: '#fb923c' })
+    if (item.stats.armor) statEntries.push({ label: 'ARM', val: `${item.stats.armor}%`, color: '#94a3b8' })
+    if (item.stats.dodge) statEntries.push({ label: 'EVA', val: `${item.stats.dodge}%`, color: '#34d399' })
+    if (item.stats.precision) statEntries.push({ label: 'ACC', val: `${item.stats.precision}%`, color: '#38bdf8' })
     return (
-      <div style={{ marginBottom: '16px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '1px' }}>{title}</div>
-        <div className="ptab-gear-grid">
-          {items.map(item => {
-            const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
-            const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
-            const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
-            const dur = Number(item.durability ?? 100)
-            const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
-            const statEntries: { label: string; val: string; color: string }[] = []
-            if (item.stats.damage) statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
-            if (item.stats.critRate) statEntries.push({ label: 'CRIT', val: `${item.stats.critRate}%`, color: '#fb923c' })
-            if (item.stats.critDamage)statEntries.push({ label: 'C.DMG', val: `${item.stats.critDamage}%`, color: '#fb923c' })
-            if (item.stats.armor) statEntries.push({ label: 'ARM', val: `${item.stats.armor}%`, color: '#94a3b8' })
-            if (item.stats.dodge) statEntries.push({ label: 'EVA', val: `${item.stats.dodge}%`, color: '#34d399' })
-            if (item.stats.precision) statEntries.push({ label: 'ACC', val: `${item.stats.precision}%`, color: '#38bdf8' })
-            return (
-              <div key={item.id} className="ptab-gear-card" style={{
-                borderColor: item.equipped ? 'rgba(132,204,22,0.4)' : `${tierColor}30`,
-                '--card-tier-color': tierColor,
-                boxShadow: item.equipped ? '0 0 8px rgba(132,204,22,0.15)' : undefined,
-              } as React.CSSProperties}
-              onClick={async () => {
-                if (mode === 'disarm' && !item.equipped) {
-                  const r = await inventory.dismantleItem(item.id)
-                  if (r.success) {
-                    ui.addFloatingText(`+${r.scrapGained} SCRAP`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b')
-                  }
-                } else { setSelectedItem(item) }
-              }}
-              title={item.equipped ? `${item.name} (EQUIPPED)` : item.name}
-              >
-                {item.equipped && <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '7px', fontWeight: 900, color: '#84cc16', letterSpacing: '0.08em' }}>EQ</div>}
-                <div className="ptab-gear-card__top">
-                  <span className="ptab-gear-card__slot">{item.slot.toUpperCase()}</span>
-                  <span className="ptab-gear-card__tier" style={{ color: tierColor }}>{tierLabel.split(' ')[0]}</span>
-                </div>
-                <div className="ptab-gear-card__img-wrap">
-                  {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} />
-                    : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>
-                        <img src={getItemImagePath('t1', item.slot, item.category) || ''} alt={item.slot} style={{ width: '28px', height: '28px', objectFit: 'contain', opacity: 0.5, filter: 'grayscale(100%)' }} />
-                      </div>}
-                </div>
-                {statEntries.length > 0 && (
-                  <div className="ptab-gear-card__stats">
-                    {statEntries.map(s => (
-                      <div key={s.label} className="ptab-gear-stat">
-                        <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
-                        <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="ptab-gear-card__footer">
-                  <div className="ptab-gear-card__dur-bar"><div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} /></div>
-                  <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
-                </div>
+      <div key={item.id} className="ptab-gear-card" style={{
+        borderColor: item.equipped ? 'rgba(132,204,22,0.4)' : `${tierColor}30`,
+        '--card-tier-color': tierColor,
+        boxShadow: item.equipped ? '0 0 8px rgba(132,204,22,0.15)' : undefined,
+      } as React.CSSProperties}
+      onClick={() => setSelectedItem(item)}
+      title={item.equipped ? `${item.name} (EQUIPPED)` : item.name}
+      >
+        {item.equipped && <div className="inv-equip-tag">Equip.</div>}
+        <div className="ptab-gear-card__img-wrap">
+          {imgUrl ? <img src={imgUrl} alt={item.name} className="ptab-gear-card__img" onError={e => { e.currentTarget.style.display = 'none' }} />
+            : <div style={{ fontSize: '28px', opacity: 0.4, filter: `drop-shadow(0 0 4px ${tierColor})` }}>
+                <img src={getItemImagePath('t1', item.slot, item.category) || ''} alt={item.slot} style={{ width: '28px', height: '28px', objectFit: 'contain', opacity: 0.5, filter: 'grayscale(100%)' }} />
+              </div>}
+        </div>
+        {statEntries.length > 0 && (
+          <div className="ptab-gear-card__stats">
+            {statEntries.map(s => (
+              <div key={s.label} className="ptab-gear-stat">
+                <span className="ptab-gear-stat__label">{getStatIcon(s.label, s.color) || s.label}</span>
+                <span className="ptab-gear-stat__val" style={{ color: s.color }}>{s.val}</span>
               </div>
-            )
+            ))}
+          </div>
+        )}
+        <div className="ptab-gear-card__footer">
+          <div className="ptab-gear-card__dur-bar"><div className="ptab-gear-card__dur-fill" style={{ width: `${dur}%`, background: durColor }} /></div>
+          <div className="ptab-gear-card__dur-lbl" style={{ color: durColor }}>{dur.toFixed(0)}%</div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderWeaponsSection = () => {
+    const weapons = getSortedItemsForSlot('weapon')
+    if (weapons.length === 0) return null
+    return (
+      <div className="inv-category-section">
+        <div className="inv-category-header">Weapons</div>
+        <div className="ptab-gear-grid">
+          {weapons.map(item => renderItemCard(item))}
+        </div>
+      </div>
+    )
+  }
+
+  const renderArmorSection = () => {
+    const slots: { slot: EquipSlot; label: string }[] = [
+      { slot: 'helmet', label: 'Helmets' },
+      { slot: 'chest', label: 'Chests' },
+      { slot: 'gloves', label: 'Gloves' },
+      { slot: 'legs', label: 'Pants' },
+      { slot: 'boots', label: 'Boots' },
+    ]
+
+    const allArmorItems = slots.flatMap(s => getSortedItemsForSlot(s.slot))
+    if (allArmorItems.length === 0) return null
+
+    return (
+      <div className="inv-category-section">
+        <div className="inv-category-header">
+          {slots.map(s => {
+            const count = getSortedItemsForSlot(s.slot).length
+            return count > 0 ? <span key={s.slot} className="inv-category-label">{s.label}</span> : null
           })}
         </div>
+        {slots.map(s => {
+          const items = getSortedItemsForSlot(s.slot)
+          if (items.length === 0) return null
+          return (
+            <div key={s.slot} style={{ marginBottom: '8px' }}>
+              <div className="ptab-gear-grid">
+                {items.map(item => renderItemCard(item))}
+              </div>
+            </div>
+          )
+        })}
       </div>
     )
   }
 
   return (
     <div className="inv-tab">
+      {/* INVENTARIO Header */}
+      <div className="inv-main-header">INVENTARIO</div>
+
+      {/* CRAFT & DISMANTLE ACTION BAR */}
+      <div className="inv-action-bar">
+        <button className={`inv-action-btn inv-action-btn--craft ${mode === 'craft' ? 'inv-action-btn--active' : ''}`}
+          onClick={() => setMode(mode === 'craft' ? 'normal' : 'craft')}>
+          <span className="inv-action-btn__icon">✦</span> CRAFT
+        </button>
+        <button className={`inv-action-btn inv-action-btn--disarm ${mode === 'dismantle' ? 'inv-action-btn--active' : ''}`}
+          onClick={() => setMode(mode === 'dismantle' ? 'normal' : 'dismantle')}>
+          <span className="inv-action-btn__icon">⚙</span> DISMANTLE
+          <span className="inv-supporter-badge">🔒 Supporter</span>
+        </button>
+      </div>
+
+      {/* Dismantle Panel */}
+      {mode === 'dismantle' && renderDismantlePanel()}
+
+      {/* Resource Summary */}
       <InventorySummary />
 
-      {/* CRAFT & DISARM ACTION BAR */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-        <button onClick={() => setMode(mode === 'craft' ? 'normal' : 'craft')} style={{
-          flex: 1, padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
-          border: `2px solid ${mode === 'craft' ? '#fbbf24' : 'rgba(251,191,36,0.3)'}`,
-          borderRadius: '4px', cursor: 'pointer',
-          background: mode === 'craft' ? 'rgba(251,191,36,0.15)' : 'rgba(251,191,36,0.03)',
-          color: mode === 'craft' ? '#fbbf24' : '#b89a3a',
-        }}>CRAFT</button>
-        <button onClick={() => setMode(mode === 'disarm' ? 'normal' : 'disarm')} style={{
-          flex: 1, padding: '10px', fontSize: '12px', fontWeight: 900, letterSpacing: '1px',
-          border: `2px solid ${mode === 'disarm' ? '#ef4444' : 'rgba(239,68,68,0.3)'}`,
-          borderRadius: '4px', cursor: 'pointer',
-          background: mode === 'disarm' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.03)',
-          color: mode === 'disarm' ? '#ef4444' : '#a33a3a',
-        }}>DISARM</button>
-      </div>
+      {/* Weapons Section */}
+      {renderWeaponsSection()}
 
-      {/* Loot Boxes */}
-      <div className="inv-section">
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(34,211,138,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src="/assets/items/lootbox_civilian.png" alt="Civilian Loot Box" style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(34,211,138,0.3))' }} />
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#22d38a', letterSpacing: '0.08em', fontFamily: 'var(--font-display)' }}>CIVILIAN</div>
-                <div style={{ fontSize: '18px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{player.lootBoxes}</div>
-              </div>
-            </div>
-            <button className="comp-action comp-action--produce" style={{ margin: 0, width: 'auto', padding: '6px 16px', fontWeight: 'bold', fontSize: '11px' }} disabled={player.lootBoxes <= 0} onClick={() => player.lootBoxes > 0 && setShowLootBox(true)}>Open</button>
-          </div>
-          <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src="/assets/items/lootbox_military.png" alt="Military Loot Box" style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(239,68,68,0.3))' }} />
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444', letterSpacing: '0.08em', fontFamily: 'var(--font-display)' }}>MILITARY</div>
-                <div style={{ fontSize: '18px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{player.militaryBoxes}</div>
-              </div>
-            </div>
-            <button className="comp-action comp-action--produce" style={{ margin: 0, width: 'auto', padding: '6px 16px', fontWeight: 'bold', fontSize: '11px', borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444', background: 'rgba(239,68,68,0.1)' }} disabled={player.militaryBoxes <= 0} onClick={() => player.militaryBoxes > 0 && setShowMilitaryBox(true)}>Open</button>
-          </div>
-        </div>
-          {/* Supply Box row */}
-          <div style={{ flex: 1, minWidth: '200px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(8,12,18,0.6)', padding: '12px', borderRadius: '6px', border: '1px solid rgba(59,130,246,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src="/assets/items/lootbox_civilian.png" alt="Supply Box" style={{ width: '36px', height: '36px', objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(59,130,246,0.3))' }} />
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#3b82f6', letterSpacing: '0.08em', fontFamily: 'var(--font-display)' }}>SUPPLY</div>
-                <div style={{ fontSize: '18px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-display)' }}>{player.supplyBoxes ?? 0}</div>
-              </div>
-            </div>
-            <button className="comp-action comp-action--produce" style={{ margin: 0, width: 'auto', padding: '6px 16px', fontWeight: 'bold', fontSize: '11px', borderColor: 'rgba(59,130,246,0.4)', color: '#3b82f6', background: 'rgba(59,130,246,0.1)' }} disabled={(player.supplyBoxes ?? 0) <= 0} onClick={() => (player.supplyBoxes ?? 0) > 0 && setShowSupplyBox(true)}>Open</button>
-          </div>
-      </div>
+      {/* Armor Categories */}
+      {renderArmorSection()}
 
-      <LootBoxOpener isOpen={showLootBox} onClose={() => setShowLootBox(false)} onOpenBox={handleLootBoxOpen} boxType="civilian" />
-      <LootBoxOpener isOpen={showMilitaryBox} onClose={() => setShowMilitaryBox(false)} onOpenBox={handleMilitaryBoxOpen} boxType="military" />
-      <LootBoxOpener isOpen={showSupplyBox} onClose={() => setShowSupplyBox(false)} onOpenBox={handleSupplyBoxOpen} boxType="supply" />
+      {inventory.items.filter(i => i.location === 'inventory').length === 0 && <div className="inv-empty">You have no equipment.</div>}
 
-      {/* Badge Market — inline */}
-      <div className="inv-section">
-        <div className="inv-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>🏅 BADGE MARKET <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>({player.badgesOfHonor ?? 0} badges)</span></div>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {[
-            { label: 'Civilian Box', price: 2, resource: 'lootBoxes' as const, color: '#22d38a', icon: '/assets/items/lootbox_civilian.png' },
-            { label: 'Supply Box', price: 4, resource: 'supplyBoxes' as const, color: '#3b82f6', icon: '/assets/items/lootbox_civilian.png' },
-          ].map(b => (
-            <button key={b.label} disabled={(player.badgesOfHonor ?? 0) < b.price}
-              onClick={() => {
-                if ((player.badgesOfHonor ?? 0) < b.price) return
-                usePlayerStore.getState().spendBadgesOfHonor(b.price)
-                usePlayerStore.getState().addResource(b.resource, 1, 'badge_market')
-                ui.addFloatingText(`+1 ${b.label}`, window.innerWidth / 2, window.innerHeight / 2, b.color)
-              }}
-              style={{
-                flex: 1, minWidth: '120px', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: '8px',
-                background: (player.badgesOfHonor ?? 0) >= b.price ? 'rgba(16,185,129,0.06)' : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${(player.badgesOfHonor ?? 0) >= b.price ? `${b.color}40` : 'rgba(255,255,255,0.06)'}`,
-                borderRadius: '6px', cursor: (player.badgesOfHonor ?? 0) >= b.price ? 'pointer' : 'not-allowed',
-                color: (player.badgesOfHonor ?? 0) >= b.price ? '#e2e8f0' : '#334155',
-              }}
-            >
-              <img src={b.icon} alt="" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
-              <div style={{ flex: 1, textAlign: 'left' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: b.color }}>{b.label}</div>
-                <div style={{ fontSize: '9px', color: '#64748b' }}>🏅 {b.price} badges</div>
-              </div>
-            </button>
-          ))}
-          {([
-            { tier: 't2' as const, price: 3, label: 'T2 Gear', color: TIER_COLORS.t2 },
-            { tier: 't3' as const, price: 6, label: 'T3 Gear', color: TIER_COLORS.t3 },
-            { tier: 't4' as const, price: 12, label: 'T4 Gear', color: TIER_COLORS.t4 },
-          ] as const).map(g => (
-            <button key={g.tier} disabled={(player.badgesOfHonor ?? 0) < g.price}
-              onClick={() => {
-                if ((player.badgesOfHonor ?? 0) < g.price) return
-                usePlayerStore.getState().spendBadgesOfHonor(g.price)
-                const slots = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots'] as const
-                const slot = slots[Math.floor(Math.random() * slots.length)]
-                const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
-                const subtypes = WEAPON_SUBTYPES[g.tier]
-                const subtype = slot === 'weapon' ? subtypes[Math.floor(Math.random() * subtypes.length)] : undefined
-                const result = generateStats(category, slot, g.tier, subtype)
-                inventory.addItem({
-                  id: `eq_badge_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-                  name: result.name, category, slot, tier: g.tier,
-                  weaponSubtype: result.weaponSubtype || subtype,
-                  stats: result.stats, location: 'inventory', equipped: false, durability: 100,
-                })
-                ui.addFloatingText(`+${result.name}`, window.innerWidth / 2, window.innerHeight / 2, g.color)
-              }}
-              style={{
-                flex: 1, minWidth: '90px', padding: '8px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-                background: (player.badgesOfHonor ?? 0) >= g.price ? `${g.color}10` : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${(player.badgesOfHonor ?? 0) >= g.price ? `${g.color}40` : 'rgba(255,255,255,0.06)'}`,
-                borderRadius: '6px', cursor: (player.badgesOfHonor ?? 0) >= g.price ? 'pointer' : 'not-allowed',
-                color: (player.badgesOfHonor ?? 0) >= g.price ? g.color : '#334155',
-              }}
-            >
-              <div style={{ fontSize: '10px', fontWeight: 800, fontFamily: 'var(--font-display)' }}>{g.label}</div>
-              <div style={{ fontSize: '9px', color: '#64748b' }}>🏅 {g.price}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Equipped Gear Display */}
+      {/* EQUIPO Section — Equipped Gear Display */}
       <InventoryGearDisplay onPickSlot={setPickerSlot} onPickAmmo={() => setShowAmmoPicker(true)} />
 
       {/* Craft Modal */}
       {mode === 'craft' && <InventoryCraftModal onClose={() => setMode('normal')} />}
-
-      {/* Disarm Mode Info */}
-      {mode === 'disarm' && (
-        <div style={{ fontSize: '10px', color: '#ef4444', textAlign: 'center', padding: '6px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '3px', marginBottom: '6px' }}>
-          DISARM MODE -- Click any unequipped item below to dismantle for scrap
-        </div>
-      )}
-
-      {/* Equipment List */}
-      <div className="inv-section">
-        <div className="inv-section__title">🎽 EQUIPMENT</div>
-        {renderEquipmentCategoryRow('weapon', 'Weapon')}
-        {renderEquipmentCategoryRow('helmet', 'Helmet')}
-        {renderEquipmentCategoryRow('chest', 'Chest')}
-        {renderEquipmentCategoryRow('legs', 'Legs')}
-        {renderEquipmentCategoryRow('gloves', 'Gloves')}
-        {renderEquipmentCategoryRow('boots', 'Boots')}
-        {inventory.items.filter(i => i.location === 'inventory').length === 0 && <div className="inv-empty">You have no equipment.</div>}
-      </div>
 
       {/* Item Interaction Modal */}
       {selectedItem && (
@@ -338,12 +422,17 @@ export default function InventoryTab() {
                 onClick={async () => { if (selectedItem.equipped) return; const r = await inventory.sellItem(selectedItem.id); if (r.success) { ui.addFloatingText(`SOLD +$${r.moneyGained.toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b'); setSelectedItem(null) } }}
               >SELL ${TIER_SELL_PRICE[selectedItem.tier].toLocaleString()}</button>
               <button style={{ flex: 1, padding: '8px', fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'rgba(245,158,11,0.1)', color: selectedItem.equipped ? '#334155' : '#f59e0b', border: `1px solid ${selectedItem.equipped ? '#1e293b' : 'rgba(245,158,11,0.3)'}`, borderRadius: '4px', cursor: selectedItem.equipped ? 'not-allowed' : 'pointer', opacity: selectedItem.equipped ? 0.4 : 1 }} disabled={selectedItem.equipped} onClick={handleDisarm}
-              >DISARM (+{SCRAP_VALUES[selectedItem.tier]} SCRAP)</button>
+              >DISMANTLE (+{SCRAP_VALUES[selectedItem.tier]} SCRAP)</button>
             </div>
             <button onClick={() => setSelectedItem(null)} style={{ width: '100%', padding: '6px', fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'transparent', color: '#475569', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', cursor: 'pointer' }}>CLOSE</button>
           </div>
         </GameModal>
       )}
+
+      {/* Loot Box Openers (hidden, triggered from elsewhere) */}
+      <LootBoxOpener isOpen={showLootBox} onClose={() => setShowLootBox(false)} onOpenBox={handleLootBoxOpen} boxType="civilian" />
+      <LootBoxOpener isOpen={showMilitaryBox} onClose={() => setShowMilitaryBox(false)} onOpenBox={handleMilitaryBoxOpen} boxType="military" />
+      <LootBoxOpener isOpen={showSupplyBox} onClose={() => setShowSupplyBox(false)} onOpenBox={handleSupplyBoxOpen} boxType="supply" />
 
       {/* Slot/Ammo Picker Modals — reused from ProfileModals */}
       {pickerSlot && <SlotPickerModal slot={pickerSlot} onClose={() => setPickerSlot(null)} />}

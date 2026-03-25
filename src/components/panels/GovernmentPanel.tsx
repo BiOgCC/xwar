@@ -8,23 +8,24 @@ import { GovAccountTab, GovCitizenshipTab, GovWarTab } from './government/GovSma
 import GovRegionTab from './government/GovRegionTab'
 import GovResearchTab from './government/GovResearchTab'
 import GovLawsTab from './government/GovLawsTab'
+import CountryFlag from '../shared/CountryFlag'
 import '../../styles/gov.css'
 
 import {
-  Home, BarChart2, Wallet, Users, Swords, Building2, Microscope, Scroll, Landmark
+  Home, BarChart2, Wallet, Users, Swords, Building2, Microscope, Scroll, Landmark, Vote
 } from 'lucide-react'
 
 type GovTab = 'home' | 'finance' | 'account' | 'citizenship' | 'war' | 'defense' | 'research' | 'laws'
 
 const TABS: { id: GovTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'home', label: 'HQ', icon: <Home size={18} strokeWidth={2} /> },
-  { id: 'finance', label: 'FINANCE', icon: <BarChart2 size={18} strokeWidth={2} /> },
-  { id: 'account', label: 'ACCOUNT', icon: <Wallet size={18} strokeWidth={2} /> },
-  { id: 'citizenship', label: 'CITIZENS', icon: <Users size={18} strokeWidth={2} /> },
-  { id: 'war', label: 'WAR', icon: <Swords size={18} strokeWidth={2} /> },
-  { id: 'defense', label: 'REGION', icon: <Building2 size={18} strokeWidth={2} /> },
-  { id: 'research', label: 'RESEARCH', icon: <Microscope size={18} strokeWidth={2} /> },
-  { id: 'laws', label: 'GOV', icon: <Scroll size={18} strokeWidth={2} /> },
+  { id: 'home', label: 'Home', icon: <Home size={18} strokeWidth={2} /> },
+  { id: 'laws', label: 'Laws', icon: <Scroll size={18} strokeWidth={2} /> },
+  { id: 'account', label: 'Account', icon: <Wallet size={18} strokeWidth={2} /> },
+  { id: 'finance', label: 'Government', icon: <Landmark size={18} strokeWidth={2} /> },
+  { id: 'war', label: 'Wars', icon: <Swords size={18} strokeWidth={2} /> },
+  { id: 'citizenship', label: 'Citizens', icon: <Users size={18} strokeWidth={2} /> },
+  { id: 'defense', label: 'Region', icon: <Building2 size={18} strokeWidth={2} /> },
+  { id: 'research', label: 'Research', icon: <Microscope size={18} strokeWidth={2} /> },
 ]
 
 export default function GovernmentPanel() {
@@ -41,6 +42,17 @@ export default function GovernmentPanel() {
 
   return (
     <div className="gov-panel">
+      {/* Hero Header */}
+      <div className="gov-hero">
+        <CountryFlag iso={iso} size={52} />
+        <div className="gov-hero__info">
+          <div className="gov-hero__label">
+            <Landmark size={12} /> Country
+          </div>
+          <div className="gov-hero__name">{country?.name || iso}</div>
+        </div>
+      </div>
+
       {/* Tab Bar */}
       <div className="gov-tabs">
         {TABS.map(t => (
@@ -53,36 +65,6 @@ export default function GovernmentPanel() {
             <span className="gov-tab__label">{t.label}</span>
           </button>
         ))}
-      </div>
-
-      {/* Header Strip */}
-      <div className="gov-header">
-        <div className="gov-header__country">
-          <span className="gov-header__flag" style={{ display: 'flex', alignItems: 'center' }}><Landmark size={20} color="#22d38a" strokeWidth={2} /></span>
-          <span className="gov-header__name">{country?.name || iso}</span>
-        </div>
-        <div className="gov-header__stats">
-          <div className="gov-header__stat">
-            <span className="gov-header__stat-label">PRESIDENT</span>
-            <span className="gov-header__stat-value gov-header__stat-value--green">{gov.president || 'Vacant'}</span>
-          </div>
-          <div className="gov-header__stat">
-            <span className="gov-header__stat-label">TAX</span>
-            <span className="gov-header__stat-value gov-header__stat-value--amber">{gov.taxRate}%</span>
-          </div>
-          {gov.swornEnemy && (
-            <div className="gov-header__stat">
-              <span className="gov-header__stat-label">ENEMY</span>
-              <span className="gov-header__stat-value gov-header__stat-value--red">{gov.swornEnemy}</span>
-            </div>
-          )}
-          {gov.ideology && (
-            <div className="gov-header__stat">
-              <span className="gov-header__stat-label">IDEOLOGY</span>
-              <span className="gov-header__stat-value gov-header__stat-value--purple">{gov.ideology.toUpperCase()}</span>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Tab Content */}

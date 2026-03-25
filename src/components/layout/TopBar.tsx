@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useWorldStore } from '../../stores/worldStore'
 import { useAuthStore } from '../../stores/authStore'
+import { useUIStore } from '../../stores/uiStore'
 import ResourceIcon from '../shared/ResourceIcon'
 
 interface TopBarProps {
@@ -38,6 +39,11 @@ export default function TopBar({ timeLeft, onManualTick }: TopBarProps) {
     return () => clearInterval(id)
   }, [])
 
+  const navigateTo = (panel: string, tab?: string) => {
+    if (tab) useUIStore.getState().setProfileDefaultTab(tab)
+    useUIStore.getState().setActivePanel(panel as any)
+  }
+
   return (
     <header className="hud-topbar">
       <div className="hud-topbar__left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -59,30 +65,30 @@ export default function TopBar({ timeLeft, onManualTick }: TopBarProps) {
           <button className="hud-tab">LEADERBOARD</button>
         </div>
 
-        {/* Player Status Bars Phase */}
+        {/* Player Status Bars Phase — Clickable */}
         <div style={{ display: 'flex', gap: '16px', alignItems: 'center', paddingLeft: '16px', borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Energy">
+          <div className="hud-topbar__stat" onClick={() => navigateTo('profile')} title="Hunger — Click to open Profile">
             <span style={{ fontSize: '12px' }}>🍖</span>
             <div style={{ width: '48px', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
               <div style={{ width: `${(player.hunger/player.maxHunger)*100}%`, height: '100%', background: '#f59e0b', transition: 'width 0.3s ease' }} />
             </div>
             <span style={{ fontSize: '9px', fontFamily: 'var(--font-display)', color: '#94a3b8', width: '38px' }}>{Math.floor(player.hunger)}/{player.maxHunger}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Stamina">
+          <div className="hud-topbar__stat" onClick={() => navigateTo('combat')} title="Stamina — Click to open Combat">
             <span style={{ fontSize: '12px' }}>⚡</span>
             <div style={{ width: '48px', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
               <div style={{ width: `${(player.stamina/player.maxStamina)*100}%`, height: '100%', background: '#ef4444', transition: 'width 0.3s ease' }} />
             </div>
             <span style={{ fontSize: '9px', fontFamily: 'var(--font-display)', color: '#94a3b8', width: '38px' }}>{Math.floor(player.stamina)}/{player.maxStamina}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Pleasure">
+          <div className="hud-topbar__stat" onClick={() => navigateTo('profile', 'companies')} title="Enterprise — Click to open Companies">
             <span style={{ fontSize: '12px' }}>💼</span>
             <div style={{ width: '48px', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
               <div style={{ width: `${(player.entrepreneurship/player.maxEntrepreneurship)*100}%`, height: '100%', background: '#a855f7', transition: 'width 0.3s ease' }} />
             </div>
             <span style={{ fontSize: '9px', fontFamily: 'var(--font-display)', color: '#94a3b8', width: '38px' }}>{Math.floor(player.entrepreneurship)}/{player.maxEntrepreneurship}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} title="Work">
+          <div className="hud-topbar__stat" onClick={() => navigateTo('profile')} title="Work — Click to open Profile">
             <span style={{ fontSize: '12px' }}>🔨</span>
             <div style={{ width: '48px', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
               <div style={{ width: `${(player.work/player.maxWork)*100}%`, height: '100%', background: '#3b82f6', transition: 'width 0.3s ease' }} />

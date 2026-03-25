@@ -133,7 +133,7 @@ export interface GovernmentState {
   spawnInstantDivision: (countryCode: string, investmentAmount?: number) => void
   // Military budget
   setMilitaryBudget: (countryId: string, percent: number) => { success: boolean; message: string }
-  processBudgetDistribution: (ticksPerDay: number) => void
+  processBudgetDistribution: (ticksPerDay: number) => Promise<void>
   // Armed Forces
   donateToArmedForces: (countryCode: string, divisionId: string, source: 'player' | 'army', armyId?: string) => { success: boolean; message: string }
   recruitFreeFromShop: (countryCode: string, listingId: string) => { success: boolean; message: string }
@@ -986,10 +986,16 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     return { success: true, message: `Military budget set to ${clamped}% of daily treasury.` }
   },
 
-  processBudgetDistribution: (ticksPerDay) => {
+  processBudgetDistribution: async (ticksPerDay) => {
     const state = get()
     const ws = useWorldStore.getState()
-    const armyStore = useArmyStore.getState()
+    const { useMUStore: MUStore } = await import('./muStore')
+    const muState = MUStore.getState()
+    const allUnits = Object.values(muState.units)
+
+    const MIN_ACTIVE_FIGHTERS = 3
+    const MAX_SHARE = 0.40  // 40% cap per MU
+    const JOIN_COOLDOWN_MS = 24 * 60 * 60 * 1000  // 24h
 
     Object.values(state.governments).forEach(gov => {
       if (gov.militaryBudgetPercent <= 0) return
@@ -998,53 +1004,72 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
 
       const pct = gov.militaryBudgetPercent / 100
       const ticks = Math.max(1, ticksPerDay)
-
-      // Calculate per-tick budget for each resource
       const budgetMoney = country.fund.money > 0 ? Math.floor(country.fund.money * pct / ticks) : 0
-      const budgetOil = country.fund.oil > 0 ? Math.floor(country.fund.oil * pct / ticks) : 0
-      const budgetMatX = country.fund.materialX > 0 ? Math.floor(country.fund.materialX * pct / ticks) : 0
-      if (budgetMoney <= 0 && budgetOil <= 0 && budgetMatX <= 0) return
+      if (budgetMoney <= 0) return
 
-      // Find all armies for this country
-      const countryArmies = Object.values(armyStore.armies).filter(a => a.countryCode === gov.countryId)
-      if (countryArmies.length === 0) return
+      // Find MUs belonging to this country
+      const countryMUs = allUnits.filter(u => u.countryCode === gov.countryId)
+      if (countryMUs.length === 0) return
 
-      // Distribute equally among armies
-      const n = countryArmies.length
-      const perArmyMoney = Math.floor(budgetMoney / n)
-      const perArmyOil = Math.floor(budgetOil / n)
-      const perArmyMatX = Math.floor(budgetMatX / n)
+      // Calculate eligible MUs and their damage
+      const now = Date.now()
+      const eligible: { id: string; damage: number }[] = []
+      let totalDamage = 0
 
-      // Build drain costs (only non-zero resources)
-      const totalMoney = perArmyMoney * n
-      const totalOil = perArmyOil * n
-      const totalMatX = perArmyMatX * n
-      const costs: Partial<NationalFund> = {}
-      if (totalMoney > 0) costs.money = totalMoney
-      if (totalOil > 0) costs.oil = totalOil
-      if (totalMatX > 0) costs.materialX = totalMatX
+      countryMUs.forEach(mu => {
+        const cycleDmg = mu.cycleDamage || {}
+        // Filter out members who joined < 24h ago (anti-alt cooldown)
+        const members = mu.members || []
+        let qualifiedFighters = 0
+        let qualifiedDamage = 0
 
-      // Drain from country fund
-      ws.spendFromFund(gov.countryId, costs)
+        for (const [name, dmg] of Object.entries(cycleDmg)) {
+          if (dmg <= 0) continue
+          const member = members.find(m => m.name === name)
+          if (!member) continue
+          // 24h join cooldown
+          if (now - member.joinedAt < JOIN_COOLDOWN_MS) continue
+          qualifiedFighters++
+          qualifiedDamage += dmg
+        }
 
-      // Add to each army's salary pool (money) and vault (oil, materialX)
-      countryArmies.forEach(army => {
-        useArmyStore.setState(s => ({
-          armies: {
-            ...s.armies,
-            [army.id]: {
-              ...s.armies[army.id],
-              salaryPool: (s.armies[army.id].salaryPool || 0) + perArmyMoney,
-              vault: {
-                ...s.armies[army.id].vault,
-                oil: s.armies[army.id].vault.oil + perArmyOil,
-                materialX: (s.armies[army.id].vault.materialX || 0) + perArmyMatX,
-              },
-            },
-          },
-        }))
+        // Must have at least MIN_ACTIVE_FIGHTERS unique qualified fighters
+        if (qualifiedFighters >= MIN_ACTIVE_FIGHTERS && qualifiedDamage > 0) {
+          eligible.push({ id: mu.id, damage: qualifiedDamage })
+          totalDamage += qualifiedDamage
+        }
+      })
+
+      if (eligible.length === 0 || totalDamage <= 0) return
+
+      // Calculate shares with 40% cap
+      let shares = eligible.map(e => ({
+        id: e.id,
+        rawShare: e.damage / totalDamage,
+        share: Math.min(MAX_SHARE, e.damage / totalDamage),
+      }))
+
+      // Normalize shares so they sum to 1.0
+      const totalShare = shares.reduce((sum, s) => sum + s.share, 0)
+      if (totalShare > 0) {
+        shares = shares.map(s => ({ ...s, share: s.share / totalShare }))
+      }
+
+      // Spend from country fund
+      const ok = ws.spendFromFund(gov.countryId, { money: budgetMoney })
+      if (!ok) return
+
+      // Credit each MU vault
+      shares.forEach(s => {
+        const payout = Math.floor(budgetMoney * s.share)
+        if (payout > 0) {
+          MUStore.getState().creditBudgetPayout(s.id, payout)
+        }
       })
     })
+
+    // Reset all cycle damage for next cycle
+    MUStore.getState().resetAllCycleDamage()
   },
 
   // ====== ARMED FORCES ======

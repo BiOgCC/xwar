@@ -1,6 +1,7 @@
 import React from 'react'
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useMarketStore, RESOURCE_DEFS } from '../../../stores/market'
+import ResourceIcon from '../../shared/ResourceIcon'
 
 interface MarketHistoryTabProps {
   showFb: (msg: string, ok?: boolean) => void
@@ -27,7 +28,7 @@ export default function MarketHistoryTab({ showFb }: MarketHistoryTabProps) {
             <div key={t.id} className={`market-history-row ${isMyBuy ? 'market-history-row--my-buy' : isMySell ? 'market-history-row--my-sell' : ''}`}>
               <div className="market-history-row__left">
                 <span>
-                  {t.itemType === 'resource' ? `${t.amount}× ${def?.icon || ''} ${def?.name || t.resourceId}` : t.itemType === 'equipment' ? `⚔️ Equipment` : `🪖 Division`}
+                  {t.itemType === 'resource' && def ? <>{t.amount}× <ResourceIcon resourceKey={def.id} size={14} style={{ margin: '0 2px' }} /> {def.name}</> : t.itemType === 'equipment' ? `⚔️ Equipment` : `🪖 Division`}
                 </span>
                 {isMyBuy && <span className="market-history-row__tag market-history-row__tag--bought">← YOU BOUGHT</span>}
                 {isMySell && <span className="market-history-row__tag market-history-row__tag--sold">→ YOU SOLD</span>}

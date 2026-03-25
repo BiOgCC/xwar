@@ -4,6 +4,7 @@ import { useArmyStore, DIVISION_TEMPLATES } from './army'
 import type { Division } from './army/types'
 import { usePlayerStore } from './playerStore'
 import { getCountryName } from '../data/countries'
+import { getAirportReachableRegions, getPortReachableRegions } from '../utils/geography'
 
 // ====== REGION MODEL ======
 
@@ -31,6 +32,14 @@ export interface Region {
   noDefenderTicks: number      // consecutive ticks with 0 occupier divisions — auto-lib at 300
   revoltBattleId: string | null // active revolt battle ID
   revoltTriggerType: 'manual' | 'auto' | null // how the current revolt was triggered
+  // Infrastructure
+  bunkerLevel: number
+  militaryBaseLevel: number
+  portLevel: number
+  airportLevel: number
+  // Infrastructure maintenance state
+  infraEnabled: Record<string, boolean>    // infraKey -> actively running (draining oil)
+  infraDisabledAt: Record<string, number>  // infraKey -> timestamp when disabled (0 = never)
 }
 
 // ====== NAMED REGION DEFINITIONS ======
@@ -318,6 +327,12 @@ function computeRegions(): Region[] {
       noDefenderTicks: 0,
       revoltBattleId: null,
       revoltTriggerType: null,
+      bunkerLevel: 0,
+      militaryBaseLevel: 0,
+      portLevel: def.countryCode === 'US' ? 1 : 0,
+      airportLevel: def.countryCode === 'US' ? 1 : 0,
+      infraEnabled: { bunkerLevel: true, militaryBaseLevel: true, portLevel: true, airportLevel: true },
+      infraDisabledAt: { bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0 },
     }
   })
 }
@@ -384,6 +399,12 @@ export interface RegionState {
   triggerRevolt: (regionId: string, triggerType: 'manual' | 'auto') => { success: boolean; message: string }
   liberateRegion: (regionId: string, mockMessage?: string) => void
   getHomelandBonus: (regionId: string) => { atkMult: number; dodgeMult: number; playerDmgMult: number }
+  // Infrastructure maintenance
+  processInfraOilTick: () => void
+  toggleInfra: (regionId: string, infraKey: string) => void
+  // Capital / core helpers
+  isCapitalRegion: (regionId: string) => boolean
+  isCoreRegion: (regionId: string) => boolean
 }
 
 const ISO3_TO_ISO2: Record<string, string> = {
@@ -435,12 +456,21 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     const owned = new Set(regions.filter(r => r.controlledBy === playerIso).map(r => r.id))
     const ownsInTarget = regions.some(r => r.countryCode === targetIso && r.controlledBy === playerIso)
     
+    // Build set of regions reachable via port/airport infrastructure
+    const infraReachable = new Set<string>()
+    regions.filter(r => r.controlledBy === playerIso).forEach(ownedRegion => {
+      getAirportReachableRegions(ownedRegion.id).forEach(id => infraReachable.add(id))
+      getPortReachableRegions(ownedRegion.id).forEach(id => infraReachable.add(id))
+    })
+    
     return regions.filter(r => {
       if (r.countryCode !== targetIso || r.controlledBy !== targetIso) return false
       // Beachhead Landing: if you own 0 regions in the target country, ANY region is a valid beachhead
       if (!ownsInTarget) return true
-      // Otherwise, you must expand via adjacency
-      return r.adjacent.some(a => owned.has(a))
+      // Adjacency-based expansion
+      if (r.adjacent.some(a => owned.has(a))) return true
+      // Port/Airport long-range reach
+      return infraReachable.has(r.id)
     })
   },
 
@@ -455,7 +485,14 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     const ownsInTarget = regions.some(r => r.countryCode === t.countryCode && r.controlledBy === playerIso)
     
     if (!ownsInTarget) return true
-    return t.adjacent.some(a => owned.has(a))
+    if (t.adjacent.some(a => owned.has(a))) return true
+    
+    // Check port/airport long-range reach from any owned region
+    for (const ownedRegion of regions.filter(r => r.controlledBy === playerIso)) {
+      if (getAirportReachableRegions(ownedRegion.id).includes(regionId)) return true
+      if (getPortReachableRegions(ownedRegion.id).includes(regionId)) return true
+    }
+    return false
   },
 
   attackRegion: (regionId, attackerIso, armyId) => set(s => ({
@@ -743,6 +780,9 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           debris: (cc === 'MX' || cc === 'CU') ? { scrap: 500000, materialX: 100000, militaryBoxes: 500 } : { scrap: 0, materialX: 0, militaryBoxes: 0 }, scavengeCount: 0,
           revoltPressure: 0, revoltCooldownUntil: 0, noDefenderTicks: 0,
           revoltBattleId: null, revoltTriggerType: null,
+          bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0,
+          infraEnabled: { bunkerLevel: true, militaryBaseLevel: true, portLevel: true, airportLevel: true },
+          infraDisabledAt: { bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0 },
         })
       })
 
@@ -1233,5 +1273,97 @@ export const useRegionStore = create<RegionState>((set, get) => ({
         )
       }
     } catch (e) { /* newsStore not loaded */ }
+  },
+
+  // ====== INFRASTRUCTURE OIL MAINTENANCE ======
+
+  processInfraOilTick: () => {
+    const INFRA_OIL_COSTS = [0, 20, 40, 60, 90, 130]  // index = level
+    const INFRA_KEYS = ['bunkerLevel', 'militaryBaseLevel', 'portLevel', 'airportLevel'] as const
+    const { regions } = get()
+    const ws = useWorldStore.getState()
+
+    // Aggregate oil cost per country
+    const costByCountry: Record<string, number> = {}
+    const disableList: { regionId: string; infraKey: string }[] = []
+
+    regions.forEach(r => {
+      if (r.isOcean) return
+      INFRA_KEYS.forEach(key => {
+        const level = r[key]
+        if (level <= 0) return
+        if (!r.infraEnabled[key]) return  // already disabled
+        const cost = INFRA_OIL_COSTS[Math.min(level, 5)] || 0
+        if (cost <= 0) return
+        if (!costByCountry[r.controlledBy]) costByCountry[r.controlledBy] = 0
+        costByCountry[r.controlledBy] += cost
+      })
+    })
+
+    // Attempt to spend oil from each country's national fund
+    const failedCountries = new Set<string>()
+    for (const [cc, totalOil] of Object.entries(costByCountry)) {
+      const ok = ws.spendFromFund(cc, { oil: totalOil })
+      if (!ok) failedCountries.add(cc)
+    }
+
+    // Disable infrastructure for countries that couldn't pay
+    if (failedCountries.size > 0) {
+      const now = Date.now()
+      set(s => ({
+        regions: s.regions.map(r => {
+          if (r.isOcean || !failedCountries.has(r.controlledBy)) return r
+          const newEnabled = { ...r.infraEnabled }
+          const newDisabledAt = { ...r.infraDisabledAt }
+          let changed = false
+          INFRA_KEYS.forEach(key => {
+            if (r[key] > 0 && newEnabled[key]) {
+              newEnabled[key] = false
+              newDisabledAt[key] = now
+              changed = true
+            }
+          })
+          return changed ? { ...r, infraEnabled: newEnabled, infraDisabledAt: newDisabledAt } : r
+        })
+      }))
+    }
+  },
+
+  toggleInfra: (regionId, infraKey) => {
+    const now = Date.now()
+    set(s => ({
+      regions: s.regions.map(r => {
+        if (r.id !== regionId) return r
+        const newEnabled = { ...r.infraEnabled }
+        const newDisabledAt = { ...r.infraDisabledAt }
+        if (newEnabled[infraKey]) {
+          // Disable
+          newEnabled[infraKey] = false
+          newDisabledAt[infraKey] = now
+        } else {
+          // Re-enable
+          newEnabled[infraKey] = true
+          newDisabledAt[infraKey] = 0
+        }
+        return { ...r, infraEnabled: newEnabled, infraDisabledAt: newDisabledAt }
+      })
+    }))
+  },
+
+  // ====== CAPITAL / CORE HELPERS ======
+
+  isCapitalRegion: (regionId) => {
+    // The first region defined for each country in REGION_DEFS is the capital
+    const region = get().regions.find(r => r.id === regionId)
+    if (!region || region.isOcean) return false
+    const firstForCountry = REGION_DEFS.find(d => d.countryCode === region.countryCode)
+    return firstForCountry?.id === regionId
+  },
+
+  isCoreRegion: (regionId) => {
+    const region = get().regions.find(r => r.id === regionId)
+    if (!region || region.isOcean) return false
+    // A region is "core" if it still belongs to its original country
+    return region.countryCode === region.controlledBy
   },
 }))

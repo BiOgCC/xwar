@@ -99,4 +99,17 @@ export interface Battle {
   playerAdrenalinePeakAt: Record<string, number>
   /** Per-side Vengeance buff: tracks expiry tick when an allied division is destroyed */
   vengeanceBuff: Record<'attacker' | 'defender', number>  // side → tick when buff expires
+  /** Active mercenary contracts — funded bounty pools that pay per hit */
+  mercenaryContracts: MercenaryContract[]
+}
+
+export interface MercenaryContract {
+  id: string
+  side: 'attacker' | 'defender'
+  ratePerDamage: number  // $ paid per point of damage dealt
+  totalPool: number      // total $ funded from treasury
+  remaining: number      // $ remaining in pool
+  fundedBy: string       // player name who created the contract
+  countryCode: string    // country that funded it
+  createdAt: number
 }

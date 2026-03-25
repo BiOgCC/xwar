@@ -276,4 +276,83 @@ export function initMockData() {
       ] as any,
     })
   }
+  // ═══════════════════════════════════════════
+  //  11. MILITARY UNIT — player in a 12-member MU
+  // ═══════════════════════════════════════════
+  import('../stores/muStore').then(({ useMUStore }) => {
+    const muState = useMUStore.getState()
+    if (Object.keys(muState.units).length === 0) {
+      const now = Date.now()
+      const mockMembers = [
+        { playerId: playerName, name: playerName, level: 12, countryCode: 'US', health: 10, maxHealth: 10, role: 'commander' as const, joinedAt: now - 86400000 * 30, weeklyDamage: 54200, totalDamage: 1240000, terrain: 420, wealth: 5000, lastActive: now - 60000 },
+        { playerId: 'Ghost_Viper', name: 'Ghost_Viper', level: 18, countryCode: 'US', health: 8, maxHealth: 10, role: 'commander' as const, joinedAt: now - 86400000 * 25, weeklyDamage: 72100, totalDamage: 1890000, terrain: 580, wealth: 8200, lastActive: now - 300000 },
+        { playerId: 'IronWolf_88', name: 'IronWolf_88', level: 15, countryCode: 'US', health: 6, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 20, weeklyDamage: 38900, totalDamage: 920000, terrain: 310, wealth: 3100, lastActive: now - 1800000 },
+        { playerId: 'SkyHammer', name: 'SkyHammer', level: 22, countryCode: 'GB', health: 10, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 18, weeklyDamage: 91000, totalDamage: 2450000, terrain: 720, wealth: 12000, lastActive: now - 120000 },
+        { playerId: 'RedFox_21', name: 'RedFox_21', level: 10, countryCode: 'US', health: 3, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 15, weeklyDamage: 21500, totalDamage: 410000, terrain: 180, wealth: 1500, lastActive: now - 7200000 },
+        { playerId: 'NightOwl', name: 'NightOwl', level: 14, countryCode: 'CA', health: 7, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 12, weeklyDamage: 45800, totalDamage: 780000, terrain: 290, wealth: 4200, lastActive: now - 900000 },
+        { playerId: 'StormBreaker', name: 'StormBreaker', level: 20, countryCode: 'US', health: 9, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 10, weeklyDamage: 68200, totalDamage: 1560000, terrain: 510, wealth: 7800, lastActive: now - 240000 },
+        { playerId: 'Phoenix_99', name: 'Phoenix_99', level: 8, countryCode: 'DE', health: 5, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 8, weeklyDamage: 15600, totalDamage: 280000, terrain: 120, wealth: 900, lastActive: now - 3600000 },
+        { playerId: 'BladeRunner', name: 'BladeRunner', level: 16, countryCode: 'US', health: 4, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 6, weeklyDamage: 52100, totalDamage: 1100000, terrain: 380, wealth: 5600, lastActive: now - 600000 },
+        { playerId: 'HawkEye_77', name: 'HawkEye_77', level: 11, countryCode: 'US', health: 10, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 4, weeklyDamage: 29300, totalDamage: 520000, terrain: 210, wealth: 2400, lastActive: now - 180000 },
+        { playerId: 'ShadowFang', name: 'ShadowFang', level: 19, countryCode: 'JP', health: 2, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000 * 2, weeklyDamage: 61400, totalDamage: 1380000, terrain: 460, wealth: 6900, lastActive: now - 420000 },
+        { playerId: 'CyberNova', name: 'CyberNova', level: 13, countryCode: 'US', health: 8, maxHealth: 10, role: 'member' as const, joinedAt: now - 86400000, weeklyDamage: 33700, totalDamage: 650000, terrain: 250, wealth: 3800, lastActive: now - 1200000 },
+      ]
+
+      const mockUnit = {
+        id: 'mu_black_lotus',
+        name: 'Black Lotus I',
+        bannerUrl: '',
+        avatarUrl: '',
+        ownerId: playerName,
+        ownerName: playerName,
+        ownerCountry: 'US',
+        countryCode: 'US',
+        locationRegion: 'United States',
+        members: mockMembers,
+        applications: [
+          { id: 'app_1', playerId: 'Recruit_Alpha', playerName: 'Recruit_Alpha', playerLevel: 6, playerCountry: 'US', message: 'Looking for an active MU!', appliedAt: now - 3600000, status: 'pending' as const },
+          { id: 'app_2', playerId: 'WarMonger_X', playerName: 'WarMonger_X', playerLevel: 9, playerCountry: 'BR', message: '', appliedAt: now - 7200000, status: 'pending' as const },
+        ],
+        badges: [
+          { id: 'badge_1', name: 'First Blood', icon: '🗡️', description: 'First combat together' },
+          { id: 'badge_2', name: 'Iron Wall', icon: '🛡️', description: 'Defended 10 battles' },
+          { id: 'badge_3', name: 'Blitz', icon: '⚡', description: 'Won 5 battles in a day' },
+        ],
+        transactions: [
+          { id: 'txn_m1', type: 'deposit' as const, amount: 50000, currency: 'money', playerName: playerName, description: 'Unit creation fee', timestamp: now - 86400000 * 30 },
+          { id: 'txn_m2', type: 'deposit' as const, amount: 75000, currency: 'money', playerName: 'Ghost_Viper', description: 'Donated $75,000', timestamp: now - 86400000 * 10 },
+          { id: 'txn_m3', type: 'purchase' as const, amount: 4800, currency: 'money', playerName: playerName, description: 'Bought 2400 wheat @ $2/ea', timestamp: now - 86400000 * 5 },
+        ],
+        donations: [
+          { id: 'don_m1', donorName: 'Ghost_Viper', donorCountry: 'US', amount: 75000, currency: 'money', message: 'For the cause!', timestamp: now - 86400000 * 10 },
+          { id: 'don_m2', donorName: 'SkyHammer', donorCountry: 'GB', amount: 500, currency: 'wheat', message: '', timestamp: now - 86400000 * 7 },
+          { id: 'don_m3', donorName: 'StormBreaker', donorCountry: 'US', amount: 200, currency: 'greenBullets', message: 'Ammo supply', timestamp: now - 86400000 * 3 },
+        ],
+        contracts: [
+          { id: 'con_m1', title: 'Weekly Damage Goal', description: 'Deal 100K damage this week', reward: 10000, currency: 'money', status: 'active' as const, createdBy: playerName, createdAt: now - 86400000 * 2, expiresAt: now + 86400000 * 5 },
+        ],
+        createdAt: now - 86400000 * 30,
+        weeklyDamageTotal: mockMembers.reduce((s, m) => s + m.weeklyDamage, 0),
+        totalDamageTotal: mockMembers.reduce((s, m) => s + m.totalDamage, 0),
+        vault: {
+          treasury: 125000,
+          resources: {
+            wheat: 2400,
+            steak: 180,
+            bread: 600,
+            oil: 340,
+            scrap: 520,
+            greenBullets: 1200,
+            blueBullets: 400,
+            magicTea: 15,
+          } as any,
+        },
+      }
+
+      useMUStore.setState({
+        units: { [mockUnit.id]: mockUnit },
+        playerUnitId: mockUnit.id,
+      })
+    }
+  })
 }

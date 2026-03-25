@@ -112,8 +112,8 @@ export function matchResourceOrders(set: Set, get: Get, resourceId: ResourceId):
       if (buyOrder.source === 'country' && def.fundKey) {
         useWorldStore.getState().addToFund(buyOrder.countryCode, def.fundKey, matchAmount)
       } else if (buyOrder.source === 'force_vault' && buyOrder.armyId) {
-        // Deliver to army vault (only oil is storable)
-        const vaultKey = resourceId === 'oil' ? 'oil' : null
+        // Deliver to army vault (oil & materialX are storable)
+        const vaultKey = resourceId === 'oil' ? 'oil' : resourceId === 'materialX' ? 'materialX' : null
         if (vaultKey) {
           useArmyStore.setState(s => {
             const army = s.armies[buyOrder.armyId!]
