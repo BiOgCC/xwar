@@ -5,7 +5,8 @@ import type { Country } from '../../stores/worldStore'
 import { useWorldStore } from '../../stores/worldStore'
 import type { Region } from '../../stores/regionStore'
 import { useRegionStore } from '../../stores/regionStore'
-import { LEY_LINE_DEFS, ARCHETYPE_META } from '../../data/leyLineRegistry'
+import { ARCHETYPE_META } from '../../data/leyLineRegistry'
+import type { LeyLineDef } from '../../data/leyLineRegistry'
 import { useLeyLineStore } from '../../stores/leyLineStore'
 import { useTradeRouteStore } from '../../stores/tradeRouteStore'
 import { useAllianceStore } from '../../stores/allianceStore'
@@ -111,6 +112,13 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
+
+  // ── Live ley line defs from DB ──
+  const liveDefs = useLeyLineStore(s => s.defs)
+  const fetchDefs = useLeyLineStore(s => s.fetchDefs)
+  const leyLineSourcesBooted = useRef(false)
+  // Fetch defs once on mount
+  useEffect(() => { fetchDefs() }, [fetchDefs])
 
   // Store callbacks in refs so marker event listeners always have the latest version
   const onRegionClickRef = useRef(onRegionClick)
@@ -138,6 +146,117 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
       }
     }
   }, [])
+
+  // ── Reactive ley line rendering: boots on first defs + mapLoaded ──
+  useEffect(() => {
+    const m = map.current
+    if (!m || !mapLoaded || liveDefs.length === 0) return
+
+    const bzArc = (p1: number[], p2: number[], steps = 24): number[][] => {
+      const mLng = (p1[0]+p2[0])/2, mLat = (p1[1]+p2[1])/2
+      const dist = Math.sqrt((p2[0]-p1[0])**2+(p2[1]-p1[1])**2)
+      const ctrl = [mLng, mLat + dist*0.18]
+      const pts: number[][] = []
+      for (let i = 0; i <= steps; i++) {
+        const t = i/steps
+        pts.push([(1-t)**2*p1[0]+2*(1-t)*t*ctrl[0]+t**2*p2[0], (1-t)**2*p1[1]+2*(1-t)*t*ctrl[1]+t**2*p2[1]])
+      }
+      return pts
+    }
+    const buildPaths = (): GeoJSON.FeatureCollection => {
+      const regs = useRegionStore.getState().regions
+      const lsAll = useLeyLineStore.getState().getAllLineStatus()
+      const features: GeoJSON.Feature[] = []
+      liveDefs.forEach((line: LeyLineDef) => {
+        const meta = ARCHETYPE_META[line.archetype]
+        const coords: number[][] = []; let prev: number[] | null = null
+        line.blocks.forEach((bid: string) => {
+          const r = regs.find(x => x.id === bid)
+          if (r?.position && r.position.length >= 2) {
+            if (prev) { const c = bzArc(prev, r.position); c.shift(); coords.push(...c) } else coords.push([...r.position])
+            prev = r.position
+          }
+        })
+        if (coords.length < 2) return
+        const st = lsAll.find((s: any) => s.def.id === line.id)
+        features.push({ type: 'Feature', properties: { id: line.id, name: line.name, archetype: line.archetype, color: meta.color, active: st?.active ?? false, completion: st?.completion ?? 0 }, geometry: { type: 'LineString', coordinates: coords } })
+      })
+      return { type: 'FeatureCollection', features }
+    }
+    const buildNodes = (): GeoJSON.FeatureCollection => {
+      const regs = useRegionStore.getState().regions
+      const pISO = usePlayerStore.getState().countryCode ?? ''
+      const pa = useAllianceStore.getState().getPlayerAlliance?.()
+      const pAId: string | null = pa?.id ?? null
+      const als: any[] = (useAllianceStore.getState() as any).alliances ?? []
+      const lsAll = useLeyLineStore.getState().getAllLineStatus()
+      const features: GeoJSON.Feature[] = []
+      liveDefs.forEach((line: LeyLineDef) => {
+        const meta = ARCHETYPE_META[line.archetype]
+        const st = lsAll.find((s: any) => s.def.id === line.id)
+        const active = st?.active ?? false
+        const missingCount = line.blocks.filter((bid: string) => {
+          const o = regs.find(x => x.id === bid)?.controlledBy ?? null
+          if (!o) return true; if (o === pISO) return false
+          if (pAId) { const a = als.find(x => x.id === pAId); if (a?.members?.some((mb: any) => mb.countryCode === o)) return false }
+          return true
+        }).length
+        line.blocks.forEach((bid: string) => {
+          const r = regs.find(x => x.id === bid)
+          if (!r?.position || r.position.length < 2) return
+          const own = r.controlledBy ?? null
+          const ownerState: NodeOwnershipState = !own ? 'unowned' : own === pISO ? 'self' : 'neutral'
+          const isMissing = ownerState !== 'self'
+          const isCrit = !active && isMissing && missingCount === 1
+          features.push({ type: 'Feature', properties: { regionId: bid, regionName: r.name, lineId: line.id, lineName: line.name, archetype: line.archetype, archetypeColor: meta.color, archetypeLabel: meta.label, ownershipState: ownerState, ownerCountry: own, isLineActive: active, isLineCritical: isCrit } satisfies Record<string, unknown>, geometry: { type: 'Point', coordinates: r.position } })
+        })
+      })
+      return { type: 'FeatureCollection', features }
+    }
+
+    if (leyLineSourcesBooted.current) {
+      ;(m.getSource('xwar-leyline-nodes') as maplibregl.GeoJSONSource | undefined)?.setData(buildNodes())
+      ;(m.getSource('xwar-leylines') as maplibregl.GeoJSONSource | undefined)?.setData(buildPaths())
+    } else {
+      leyLineSourcesBooted.current = true
+      try {
+        m.addSource('xwar-leylines', { type: 'geojson', data: buildPaths() })
+        m.addSource('xwar-leyline-nodes', { type: 'geojson', data: buildNodes() })
+        m.addLayer({ id: 'xwar-leyline-glow',       type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],10,6],  'line-opacity': ['case',['==',['get','active'],true],0.25,0.08], 'line-blur': 8 } as any })
+        m.addLayer({ id: 'xwar-leyline-glow-inner', type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],5,3],   'line-opacity': ['case',['==',['get','active'],true],0.45,0.20],'line-blur': 2 } as any })
+        m.addLayer({ id: 'xwar-leyline-core',       type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],2.2,1.5],'line-opacity': ['case',['==',['get','active'],true],0.90,0.40],'line-dasharray':[5,3] } as any })
+        m.addLayer({ id: 'xwar-leyline-spine',      type: 'line',   source: 'xwar-leylines',      filter: ['==',['get','active'],true], paint: { 'line-color': '#ffffff', 'line-width': 0.8, 'line-opacity': 0.85 } as any })
+        m.addLayer({ id: 'xwar-leyline-nodes',      type: 'circle', source: 'xwar-leyline-nodes', minzoom: 2.5, paint: {
+          'circle-radius':       ['case',['boolean',['get','isLineCritical'],false],10,['boolean',['get','isLineActive'],false],8,6] as any,
+          'circle-color':        ['match',['get','ownershipState'],'self',OWNERSHIP_COLORS.self,'ally',OWNERSHIP_COLORS.ally,'enemy',OWNERSHIP_COLORS.enemy,'neutral',OWNERSHIP_COLORS.neutral,OWNERSHIP_COLORS.unowned] as any,
+          'circle-stroke-color': ['case',['boolean',['get','isLineActive'],false],'#ffffff',['boolean',['get','isLineCritical'],false],'#fbbf24','rgba(0,0,0,0)'] as any,
+          'circle-stroke-width': ['case',['boolean',['get','isLineActive'],false],3,['boolean',['get','isLineCritical'],false],2,0] as any,
+          'circle-opacity':      ['match',['get','ownershipState'],'unowned',0.5,1.0] as any,
+        } })
+        m.addLayer({ id: 'xwar-leyline-labels', type: 'symbol', source: 'xwar-leylines', minzoom: 3,
+          layout: { 'text-field':['get','name'],'text-font':['Open Sans Bold','Arial Unicode MS Bold'],'text-size':11,'symbol-placement':'line-center','text-allow-overlap':false },
+          paint: { 'text-color':['get','color'],'text-halo-color':'rgba(0,0,0,0.9)','text-halo-width':1.5 } as any })
+        const llPop = new maplibregl.Popup({ closeButton:false, closeOnClick:false, className:'xwar-leynode-popup', offset:10 })
+        m.on('mouseenter', 'xwar-leyline-nodes', (e: any) => {
+          m.getCanvas().style.cursor = 'crosshair'
+          if (!e.features?.length) return
+          const p = e.features[0].properties as Record<string,unknown>
+          const sc = OWNERSHIP_COLORS[(p.ownershipState as NodeOwnershipState) ?? 'unowned']
+          llPop.setLngLat(e.features[0].geometry.coordinates as [number,number])
+            .setHTML(`<div style="font-family:monospace;min-width:160px"><b style="color:#e2e8f0">${p.regionName??p.regionId}</b><br/><span style="font-size:9px;color:#94a3b8">Ley: <b style="color:${p.archetypeColor}">${p.lineName}</b></span><br/><span style="font-size:8px;padding:2px 6px;background:${sc}22;color:${sc};border-radius:3px">${String(p.ownershipState).toUpperCase()}</span>${p.isLineCritical?'<br/><span style="color:#fbbf24;font-size:9px">⚡ Capture to complete</span>':''}</div>`)
+            .addTo(m)
+        })
+        m.on('mouseleave','xwar-leyline-nodes', () => { m.getCanvas().style.cursor=''; llPop.remove() })
+        const unsubLL = useRegionStore.subscribe(() => {
+          const ns = m.getSource('xwar-leyline-nodes') as maplibregl.GeoJSONSource|undefined
+          const ps = m.getSource('xwar-leylines') as maplibregl.GeoJSONSource|undefined
+          if (ns && ps) { ns.setData(buildNodes()); ps.setData(buildPaths()) }
+        })
+        m.once('remove', () => { unsubLL(); llPop.remove() })
+      } catch(err) { console.warn('[GameMap] ley line init:', err) }
+    }
+  }, [liveDefs, mapLoaded])
+
 
   // Expose map controls to parent via ref
   useImperativeHandle(ref, () => ({
@@ -740,406 +859,6 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
               points.push([px, py])
             }
             return points
-          }
-
-          function buildLeyLineNodeGeoJSON(): GeoJSON.FeatureCollection {
-
-            const regionState   = useRegionStore.getState()
-            const allianceState = useAllianceStore.getState()
-            const playerISO2    = usePlayerStore.getState().countryCode || null
-            const playerAllianceId = allianceState.playerAllianceId
-            const alliances    = allianceState.alliances
-            const lineStatuses = useLeyLineStore.getState().getAllLineStatus()
-
-            const wars2 = useWorldStore.getState().wars
-            const enemySet = new Set<string>()
-            wars2.forEach(w => {
-              if (w.status !== 'active') return
-              if (w.attacker === playerISO2) enemySet.add(w.defender)
-              if (w.defender === playerISO2) enemySet.add(w.attacker)
-            })
-
-            const features: GeoJSON.Feature[] = []
-
-            LEY_LINE_DEFS.forEach(line => {
-              const meta   = ARCHETYPE_META[line.archetype]
-              const status = lineStatuses.find(s => s.def.id === line.id)
-              const isLineActive = status?.active ?? false
-
-              // Count unowned/enemy nodes to detect the critical (last missing) node
-              const blockOwners = line.blocks.map(blockId => {
-                const region = regionState.regions.find(r => r.id === blockId)
-                return region?.controlledBy ?? null
-              })
-              const missingCount = blockOwners.filter(o => {
-                if (!o) return true
-                if (o === playerISO2) return false
-                if (playerAllianceId) {
-                  const pa = alliances.find(a => a.id === playerAllianceId)
-                  if (pa?.members.some(m => m.countryCode === o)) return false
-                }
-                return true
-              }).length
-
-              line.blocks.forEach(blockId => {
-                const region = regionState.regions.find(r => r.id === blockId)
-                if (!region?.position || region.position.length < 2) return
-
-                const ownerCountry = region.controlledBy ?? null
-                const ownershipState = getOwnershipState(
-                  ownerCountry, playerISO2, playerAllianceId, alliances, enemySet,
-                )
-                const isMissing = ownershipState !== 'self' && ownershipState !== 'ally'
-                const isLineCritical = !isLineActive && isMissing && missingCount === 1
-
-                features.push({
-                  type: 'Feature',
-                  properties: {
-                    regionId:      blockId,
-                    regionName:    region.name,
-                    lineId:        line.id,
-                    lineName:      line.name,
-                    archetype:     line.archetype,
-                    archetypeColor: meta.color,
-                    archetypeLabel: ARCHETYPE_META[line.archetype].label,
-                    ownershipState,
-                    ownerCountry,
-                    isLineActive,
-                    isLineCritical,
-                  } satisfies Record<string, unknown>,
-                  geometry: { type: 'Point', coordinates: region.position },
-                })
-              })
-            })
-
-            return { type: 'FeatureCollection', features }
-          }
-
-          // ── Build line corridor features ──
-          function buildLeyLinePathGeoJSON(): GeoJSON.FeatureCollection {
-            const regionState = useRegionStore.getState()
-            const lineStatus = useLeyLineStore.getState().getAllLineStatus()
-            const features: GeoJSON.Feature[] = []
-
-            LEY_LINE_DEFS.forEach(line => {
-              const meta = ARCHETYPE_META[line.archetype]
-              const coords: number[][] = []
-              let prevPos: number[] | null = null
-
-              line.blocks.forEach(blockId => {
-                const region = regionState.regions.find(r => r.id === blockId)
-                if (region && region.position && region.position.length >= 2) {
-                  if (prevPos) {
-                    const curve = createBezierArc(prevPos, region.position)
-                    curve.shift() // prevent duplicate overlaps
-                    coords.push(...curve)
-                  } else {
-                    coords.push([...region.position])
-                  }
-                  prevPos = region.position
-                }
-              })
-              if (coords.length < 2) return
-
-              const status = lineStatus.find(s => s.def.id === line.id)
-              const isActive   = status?.active ?? false
-              const completion = status?.completion ?? 0
-
-              features.push({
-                type: 'Feature',
-                properties: {
-                  id: line.id, name: line.name,
-                  archetype: line.archetype,
-                  color: meta.color,
-                  active: isActive,
-                  completion,
-                },
-                geometry: { type: 'LineString', coordinates: coords },
-              })
-            })
-
-            return { type: 'FeatureCollection', features }
-          }
-
-          const initialLeyLinePaths = buildLeyLinePathGeoJSON()
-
-          if (initialLeyLinePaths.features.length > 0) {
-            m.addSource('xwar-leylines', {
-              type: 'geojson',
-              data: initialLeyLinePaths,
-            })
-            m.addSource('xwar-leyline-nodes', {
-              type: 'geojson',
-              data: buildLeyLineNodeGeoJSON(),
-            })
-
-            // ── Glowing Aura (wide/soft) ──
-            m.addLayer({
-              id: 'xwar-leyline-glow',
-              type: 'line',
-              source: 'xwar-leylines',
-              paint: {
-                'line-color': ['get', 'color'],
-                'line-width': ['case', ['==', ['get', 'active'], true], 10, 6],
-                'line-opacity': ['case', ['==', ['get', 'active'], true], 0.25, 0.08],
-                'line-blur': 8,
-              },
-            })
-
-            // ── Inner Glow (sharp bloom) ──
-            m.addLayer({
-              id: 'xwar-leyline-glow-inner',
-              type: 'line',
-              source: 'xwar-leylines',
-              paint: {
-                'line-color': ['get', 'color'],
-                'line-width': ['case', ['==', ['get', 'active'], true], 5, 3],
-                'line-opacity': ['case', ['==', ['get', 'active'], true], 0.45, 0.20],
-                'line-blur': 2,
-              },
-            })
-
-            // ── Core Line (Neon dashed or solid based on active) ──
-            m.addLayer({
-              id: 'xwar-leyline-core-active',
-              type: 'line',
-              source: 'xwar-leylines',
-              paint: {
-                'line-color': ['get', 'color'],
-                'line-width': ['case', ['==', ['get', 'active'], true], 2.2, 1.5],
-                'line-opacity': ['case', ['==', ['get', 'active'], true], 0.90, 0.40],
-                'line-dasharray': [5, 3], // Both use the marching dashes now
-              },
-            })
-
-            // ── Bright spine highlight (Active only) ──
-            m.addLayer({
-              id: 'xwar-leyline-spine',
-              type: 'line',
-              source: 'xwar-leylines',
-              filter: ['==', ['get', 'active'], true],
-              paint: {
-                'line-color': '#ffffff',
-                'line-width': 0.8,
-                'line-opacity': 0.85,
-              },
-            })
-
-            // ── Node dots — ownership-aware paint expressions ──
-            m.addLayer({
-              id: 'xwar-leyline-nodes',
-              type: 'circle',
-              source: 'xwar-leyline-nodes',
-              minzoom: 2.5,
-              paint: {
-                'circle-radius': [
-                  'case',
-                  ['boolean', ['get', 'isLineCritical'], false], 10,
-                  ['boolean', ['get', 'isLineActive'],   false], 8,
-                  6,
-                ] as any,
-                'circle-color': [
-                  'match', ['get', 'ownershipState'],
-                  'self',    OWNERSHIP_COLORS.self,
-                  'ally',    OWNERSHIP_COLORS.ally,
-                  'enemy',   OWNERSHIP_COLORS.enemy,
-                  'neutral', OWNERSHIP_COLORS.neutral,
-                  OWNERSHIP_COLORS.unowned,
-                ] as any,
-                'circle-stroke-color': [
-                  'case',
-                  ['boolean', ['get', 'isLineActive'],   false], '#ffffff',
-                  ['boolean', ['get', 'isLineCritical'], false], '#fbbf24',
-                  'rgba(0,0,0,0)',
-                ] as any,
-                'circle-stroke-width': [
-                  'case',
-                  ['boolean', ['get', 'isLineActive'],   false], 3,
-                  ['boolean', ['get', 'isLineCritical'], false], 2,
-                  0,
-                ] as any,
-                'circle-opacity': [
-                  'match', ['get', 'ownershipState'],
-                  'unowned', 0.5,
-                  1.0,
-                ] as any,
-              },
-            })
-
-            // ── Ley Line name labels (zoom 3+) ──
-            m.addLayer({
-              id: 'xwar-leyline-labels',
-              type: 'symbol',
-              source: 'xwar-leylines',
-              minzoom: 3,
-              layout: {
-                'text-field': ['get', 'name'],
-                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-                'text-size': 11,
-                'symbol-placement': 'line-center',
-                'text-allow-overlap': false,
-              },
-              paint: {
-                'text-color': ['get', 'color'],
-                'text-halo-color': 'rgba(0, 0, 0, 0.9)',
-                'text-halo-width': 1.5,
-              },
-            })
-
-            // ── Step 4: Hover tooltip on node dots ──
-            const leyNodePopup = new maplibregl.Popup({
-              closeButton: false,
-              closeOnClick: false,
-              className: 'xwar-leynode-popup',
-              offset: 10,
-            })
-
-            m.on('mouseenter', 'xwar-leyline-nodes', (e: any) => {
-              m.getCanvas().style.cursor = 'crosshair'
-              if (!e.features?.length) return
-              const props = e.features[0].properties as Record<string, unknown>
-              const state   = (props.ownershipState as NodeOwnershipState) ?? 'unowned'
-              const stateColor = OWNERSHIP_COLORS[state]
-              const stateLabel = state === 'self' ? 'YOURS' : state.toUpperCase()
-              const ownerLabel = props.ownerCountry
-                ? `<span style="font-weight:700;color:#e2e8f0">${props.ownerCountry}</span>`
-                : '<span style="color:#6b7280">Uncontrolled</span>'
-              const critNote = props.isLineCritical
-                ? '<div style="margin-top:6px;font-size:10px;color:#fbbf24;">⚡ Capture this to complete the line</div>'
-                : ''
-              const activeNote = props.isLineActive
-                ? `<div style="margin-top:6px;font-size:10px;color:#4ade80;">✓ Line active — ${props.archetypeLabel}</div>`
-                : ''
-              const html = `
-                <div style="font-family:'Share Tech Mono',monospace;min-width:170px;">
-                  <div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:4px;">${props.regionName ?? props.regionId}</div>
-                  <div style="font-size:9px;color:#94a3b8;margin-bottom:6px;">Ley line: <b style="color:${props.archetypeColor}">${props.lineName}</b> &bull; ${props.archetype}</div>
-                  <div style="font-size:9px;color:#94a3b8;">Owner: ${ownerLabel}</div>
-                  <div style="margin-top:6px;">
-                    <span style="font-size:8px;font-weight:700;padding:2px 7px;border-radius:3px;background:${stateColor}22;border:1px solid ${stateColor}55;color:${stateColor};">${stateLabel}</span>
-                  </div>
-                  ${critNote}${activeNote}
-                </div>`
-              leyNodePopup
-                .setLngLat(e.features[0].geometry.coordinates as [number, number])
-                .setHTML(html)
-                .addTo(m)
-            })
-            m.on('mouseleave', 'xwar-leyline-nodes', () => {
-              m.getCanvas().style.cursor = ''
-              leyNodePopup.remove()
-            })
-
-            // ── Step 3: Pulse animation helper ──
-            let activeLeyLineIds = new Set<string>(
-              useLeyLineStore.getState().getActiveLines().map(l => l.def.id)
-            )
-            const pulseCleanups: (() => void)[] = []
-
-            function triggerLeyLinePulse(line: typeof LEY_LINE_DEFS[number]) {
-              const meta   = ARCHETYPE_META[line.archetype]
-              const coords: number[][] = []
-              let prevPos: number[] | null = null
-
-              line.blocks.forEach(blockId => {
-                const region = useRegionStore.getState().regions.find(r => r.id === blockId)
-                if (region && region.position && region.position.length >= 2) {
-                  if (prevPos) {
-                    const curve = createBezierArc(prevPos, region.position)
-                    curve.shift()
-                    coords.push(...curve)
-                  } else {
-                    coords.push([...region.position])
-                  }
-                  prevPos = region.position
-                }
-              })
-              if (coords.length < 2) return
-
-              const src = `xwar-leyline-pulse-${line.id}`
-              const lyr = `xwar-leyline-pulse-anim-${line.id}`
-
-              try {
-                if (m.getSource(src)) { m.removeLayer(lyr); m.removeSource(src) }
-                m.addSource(src, {
-                  type: 'geojson',
-                  data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
-                })
-                m.addLayer({ id: lyr, type: 'line', source: src, paint: { 'line-color': meta.color, 'line-width': 12, 'line-opacity': 1.0 } })
-              } catch { return }
-
-              const start    = performance.now()
-              const duration = 1200
-              let rafId: number
-              let removed    = false
-
-              function cleanup() {
-                if (removed) return
-                removed = true
-                cancelAnimationFrame(rafId)
-                try { if (m.getLayer(lyr)) m.removeLayer(lyr) } catch {}
-                try { if (m.getSource(src)) m.removeSource(src) } catch {}
-              }
-              pulseCleanups.push(cleanup)
-
-              function tick(now: number) {
-                const t = Math.min(1, (now - start) / duration)
-                if (removed) return
-                try {
-                  m.setPaintProperty(lyr, 'line-width',   12 * (1 - t) + 2)
-                  m.setPaintProperty(lyr, 'line-opacity', 1 - t)
-                } catch { cleanup(); return }
-                if (t < 1) { rafId = requestAnimationFrame(tick) } else { cleanup() }
-              }
-              rafId = requestAnimationFrame(tick)
-
-              // Toast notification
-              const toastEl = document.createElement('div')
-              toastEl.style.cssText = [
-                'position:fixed', 'bottom:80px', 'left:50%', 'transform:translateX(-50%)',
-                'background:rgba(10,20,35,0.95)', `border:1px solid ${meta.color}66`,
-                'color:#e2e8f0', 'font-family:monospace', 'font-size:12px',
-                'padding:10px 18px', 'border-radius:8px', 'z-index:9999',
-                `box-shadow:0 0 24px ${meta.color}44`, 'pointer-events:none',
-                'transition:opacity 0.4s',
-              ].join(';')
-              toastEl.innerHTML = `<span style="color:${meta.color}">⚡ ${line.name}</span> activated! <span style="color:#94a3b8">${ARCHETYPE_META[line.archetype].label} now in effect.</span>`
-              document.body.appendChild(toastEl)
-              setTimeout(() => { toastEl.style.opacity = '0' }, 2800)
-              setTimeout(() => { toastEl.remove() }, 3200)
-            }
-
-            // ── Step 6: Subscribe to regionStore for live node update ──
-            const unsubRegions = useRegionStore.subscribe(
-              () => {
-                const newGeoJSON = buildLeyLineNodeGeoJSON()
-                const nodeSrc = m.getSource('xwar-leyline-nodes') as maplibregl.GeoJSONSource | undefined
-                if (nodeSrc) nodeSrc.setData(newGeoJSON)
-
-                const newPathJSON = buildLeyLinePathGeoJSON()
-                const pathSrc = m.getSource('xwar-leylines') as maplibregl.GeoJSONSource | undefined
-                if (pathSrc) pathSrc.setData(newPathJSON)
-
-                // Detect newly activated lines → trigger pulse
-                const nowActive = new Set<string>(
-                  useLeyLineStore.getState().getActiveLines().map(l => l.def.id)
-                )
-                nowActive.forEach(id => {
-                  if (!activeLeyLineIds.has(id)) {
-                    const lineDef = LEY_LINE_DEFS.find(l => l.id === id)
-                    if (lineDef) triggerLeyLinePulse(lineDef)
-                  }
-                })
-                activeLeyLineIds = nowActive
-              },
-            )
-
-            // Cleanup subscription and any running pulse animations when map unmounts
-            m.once('remove', () => {
-              unsubRegions()
-              pulseCleanups.forEach(fn => fn())
-              leyNodePopup.remove()
-            })
           }
 
           let hoveredStateName: string | null = null

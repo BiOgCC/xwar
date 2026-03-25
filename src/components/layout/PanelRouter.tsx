@@ -29,11 +29,13 @@ import HistoryPanel from '../panels/HistoryPanel'
 import DiplomacyPanel from '../panels/DiplomacyPanel'
 import RegionPanel from '../panels/RegionPanel'
 import TradeRoutePanel from '../panels/TradeRoutePanel'
+import AdminPanel from '../panels/AdminPanel'
+
 import {
   User, Backpack, BarChart2, Factory, CircleDollarSign,
   Gamepad2, Target, TrendingUp, Handshake, Landmark,
   ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText, Anchor,
-  Beer, ChevronLeft, Flag, Zap
+  Beer, ChevronLeft, Flag, Zap, ShieldAlert
 } from 'lucide-react'
 
 const SIDEBAR_ICON_PROPS = { color: '#22d38a', size: 16, strokeWidth: 2 }
@@ -63,6 +65,7 @@ function getSidebarIcon(id: string) {
     case 'history': return <ScrollText {...SIDEBAR_ICON_PROPS} />
     case 'region': return <Target {...SIDEBAR_ICON_PROPS} />
     case 'trade_routes': return <Anchor {...SIDEBAR_ICON_PROPS} />
+    case 'admin': return <ShieldAlert {...SIDEBAR_ICON_PROPS} color="#ef4444" />
     default: return <User {...SIDEBAR_ICON_PROPS} />
   }
 }
@@ -293,6 +296,8 @@ export default function PanelRouter() {
               ? '🪖 ARMED FORCES'
               : activePanel === 'mu'
               ? '🏴 MILITARY UNIT'
+              : activePanel === 'admin'
+              ? '🛡️ ADMIN CONTROL CENTER'
 
               : activePanel === 'foreign_country' && selectedForeignCountry
               ? <><CountryFlag iso={selectedForeignCountry} size={18} style={{ marginRight: '6px' }} />{getCountryName(selectedForeignCountry).toUpperCase()}</>
@@ -431,6 +436,8 @@ export default function PanelRouter() {
           {activePanel === 'help' && <HelpPanel />}
           {activePanel === 'history' && <HistoryPanel />}
           {activePanel === 'diplomacy' && <DiplomacyPanel />}
+          {activePanel === 'admin' && <AdminPanel />}
+
 
         </div>
 

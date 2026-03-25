@@ -770,3 +770,30 @@ export const countryLeyLineBuff = pgTable('country_ley_line_buff', {
   computedAt:      timestamp('computed_at').defaultNow(),
 })
 
+// ═══════════════════════════════════════════════
+//  LEY LINE DEFINITIONS (admin-editable at runtime)
+//  Replaces the hardcoded leyLineRegistry for the engine.
+//  Each row is one ley line that the engine will process.
+// ═══════════════════════════════════════════════
+
+export const leyLineDefs = pgTable('ley_line_defs', {
+  id:          varchar('id', { length: 32 }).primaryKey(),    // e.g. 'US-DOMINION'
+  name:        varchar('name', { length: 128 }).notNull(),
+  continent:   varchar('continent', { length: 32 }).notNull(), // north_america | europe | ...
+  archetype:   varchar('archetype', { length: 16 }).notNull(), // dominion | prosperity | convergence
+  blocks:      jsonb('blocks').notNull().default([]),           // string[] of region IDs
+  bonuses:     jsonb('bonuses').notNull().default({}),          // LeyLineBonus
+  tradeoffs:   jsonb('tradeoffs').notNull().default({}),        // LeyLineBonus
+  enabled:     boolean('enabled').default(true),                // admin can disable without deleting
+  autoGen:     boolean('auto_gen').default(false),              // was auto-generated
+  countryCode: varchar('country_code', { length: 4 }),          // primary country (for auto-gen lines)
+  createdAt:   timestamp('created_at').defaultNow(),
+  updatedAt:   timestamp('updated_at').defaultNow(),
+}, (t) => ({
+  continentIdx: index('idx_ley_defs_continent').on(t.continent),
+  countryIdx:   index('idx_ley_defs_country').on(t.countryCode),
+  archetypeIdx: index('idx_ley_defs_archetype').on(t.archetype),
+  enabledIdx:   index('idx_ley_defs_enabled').on(t.enabled),
+}))
+
+

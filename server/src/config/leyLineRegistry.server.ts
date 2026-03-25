@@ -67,11 +67,58 @@ const RU_CONVERGENCE: LeyLineDef = {
   tradeoffs: { foodYield: -0.20, populationGrowth: -0.10 },
 }
 
+// ── North America ──
+
+const NA_PROSPERITY: LeyLineDef = {
+  id:        'NA-PROSPERITY',
+  name:      'The Atlantic Corridor',
+  continent: 'north_america',
+  archetype: 'prosperity',
+  blocks: [
+    // US Eastern seaboard trade corridor
+    'US-ME', 'US-NH', 'US-VT', 'US-MA', 'US-CT', 'US-RI',
+    'US-NY', 'US-NJ', 'US-PA', 'US-DE', 'US-MD',
+    'US-VA', 'US-NC', 'US-SC', 'US-GA', 'US-FL',
+  ],
+  bonuses:   { taxIncome: 0.20, tradeIncome: 0.15, populationGrowth: 0.10 },
+  tradeoffs: { armyUpkeep: 0.05 },
+}
+
+const NA_DOMINION: LeyLineDef = {
+  id:        'NA-DOMINION',
+  name:      'The Great Lakes Forge',
+  continent: 'north_america',
+  archetype: 'dominion',
+  blocks: [
+    // US industrial heartland
+    'US-MI', 'US-OH', 'US-IN', 'US-IL', 'US-WI', 'US-MN',
+    'US-MO', 'US-KY', 'US-WV', 'US-PA',
+  ],
+  bonuses:   { weaponProduction: 0.25, troopDamage: 0.10, deploymentSpeed: 0.15 },
+  tradeoffs: { infraMaintenance: 0.10 },
+}
+
+const NA_CONVERGENCE: LeyLineDef = {
+  id:        'NA-CONVERGENCE',
+  name:      'The Pacific Frontier',
+  continent: 'north_america',
+  archetype: 'convergence',
+  blocks: [
+    // US West Coast corridor
+    'US-WA', 'US-OR', 'US-CA', 'US-NV', 'US-AZ',
+  ],
+  bonuses:   { navalSupport: 0.20, researchSpeed: 0.15, oilExtraction: 0.10 },
+  tradeoffs: { foodYield: -0.10 },
+}
+
 export const LEY_LINE_DEFS: LeyLineDef[] = [
   RU_DOMINION,
   RU_PROSPERITY,
   RU_CONVERGENCE,
-  // NA / SA / AF / AS-other / OC — future
+  NA_PROSPERITY,
+  NA_DOMINION,
+  NA_CONVERGENCE,
+  // SA / AF / AS-other / OC — future
 ]
 
 

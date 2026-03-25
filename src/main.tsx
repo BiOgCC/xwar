@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import AdminPage from './pages/AdminPage'
 import './styles/variables.css'
 import './styles/index.css'
 import './styles/components.css'
@@ -24,9 +25,12 @@ if (getAuthToken()) {
   socketManager.connect()
 }
 
+const isAdmin = window.location.pathname.startsWith('/admin')
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {isAdmin ? <AdminPage /> : <App />}
   </React.StrictMode>,
 )
+
 

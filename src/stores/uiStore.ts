@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
-export type PanelType = 'region' | 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'social_club' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'armed_forces' | 'foreign_country' | 'casino' | 'bounty' | 'stocks' | 'alliance' | 'settings' | 'help' | 'history' | 'diplomacy' | 'chat' | 'trade_routes' | 'mu' | 'ley_lines' | null
+export type PanelType = 'region' | 'profile' | 'combat' | 'market' | 'companies' | 'government' | 'social_club' | 'resources' | 'cyberwarfare' | 'missions' | 'prestige' | 'military' | 'armed_forces' | 'foreign_country' | 'casino' | 'bounty' | 'stocks' | 'alliance' | 'settings' | 'help' | 'history' | 'diplomacy' | 'chat' | 'trade_routes' | 'mu' | 'ley_lines' | 'admin' | null
+
 export type ResourceViewMode = 'deposits' | 'strategic' | 'political'
 
 export interface Notification {

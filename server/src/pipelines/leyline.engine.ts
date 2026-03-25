@@ -10,16 +10,18 @@
 
 import { db } from '../db/connection.js'
 import { sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import {
   regionOwnership,
   leyLineState,
   leyLineNodeState,
   countryLeyLineBuff,
   alliances,
+  leyLineDefs as leyLineDefsTable,
 } from '../db/schema.js'
 import { leyLineCache } from '../cache/leyLineCache.js'
 import {
-  LEY_LINE_DEFS,
+  LEY_LINE_DEFS as STATIC_LEY_LINE_DEFS,
   CONTINENTAL_RESONANCE,
   CONTINENT_ARCHETYPES,
   DIMINISHING_RETURNS,
@@ -35,6 +37,35 @@ import type {
   ControllerType,
 } from '../types/leyline.types.js'
 import { logger } from '../utils/logger.js'
+
+// ─────────────────────────────────────────────
+//  Load ley line definitions: DB first, static fallback
+// ─────────────────────────────────────────────
+
+async function loadLeyLineDefs(): Promise<LeyLineDef[]> {
+  try {
+    const rows = await db.select().from(leyLineDefsTable).where(eq(leyLineDefsTable.enabled, true))
+    if (rows.length > 0) {
+      // Merge with static: static lines not in DB are still included
+      const dbIds = new Set(rows.map(r => r.id))
+      const staticFallback = STATIC_LEY_LINE_DEFS.filter(l => !dbIds.has(l.id))
+      const dbDefs: LeyLineDef[] = rows.map(r => ({
+        id:        r.id,
+        name:      r.name,
+        continent: r.continent as LeyLineDef['continent'],
+        archetype: r.archetype as LeyLineDef['archetype'],
+        blocks:    (r.blocks ?? []) as string[],
+        bonuses:   (r.bonuses ?? {}) as LeyLineBonus,
+        tradeoffs: (r.tradeoffs ?? {}) as LeyLineBonus,
+      }))
+      return [...dbDefs, ...staticFallback]
+    }
+  } catch (err) {
+    logger.warn({ err }, '[LEY-LINE-ENGINE] DB defs load failed, using static fallback')
+  }
+  return STATIC_LEY_LINE_DEFS
+}
+
 
 // ─────────────────────────────────────────────
 //  Internal helpers
@@ -371,6 +402,9 @@ function detectTransitions(
 export async function runLeyLineEngine(): Promise<LeyLineEngineResult> {
   const start = Date.now()
 
+  // 0. Load definitions (DB-first, static fallback)
+  const LEY_LINE_DEFS = await loadLeyLineDefs()
+
   // 2a. Ownership snapshot
   const ownership = await loadOwnership()
 
@@ -378,7 +412,7 @@ export async function runLeyLineEngine(): Promise<LeyLineEngineResult> {
   const allianceMap = await loadAllianceMap()
 
   // 2c. Compute each line
-  const rawLines: RawLineState[] = LEY_LINE_DEFS.map(line =>
+  const rawLines: RawLineState[] = LEY_LINE_DEFS.map((line: LeyLineDef) =>
     computeLineState(line, ownership, allianceMap)
   )
 

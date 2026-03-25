@@ -47,6 +47,12 @@ export interface CrossContinentalBonus {
 }
 
 export interface LeyLineState {
+  /** Live definitions fetched from DB (falls back to static) */
+  defs: LeyLineDef[]
+  /** Whether defs have been fetched at least once from DB */
+  defsLoaded: boolean
+  /** Fetch and merge DB + static definitions */
+  fetchDefs: () => Promise<void>
   getActiveLines: () => ActiveLeyLine[]
   getAllLineStatus: () => ActiveLeyLine[]
   getActiveResonances: () => ActiveResonance[]
@@ -166,19 +172,19 @@ function mergeBonuses(bonuses: { bonus: LeyLineBonus; effectiveness: number }[])
 }
 
 /** Compute all line statuses */
-function computeAllStatuses(): ActiveLeyLine[] {
-  return applyDiminishingReturns(LEY_LINE_DEFS.map(computeLineStatus))
+function computeAllStatuses(defs: LeyLineDef[]): ActiveLeyLine[] {
+  return applyDiminishingReturns(defs.map(computeLineStatus))
 }
 
 /** Compute active lines only */
-function computeActiveLines(): ActiveLeyLine[] {
-  const all = LEY_LINE_DEFS.map(computeLineStatus)
+function computeActiveLines(defs: LeyLineDef[]): ActiveLeyLine[] {
+  const all = defs.map(computeLineStatus)
   return applyDiminishingReturns(all.filter(l => l.active))
 }
 
 /** Compute active resonances */
-function computeActiveResonances(): ActiveResonance[] {
-  const active = LEY_LINE_DEFS.map(computeLineStatus).filter(l => l.active)
+function computeActiveResonances(defs: LeyLineDef[]): ActiveResonance[] {
+  const active = defs.map(computeLineStatus).filter(l => l.active)
   const resonances: ActiveResonance[] = []
 
   const byCont = new Map<Continent, ActiveLeyLine[]>()
@@ -210,7 +216,8 @@ function computeActiveResonances(): ActiveResonance[] {
 
 /** Compute Cross-Continental bonus */
 function computeCrossContinentalBonus(allianceId: string): CrossContinentalBonus | null {
-  const resonances = computeActiveResonances()
+  const defs = useLeyLineStore.getState().defs
+  const resonances = computeActiveResonances(defs)
   const setsCompleted = resonances.filter(r => r.allianceId === allianceId).length
 
   const tier = [...CROSS_CONTINENTAL_TIERS]
@@ -226,15 +233,29 @@ function computeCrossContinentalBonus(allianceId: string): CrossContinentalBonus
 // STORE
 // ═══════════════════════════════════════════════════════════════
 
-export const useLeyLineStore = create<LeyLineState>(() => ({
+export const useLeyLineStore = create<LeyLineState>()((set, get) => ({
+  defs: LEY_LINE_DEFS,
+  defsLoaded: false,
 
-  getAllLineStatus: computeAllStatuses,
-  getActiveLines: computeActiveLines,
-  getActiveResonances: computeActiveResonances,
+  fetchDefs: async () => {
+    try {
+      const res = await fetch('/api/ley-lines/defs', { credentials: 'include' })
+      if (!res.ok) return
+      const data = await res.json() as { defs: LeyLineDef[] }
+      if (Array.isArray(data.defs) && data.defs.length > 0) {
+        set({ defs: data.defs, defsLoaded: true })
+      }
+    } catch { /* non-fatal, keep static fallback */ }
+  },
+
+  getAllLineStatus: () => computeAllStatuses(get().defs),
+  getActiveLines:  () => computeActiveLines(get().defs),
+  getActiveResonances: () => computeActiveResonances(get().defs),
   getCrossContinentalBonus: computeCrossContinentalBonus,
 
   getBonusesForCountry: (countryCode: string): LeyLineBonus => {
-    const allLines = computeActiveLines()
+    const defs = get().defs
+    const allLines = computeActiveLines(defs)
 
     const relevantLines = allLines.filter(line => {
       if (!line.active) return false
@@ -259,7 +280,7 @@ export const useLeyLineStore = create<LeyLineState>(() => ({
     )
 
     if (playerAlliance) {
-      const resonances = computeActiveResonances()
+      const resonances = computeActiveResonances(defs)
       for (const { resonance, allianceId } of resonances) {
         if (allianceId === playerAlliance.id || allianceId === `country_${countryCode}`) {
           parts.push({ bonus: resonance.bonus, effectiveness: 1.0 })
@@ -288,11 +309,11 @@ export const useLeyLineStore = create<LeyLineState>(() => ({
   },
 
   getLinesForRegion: (regionId: string): ActiveLeyLine[] => {
-    return computeAllStatuses().filter(l => l.def.blocks.includes(regionId))
+    return computeAllStatuses(get().defs).filter(l => l.def.blocks.includes(regionId))
   },
 
   isDenialTarget: (regionId: string): boolean => {
-    const allLines = LEY_LINE_DEFS.map(computeLineStatus)
+    const allLines = get().defs.map(computeLineStatus)
     for (const line of allLines) {
       if (line.active) continue
       if (!line.def.blocks.includes(regionId)) continue

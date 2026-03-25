@@ -18,16 +18,17 @@
    TOP BAR
    ============================================= */
 .hud-topbar {
-  height: 40px;
-  background: rgba(8, 12, 18, 0.92);
-  border-bottom: 1px solid rgba(34, 211, 138, 0.12);
+  height: 52px;
+  background: linear-gradient(90deg, rgba(8, 12, 18, 0.98) 0%, rgba(13, 20, 32, 0.98) 50%, rgba(8, 12, 18, 0.98) 100%);
+  border-bottom: 1px solid rgba(34, 211, 138, 0.15);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6), inset 0 -1px 0 rgba(34, 211, 138, 0.1);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
   z-index: 200;
   flex-shrink: 0;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
 }
 
 .hud-topbar__left {
@@ -118,6 +119,70 @@
   font-size: 9px;
   color: var(--text-muted);
   letter-spacing: 0.08em;
+}
+
+.hud-topbar__profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 14px;
+  background: rgba(34, 211, 138, 0.04);
+  border: 1px solid rgba(34, 211, 138, 0.15);
+  border-radius: 24px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  backdrop-filter: blur(4px);
+}
+
+.hud-topbar__profile:hover {
+  background: rgba(34, 211, 138, 0.1);
+  border-color: rgba(34, 211, 138, 0.3);
+  box-shadow: 0 0 16px rgba(34, 211, 138, 0.15);
+}
+
+.hud-topbar__profile-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: -2px; /* Pull them a little tighter together */
+}
+
+.hud-topbar__profile-name {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 8px rgba(34, 211, 138, 0.3);
+}
+
+.hud-topbar__profile-turn {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  margin-top: -1px;
+}
+
+.hud-topbar__profile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(34, 211, 138, 0.4);
+  box-shadow: 0 0 10px rgba(34, 211, 138, 0.2);
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hud-topbar__profile-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* =============================================

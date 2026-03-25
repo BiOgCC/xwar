@@ -15,6 +15,19 @@ export default defineConfig({
     port: 5173,
     open: true,
     proxy: {
+      // Proxy all /api calls to the Express backend on port 3001
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      // Proxy WebSocket (Socket.IO)
+      '/socket.io': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        ws: true,
+      },
+      // External world monitor API
       '/api/worldmonitor': {
         target: 'https://api.worldmonitor.app',
         changeOrigin: true,
@@ -24,4 +37,6 @@ export default defineConfig({
     },
   },
 })
+
+
  

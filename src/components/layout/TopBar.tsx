@@ -119,7 +119,15 @@ export default function TopBar({ timeLeft, onManualTick }: TopBarProps) {
         <button className="hud-btn-outline" onClick={() => useAuthStore.getState().logout()}>
           <span className="hud-btn-icon">⚡</span> LOGOUT
         </button>
-        <span className="hud-topbar__time">TURN {world.turn} • {player.name}</span>
+        <div className="hud-topbar__profile" onClick={() => navigateTo('profile')} title="View Profile">
+          <div className="hud-topbar__profile-text">
+            <span className="hud-topbar__profile-name">{player.name}</span>
+            <span className="hud-topbar__profile-turn">TURN {world.turn}</span>
+          </div>
+          <div className="hud-topbar__profile-avatar">
+            <img src={'/assets/ui/avatar-default.png'} alt="Commander" />
+          </div>
+        </div>
       </div>
     </header>
   )

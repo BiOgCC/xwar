@@ -35,7 +35,9 @@ const DEFAULT_BOTTOM: SidebarItem[] = [
   { id: 'diplomacy', icon: '🕊️', label: 'DIPLOMACY' },
   { id: 'history', icon: '📜', label: 'HISTORY' },
   { id: 'trade_routes', icon: '⚓', label: 'TRADE LANES' },
+  { id: 'admin', icon: '🛡️', label: 'ADMIN' },
 ]
+
 
 export type PanelId = 'top' | 'bottom'
 

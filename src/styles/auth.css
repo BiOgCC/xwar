@@ -99,10 +99,28 @@
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: #ef4444;
-  padding: 12px;
+  padding: 10px 14px;
   border-radius: 6px;
   font-size: 13px;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.auth-field-error {
+  font-size: 11px;
+  color: #f87171;
+  margin-top: 2px;
+  padding-left: 2px;
+}
+
+.auth-hint {
+  font-size: 10px;
+  color: #475569;
+  letter-spacing: 0.03em;
+  padding-left: 2px;
 }
 
 .auth-submit-btn {

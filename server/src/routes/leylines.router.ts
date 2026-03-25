@@ -15,6 +15,9 @@ import { Router } from 'express'
 import { leyLineCache } from '../cache/leyLineCache.js'
 import { LEY_LINE_DEFS } from '../config/leyLineRegistry.server.js'
 import { requireAuth } from '../middleware/auth.js'
+import { db } from '../db/connection.js'
+import { leyLineDefs as leyLineDefsTable } from '../db/schema.js'
+import { eq } from 'drizzle-orm'
 
 const router = Router()
 
@@ -116,8 +119,49 @@ router.get('/region/:regionId', requireAuth as any, (req, res) => {
   })
 })
 
+// ── GET /api/ley-lines/defs ────────────────────────────────────────────────
+// Returns the merged set of ALL ley line definitions (DB + static fallback).
+// Used by the frontend map to know which lines to render, even before engine runs.
+// MUST come before /:lineId wildcard.
+
+router.get('/defs', async (_req, res) => {
+  try {
+    // Load DB-defined lines (enabled only)
+    const dbRows = await db.select().from(leyLineDefsTable).where(eq(leyLineDefsTable.enabled, true))
+
+    // Merge: DB first, static fallback for any missing IDs
+    const dbIds = new Set(dbRows.map(r => r.id))
+    const staticFallback = LEY_LINE_DEFS.filter(l => !dbIds.has(l.id))
+
+    const defs = [
+      ...dbRows.map(r => ({
+        id:        r.id,
+        name:      r.name,
+        continent: r.continent,
+        archetype: r.archetype,
+        blocks:    r.blocks ?? [],
+        bonuses:   r.bonuses ?? {},
+        tradeoffs: r.tradeoffs ?? {},
+        source:    'db' as const,
+      })),
+      ...staticFallback.map(l => ({ ...l, source: 'static' as const })),
+    ]
+
+    res.json({ defs, count: defs.length, computedAt: new Date().toISOString() })
+  } catch (err) {
+    // Fallback to static on DB error
+    res.json({
+      defs: LEY_LINE_DEFS.map(l => ({ ...l, source: 'static' as const })),
+      count: LEY_LINE_DEFS.length,
+      computedAt: new Date().toISOString(),
+      fallback: true,
+    })
+  }
+})
+
 // ── GET /api/ley-lines/:lineId ──────────────────────────────────────────────
 // MUST be LAST — wildcard would otherwise eat /country/* and /region/*
+
 
 router.get('/:lineId', requireAuth as any, (req, res) => {
   const { lineId } = req.params
