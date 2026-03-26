@@ -1,0 +1,1051 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                  XWAR - LEY LINE SYSTEM COMPREHENSIVE FIX GUIDE               ║
+║                          Generated: 2026-03-26                                ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════
+  🔴 CRITICAL ISSUES REQUIRING IMMEDIATE FIX
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #1: DUPLICATE LEY LINE REGISTRY FILES (MASSIVE DIVERGENCE)            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🔴 CRITICAL                                                        │
+│ Impact: Client and server have DIFFERENT definitions                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+PROBLEM:
+--------
+Two registry files exist with MASSIVE SIZE DIFFERENCE:
+
+  📄 Client: src/data/leyLineRegistry.ts                  (462 lines)
+  📄 Server: server/src/config/leyLineRegistry.server.ts  (163 lines)
+
+These should be IDENTICAL mirrors but have 3x size difference!
+
+FILES AFFECTED:
+- C:\Users\PC\Desktop\firm\xwar\src\data\leyLineRegistry.ts
+- C:\Users\PC\Desktop\firm\xwar\server\src\config\leyLineRegistry.server.ts
+
+SYMPTOMS:
+- Client may render ley lines that server doesn't know about
+- Server may compute bonuses for lines client can't display
+- Inconsistent game state between frontend and backend
+- Potential null reference errors
+- Incorrect bonus calculations
+
+ROOT CAUSE:
+The server file claims to be a "mirror" but is clearly outdated or incomplete:
+  "Server-side mirror of the frontend leyLineRegistry."
+  "Keeps the same data — no React/Zustand imports, pure Node.js-safe."
+
+However, the server file is only 35% the size of the client file!
+
+FIX REQUIRED:
+1. Audit both files line-by-line to identify differences
+2. Determine which is the source of truth (likely the client file)
+3. Synchronize all ley line definitions
+4. Set up a validation script to prevent future divergence
+5. Consider moving to shared types in a common package
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #2: TYPE MISMATCH - `matxExtraction` PROPERTY DOESN'T EXIST          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🔴 CRITICAL                                                        │
+│ Impact: Cross-continental bonuses silently fail                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: src/stores/leyLineStore.ts:299
+
+PROBLEM:
+--------
+Cross-continental bonus applies a non-existent property:
+
+```typescript
+// Line 299 in src/stores/leyLineStore.ts
+const ccBonus = {
+  taxIncome:          crossBonus.allStatBonus,
+  weaponProduction:   crossBonus.allStatBonus,
+  researchSpeed:      crossBonus.allStatBonus,
+  troopDamage:        crossBonus.allStatBonus,
+  matxExtraction:     crossBonus.allStatBonus,  // ❌ DOESN'T EXIST
+  tradeIncome:        crossBonus.allStatBonus,
+}
+```
+
+TYPE DEFINITIONS:
+- src/data/leyLineRegistry.ts:30 defines LeyLineBonus interface
+- server/src/types/leyline.types.ts:23 defines LeyLineBonus interface
+- NEITHER includes `matxExtraction` property
+
+ACTUAL PROPERTY SHOULD BE:
+- `materialXExtraction` (to match server-side extraction logic)
+- OR `resourceExtraction` (generic resource bonus that exists)
+
+IMPACT:
+- Cross-continental bonuses waste a slot on a non-functional property
+- Players don't get the intended Material X extraction buff
+- TypeScript doesn't catch this because LeyLineBonus allows indexing
+
+FILES TO FIX:
+1. C:\Users\PC\Desktop\firm\xwar\src\stores\leyLineStore.ts
+   Line 299: Change `matxExtraction` → `materialXExtraction`
+   
+2. C:\Users\PC\Desktop\firm\xwar\src\data\leyLineRegistry.ts
+   Line 31: Add `materialXExtraction?: number` to LeyLineBonus interface
+   
+3. C:\Users\PC\Desktop\firm\xwar\server\src\types\leyline.types.ts
+   Line 23: Add `materialXExtraction?: number` to LeyLineBonus interface
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #3: CACHE INITIALIZATION RACE CONDITION                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟡 HIGH                                                            │
+│ Impact: API returns 503 errors on server startup                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: 
+- server/src/routes/leylines.router.ts:27-31
+- server/src/pipelines/leyline.pipeline.ts
+
+PROBLEM:
+--------
+API routes check if cache is initialized:
+
+```typescript
+router.get('/', requireAuth as any, (_req, res) => {
+  if (!leyLineCache.initialized) {
+    res.status(503).json({ 
+      error: 'Ley line engine not yet initialized', 
+      code: 'NOT_READY' 
+    })
+    return
+  }
+  // ...
+})
+```
+
+However, the pipeline runs on a cron schedule and may not have run yet when the
+server starts. This causes legitimate API calls to fail with 503 errors.
+
+RACE CONDITION TIMELINE:
+1. Server starts up
+2. Routes registered immediately
+3. Client connects and calls /api/ley-lines
+4. Cache not initialized → 503 error
+5. Pipeline runs 30 seconds later
+6. Cache finally populated
+7. Subsequent API calls work
+
+USER EXPERIENCE:
+- First load of ley line panel shows "not yet initialized" error
+- Requires page refresh to see data
+- Poor UX on server restart
+
+FIX REQUIRED:
+1. Run engine ONCE synchronously on server startup (before accepting requests)
+2. OR return empty/default state instead of 503 error
+3. OR add retry logic on client side with exponential backoff
+
+RECOMMENDATION:
+Add to server/src/index.ts after database connection:
+
+```typescript
+// Warm up ley line cache before accepting connections
+import { runLeyLineEngine } from './pipelines/leyline.engine.js'
+await runLeyLineEngine() // Blocks until first computation completes
+```
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #4: CLIENT-SERVER COMPUTATION DIVERGENCE                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟡 HIGH                                                            │
+│ Impact: Client and server compute different states                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+PROBLEM:
+--------
+Client (src/stores/leyLineStore.ts) computes ley line state independently using
+regionStore data. Server (server/src/pipelines/leyline.engine.ts) computes 
+state from database regionOwnership table.
+
+If these get out of sync, client displays different bonuses than server applies.
+
+CLIENT COMPUTATION:
+```typescript
+// src/stores/leyLineStore.ts:82-94
+function computeLineStatus(line: LeyLineDef): ActiveLeyLine {
+  const regions = useRegionStore.getState().regions  // ❌ Client state
+  const blockRegions = line.blocks.map(b => regions.find(r => r.id === b))
+  // ... compute from client-side region data
+}
+```
+
+SERVER COMPUTATION:
+```typescript
+// server/src/pipelines/leyline.engine.ts:108-140
+async function computeLinesRaw(...) {
+  const rows = await db.select().from(regionOwnership) // ✅ Source of truth
+  const ownerMap = new Map(rows.map(r => [r.regionId, r.ownerCode]))
+  // ... compute from database
+}
+```
+
+DESYNC SCENARIOS:
+1. Region control changes on server
+2. Client hasn't received socket update yet
+3. Client shows old ley line state
+4. Player makes decision based on wrong bonuses
+5. Server applies different bonuses → unexpected results
+
+SOCKET EVENTS:
+- Server emits: `leyline:state`, `leyline:activated`, `leyline:deactivated`
+- Client listens in: src/api/socket-hooks.ts
+- BUT: No forced refresh of leyLineStore when these fire!
+
+FILES AFFECTED:
+- C:\Users\PC\Desktop\firm\xwar\src\stores\leyLineStore.ts
+- C:\Users\PC\Desktop\firm\xwar\src\api\socket-hooks.ts
+- C:\Users\PC\Desktop\firm\xwar\server\src\pipelines\leyline.engine.ts
+
+FIX REQUIRED:
+1. Remove client-side computation entirely
+2. Make leyLineStore fetch state from API only
+3. Update socket handlers to refresh store on ley line events
+4. Trust server as single source of truth
+
+ALTERNATIVE:
+Keep client computation but add reconciliation:
+- Fetch server state periodically
+- Compare with local computation
+- Log warnings if mismatch detected
+- Force sync from server if divergence > threshold
+
+═══════════════════════════════════════════════════════════════════════════════
+  🟡 MEDIUM PRIORITY ISSUES
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #5: UNUSED TYPE FIELD - `previouslyActive`                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟡 MEDIUM                                                          │
+│ Impact: Misleading type definition, wasted potential feature                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: server/src/types/leyline.types.ts:66
+
+PROBLEM:
+--------
+Type definition includes a field that is never set:
+
+```typescript
+// server/src/types/leyline.types.ts:66
+export interface LineComputedState {
+  def: LeyLineDef
+  isActive: boolean
+  previouslyActive?: boolean     // ❌ set by engine to detect transitions
+  controllerType: ControllerType
+  // ...
+}
+```
+
+Comment claims "set by engine to detect transitions" but engine NEVER sets it:
+
+```typescript
+// server/src/pipelines/leyline.engine.ts:448-465
+const state: LineComputedState = {
+  def: raw.def,
+  isActive: raw.isActive,
+  // previouslyActive: ???  ❌ MISSING
+  controllerType: raw.controllerType,
+  controllerIds: raw.controllerIds,
+  effectiveness,
+  completionPct: raw.completionPct,
+  appliedBonuses: bonuses,
+  appliedTradeoffs: tradeoffs,
+}
+```
+
+INTENDED USE (from comment):
+- Track state transitions (activation/deactivation)
+- Detect when line becomes active/inactive
+- Potentially trigger news events or rewards
+
+CURRENT BEHAVIOR:
+- Field always undefined
+- Transition detection doesn't work
+- No activation/deactivation events generated
+
+FIX OPTIONS:
+
+OPTION A: Implement the field properly
+```typescript
+// In leyline.engine.ts before computing new state
+const oldState = leyLineCache.lineStates.get(def.id)
+const previouslyActive = oldState?.isActive ?? false
+
+const state: LineComputedState = {
+  // ...
+  isActive: newIsActive,
+  previouslyActive,
+  // ...
+}
+
+// Emit event if state changed
+if (previouslyActive && !newIsActive) {
+  emitGameEvent('leyline:deactivated', { lineId: def.id })
+} else if (!previouslyActive && newIsActive) {
+  emitGameEvent('leyline:activated', { lineId: def.id })
+}
+```
+
+OPTION B: Remove the field entirely
+```typescript
+// Remove from LineComputedState interface
+// Update all references
+```
+
+RECOMMENDATION: Implement Option A for better event tracking
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #6: ADMIN ROUTE ORDERING BUG                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟡 MEDIUM                                                          │
+│ Impact: Potential routing conflicts in admin panel                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: server/src/routes/admin.routes.ts:611-724
+
+PROBLEM:
+--------
+Wildcard route comes after specific route, creating maintenance hazard:
+
+```typescript
+// Line 611
+router.post('/ley-lines/generate-all', async (req, res) => {
+  // Generate ley lines for ALL countries
+})
+
+// Line 670 (59 lines later)
+router.post('/ley-lines/generate/:cc', async (req, res) => {
+  // Generate ley lines for specific country
+})
+```
+
+Express matches routes in order, so currently this works. However, if someone
+reorders these routes during refactoring, 'generate-all' will be caught by
+the `:cc` wildcard parameter.
+
+EXAMPLE FAILURE:
+If routes were reversed:
+  POST /ley-lines/generate-all
+  → Matches /ley-lines/generate/:cc with cc="all"
+  → Wrong handler executes
+  → Tries to find country with code "all"
+  → Error or unexpected behavior
+
+FIX REQUIRED:
+Move specific route before wildcard:
+
+```typescript
+// ✅ CORRECT ORDER
+router.post('/ley-lines/generate-all', ...)   // Specific route first
+router.post('/ley-lines/generate/:cc', ...)   // Wildcard route second
+```
+
+OR use explicit prefix:
+```typescript
+router.post('/ley-lines/generate/all-countries', ...)
+router.post('/ley-lines/generate/:cc', ...)
+```
+
+FILES TO FIX:
+- C:\Users\PC\Desktop\firm\xwar\server\src\routes\admin.routes.ts
+  Lines 611-724: Reorder or rename routes
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #7: MISSING API CLIENT FUNCTIONS FOR LEY LINE MUTATION               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟡 MEDIUM                                                          │
+│ Impact: Admin panel cannot modify ley lines via API                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: src/api/client.ts
+
+PROBLEM:
+--------
+Server has admin endpoints for ley line management:
+  POST /api/admin/ley-lines/generate/:cc
+  POST /api/admin/ley-lines/generate-all
+  (And likely create/update/delete endpoints)
+
+But client API has NO corresponding functions!
+
+CLIENT API (src/api/client.ts):
+- ✅ getPlayer()
+- ✅ casinoSpinSlots()
+- ✅ battleAttack()
+- ❌ generateLeyLines() — MISSING
+- ❌ createLeyLine() — MISSING
+- ❌ updateLeyLine() — MISSING
+- ❌ deleteLeyLine() — MISSING
+
+IMPACT:
+- Admin panel probably uses raw fetch() calls
+- No centralized error handling
+- No type safety
+- Duplicated code
+- Inconsistent auth header injection
+
+FIX REQUIRED:
+Add to src/api/client.ts:
+
+```typescript
+// ── Ley Line Admin API ───────────────────────────────────────
+export async function generateLeyLinesForCountry(countryCode: string) {
+  return api.post<{ success: boolean; generated: number }>(
+    `/admin/ley-lines/generate/${countryCode}`
+  )
+}
+
+export async function generateAllLeyLines() {
+  return api.post<{ success: boolean; totalGenerated: number }>(
+    '/admin/ley-lines/generate-all'
+  )
+}
+
+export async function createLeyLine(def: any) {
+  return api.post<{ success: boolean; lineId: string }>(
+    '/admin/ley-lines/create',
+    def
+  )
+}
+
+export async function updateLeyLine(lineId: string, updates: any) {
+  return api.patch<{ success: boolean }>(
+    `/admin/ley-lines/${lineId}`,
+    updates
+  )
+}
+
+export async function deleteLeyLine(lineId: string) {
+  return api.delete<{ success: boolean }>(
+    `/admin/ley-lines/${lineId}`
+  )
+}
+```
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #8: NO VALIDATION FOR LEY LINE DEFINITION BLOCKS                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟡 MEDIUM                                                          │
+│ Impact: Invalid region IDs can break the system                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: server/src/routes/admin.routes.ts (admin endpoints)
+
+PROBLEM:
+--------
+Admin can create ley lines with arbitrary `blocks` arrays, but there's no
+validation that the region IDs actually exist in the database.
+
+EXAMPLE BAD DATA:
+```json
+{
+  "id": "EU-PROSPERITY",
+  "blocks": ["FAKE-01", "NONEXISTENT", "TYPO-REGION"],
+  "bonuses": { "taxIncome": 0.5 }
+}
+```
+
+This will be inserted into ley_line_defs table. When the engine runs:
+- Looks up regionOwnership for "FAKE-01" → not found
+- Ley line shows 0% completion
+- Never activates
+- Silently fails
+
+NO ERROR THROWN. BAD DATA PERSISTS.
+
+FIX REQUIRED:
+Add validation in admin routes before insert:
+
+```typescript
+// Validate all region IDs exist
+const validRegions = await db.select({ id: regionOwnership.regionId })
+  .from(regionOwnership)
+const validIds = new Set(validRegions.map(r => r.id))
+
+for (const regionId of blocks) {
+  if (!validIds.has(regionId)) {
+    return res.status(400).json({
+      error: `Invalid region ID: ${regionId}`,
+      code: 'INVALID_REGION'
+    })
+  }
+}
+```
+
+FILES TO FIX:
+- C:\Users\PC\Desktop\firm\xwar\server\src\routes\admin.routes.ts
+  Add region validation to all ley line creation/update endpoints
+
+═══════════════════════════════════════════════════════════════════════════════
+  🟢 LOW PRIORITY ISSUES (CODE QUALITY)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #9: INCONSISTENT NAMING - `matxExtraction` vs `materialX`            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟢 LOW                                                             │
+│ Impact: Confusing property names                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: Multiple files
+
+PROBLEM:
+--------
+Material X resource is referenced with multiple names:
+
+DATABASE (schema.ts):
+- `material_x` (snake_case, line 61)
+
+CLIENT STORES:
+- `materialX` (camelCase, throughout player stores)
+
+LEY LINE TYPES:
+- `matxExtraction` (abbreviated, line 30 leyLineRegistry.ts) ❌ WRONG
+- Should be `materialXExtraction` for consistency
+
+RECOMMENDATION:
+Standardize on `materialX` for all TypeScript code:
+- Database: `material_x` (SQL convention)
+- TypeScript: `materialX` (camelCase convention)
+- Ley line bonuses: `materialXExtraction` (full name, not abbreviated)
+
+FILES TO UPDATE:
+- src/data/leyLineRegistry.ts:30
+- server/src/types/leyline.types.ts:23
+- Any references to `matx` → change to `materialX`
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #10: MAGIC NUMBERS IN DIMINISHING RETURNS                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟢 LOW                                                             │
+│ Impact: Hard to tune game balance                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: 
+- src/data/leyLineRegistry.ts
+- server/src/config/leyLineRegistry.server.ts
+
+PROBLEM:
+--------
+Diminishing returns curve is hardcoded:
+
+```typescript
+export const DIMINISHING_RETURNS = [1.0, 0.50, 0.25, 0.125]
+```
+
+This is fine, but the VALUES have no explanation:
+- Why 50% for 2nd line?
+- Why 25% for 3rd?
+- Why 12.5% for 4th?
+
+RECOMMENDATION:
+Add comments explaining the game design rationale:
+
+```typescript
+/**
+ * Diminishing returns for multiple ley lines held by same country.
+ * 1st line: 100% effectiveness (full bonuses)
+ * 2nd line:  50% effectiveness (encourages sharing control)
+ * 3rd line:  25% effectiveness (steep penalty for monopoly)
+ * 4th+ line: 12.5% effectiveness (minimal benefit)
+ * 
+ * Design intent: Alliances get full bonuses per member, incentivizing
+ * cooperation over solo dominance.
+ */
+export const DIMINISHING_RETURNS = [1.0, 0.50, 0.25, 0.125]
+```
+
+FILES TO UPDATE:
+- src/data/leyLineRegistry.ts (add comment)
+- server/src/config/leyLineRegistry.server.ts (add comment)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ISSUE #11: NO ERROR HANDLING FOR CACHE CORRUPTION                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Severity: 🟢 LOW                                                             │
+│ Impact: Rare crash scenarios                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+LOCATION: server/src/cache/leyLineCache.ts
+
+PROBLEM:
+--------
+Cache is just a plain object with Maps. If anything corrupts it (memory issue,
+race condition, etc), there's no recovery mechanism:
+
+```typescript
+export const leyLineCache = {
+  lineStates: new Map<string, LineComputedState>(),
+  nodeStates: new Map<string, NodeState>(),
+  countryBuffs: new Map<string, MergedBuff>(),
+  lastComputedAt: null as Date | null,
+}
+```
+
+If lineStates.get() throws (corrupted Map) or returns malformed data, the
+entire API route crashes.
+
+RECOMMENDATION:
+Add defensive getter with fallback:
+
+```typescript
+export function safeGetLineState(lineId: string): LineComputedState | null {
+  try {
+    return leyLineCache.lineStates.get(lineId) ?? null
+  } catch (err) {
+    logger.error({ err, lineId }, '[LEY-CACHE] Corrupted lineState')
+    return null
+  }
+}
+
+export function safeGetCountryBuff(countryCode: string): MergedBuff | null {
+  try {
+    return leyLineCache.countryBuffs.get(countryCode) ?? null
+  } catch (err) {
+    logger.error({ err, countryCode }, '[LEY-CACHE] Corrupted countryBuff')
+    return null
+  }
+}
+```
+
+Use these in routes instead of direct cache access.
+
+FILES TO UPDATE:
+- server/src/cache/leyLineCache.ts (add safe getters)
+- server/src/routes/leylines.router.ts (use safe getters)
+
+═══════════════════════════════════════════════════════════════════════════════
+  📊 STATISTICS & SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+Total Issues Found:              11
+Critical (🔴):                    4
+High Priority (🟡):               4
+Low Priority (🟢):                3
+
+Files Requiring Changes:         15+
+Lines of Code Affected:          ~300
+
+Estimated Fix Time:
+  Critical Issues:               6-8 hours
+  High Priority:                 3-4 hours
+  Low Priority:                  1-2 hours
+  Total:                        10-14 hours
+
+Risk Assessment:
+  Critical fixes may break existing features if not tested thoroughly.
+  Most issues are architectural rather than bugs, so require careful refactoring.
+
+═══════════════════════════════════════════════════════════════════════════════
+  🎯 RECOMMENDED FIX ORDER
+═══════════════════════════════════════════════════════════════════════════════
+
+PHASE 1: SYNCHRONIZE REGISTRIES (CRITICAL)
+├─ Audit src/data/leyLineRegistry.ts vs server version
+├─ Merge all definitions into shared source
+├─ Verify line-by-line parity
+├─ Add validation tests
+└─ Estimated time: 3-4 hours
+
+PHASE 2: FIX TYPE MISMATCHES (CRITICAL)
+├─ Fix matxExtraction → materialXExtraction
+├─ Add proper type definitions
+├─ Update all references
+└─ Estimated time: 1 hour
+
+PHASE 3: SOLVE CACHE RACE CONDITION (CRITICAL)
+├─ Add synchronous engine warmup on startup
+├─ OR implement graceful fallback in routes
+├─ Test cold start scenarios
+└─ Estimated time: 2 hours
+
+PHASE 4: ELIMINATE CLIENT COMPUTATION (CRITICAL)
+├─ Remove client-side ley line status computation
+├─ Make client fetch from API only
+├─ Update socket handlers for real-time sync
+├─ Trust server as source of truth
+└─ Estimated time: 3-4 hours
+
+PHASE 5: MEDIUM PRIORITY FIXES
+├─ Implement previouslyActive field
+├─ Fix admin route ordering
+├─ Add API client functions
+├─ Add region ID validation
+└─ Estimated time: 3-4 hours
+
+PHASE 6: CODE QUALITY IMPROVEMENTS
+├─ Standardize naming conventions
+├─ Add documentation comments
+├─ Implement safe cache getters
+└─ Estimated time: 1-2 hours
+
+═══════════════════════════════════════════════════════════════════════════════
+  🔧 DETAILED FIX INSTRUCTIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+FIX #1: SYNCHRONIZE REGISTRY FILES
+───────────────────────────────────────────────────────────────────────────────
+
+STEP 1: Compare files
+```bash
+# Count definitions in each file
+grep -c "^const.*_DOMINION\|^const.*_PROSPERITY\|^const.*_CONVERGENCE" \
+  src/data/leyLineRegistry.ts
+
+grep -c "^const.*_DOMINION\|^const.*_PROSPERITY\|^const.*_CONVERGENCE" \
+  server/src/config/leyLineRegistry.server.ts
+```
+
+STEP 2: Identify missing definitions
+Create a diff report of which ley lines exist in client but not server.
+
+STEP 3: Update server file
+Copy all missing definitions from client to server, maintaining the comment:
+"Server-side mirror of the frontend leyLineRegistry."
+
+STEP 4: Verify exports match
+Ensure both files export the same constants:
+- LEY_LINE_DEFS
+- CONTINENTAL_RESONANCE
+- DIMINISHING_RETURNS
+- CROSS_CONTINENTAL_TIERS
+- CONTINENT_ARCHETYPES
+- ARCHETYPE_META
+
+STEP 5: Add synchronization test
+Create a test that fails if the files diverge:
+
+```typescript
+// server/src/__tests__/leyline-sync.test.ts
+import { LEY_LINE_DEFS as CLIENT_DEFS } from '../../src/data/leyLineRegistry'
+import { LEY_LINE_DEFS as SERVER_DEFS } from '../config/leyLineRegistry.server'
+
+test('Client and server ley line defs are synchronized', () => {
+  expect(CLIENT_DEFS.length).toBe(SERVER_DEFS.length)
+  
+  for (const clientDef of CLIENT_DEFS) {
+    const serverDef = SERVER_DEFS.find(d => d.id === clientDef.id)
+    expect(serverDef).toBeDefined()
+    expect(serverDef).toEqual(clientDef)
+  }
+})
+```
+
+───────────────────────────────────────────────────────────────────────────────
+
+FIX #2: CORRECT matxExtraction TYPE
+───────────────────────────────────────────────────────────────────────────────
+
+FILE: src/data/leyLineRegistry.ts
+LINE: 31
+
+CHANGE:
+```typescript
+// OLD
+export interface LeyLineBonus {
+  taxIncome?:          number
+  populationGrowth?:   number
+  weaponProduction?:   number
+  matxExtraction?:     number  // ❌ WRONG
+  // ...
+}
+
+// NEW
+export interface LeyLineBonus {
+  taxIncome?:          number
+  populationGrowth?:   number
+  weaponProduction?:   number
+  materialXExtraction?: number  // ✅ CORRECT
+  // ...
+}
+```
+
+FILE: server/src/types/leyline.types.ts
+LINE: 23
+
+Apply same change to server-side type definition.
+
+FILE: src/stores/leyLineStore.ts
+LINE: 299
+
+CHANGE:
+```typescript
+// OLD
+const ccBonus = {
+  // ...
+  matxExtraction: crossBonus.allStatBonus,  // ❌ WRONG
+  // ...
+}
+
+// NEW
+const ccBonus = {
+  // ...
+  materialXExtraction: crossBonus.allStatBonus,  // ✅ CORRECT
+  // ...
+}
+```
+
+FILE: server/src/pipelines/leyline.engine.ts
+LINE: 88-98 (allStatBonus function)
+
+ADD materialXExtraction to the allStatBonus helper:
+
+```typescript
+function allStatBonus(bonus: number): LeyLineBonus {
+  return {
+    taxIncome:           bonus,
+    weaponProduction:    bonus,
+    researchSpeed:       bonus,
+    troopDamage:         bonus,
+    troopMovementSpeed:  bonus,
+    oilExtraction:       bonus,
+    tradeIncome:         bonus,
+    resourceExtraction:  bonus,
+    materialXExtraction: bonus,  // ✅ ADD THIS
+  }
+}
+```
+
+───────────────────────────────────────────────────────────────────────────────
+
+FIX #3: SOLVE CACHE RACE CONDITION
+───────────────────────────────────────────────────────────────────────────────
+
+FILE: server/src/index.ts
+LOCATION: After database connection, before httpServer.listen()
+
+ADD:
+```typescript
+// ── Warm up ley line cache ──
+import { runLeyLineEngine } from './pipelines/leyline.engine.js'
+
+if (runAll || runCron) {
+  logger.info('[STARTUP] Warming up ley line cache...')
+  try {
+    await runLeyLineEngine()
+    logger.info('[STARTUP] Ley line cache initialized successfully')
+  } catch (err) {
+    logger.error({ err }, '[STARTUP] Failed to initialize ley line cache')
+    // Non-fatal: pipeline will retry on schedule
+  }
+}
+```
+
+ALTERNATIVE (if you don't want to block startup):
+
+FILE: server/src/routes/leylines.router.ts
+LINE: 27-31
+
+CHANGE:
+```typescript
+// OLD
+router.get('/', requireAuth as any, (_req, res) => {
+  if (!leyLineCache.initialized) {
+    res.status(503).json({ 
+      error: 'Ley line engine not yet initialized', 
+      code: 'NOT_READY' 
+    })
+    return
+  }
+  // ...
+})
+
+// NEW
+router.get('/', requireAuth as any, (_req, res) => {
+  if (!leyLineCache.initialized) {
+    // Return empty state instead of error
+    res.json({
+      lines: [],
+      computedAt: null,
+      status: 'initializing'
+    })
+    return
+  }
+  // ...
+})
+```
+
+CLIENT SIDE:
+
+FILE: src/components/panels/LeyLinePanel.tsx
+
+ADD loading state handling:
+```typescript
+if (data.status === 'initializing') {
+  return <div>Ley line engine initializing... Please wait.</div>
+}
+```
+
+───────────────────────────────────────────────────────────────────────────────
+
+FIX #4: ELIMINATE CLIENT-SERVER COMPUTATION DIVERGENCE
+───────────────────────────────────────────────────────────────────────────────
+
+FILE: src/stores/leyLineStore.ts
+
+MAJOR REFACTOR: Remove all local computation functions and fetch from API only.
+
+BEFORE (lines 82-230):
+```typescript
+// All these functions compute state locally
+function computeLineStatus(line: LeyLineDef): ActiveLeyLine { ... }
+function applyDiminishingReturns(...) { ... }
+function computeAllStatuses(...) { ... }
+// etc
+```
+
+AFTER:
+```typescript
+// Remove ALL local computation
+// Replace with API calls
+
+export interface LeyLineState {
+  defs: LeyLineDef[]
+  defsLoaded: boolean
+  
+  // NEW: Server-computed state
+  serverState: {
+    lines: any[]
+    computedAt: string | null
+  } | null
+  
+  fetchDefs: () => Promise<void>
+  fetchState: () => Promise<void>  // NEW: Fetch from server
+  
+  // These now just parse serverState instead of computing
+  getActiveLines: () => ActiveLeyLine[]
+  getCountryBuffs: (cc: string) => any
+  // ...
+}
+
+export const useLeyLineStore = create<LeyLineState>()((set, get) => ({
+  defs: LEY_LINE_DEFS,
+  defsLoaded: false,
+  serverState: null,
+  
+  fetchDefs: async () => {
+    // Existing implementation
+  },
+  
+  fetchState: async () => {
+    try {
+      const res = await fetch('http://localhost:3001/api/ley-lines', {
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('xwar_token')}`
+        }
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      set({ serverState: data })
+    } catch (err) {
+      console.error('[LEY-LINES] Failed to fetch state:', err)
+    }
+  },
+  
+  getActiveLines: () => {
+    const { serverState } = get()
+    if (!serverState) return []
+    return serverState.lines.filter(l => l.isActive)
+  },
+  
+  getCountryBuffs: (countryCode: string) => {
+    // Fetch from API endpoint instead
+    return fetch(`http://localhost:3001/api/ley-lines/country/${countryCode}`, {
+      credentials: 'include',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('xwar_token')}`
+      }
+    }).then(r => r.json())
+  },
+  
+  // ... other methods updated similarly
+}))
+```
+
+FILE: src/api/socket-hooks.ts
+
+ADD refresh handler for ley line events:
+
+```typescript
+// Listen for ley line state changes
+socket.on('leyline:state', (data) => {
+  console.log('[SOCKET] Ley line state updated')
+  useLeyLineStore.getState().fetchState()  // Refresh from server
+})
+
+socket.on('leyline:activated', (data) => {
+  console.log('[SOCKET] Ley line activated:', data.lineId)
+  useLeyLineStore.getState().fetchState()
+})
+
+socket.on('leyline:deactivated', (data) => {
+  console.log('[SOCKET] Ley line deactivated:', data.lineId)
+  useLeyLineStore.getState().fetchState()
+})
+```
+
+───────────────────────────────────────────────────────────────────────────────
+
+FIX #5-11: MEDIUM AND LOW PRIORITY
+───────────────────────────────────────────────────────────────────────────────
+
+See individual issue descriptions above for detailed fix instructions.
+These are lower priority and can be addressed after critical fixes are complete.
+
+═══════════════════════════════════════════════════════════════════════════════
+  ⚠️  TESTING CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+After applying fixes, verify:
+
+□ Server starts without cache initialization errors
+□ GET /api/ley-lines returns data immediately on startup
+□ GET /api/ley-lines/:lineId works for all valid line IDs
+□ GET /api/ley-lines/country/:cc returns correct buffs
+□ Client ley line panel displays data without 503 errors
+□ Socket events trigger UI updates correctly
+□ Ley line activation/deactivation news events appear
+□ Cross-continental bonuses apply materialXExtraction correctly
+□ Admin panel can generate ley lines without errors
+□ Region validation prevents invalid ley line creation
+□ No TypeScript errors related to type mismatches
+□ Client and server agree on ley line state at all times
+
+═══════════════════════════════════════════════════════════════════════════════
+  📝 END OF REPORT
+═══════════════════════════════════════════════════════════════════════════════
+
+Generated by: GitHub Copilot CLI
+Date: 2026-03-26T14:33:54Z
+Repository: xwar
+Analysis Type: Ley Line System Comprehensive Fix Guide

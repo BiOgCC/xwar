@@ -39,6 +39,7 @@ interface Stats { playerCount: number; activeBattles: number; activeWars: number
 interface Player { id: string; name: string; countryCode: string; level: number; money: number; role: string; lastLogin: string }
 interface LeyLine { id: string; name: string; archetype: string; blocks: string[]; bonuses: Record<string,number>; tradeoffs: Record<string,number>; enabled: boolean; autoGen: boolean; countryCode: string | null; updatedAt: string }
 interface NewsItem { id: string; headline: string; category: string; createdAt: string }
+interface Country { code: string; name: string; controller: string; empire: string | null; population: number; regions: number; military: number; color: string; fund: Record<string,number>; conqueredResources: string[]; player_count: number }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const S = {
@@ -84,12 +85,16 @@ function SC({ icon, label, value, color }: { icon:React.ReactNode; label:string;
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [authed, setAuthed]           = useState<boolean|null>(null)
-  const [tab, setTab]                  = useState<'overview'|'players'|'leylines'|'pipelines'|'news'|'market'|'economy'|'map'>('overview')
+  const [tab, setTab]                  = useState<'overview'|'players'|'countries'|'leylines'|'pipelines'|'news'|'market'|'economy'|'map'>('overview')
   const [stats, setStats]             = useState<Stats|null>(null)
   const [players, setPlayers]         = useState<Player[]>([])
   const [lines, setLines]             = useState<LeyLine[]>([])
   const [staticLines, setStaticLines] = useState<LeyLine[]>([])
   const [news, setNews]               = useState<NewsItem[]>([])
+  const [countries2, setCountries2]   = useState<Country[]>([])
+  const [countrySearch, setCountrySearch] = useState('')
+  const [expandedCountry, setExpandedCountry] = useState<string|null>(null)
+  const [editCountry, setEditCountry] = useState<{code:string;field:string;value:string}|null>(null)
   const [toast, setToast]             = useState<{msg:string;type:'ok'|'err'}|null>(null)
   const [loading, setLoading]         = useState(true)
   const [engineRes, setEngineRes]     = useState<any>(null)
@@ -152,8 +157,20 @@ export default function AdminPage() {
 
   const loadPlayers = useCallback(async () => {
     try {
-      const d = await api('/api/player/all')
-      if (d.success) setPlayers(d.players)
+      const d = await api('/api/admin/players-list')
+      if (d.ok) setPlayers(d.result)
+      else {
+        // fallback to public player list (limited fields)
+        const d2 = await api('/api/player/all')
+        if (d2.success) setPlayers(d2.players)
+      }
+    } catch {}
+  },[])
+
+  const loadCountries = useCallback(async (search = '') => {
+    try {
+      const d = await api(`/api/admin/countries${search ? `?search=${encodeURIComponent(search)}` : ''}`)
+      if (d.ok) setCountries2(d.result.countries ?? [])
     } catch {}
   },[])
 
@@ -179,6 +196,7 @@ export default function AdminPage() {
 
   useEffect(()=>{ load() },[load])
   useEffect(()=>{ if (tab==='players') loadPlayers() },[tab,loadPlayers])
+  useEffect(()=>{ if (tab==='countries') loadCountries() },[tab,loadCountries])
   useEffect(()=>{ if (tab==='economy') { loadEcon(); loadWealthDist() } },[tab,loadEcon,loadWealthDist])
 
   // ── Actions ──
@@ -266,6 +284,27 @@ export default function AdminPage() {
     else notify(d.error??'Failed','err')
   }
 
+  const SPEC_ROLES = ['military', 'economic', 'mercenary', 'politician', 'influencer'] as const
+  const ROLE_COLORS: Record<string, string> = {
+    military: '#ef4444', economic: '#22c55e', mercenary: '#f59e0b',
+    politician: '#3b82f6', influencer: '#8b5cf6'
+  }
+  const togglePlayerRole = async (playerId: string, currentRole: string) => {
+    const idx     = SPEC_ROLES.indexOf(currentRole as any)
+    const newRole = SPEC_ROLES[(idx + 1) % SPEC_ROLES.length]
+    if (!confirm(`Change role of player to '${newRole}'?`)) return
+    const d = await api(`/api/admin/player/${playerId}/role`, { method:'POST', body:JSON.stringify({ role: newRole }) })
+    if (d.ok) { notify(`${d.result.name} → ${newRole}`); loadPlayers() }
+    else notify(d.error??'Role change failed','err')
+  }
+
+  const saveCountryField = async (code: string, field: string, value: string) => {
+    const parsed = field === 'military' ? Number(value) : field === 'empire' && value.trim() === '' ? null : value
+    const d = await api(`/api/admin/countries/${code}`, { method:'PATCH', body:JSON.stringify({ [field]: parsed }) })
+    if (d.ok) { notify(`${code} ${field} updated`); setEditCountry(null); loadCountries(countrySearch) }
+    else notify(d.error??'Update failed','err')
+  }
+
   // ── Country Randomizer ──
   const previewCountry = async () => {
     if (!randCc.trim()) { notify('Enter a country code','err'); return }
@@ -337,7 +376,7 @@ export default function AdminPage() {
           <span style={{ fontFamily:'Share Tech Mono,monospace', fontSize:14, fontWeight:700, letterSpacing:'0.08em' }}>XWAR <span style={{ color:'#8b5cf6' }}>ADMIN</span></span>
           <div style={{ width:1, height:20, background:'rgba(255,255,255,0.1)' }}/>
           {/* Tabs */}
-          {(['overview','players','leylines','pipelines','news','market','economy','map'] as const).map(t => (
+          {(['overview','players','countries','leylines','pipelines','news','market','economy','map'] as const).map(t => (
             <button key={t} onClick={()=>setTab(t)} style={{ background: tab===t?'rgba(139,92,246,0.15)':'transparent', border:'none', color: tab===t?'#8b5cf6':'#64748b', borderRadius:6, padding:'5px 12px', fontSize:11, fontWeight:700, cursor:'pointer', letterSpacing:'0.06em', textTransform:'uppercase' }}>
               {t}
             </button>
@@ -449,22 +488,118 @@ export default function AdminPage() {
                 <input value={playerSearch} onChange={e=>setPlayerSearch(e.target.value)} placeholder="Search…" style={{ ...S.input, paddingLeft:28, width:200 }}/>
               </div>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr', gap:0, marginBottom:8 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1.4fr', gap:0, marginBottom:8 }}>
               {['Name','Country','Level','Money','Role'].map(h=>(
                 <div key={h} style={{ fontSize:9, color:'#475569', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', padding:'0 8px 6px' }}>{h}</div>
               ))}
             </div>
             {filteredPlayers.slice(0,80).map(p=>(
-              <div key={p.id} className="hrow" style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr', gap:0, borderRadius:6, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
+              <div key={p.id} className="hrow" style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1.4fr', gap:0, borderRadius:6, padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', alignItems:'center' }}>
                 <div style={{ padding:'0 8px', fontSize:12, color:'#e2e8f0', fontWeight:600 }}>{p.name}<div style={{ fontSize:10, color:'#475569', fontFamily:'monospace' }}>{p.id?.slice(0,16)}…</div></div>
                 <div style={{ padding:'0 8px', fontSize:12, color:'#60a5fa' }}>{p.countryCode}</div>
                 <div style={{ padding:'0 8px', fontSize:12, color:'#94a3b8' }}>{p.level}</div>
                 <div style={{ padding:'0 8px', fontSize:11, color:'#22d38a', fontFamily:'monospace' }}>{p.money!=null?`$${Number(p.money).toLocaleString()}`:'—'}</div>
-                <div style={{ padding:'0 8px' }}>
-                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background: p.role==='admin'?'rgba(139,92,246,0.2)':'rgba(255,255,255,0.06)', color: p.role==='admin'?'#8b5cf6':'#64748b' }}>{p.role||'player'}</span>
+                <div style={{ padding:'0 8px', display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background: `${ROLE_COLORS[p.role||'military']||'#64748b'}18`, color: ROLE_COLORS[p.role||'military']||'#64748b', border:`1px solid ${ROLE_COLORS[p.role||'military']||'#64748b'}33` }}>{p.role||'military'}</span>
+                  {p.id && <button onClick={()=>togglePlayerRole(p.id, p.role||'military')} title="Cycle specialization role" style={{ background:'transparent', border:'1px solid rgba(139,92,246,0.35)', borderRadius:4, color:'#8b5cf6', cursor:'pointer', padding:'2px 6px', fontSize:9, fontWeight:700 }}>⟳ Role</button>}
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ── COUNTRIES ── */}
+        {tab==='countries' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+              <div style={S.sectionTitle}><Globe size={14} color="#22d38a"/> COUNTRIES ({countries2.length})</div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
+                  <Search size={12} style={{ position:'absolute', left:10, color:'#475569', pointerEvents:'none' }}/>
+                  <input value={countrySearch} onChange={e=>{ setCountrySearch(e.target.value); loadCountries(e.target.value) }} placeholder="Search code or name…" style={{ ...S.input, paddingLeft:28, width:220 }}/>
+                </div>
+                <button onClick={()=>loadCountries(countrySearch)} style={btn('#64748b')}><RefreshCw size={12}/> Refresh</button>
+              </div>
+            </div>
+
+            <div style={S.card}>
+              {/* Header row */}
+              <div style={{ display:'grid', gridTemplateColumns:'55px 1.6fr 1fr 1fr 70px 70px 70px 80px', gap:0, marginBottom:8 }}>
+                {['Code','Name','Controller','Empire','Military','Regions','Players','Fund $M'].map(h=>(
+                  <div key={h} style={{ fontSize:9, color:'#475569', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', padding:'0 6px 6px' }}>{h}</div>
+                ))}
+              </div>
+
+              {countries2.length===0
+                ? <div style={{ textAlign:'center', padding:40, color:'#475569' }}>No countries found. Run db:seed first.</div>
+                : countries2.map(c => {
+                  const isOpen = expandedCountry === c.code
+                  const fundMoney = (c.fund as any)?.money ?? 0
+                  return (
+                    <div key={c.code} className="hrow" style={{ borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
+                      <div
+                        style={{ display:'grid', gridTemplateColumns:'55px 1.6fr 1fr 1fr 70px 70px 70px 80px', gap:0, padding:'8px 0', cursor:'pointer', alignItems:'center' }}
+                        onClick={()=>setExpandedCountry(isOpen ? null : c.code)}
+                      >
+                        <div style={{ padding:'0 6px' }}>
+                          <span style={{ fontSize:11, fontWeight:800, color:c.color||'#e2e8f0', fontFamily:'monospace', background:`${c.color||'#fff'}18`, padding:'2px 6px', borderRadius:4 }}>{c.code}</span>
+                        </div>
+                        <div style={{ padding:'0 6px', fontSize:12, color:'#e2e8f0', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.name}</div>
+                        <div style={{ padding:'0 6px', fontSize:11, color:'#94a3b8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.controller}</div>
+                        <div style={{ padding:'0 6px', fontSize:11, color:'#64748b' }}>{c.empire ?? <span style={{color:'#334155'}}>—</span>}</div>
+                        <div style={{ padding:'0 6px', fontSize:12, color: c.military>=80?'#ef4444':c.military>=60?'#f59e0b':'#64748b', fontFamily:'monospace', fontWeight:700 }}>{c.military}</div>
+                        <div style={{ padding:'0 6px', fontSize:12, color:'#94a3b8', fontFamily:'monospace' }}>{c.regions}</div>
+                        <div style={{ padding:'0 6px', fontSize:12, color:c.player_count>0?'#22d38a':'#334155', fontFamily:'monospace', fontWeight:c.player_count>0?700:400 }}>{c.player_count}</div>
+                        <div style={{ padding:'0 6px', fontSize:11, color:'#22c55e', fontFamily:'monospace' }}>${(fundMoney/1e6).toFixed(1)}M</div>
+                      </div>
+
+                      {isOpen && (
+                        <div style={{ padding:'12px 8px 16px', borderTop:'1px solid rgba(255,255,255,0.05)', display:'flex', flexDirection:'column', gap:12 }}>
+                          {/* Fund breakdown */}
+                          <div>
+                            <div style={{ ...S.label, marginBottom:8 }}>Fund Breakdown</div>
+                            <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                              {Object.entries(c.fund as Record<string,number>).map(([k,v])=>(
+                                <div key={k} style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:6, padding:'6px 12px', minWidth:90 }}>
+                                  <div style={{ fontSize:9, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:2 }}>{k}</div>
+                                  <div style={{ fontSize:13, color:'#e2e8f0', fontFamily:'monospace', fontWeight:600 }}>{typeof v==='number'&&v>=1e6?`${(v/1e6).toFixed(1)}M`:typeof v==='number'&&v>=1e3?`${(v/1e3).toFixed(0)}K`:String(v)}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Edit fields */}
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'flex-end' }}>
+                            {[
+                              { field:'controller', label:'Controller', type:'text' },
+                              { field:'empire',     label:'Empire',     type:'text', hint:'Leave blank to clear' },
+                              { field:'military',   label:'Military',   type:'number' },
+                            ].map(f=>(
+                              <div key={f.field} style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                                <label style={S.label}>{f.label}{f.hint && <span style={{fontWeight:400,color:'#334155',marginLeft:4,textTransform:'none'}}>{f.hint}</span>}</label>
+                                <div style={{ display:'flex', gap:4 }}>
+                                  <input
+                                    type={f.type}
+                                    defaultValue={f.field==='military'?String((c as any)[f.field]):(c as any)[f.field]??''}
+                                    onFocus={e=>setEditCountry({code:c.code,field:f.field,value:e.currentTarget.value})}
+                                    onChange={e=>setEditCountry({code:c.code,field:f.field,value:e.target.value})}
+                                    style={{ ...S.input, width:160 }}
+                                  />
+                                  <button
+                                    onClick={()=>editCountry&&editCountry.code===c.code&&editCountry.field===f.field&&saveCountryField(c.code,f.field,editCountry.value)}
+                                    style={btn('#22d38a')}
+                                  >Save</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              }
+            </div>
           </div>
         )}
 

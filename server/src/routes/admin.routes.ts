@@ -314,7 +314,7 @@ router.get('/economy', async (req, res) => {
       },
     })
   } catch (err) {
-    logger.error(err, '[admin/economy]')
+    console.error('[admin/economy]', err)
     res.status(500).json({ error: String(err), code: 'INTERNAL' })
   }
 })
@@ -842,6 +842,12 @@ router.post('/country/:cc/randomize', validate(z.object({
     const { clear = false } = req.body
     const totalRegions: number = req.body.regionCount ?? (4 + Math.floor(Math.random() * 6))
 
+    // Verify the country exists in the countries table (FK guard)
+    const [countryRow] = await db.select({ code: countries.code }).from(countries).where(eq(countries.code, cc)).limit(1)
+    if (!countryRow) {
+      res.status(404).json({ error: `Country '${cc}' does not exist in the countries table. Seed it first.`, code: 'COUNTRY_NOT_FOUND' }); return
+    }
+
     // Build pool from real region IDs for this country (server-side lookup)
     // Real IDs example: JP-HK, JP-TH, JP-KT, JP-CB, JP-KS, JP-CG, JP-SK, JP-KY
     // We derive them from DB ownership rows first, then fall back to synthetic
@@ -933,6 +939,116 @@ router.post('/country/:cc/randomize', validate(z.object({
         blocks:    l.blocks,
       })),
     })
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  GET /api/admin/players-list — Full player list for admin panel
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/players-list', async (_req, res) => {
+  try {
+    const rows = await db.select({
+      id:          players.id,
+      name:        players.name,
+      countryCode: players.countryCode,
+      level:       players.level,
+      money:       players.money,
+      role:        players.role,
+      lastLogin:   players.lastLogin,
+    }).from(players).orderBy(desc(players.lastLogin))
+
+    ok(res, rows)
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  COUNTRIES ADMIN — list, search, partial update
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/admin/countries ──────────────────────────────────────────────────
+// Returns all countries with a player count per country
+router.get('/countries', async (req, res) => {
+  try {
+    const search = (req.query.search as string | undefined)?.trim().toUpperCase() ?? ''
+
+    const rows = await db.execute(sql`
+      SELECT
+        c.code,
+        c.name,
+        c.controller,
+        c.empire,
+        c.population,
+        c.regions,
+        c.military,
+        c.color,
+        c.fund,
+        c.conquered_resources AS "conqueredResources",
+        COUNT(p.id)::int AS player_count
+      FROM countries c
+      LEFT JOIN players p ON p.country_code = c.code
+      ${search ? sql`WHERE c.code ILIKE ${'%' + search + '%'} OR c.name ILIKE ${'%' + search + '%'}` : sql``}
+      GROUP BY c.code, c.name, c.controller, c.empire, c.population, c.regions, c.military, c.color, c.fund, c.conquered_resources
+      ORDER BY c.code ASC
+    `) as Record<string, unknown>[]
+
+    ok(res, { count: rows.length, countries: rows })
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ── PATCH /api/admin/countries/:code ─────────────────────────────────────────
+// Partial update: controller, empire, military score
+router.patch('/countries/:code', validate(z.object({
+  controller: z.string().min(1).max(128).optional(),
+  empire:     z.string().max(64).nullable().optional(),
+  military:   z.number().int().min(0).max(100).optional(),
+  color:      z.string().max(16).optional(),
+})), async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase()
+    const [row] = await db.select({ code: countries.code }).from(countries).where(eq(countries.code, code)).limit(1)
+    if (!row) { res.status(404).json({ error: `Country '${code}' not found`, code: 'NOT_FOUND' }); return }
+
+    const updates: Record<string, unknown> = {}
+    if (req.body.controller !== undefined) updates.controller = req.body.controller
+    if (req.body.empire     !== undefined) updates.empire     = req.body.empire
+    if (req.body.military   !== undefined) updates.military   = req.body.military
+    if (req.body.color      !== undefined) updates.color      = req.body.color
+
+    if (Object.keys(updates).length === 0) { res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS' }); return }
+
+    await db.update(countries).set(updates as any).where(eq(countries.code, code))
+    ok(res, { updated: code, fields: Object.keys(updates) })
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PLAYER ADMIN — role management
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── POST /api/admin/player/:id/role ──────────────────────────────────────────
+// Change player specialization role (military / economic / mercenary / politician / influencer)
+router.post('/player/:id/role', validate(z.object({
+  role: z.enum(['military', 'economic', 'mercenary', 'politician', 'influencer']),
+})), async (req, res) => {
+  try {
+    const { id } = req.params
+    const { role } = req.body
+    const [player] = await db.select({ id: players.id, name: players.name, role: players.role })
+      .from(players).where(eq(players.id, id)).limit(1)
+    if (!player) { res.status(404).json({ error: 'Player not found', code: 'NOT_FOUND' }); return }
+
+    await db.update(players).set({ role }).where(eq(players.id, id))
+    ok(res, { playerId: id, name: player.name, previousRole: player.role, newRole: role })
   } catch (err) {
     res.status(500).json({ error: String(err), code: 'INTERNAL' })
   }
