@@ -25,11 +25,9 @@ const DEFAULT_BOTTOM: SidebarItem[] = [
   { id: 'government', icon: '🏛️', label: 'COUNTRY' },
   { id: 'missions', icon: '📋', label: 'MISSIONS' },
   { id: 'combat', icon: '⚔️', label: 'COMBAT' },
-  { id: 'cyberwarfare', icon: '🖥️', label: 'CYBER' },
   ...(ENABLE_DIVISIONS ? [
     { id: 'armed_forces', icon: '🪖', label: 'ARMED FORCES' },
   ] : []),
-  { id: 'military', icon: '🎖️', label: 'DUELS' },
   { id: 'mu', icon: '🏴', label: 'MIL. UNIT' },
   { id: 'prestige', icon: '⭐', label: 'PRESTIGE' },
   { id: 'diplomacy', icon: '🕊️', label: 'DIPLOMACY' },

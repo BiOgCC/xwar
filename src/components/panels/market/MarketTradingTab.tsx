@@ -173,7 +173,7 @@ export default function MarketTradingTab({ showFb }: MarketTradingTabProps) {
         <div className={`market-president-toggle ${vaultMode ? 'market-president-toggle--active' : ''}`} style={vaultMode ? { borderColor: 'rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.06)' } : undefined}>
           <label className="market-president-toggle__label">
             <input type="checkbox" checked={vaultMode} onChange={e => { setVaultMode(e.target.checked); if (e.target.checked) setCountryMode(false) }} style={{ accentColor: '#f59e0b' }} />
-            🏦 TRADE FROM ARMY VAULT
+            🏦 TRADE FROM MILITARY VAULT
           </label>
           {vaultMode && <span className="market-president-toggle__fund" style={{ color: '#f59e0b' }}>Vault: ${myEnlistedArmy.vault.money.toLocaleString()} · 🛢️{myEnlistedArmy.vault.oil.toLocaleString()}</span>}
         </div>

@@ -9,6 +9,7 @@ import { useBattleStore } from './battleStore'
 import { useInventoryStore } from './inventoryStore'
 import { useRegionStore } from './regionStore'
 import { rateLimiter } from '../engine/AntiExploit'
+import { useGovernmentStore } from './governmentStore'
 
 import type { StockTick, CountryStock, Holding, StockTransaction, BondDirection, Bond } from '../types/stock.types'
 export type { StockTick, CountryStock, Holding, BondDirection, Bond }
@@ -172,6 +173,13 @@ export const useStockStore = create<StockState>((set, get) => {
       if (!rateLimiter.check('stock.buy')) return { success: false, message: 'Too fast! Wait a moment.' }
       if (qty <= 0) return { success: false, message: 'Invalid quantity' }
 
+      // Embargo check
+      const playerCountry = usePlayerStore.getState().countryCode || 'US'
+      const gov = useGovernmentStore.getState().governments[playerCountry]
+      if (gov && (gov.embargoes || []).includes(code)) {
+        return { success: false, message: `🚫 Embargo in effect — cannot buy ${code} stocks during war` }
+      }
+
       try {
         const res: any = await api.post('/stock/buy', { countryCode: code, shares: qty })
         if (res.success) {
@@ -188,6 +196,16 @@ export const useStockStore = create<StockState>((set, get) => {
 
     sellShares: async (holdingId) => {
       if (!rateLimiter.check('stock.sell')) return { success: false, message: 'Too fast! Wait a moment.' }
+
+      // Embargo check — look up the holding's country code
+      const holding = get().portfolio.find(h => h.id === holdingId)
+      if (holding) {
+        const playerCountry = usePlayerStore.getState().countryCode || 'US'
+        const gov = useGovernmentStore.getState().governments[playerCountry]
+        if (gov && (gov.embargoes || []).includes(holding.code)) {
+          return { success: false, message: `🚫 Embargo in effect — cannot sell ${holding.code} stocks during war` }
+        }
+      }
 
       try {
         const res: any = await api.post('/stock/sell', { holdingId })
@@ -207,6 +225,14 @@ export const useStockStore = create<StockState>((set, get) => {
 
     openBond: (code, direction, betAmount, durationIdx) => {
       if (!rateLimiter.check('stock.bond')) return { success: false, message: 'Too fast! Wait a moment.' }
+
+      // Embargo check
+      const playerCountry = usePlayerStore.getState().countryCode || 'US'
+      const govCheck = useGovernmentStore.getState().governments[playerCountry]
+      if (govCheck && (govCheck.embargoes || []).includes(code)) {
+        return { success: false, message: `🚫 Embargo in effect — cannot open bonds on ${code} during war` }
+      }
+
       const player = usePlayerStore.getState()
       const stock = get().stocks.find(s => s.code === code)
       if (!stock) return { success: false, message: 'Stock not found' }

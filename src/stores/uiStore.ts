@@ -26,6 +26,8 @@ export interface FloatingText {
   color: string
 }
 
+export type MapLayerKey = 'leyLines' | 'tradeLanes'
+
 export interface UIState {
   activePanel: PanelType
   lastClosedPanel: PanelType
@@ -47,6 +49,8 @@ export interface UIState {
   mapTargetCountry: string | null   // ISO code
   mapTargetRegion: string | null    // region id
   mapTargetRegionName: string | null
+  // Map layer visibility toggles
+  mapLayerVisibility: Record<MapLayerKey, boolean>
   setSelectedRegionId: (id: string | null) => void
   setActivePanel: (panel: PanelType) => void
   togglePanel: (panel: PanelType) => void
@@ -59,6 +63,7 @@ export interface UIState {
   cycleResourceView: () => void
   setForeignCountry: (code: string | null) => void
   setMapTarget: (country: string | null, regionId: string | null, regionName: string | null) => void
+  toggleMapLayer: (layer: MapLayerKey) => void
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void
   removeNotification: (id: string) => void
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
@@ -81,6 +86,7 @@ export const useUIStore = create<UIState>((set) => ({
   mapTargetCountry: null,
   mapTargetRegion: null,
   mapTargetRegionName: null,
+  mapLayerVisibility: { leyLines: true, tradeLanes: true },
   showModal: false,
   modalContent: null,
   notifications: [],
@@ -141,6 +147,10 @@ export const useUIStore = create<UIState>((set) => ({
     mapTargetRegion: regionId,
     mapTargetRegionName: regionName,
   }),
+
+  toggleMapLayer: (layer) => set((state) => ({
+    mapLayerVisibility: { ...state.mapLayerVisibility, [layer]: !state.mapLayerVisibility[layer] }
+  })),
 
   cycleResourceView: () => set((state) => {
     const modes: ResourceViewMode[] = ['deposits', 'strategic', 'political']

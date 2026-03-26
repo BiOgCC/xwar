@@ -5,7 +5,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { eq, sql, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { players, countryStocks, stockHoldings, bonds } from '../db/schema.js'
+import { players, countryStocks, stockHoldings, bonds, wars } from '../db/schema.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 
@@ -30,6 +30,20 @@ router.post('/buy', requireAuth as any, validate(buySchema), async (req, res) =>
     // Get current stock price
     const [stock] = await db.select().from(countryStocks).where(eq(countryStocks.countryCode, countryCode)).limit(1)
     if (!stock) { res.status(404).json({ error: 'Stock not found' }); return }
+
+    // Embargo check: look up player's country and check for active wars
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (player?.countryCode) {
+      const activeWars = await db.select().from(wars).where(
+        sql`${wars.status} = 'active' AND (
+          (${wars.attackerCode} = ${player.countryCode} AND ${wars.defenderCode} = ${countryCode}) OR
+          (${wars.attackerCode} = ${countryCode} AND ${wars.defenderCode} = ${player.countryCode})
+        )`
+      ).limit(1)
+      if (activeWars.length > 0) {
+        res.status(403).json({ error: `Embargo in effect — cannot buy ${countryCode} stocks during war` }); return
+      }
+    }
 
     const pricePerShare = parseFloat(stock.price ?? '100')
     const totalCost = Math.ceil(shares * pricePerShare)
@@ -178,6 +192,20 @@ router.post('/bond/open', requireAuth as any, validate(bondSchema), async (req, 
     // Get current price
     const [stock] = await db.select().from(countryStocks).where(eq(countryStocks.countryCode, countryCode)).limit(1)
     if (!stock) { res.status(404).json({ error: 'Stock not found' }); return }
+
+    // Embargo check: look up player's country and check for active wars
+    const [playerRow] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (playerRow?.countryCode) {
+      const activeWars = await db.select().from(wars).where(
+        sql`${wars.status} = 'active' AND (
+          (${wars.attackerCode} = ${playerRow.countryCode} AND ${wars.defenderCode} = ${countryCode}) OR
+          (${wars.attackerCode} = ${countryCode} AND ${wars.defenderCode} = ${playerRow.countryCode})
+        )`
+      ).limit(1)
+      if (activeWars.length > 0) {
+        res.status(403).json({ error: `Embargo in effect — cannot open bonds on ${countryCode} during war` }); return
+      }
+    }
 
     // Deduct money
     const deductResult = await db.update(players).set({

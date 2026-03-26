@@ -154,7 +154,7 @@ function SidebarPanel({
 }
 
 export default function PanelRouter() {
-  const { activePanel, togglePanel, panelFullscreen, setPanelFullscreen, selectedForeignCountry, resourceViewMode, cycleResourceView, panelHistory, goBack, setProfileDefaultTab, setActivePanel } = useUIStore()
+  const { activePanel, togglePanel, panelFullscreen, setPanelFullscreen, selectedForeignCountry, resourceViewMode, cycleResourceView, panelHistory, goBack, setProfileDefaultTab, setActivePanel, mapLayerVisibility, toggleMapLayer } = useUIStore()
   const player = usePlayerStore()
   const world = useWorldStore()
   const { topItems, bottomItems, moveItem, resetLayout } = useSidebarLayoutStore()
@@ -266,6 +266,29 @@ export default function PanelRouter() {
             onDrop={handleDrop} onDragEnd={handleDragEnd} onDragLeave={handleDragLeave}
             renderItem={renderItem}
           />
+          <div className="hud-sidebar__group-label">MAP LAYERS</div>
+          <div className="hud-sidebar__layers">
+            <button
+              className={`hud-sidebar__layer-toggle ${mapLayerVisibility.leyLines ? '' : 'hud-sidebar__layer-toggle--off'}`}
+              onClick={() => toggleMapLayer('leyLines')}
+            >
+              <span className="hud-sidebar__icon"><Zap {...SIDEBAR_ICON_PROPS} color={mapLayerVisibility.leyLines ? '#a78bfa' : '#475569'} /></span>
+              <span className="hud-sidebar__label">LEY LINES</span>
+              <span className={`hud-sidebar__layer-eye ${mapLayerVisibility.leyLines ? '' : 'hud-sidebar__layer-eye--off'}`}>
+                {mapLayerVisibility.leyLines ? '👁' : '👁‍🗨'}
+              </span>
+            </button>
+            <button
+              className={`hud-sidebar__layer-toggle ${mapLayerVisibility.tradeLanes ? '' : 'hud-sidebar__layer-toggle--off'}`}
+              onClick={() => toggleMapLayer('tradeLanes')}
+            >
+              <span className="hud-sidebar__icon"><Anchor {...SIDEBAR_ICON_PROPS} color={mapLayerVisibility.tradeLanes ? '#38bdf8' : '#475569'} /></span>
+              <span className="hud-sidebar__label">TRADE LANES</span>
+              <span className={`hud-sidebar__layer-eye ${mapLayerVisibility.tradeLanes ? '' : 'hud-sidebar__layer-eye--off'}`}>
+                {mapLayerVisibility.tradeLanes ? '👁' : '👁‍🗨'}
+              </span>
+            </button>
+          </div>
           <button className="hud-sidebar__reset" onClick={resetLayout} title="Reset sidebar layout">↺</button>
         </div>
       </nav>

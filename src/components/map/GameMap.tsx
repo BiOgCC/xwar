@@ -260,6 +260,46 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
 
   // Expose map controls to parent via ref
+  // ── Reactive map layer visibility toggles (Ley Lines / Trade Lanes) ──
+  useEffect(() => {
+    const m = map.current
+    if (!m || !mapLoaded) return
+
+    const LEY_LINE_LAYERS = [
+      'xwar-leyline-glow', 'xwar-leyline-glow-inner', 'xwar-leyline-core',
+      'xwar-leyline-spine', 'xwar-leyline-nodes', 'xwar-leyline-labels',
+    ]
+    const TRADE_LANE_LAYERS = [
+      'xwar-tr-glow-outer', 'xwar-tr-glow-mid', 'xwar-tr-glow-inner',
+      'xwar-tr-core', 'xwar-tr-spine', 'xwar-trade-routes-objective-glow',
+      'xwar-tr-port-aura', 'xwar-tr-port-halo',
+      'xwar-trade-route-dots', 'xwar-trade-route-labels',
+    ]
+
+    const setVis = (layers: string[], visible: boolean) => {
+      const val = visible ? 'visible' : 'none'
+      layers.forEach(id => {
+        try { m.setLayoutProperty(id, 'visibility', val) } catch {}
+      })
+    }
+
+    // Apply current state immediately
+    const { leyLines, tradeLanes } = useUIStore.getState().mapLayerVisibility
+    setVis(LEY_LINE_LAYERS, leyLines)
+    setVis(TRADE_LANE_LAYERS, tradeLanes)
+
+    // Subscribe to future changes
+    const unsub = useUIStore.subscribe(
+      (state) => {
+        setVis(LEY_LINE_LAYERS, state.mapLayerVisibility.leyLines)
+        setVis(TRADE_LANE_LAYERS, state.mapLayerVisibility.tradeLanes)
+      }
+    )
+
+    return () => unsub()
+  }, [mapLoaded])
+
+  // Expose map controls to parent via ref
   useImperativeHandle(ref, () => ({
     zoomIn: () => {
       map.current?.zoomIn({ duration: 300 })

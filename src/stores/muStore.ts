@@ -80,6 +80,61 @@ export interface MUVault {
   resources: Partial<Record<ResourceId, number>>  // resourceId → quantity
 }
 
+// ====== UPGRADES ======
+
+export type UpgradeTrack = 'warDoctrine' | 'barracks' | 'corporateLicense'
+
+export interface UpgradeTrackDef {
+  id: UpgradeTrack
+  name: string
+  icon: string
+  description: string
+  maxLevel: number
+  /** Cost for each level (index 0 = level 1 cost) */
+  costs: number[]
+  /** Bonus text per level (index 0 = level 1 bonus) */
+  bonusPerLevel: string[]
+}
+
+export const UPGRADE_TRACKS: UpgradeTrackDef[] = [
+  {
+    id: 'warDoctrine',
+    name: 'War Doctrine',
+    icon: '⚔️',
+    description: '+3% MU damage bonus per level',
+    maxLevel: 5,
+    costs: [10_000, 20_000, 40_000, 80_000, 160_000],
+    bonusPerLevel: ['+3%', '+6%', '+9%', '+12%', '+15%'],
+  },
+  {
+    id: 'barracks',
+    name: 'Barracks Expansion',
+    icon: '🏠',
+    description: '+2 member capacity per level',
+    maxLevel: 5,
+    costs: [15_000, 30_000, 60_000, 120_000, 240_000],
+    bonusPerLevel: ['+2', '+4', '+6', '+8', '+10'],
+  },
+  {
+    id: 'corporateLicense',
+    name: 'Corporate License',
+    icon: '🏢',
+    description: '+1 company slot per level',
+    maxLevel: 3,
+    costs: [25_000, 50_000, 100_000],
+    bonusPerLevel: ['+1', '+2', '+3'],
+  },
+]
+
+export interface MUUpgrades {
+  warDoctrine: number
+  barracks: number
+  corporateLicense: number
+}
+
+const DEFAULT_UPGRADES: MUUpgrades = { warDoctrine: 0, barracks: 0, corporateLicense: 0 }
+const BASE_MEMBER_CAP = 10
+
 export interface MilitaryUnit {
   id: string
   name: string
@@ -98,6 +153,7 @@ export interface MilitaryUnit {
   donations: MUDonation[]
   contracts: MUContract[]
   vault: MUVault
+  upgrades: MUUpgrades
   createdAt: number
   // Aggregate stats
   weeklyDamageTotal: number
@@ -142,6 +198,13 @@ export interface MUState {
   donateResource: (resourceId: ResourceId, amount: number, message?: string) => { success: boolean; message: string }
   buyResourceForVault: (resourceId: ResourceId, amount: number, unitPrice: number) => { success: boolean; message: string }
   distributeResource: (resourceId: ResourceId, amount: number) => { success: boolean; message: string }
+
+  // Upgrades
+  purchaseUpgrade: (track: UpgradeTrack) => { success: boolean; message: string }
+  getUpgradeCost: (track: UpgradeTrack) => number | null
+  getUpgradeBonus: (track: UpgradeTrack) => string
+  getMaxMembers: () => number
+  getWarDoctrineBonus: () => number
 }
 
 /**
@@ -227,6 +290,7 @@ export const useMUStore = create<MUState>((set, get) => ({
       donations: [],
       contracts: [],
       vault: { treasury: 0, resources: {} },
+      upgrades: { ...DEFAULT_UPGRADES },
       createdAt: Date.now(),
       weeklyDamageTotal: 0,
       totalDamageTotal: player.damageDone,
@@ -247,6 +311,8 @@ export const useMUStore = create<MUState>((set, get) => ({
     if (get().playerUnitId) return { success: false, message: 'You are already in a Military Unit.' }
     const unit = get().units[unitId]
     if (!unit) return { success: false, message: 'Unit not found.' }
+    const maxMembers = BASE_MEMBER_CAP + (unit.upgrades?.barracks ?? 0) * 2
+    if (unit.members.length >= maxMembers) return { success: false, message: `Unit is full (${maxMembers} members max). Upgrade Barracks to expand.` }
 
     const member: MUMember = {
       playerId: player.name,
@@ -350,6 +416,8 @@ export const useMUStore = create<MUState>((set, get) => ({
     if (!unit) return
     const app = unit.applications.find(a => a.id === appId)
     if (!app || app.status !== 'pending') return
+    const maxMembers = BASE_MEMBER_CAP + (unit.upgrades?.barracks ?? 0) * 2
+    if (unit.members.length >= maxMembers) return
 
     const member: MUMember = {
       playerId: app.playerId,
@@ -720,5 +788,78 @@ export const useMUStore = create<MUState>((set, get) => ({
     }))
 
     return { success: true, message: `Distributed ${perMember} ${resourceId} to each member (${totalUsed} total).` }
+  },
+
+  // ── Upgrades ──
+  purchaseUpgrade: (track) => {
+    const unit = get().getPlayerUnit()
+    if (!unit) return { success: false, message: 'Not in a Military Unit.' }
+    const playerName = usePlayerStore.getState().name
+    const isOwner = unit.ownerId === playerName
+    const isCommander = unit.members.some(m => m.name === playerName && m.role === 'commander')
+    if (!isOwner && !isCommander) return { success: false, message: 'Only commanders/owner can purchase upgrades.' }
+
+    const def = UPGRADE_TRACKS.find(t => t.id === track)
+    if (!def) return { success: false, message: 'Unknown upgrade track.' }
+
+    const currentLevel = unit.upgrades?.[track] ?? 0
+    if (currentLevel >= def.maxLevel) return { success: false, message: `${def.name} is already at max level.` }
+
+    const cost = def.costs[currentLevel]
+    if (unit.vault.treasury < cost) return { success: false, message: `Treasury needs $${cost.toLocaleString()}. Current: $${unit.vault.treasury.toLocaleString()}.` }
+
+    const txn: MUTransaction = {
+      id: `txn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: 'purchase', amount: cost, currency: 'money',
+      playerName,
+      description: `Upgraded ${def.name} to Lv.${currentLevel + 1}`,
+      timestamp: Date.now(),
+    }
+
+    set(s => ({
+      units: {
+        ...s.units,
+        [unit.id]: {
+          ...unit,
+          vault: { ...unit.vault, treasury: unit.vault.treasury - cost },
+          upgrades: { ...(unit.upgrades ?? DEFAULT_UPGRADES), [track]: currentLevel + 1 },
+          transactions: [...unit.transactions, txn],
+        },
+      },
+    }))
+
+    return { success: true, message: `${def.name} upgraded to Level ${currentLevel + 1}!` }
+  },
+
+  getUpgradeCost: (track) => {
+    const unit = get().getPlayerUnit()
+    if (!unit) return null
+    const def = UPGRADE_TRACKS.find(t => t.id === track)
+    if (!def) return null
+    const level = unit.upgrades?.[track] ?? 0
+    if (level >= def.maxLevel) return null
+    return def.costs[level]
+  },
+
+  getUpgradeBonus: (track) => {
+    const unit = get().getPlayerUnit()
+    if (!unit) return '—'
+    const def = UPGRADE_TRACKS.find(t => t.id === track)
+    if (!def) return '—'
+    const level = unit.upgrades?.[track] ?? 0
+    if (level === 0) return 'None'
+    return def.bonusPerLevel[level - 1]
+  },
+
+  getMaxMembers: () => {
+    const unit = get().getPlayerUnit()
+    if (!unit) return BASE_MEMBER_CAP
+    return BASE_MEMBER_CAP + (unit.upgrades?.barracks ?? 0) * 2
+  },
+
+  getWarDoctrineBonus: () => {
+    const unit = get().getPlayerUnit()
+    if (!unit) return 0
+    return (unit.upgrades?.warDoctrine ?? 0) * 0.03
   },
 }))

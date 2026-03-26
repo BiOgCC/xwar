@@ -721,6 +721,29 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       status: 'active'
     }
 
+    // ── Auto-embargo: both countries block each other's stock trading ──
+    setTimeout(() => {
+      import('./governmentStore').then(({ useGovernmentStore }) => {
+        useGovernmentStore.setState((s) => {
+          const govA = s.governments[attackerIso]
+          const govD = s.governments[defenderIso]
+          const newGovs = { ...s.governments }
+          if (govA && !(govA.embargoes || []).includes(defenderIso)) {
+            newGovs[attackerIso] = { ...govA, embargoes: [...(govA.embargoes || []), defenderIso] }
+          }
+          if (govD && !(govD.embargoes || []).includes(attackerIso)) {
+            newGovs[defenderIso] = { ...govD, embargoes: [...(govD.embargoes || []), attackerIso] }
+          }
+          return { governments: newGovs }
+        })
+      })
+      import('./newsStore').then(({ useNewsStore }) => {
+        useNewsStore.getState().pushEvent('economy',
+          `🚫 Auto stock embargo: ${attackerIso} ↔ ${defenderIso} — war declared`
+        )
+      })
+    }, 0)
+
     return { wars: [...state.wars, newWar] }
   }),
 
@@ -744,6 +767,26 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         useHistoryStore.getState().recordWarEnd(warToEnd, 'ceasefire')
       })
     }
+    // ── Auto-lift embargo on peace ──
+    import('./governmentStore').then(({ useGovernmentStore }) => {
+      useGovernmentStore.setState((s) => {
+        const gov1 = s.governments[iso1]
+        const gov2 = s.governments[iso2]
+        const newGovs = { ...s.governments }
+        if (gov1) {
+          newGovs[iso1] = { ...gov1, embargoes: (gov1.embargoes || []).filter((e: string) => e !== iso2) }
+        }
+        if (gov2) {
+          newGovs[iso2] = { ...gov2, embargoes: (gov2.embargoes || []).filter((e: string) => e !== iso1) }
+        }
+        return { governments: newGovs }
+      })
+    })
+    import('./newsStore').then(({ useNewsStore }) => {
+      useNewsStore.getState().pushEvent('economy',
+        `✅ Stock embargo lifted: ${iso1} ↔ ${iso2} — peace declared`
+      )
+    })
   },
 
   printMoney: (countryCode, amount) => {

@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { useMUStore, type MilitaryUnit, type MUMember, type MUTransaction, type MUDonation, type MUContract } from '../../stores/muStore'
+import { useMUStore, UPGRADE_TRACKS, type MilitaryUnit, type MUMember, type MUTransaction, type MUDonation, type MUContract, type UpgradeTrack } from '../../stores/muStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import CountryFlag from '../shared/CountryFlag'
 import RegionPicker from '../shared/RegionPicker'
 import { getRegionById } from '../../data/regionRegistry'
-import { Heart, Users, Crown, Shield, Swords, TrendingUp, Mountain, Wallet, Plus, ArrowDownLeft, ArrowUpRight, FileText, Gift, ScrollText } from 'lucide-react'
+import { Heart, Users, Crown, Shield, Swords, TrendingUp, Mountain, Wallet, Plus, ArrowDownLeft, ArrowUpRight, FileText, Gift, ScrollText, Star, Award, Zap } from 'lucide-react'
 
-type MUTab = 'home' | 'applications' | 'account' | 'transactions' | 'donations' | 'contracts' | 'rankings' | 'badges'
+type MUTab = 'home' | 'members' | 'upgrades' | 'vault' | 'applications' | 'contracts' | 'rankings' | 'badges'
 
 // ── Helper: relative time ──
 function timeAgo(ts: number): string {
@@ -226,13 +226,17 @@ export default function MUPanel() {
   const isCommander = unit.members.some(m => m.name === player.name && m.role === 'commander')
   const isOwner = unit.ownerId === player.name
 
+  const maxMembers = mu.getMaxMembers()
+
   const tabs: { id: MUTab; icon: React.ReactNode; label: string; badge?: number }[] = [
-    { id: 'home', icon: <Swords size={14} />, label: 'Home' },
-    { id: 'applications', icon: <Users size={14} />, label: 'Applications', badge: pendingApps.length },
-    { id: 'account', icon: <Crown size={14} />, label: 'Account' },
-    { id: 'transactions', icon: <ScrollText size={14} />, label: 'Transactions' },
-    { id: 'donations', icon: <Gift size={14} />, label: 'Donations' },
-    { id: 'contracts', icon: <FileText size={14} />, label: 'Contracts' },
+    { id: 'home', icon: <Swords size={16} />, label: 'Home' },
+    { id: 'members', icon: <Users size={16} />, label: 'Members' },
+    { id: 'upgrades', icon: <Zap size={16} />, label: 'Upgrades' },
+    { id: 'vault', icon: <Wallet size={16} />, label: 'Vault' },
+    { id: 'applications', icon: <ScrollText size={16} />, label: 'Apply', badge: pendingApps.length },
+    { id: 'contracts', icon: <FileText size={16} />, label: 'Contracts' },
+    { id: 'rankings', icon: <TrendingUp size={16} />, label: 'Rankings' },
+    { id: 'badges', icon: <Award size={16} />, label: 'Badges' },
   ]
 
   // Sort members for rankings
@@ -292,8 +296,8 @@ export default function MUPanel() {
             display: 'flex', gap: '12px', marginTop: '10px',
             fontSize: '9px', color: '#94a3b8',
           }}>
-            <span><Users size={11} style={{ verticalAlign: '-2px', marginRight: '3px' }} />{memberCount} Members</span>
-            <span><Crown size={11} style={{ verticalAlign: '-2px', marginRight: '3px' }} color="#f59e0b" />{commanderCount} Commanders</span>
+            <span><Users size={11} style={{ verticalAlign: '-2px', marginRight: '3px' }} />{memberCount}/{maxMembers}</span>
+            <span><Crown size={11} style={{ verticalAlign: '-2px', marginRight: '3px' }} color="#f59e0b" />{commanderCount} Cmd</span>
             <span style={{ marginLeft: 'auto', color: '#22d38a', fontWeight: 700 }}>
               +{damageBonus}% DMG
             </span>
@@ -301,42 +305,42 @@ export default function MUPanel() {
         </div>
       </div>
 
-      {/* ── Tab Navigation ── */}
+      {/* ── Tab Navigation: 4×2 Icon Grid ── */}
       <div style={{
-        display: 'flex', gap: '2px', borderRadius: '6px',
-        background: 'rgba(0,0,0,0.3)', padding: '2px',
-        overflowX: 'auto', overflowY: 'hidden',
-        scrollbarWidth: 'none',
-        msOverflowStyle: 'none',
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '3px',
+        borderRadius: '8px', background: 'rgba(0,0,0,0.3)', padding: '4px',
       }}>
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              flex: '0 0 auto', padding: '8px 8px', fontSize: '8px', fontWeight: 700,
-              border: 'none', borderRadius: '4px', cursor: 'pointer',
-              background: activeTab === tab.id ? 'rgba(34,211,138,0.12)' : 'transparent',
-              color: activeTab === tab.id ? '#22d38a' : '#64748b',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
-              transition: 'all 0.15s',
-              position: 'relative',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {tab.icon}
-            <span>{tab.label}</span>
-            {tab.badge != null && tab.badge > 0 && (
-              <span style={{
-                position: 'absolute', top: '2px', right: '2px',
-                background: '#ef4444', color: '#fff',
-                borderRadius: '50%', width: '14px', height: '14px',
-                fontSize: '7px', fontWeight: 900,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>{tab.badge}</span>
-            )}
-          </button>
-        ))}
+        {tabs.map(tab => {
+          const isActive = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '8px 4px', fontSize: '9px', fontWeight: 700,
+                border: 'none', borderRadius: '6px', cursor: 'pointer',
+                background: isActive ? 'rgba(34,211,138,0.12)' : 'transparent',
+                color: isActive ? '#22d38a' : '#64748b',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                transition: 'all 0.15s',
+                position: 'relative',
+                ...(isActive ? { boxShadow: 'inset 0 -2px 0 #22d38a' } : {}),
+              }}
+            >
+              {tab.icon}
+              <span style={{ fontSize: '8px', letterSpacing: '0.3px' }}>{tab.label}</span>
+              {tab.badge != null && tab.badge > 0 && (
+                <span style={{
+                  position: 'absolute', top: '2px', right: '4px',
+                  background: '#ef4444', color: '#fff',
+                  borderRadius: '50%', width: '14px', height: '14px',
+                  fontSize: '7px', fontWeight: 900,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>{tab.badge}</span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {/* ══ HOME TAB ══ */}
@@ -461,6 +465,57 @@ export default function MUPanel() {
         </>
       )}
 
+      {/* ══ MEMBERS TAB (merged from old Account) ══ */}
+      {activeTab === 'members' && (
+        <div className="war-card">
+          <div className="war-card__title" style={{ marginBottom: '8px' }}>
+            <Users size={12} style={{ marginRight: '4px', verticalAlign: '-2px' }} />
+            MEMBERS ({memberCount}/{maxMembers})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {unit.members.map(m => (
+              <div key={m.playerId} style={{
+                padding: '8px 10px', borderRadius: '6px',
+                background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {m.role === 'commander' && <Crown size={12} color="#f59e0b" />}
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: '18px', height: '18px', borderRadius: '50%',
+                    background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)',
+                    fontSize: '8px', fontWeight: 900, color: '#3b82f6',
+                  }}>{m.level}</span>
+                  <CountryFlag iso={m.countryCode} size={14} />
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>{m.name}</span>
+                  <span style={{ fontSize: '8px', color: '#64748b' }}>{timeAgo(m.lastActive)}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '9px', color: '#22d38a', fontWeight: 700 }}>
+                    {m.totalDamage >= 1000 ? `${(m.totalDamage / 1000).toFixed(1)}K` : m.totalDamage} dmg
+                  </span>
+                  {isOwner && m.playerId !== player.name && (
+                    <>
+                      {m.role === 'member' ? (
+                        <button className="war-btn" style={{ fontSize: '8px', padding: '2px 6px', color: '#f59e0b' }} onClick={() => mu.promoteMember(unit.id, m.playerId)}>↑</button>
+                      ) : (
+                        <button className="war-btn" style={{ fontSize: '8px', padding: '2px 6px', color: '#64748b' }} onClick={() => mu.demoteMember(unit.id, m.playerId)}>↓</button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══ UPGRADES TAB ══ */}
+      {activeTab === 'upgrades' && (
+        <UpgradesTab unit={unit} isCommander={isCommander} isOwner={isOwner} />
+      )}
+
       {/* ══ APPLICATIONS TAB ══ */}
       {activeTab === 'applications' && (
         <div className="war-card">
@@ -518,46 +573,9 @@ export default function MUPanel() {
         </div>
       )}
 
-      {/* ══ ACCOUNT TAB ══ */}
-      {activeTab === 'account' && (isOwner || isCommander) && (
-        <div className="war-card">
-          <div className="war-card__title" style={{ marginBottom: '8px' }}>⚙️ UNIT MANAGEMENT</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {unit.members.map(m => (
-              <div key={m.playerId} style={{
-                padding: '6px 8px', borderRadius: '4px',
-                background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
-                <span style={{ fontSize: '10px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {m.role === 'commander' && <Crown size={10} color="#f59e0b" />}
-                  <CountryFlag iso={m.countryCode} size={12} /> {m.name}
-                </span>
-                {isOwner && m.playerId !== player.name && (
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {m.role === 'member' ? (
-                      <button
-                        className="war-btn"
-                        style={{ fontSize: '8px', padding: '2px 6px', color: '#f59e0b' }}
-                        onClick={() => mu.promoteMember(unit.id, m.playerId)}
-                      >
-                        PROMOTE
-                      </button>
-                    ) : (
-                      <button
-                        className="war-btn"
-                        style={{ fontSize: '8px', padding: '2px 6px', color: '#64748b' }}
-                        onClick={() => mu.demoteMember(unit.id, m.playerId)}
-                      >
-                        DEMOTE
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* ══ VAULT TAB (merged Donations + Transactions) ══ */}
+      {activeTab === 'vault' && (
+        <DonationsTab unit={unit} isCommander={isCommander} isOwner={isOwner} />
       )}
 
       {/* ══ RANKINGS TAB ══ */}
@@ -599,58 +617,7 @@ export default function MUPanel() {
         </div>
       )}
 
-      {/* ══ TRANSACTIONS TAB ══ */}
-      {activeTab === 'transactions' && (
-        <div className="war-card">
-          <div className="war-card__title" style={{ marginBottom: '8px' }}>💰 TRANSACTIONS</div>
-          {unit.transactions.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '20px' }}>
-              <ScrollText size={24} color="#64748b" style={{ marginBottom: '8px' }} />
-              <div style={{ fontSize: '10px', color: '#64748b' }}>
-                No transactions recorded yet.
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {[...unit.transactions].reverse().map(txn => {
-                const isIn = txn.type === 'deposit' || txn.type === 'salary'
-                return (
-                  <div key={txn.id} style={{
-                    padding: '8px 10px', borderRadius: '5px',
-                    background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {isIn
-                        ? <ArrowDownLeft size={14} color="#22d38a" />
-                        : <ArrowUpRight size={14} color="#ef4444" />}
-                      <div>
-                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#e2e8f0' }}>
-                          {txn.description}
-                        </div>
-                        <div style={{ fontSize: '8px', color: '#64748b', marginTop: '1px' }}>
-                          by {txn.playerName} • {timeAgo(txn.timestamp)}
-                        </div>
-                      </div>
-                    </div>
-                    <span style={{
-                      fontSize: '11px', fontWeight: 900,
-                      color: isIn ? '#22d38a' : '#ef4444',
-                    }}>
-                      {isIn ? '+' : '-'}${txn.amount.toLocaleString()}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* ══ DONATIONS TAB ══ */}
-      {activeTab === 'donations' && (
-        <DonationsTab unit={unit} isCommander={isCommander} isOwner={isOwner} />
-      )}
 
       {/* ══ CONTRACTS TAB ══ */}
       {activeTab === 'contracts' && (
@@ -730,6 +697,129 @@ export default function MUPanel() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Upgrades Tab ──
+function UpgradesTab({ unit, isCommander, isOwner }: { unit: MilitaryUnit; isCommander: boolean; isOwner: boolean }) {
+  const mu = useMUStore()
+  const canPurchase = isCommander || isOwner
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* Treasury reminder */}
+      <div style={{
+        padding: '8px 12px', borderRadius: '6px',
+        background: 'linear-gradient(135deg, rgba(34,211,138,0.06), rgba(59,130,246,0.04))',
+        border: '1px solid rgba(34,211,138,0.15)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <div>
+          <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 600 }}>VAULT TREASURY</div>
+          <div style={{ fontSize: '14px', fontWeight: 900, color: '#22d38a' }}>
+            ${unit.vault.treasury.toLocaleString()}
+          </div>
+        </div>
+        <Wallet size={20} color="#22d38a" />
+      </div>
+
+      {/* Upgrade cards */}
+      {UPGRADE_TRACKS.map(track => {
+        const level = unit.upgrades?.[track.id] ?? 0
+        const cost = mu.getUpgradeCost(track.id)
+        const bonus = mu.getUpgradeBonus(track.id)
+        const isMaxed = level >= track.maxLevel
+        const canAfford = cost !== null && unit.vault.treasury >= cost
+
+        return (
+          <div key={track.id} className="war-card" style={{
+            borderColor: isMaxed ? 'rgba(250,204,21,0.2)' : 'rgba(255,255,255,0.08)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '8px',
+                  background: isMaxed ? 'rgba(250,204,21,0.12)' : 'rgba(59,130,246,0.1)',
+                  border: `1px solid ${isMaxed ? 'rgba(250,204,21,0.3)' : 'rgba(59,130,246,0.2)'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '18px',
+                }}>
+                  {track.icon}
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 900, color: '#e2e8f0' }}>
+                    {track.name}
+                  </div>
+                  <div style={{ fontSize: '8px', color: '#94a3b8', marginTop: '1px' }}>
+                    {track.description}
+                  </div>
+                </div>
+              </div>
+              {isMaxed && (
+                <span style={{
+                  padding: '2px 8px', borderRadius: '4px', fontSize: '8px', fontWeight: 900,
+                  background: 'rgba(250,204,21,0.12)', color: '#facc15',
+                  border: '1px solid rgba(250,204,21,0.3)',
+                }}>MAX</span>
+              )}
+            </div>
+
+            {/* Level pips */}
+            <div style={{ display: 'flex', gap: '3px', marginBottom: '8px' }}>
+              {Array.from({ length: track.maxLevel }).map((_, i) => (
+                <div key={i} style={{
+                  flex: 1, height: '6px', borderRadius: '3px',
+                  background: i < level
+                    ? 'linear-gradient(90deg, #22d38a, #3b82f6)'
+                    : 'rgba(255,255,255,0.06)',
+                  transition: 'background 0.3s',
+                }} />
+              ))}
+            </div>
+
+            {/* Stats row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ fontSize: '9px', color: '#94a3b8' }}>
+                Level <strong style={{ color: '#e2e8f0' }}>{level}</strong> / {track.maxLevel}
+              </div>
+              <div style={{ fontSize: '9px', color: '#22d38a', fontWeight: 700 }}>
+                Bonus: {bonus}
+              </div>
+            </div>
+
+            {/* Purchase button */}
+            {!isMaxed && (
+              <button
+                className="war-btn war-btn--primary"
+                style={{
+                  width: '100%', fontSize: '10px', padding: '10px', fontWeight: 900,
+                  opacity: (!canPurchase || !canAfford) ? 0.4 : 1,
+                }}
+                disabled={!canPurchase || !canAfford}
+                onClick={() => {
+                  const r = mu.purchaseUpgrade(track.id)
+                  if (!r.success) alert(r.message)
+                }}
+              >
+                <Zap size={12} style={{ marginRight: '4px' }} />
+                UPGRADE TO LV.{level + 1} — ${cost?.toLocaleString() ?? '?'}
+              </button>
+            )}
+
+            {!isMaxed && !canAfford && cost !== null && (
+              <div style={{ fontSize: '8px', color: '#ef4444', marginTop: '4px', textAlign: 'center' }}>
+                Need ${(cost - unit.vault.treasury).toLocaleString()} more in treasury
+              </div>
+            )}
+            {!isMaxed && !canPurchase && (
+              <div style={{ fontSize: '8px', color: '#64748b', marginTop: '4px', textAlign: 'center' }}>
+                Only commanders/owner can purchase upgrades
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -992,6 +1082,42 @@ function DonationsTab({ unit, isCommander, isOwner }: { unit: MilitaryUnit; isCo
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* TRANSACTION HISTORY */}
+      <div className="war-card">
+        <div className="war-card__title" style={{ marginBottom: '8px' }}>💰 TRANSACTIONS</div>
+        {unit.transactions.length === 0 ? (
+          <div style={{ fontSize: '9px', color: '#64748b', textAlign: 'center', padding: '12px' }}>
+            No transactions yet.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {[...unit.transactions].reverse().slice(0, 20).map(txn => {
+              const isIn = txn.type === 'deposit' || txn.type === 'salary'
+              return (
+                <div key={txn.id} style={{
+                  padding: '6px 8px', borderRadius: '4px',
+                  background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {isIn
+                      ? <ArrowDownLeft size={12} color="#22d38a" />
+                      : <ArrowUpRight size={12} color="#ef4444" />}
+                    <div>
+                      <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0' }}>{txn.description}</div>
+                      <div style={{ fontSize: '7px', color: '#64748b' }}>by {txn.playerName} • {timeAgo(txn.timestamp)}</div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '10px', fontWeight: 900, color: isIn ? '#22d38a' : '#ef4444' }}>
+                    {isIn ? '+' : '-'}${txn.amount.toLocaleString()}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
