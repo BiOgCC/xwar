@@ -139,9 +139,9 @@ export async function hydrateGameState(): Promise<boolean> {
       useAllianceStore.setState({ alliances: state.alliances })
     }
 
-    // Hydrate trade route disruptions from server
+    // Hydrate sea route disruptions from server
     if (state.tradeRoutes) {
-      const { useTradeRouteStore } = await import('../stores/tradeRouteStore')
+      const { useLeyLineStore } = await import('../stores/leyLineStore')
       const disruptions = (state.tradeRoutes as any[])
         .filter((r: any) => r.disruptedUntil && new Date(r.disruptedUntil).getTime() > Date.now())
         .map((r: any) => ({
@@ -149,7 +149,7 @@ export async function hydrateGameState(): Promise<boolean> {
           expiryMs: new Date(r.disruptedUntil).getTime(),
           reason: r.disruptedReason ?? 'unknown',
         }))
-      useTradeRouteStore.setState({ disruptions })
+      useLeyLineStore.setState({ disruptions })
     }
 
     // Hydrate daily rewards

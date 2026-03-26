@@ -5,17 +5,17 @@ import { useWorldStore } from '../../stores/worldStore'
 import GovHomeTab from './government/GovHomeTab'
 import GovFinanceTab from './government/GovFinanceTab'
 import { GovAccountTab, GovCitizenshipTab, GovWarTab } from './government/GovSmallTabs'
-import GovRegionTab from './government/GovRegionTab'
+import GovLeyLinesTab from './government/GovLeyLinesTab'
 import GovResearchTab from './government/GovResearchTab'
 import GovLawsTab from './government/GovLawsTab'
 import CountryFlag from '../shared/CountryFlag'
 import '../../styles/gov.css'
 
 import {
-  Home, BarChart2, Wallet, Users, Swords, Building2, Microscope, Scroll, Landmark, Vote
+  Home, BarChart2, Wallet, Users, Swords, Zap, Microscope, Scroll, Landmark, Vote
 } from 'lucide-react'
 
-type GovTab = 'home' | 'finance' | 'account' | 'citizenship' | 'war' | 'defense' | 'research' | 'laws'
+type GovTab = 'home' | 'finance' | 'account' | 'citizenship' | 'war' | 'leylines' | 'research' | 'laws'
 
 const TABS: { id: GovTab; label: string; icon: React.ReactNode }[] = [
   { id: 'home', label: 'Home', icon: <Home size={18} strokeWidth={2} /> },
@@ -24,7 +24,7 @@ const TABS: { id: GovTab; label: string; icon: React.ReactNode }[] = [
   { id: 'finance', label: 'Government', icon: <Landmark size={18} strokeWidth={2} /> },
   { id: 'war', label: 'Wars', icon: <Swords size={18} strokeWidth={2} /> },
   { id: 'citizenship', label: 'Citizens', icon: <Users size={18} strokeWidth={2} /> },
-  { id: 'defense', label: 'Region', icon: <Building2 size={18} strokeWidth={2} /> },
+  { id: 'leylines', label: 'Ley Lines', icon: <Zap size={18} strokeWidth={2} /> },
   { id: 'research', label: 'Research', icon: <Microscope size={18} strokeWidth={2} /> },
 ]
 
@@ -74,7 +74,7 @@ export default function GovernmentPanel() {
         {tab === 'account' && <GovAccountTab />}
         {tab === 'citizenship' && <GovCitizenshipTab />}
         {tab === 'war' && <GovWarTab />}
-        {tab === 'defense' && <GovRegionTab />}
+        {tab === 'leylines' && <GovLeyLinesTab />}
         {tab === 'research' && <GovResearchTab />}
         {tab === 'laws' && <GovLawsTab />}
       </div>

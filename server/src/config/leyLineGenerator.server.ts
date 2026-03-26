@@ -160,6 +160,7 @@ export function generateLeyLinesForCountry(input: GeneratorInput): GeneratedLine
   ): LeyLineDef => ({
     id:        `${cc}-${archetype.toUpperCase()}`,
     name:      `${cName} — ${lineName}`,
+    lineType:  'land',
     continent,
     archetype,
     blocks,

@@ -12,6 +12,7 @@
 // ── Types ──
 
 export type LeyLineArchetype = 'dominion' | 'prosperity' | 'convergence'
+export type LeyLineType = 'land' | 'sea'
 
 export type Continent =
   | 'north_america'
@@ -47,14 +48,31 @@ export interface LeyLineBonus {
   navalAirEffectiveness?: number
 }
 
+/** Data specific to sea lines (trade routes) */
+export interface SeaLineData {
+  from: string
+  fromCountry: string
+  fromCoords: [number, number]
+  to: string
+  toCountry: string
+  toCoords: [number, number]
+  resourceTypes: string[]
+  oil: number           // per-tick oil yield
+  fish: number          // per-tick fish yield (converted → money)
+  tradedGoods: number   // per-tick money yield
+  lengthNm: number      // route length in nautical miles
+}
+
 export interface LeyLineDef {
   id: string
   name: string
+  lineType: LeyLineType
   continent: Continent
   archetype: LeyLineArchetype
-  blocks: string[]       // region IDs forming the corridor (ordered geographically)
-  bonuses: LeyLineBonus  // positive = buffs
-  tradeoffs: LeyLineBonus // values here are applied as penalties
+  blocks: string[]       // region IDs forming the corridor (land lines)
+  bonuses: LeyLineBonus  // positive = buffs (land lines)
+  tradeoffs: LeyLineBonus // values here are applied as penalties (land lines)
+  seaData?: SeaLineData   // present only for lineType === 'sea'
 }
 
 export interface ContinentalResonance {
@@ -79,6 +97,7 @@ export const ARCHETYPE_META: Record<LeyLineArchetype, { label: string; color: st
 const RU_DOMINION: LeyLineDef = {
   id:        'RU-DOMINION',
   name:      'The Siberian Spine',
+  lineType:  'land',
   continent: 'asia',
   archetype: 'dominion',
   blocks: [
@@ -91,6 +110,7 @@ const RU_DOMINION: LeyLineDef = {
 const RU_PROSPERITY: LeyLineDef = {
   id:        'RU-PROSPERITY',
   name:      'The Iron Silk Road',
+  lineType:  'land',
   continent: 'europe',
   archetype: 'prosperity',
   blocks: [
@@ -103,6 +123,7 @@ const RU_PROSPERITY: LeyLineDef = {
 const RU_CONVERGENCE: LeyLineDef = {
   id:        'RU-CONVERGENCE',
   name:      'The Arctic Veil',
+  lineType:  'land',
   continent: 'europe',
   archetype: 'convergence',
   blocks: [
@@ -117,6 +138,7 @@ const RU_CONVERGENCE: LeyLineDef = {
 const NA_PROSPERITY: LeyLineDef = {
   id:        'NA-PROSPERITY',
   name:      'The Atlantic Corridor',
+  lineType:  'land',
   continent: 'north_america',
   archetype: 'prosperity',
   blocks: [
@@ -131,6 +153,7 @@ const NA_PROSPERITY: LeyLineDef = {
 const NA_DOMINION: LeyLineDef = {
   id:        'NA-DOMINION',
   name:      'The Great Lakes Forge',
+  lineType:  'land',
   continent: 'north_america',
   archetype: 'dominion',
   blocks: [
@@ -144,6 +167,7 @@ const NA_DOMINION: LeyLineDef = {
 const NA_CONVERGENCE: LeyLineDef = {
   id:        'NA-CONVERGENCE',
   name:      'The Pacific Frontier',
+  lineType:  'land',
   continent: 'north_america',
   archetype: 'convergence',
   blocks: [
@@ -155,19 +179,19 @@ const NA_CONVERGENCE: LeyLineDef = {
 
 // ── Japan ──
 const JP_DOMINION: LeyLineDef = {
-  id: 'JP-DOMINION', name: 'Japan — the Jade Spine', continent: 'asia', archetype: 'dominion',
+  id: 'JP-DOMINION', name: 'Japan — the Jade Spine', lineType: 'land', continent: 'asia', archetype: 'dominion',
   blocks: ['JP-HK', 'JP-TH', 'JP-KT', 'JP-CB'],
   bonuses: { weaponProduction: 0.20, troopDamage: 0.10, deploymentSpeed: 0.15 },
   tradeoffs: { infraMaintenance: 0.10 },
 }
 const JP_PROSPERITY: LeyLineDef = {
-  id: 'JP-PROSPERITY', name: 'Japan — the Silk Tributary', continent: 'asia', archetype: 'prosperity',
+  id: 'JP-PROSPERITY', name: 'Japan — the Silk Tributary', lineType: 'land', continent: 'asia', archetype: 'prosperity',
   blocks: ['JP-CB', 'JP-KS', 'JP-CG', 'JP-SK'],
   bonuses: { taxIncome: 0.20, tradeIncome: 0.15, populationGrowth: 0.10 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const JP_CONVERGENCE: LeyLineDef = {
-  id: 'JP-CONVERGENCE', name: 'Japan — the Dragon Gate', continent: 'asia', archetype: 'convergence',
+  id: 'JP-CONVERGENCE', name: 'Japan — the Dragon Gate', lineType: 'land', continent: 'asia', archetype: 'convergence',
   blocks: ['JP-TH', 'JP-KT', 'JP-CB', 'JP-KY'],
   bonuses: { navalSupport: 0.15, researchSpeed: 0.15, oilExtraction: 0.10 },
   tradeoffs: { foodYield: -0.10 },
@@ -175,19 +199,19 @@ const JP_CONVERGENCE: LeyLineDef = {
 
 // ── China ──
 const CN_DOMINION: LeyLineDef = {
-  id: 'CN-DOMINION', name: 'China — the Dragon Spine', continent: 'asia', archetype: 'dominion',
+  id: 'CN-DOMINION', name: 'China — the Dragon Spine', lineType: 'land', continent: 'asia', archetype: 'dominion',
   blocks: ['CN-XJ', 'CN-NM', 'CN-HL', 'CN-JL', 'CN-LN', 'CN-BJ'],
   bonuses: { weaponProduction: 0.20, troopDamage: 0.10, deploymentSpeed: 0.15 },
   tradeoffs: { infraMaintenance: 0.10 },
 }
 const CN_PROSPERITY: LeyLineDef = {
-  id: 'CN-PROSPERITY', name: 'China — the Yellow River Road', continent: 'asia', archetype: 'prosperity',
+  id: 'CN-PROSPERITY', name: 'China — the Yellow River Road', lineType: 'land', continent: 'asia', archetype: 'prosperity',
   blocks: ['CN-GS', 'CN-SX', 'CN-HN', 'CN-SD', 'CN-JS', 'CN-GD'],
   bonuses: { taxIncome: 0.20, tradeIncome: 0.15, populationGrowth: 0.10 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const CN_CONVERGENCE: LeyLineDef = {
-  id: 'CN-CONVERGENCE', name: 'China — the Silk Meridian', continent: 'asia', archetype: 'convergence',
+  id: 'CN-CONVERGENCE', name: 'China — the Silk Meridian', lineType: 'land', continent: 'asia', archetype: 'convergence',
   blocks: ['CN-TB', 'CN-QH', 'CN-SC', 'CN-YN', 'CN-GZ'],
   bonuses: { navalSupport: 0.15, researchSpeed: 0.15, oilExtraction: 0.10 },
   tradeoffs: { foodYield: -0.10 },
@@ -195,19 +219,19 @@ const CN_CONVERGENCE: LeyLineDef = {
 
 // ── Germany ──
 const DE_DOMINION: LeyLineDef = {
-  id: 'DE-DOMINION', name: 'Germany — the Iron Cross', continent: 'europe', archetype: 'dominion',
+  id: 'DE-DOMINION', name: 'Germany — the Iron Cross', lineType: 'land', continent: 'europe', archetype: 'dominion',
   blocks: ['DE-SH', 'DE-NI', 'DE-NW', 'DE-HE', 'DE-BW', 'DE-BY'],
   bonuses: { weaponProduction: 0.20, troopDamage: 0.10, deploymentSpeed: 0.15 },
   tradeoffs: { infraMaintenance: 0.10 },
 }
 const DE_PROSPERITY: LeyLineDef = {
-  id: 'DE-PROSPERITY', name: 'Germany — the Rhine Corridor', continent: 'europe', archetype: 'prosperity',
+  id: 'DE-PROSPERITY', name: 'Germany — the Rhine Corridor', lineType: 'land', continent: 'europe', archetype: 'prosperity',
   blocks: ['DE-HH', 'DE-NI', 'DE-NW', 'DE-RP', 'DE-SL', 'DE-BW'],
   bonuses: { taxIncome: 0.20, tradeIncome: 0.15, populationGrowth: 0.10 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const DE_CONVERGENCE: LeyLineDef = {
-  id: 'DE-CONVERGENCE', name: 'Germany — the Old Meridian', continent: 'europe', archetype: 'convergence',
+  id: 'DE-CONVERGENCE', name: 'Germany — the Old Meridian', lineType: 'land', continent: 'europe', archetype: 'convergence',
   blocks: ['DE-BB', 'DE-BE', 'DE-ST', 'DE-TH', 'DE-SN'],
   bonuses: { navalSupport: 0.10, researchSpeed: 0.20, techBaseline: 0.10 },
   tradeoffs: { foodYield: -0.05 },
@@ -215,19 +239,19 @@ const DE_CONVERGENCE: LeyLineDef = {
 
 // ── United Kingdom ──
 const GB_DOMINION: LeyLineDef = {
-  id: 'GB-DOMINION', name: 'UK — the Northern Bastion', continent: 'europe', archetype: 'dominion',
+  id: 'GB-DOMINION', name: 'UK — the Northern Bastion', lineType: 'land', continent: 'europe', archetype: 'dominion',
   blocks: ['GB-SC', 'GB-NE', 'GB-NW', 'GB-YH'],
   bonuses: { weaponProduction: 0.15, troopDamage: 0.10, navalSupport: 0.20 },
   tradeoffs: { infraMaintenance: 0.08 },
 }
 const GB_PROSPERITY: LeyLineDef = {
-  id: 'GB-PROSPERITY', name: 'UK — the Thames Artery', continent: 'europe', archetype: 'prosperity',
+  id: 'GB-PROSPERITY', name: 'UK — the Thames Artery', lineType: 'land', continent: 'europe', archetype: 'prosperity',
   blocks: ['GB-EM', 'GB-EN', 'GB-LN', 'GB-SW'],
   bonuses: { taxIncome: 0.25, tradeIncome: 0.20, populationGrowth: 0.08 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const GB_CONVERGENCE: LeyLineDef = {
-  id: 'GB-CONVERGENCE', name: 'UK — the Celtic Crossing', continent: 'europe', archetype: 'convergence',
+  id: 'GB-CONVERGENCE', name: 'UK — the Celtic Crossing', lineType: 'land', continent: 'europe', archetype: 'convergence',
   blocks: ['GB-WA', 'GB-WM', 'GB-LN'],
   bonuses: { navalSupport: 0.20, researchSpeed: 0.15, politicalPower: 0.10 },
   tradeoffs: { foodYield: -0.08 },
@@ -235,19 +259,19 @@ const GB_CONVERGENCE: LeyLineDef = {
 
 // ── Brazil ──
 const BR_DOMINION: LeyLineDef = {
-  id: 'BR-DOMINION', name: 'Brazil — the Amazon Heights', continent: 'south_america', archetype: 'dominion',
+  id: 'BR-DOMINION', name: 'Brazil — the Amazon Heights', lineType: 'land', continent: 'south_america', archetype: 'dominion',
   blocks: ['BR-AM', 'BR-PA', 'BR-MA', 'BR-RO'],
   bonuses: { weaponProduction: 0.15, troopDamage: 0.10, deploymentRange: 0.15 },
   tradeoffs: { infraMaintenance: 0.12 },
 }
 const BR_PROSPERITY: LeyLineDef = {
-  id: 'BR-PROSPERITY', name: 'Brazil — the Amazon Wealth', continent: 'south_america', archetype: 'prosperity',
+  id: 'BR-PROSPERITY', name: 'Brazil — the Amazon Wealth', lineType: 'land', continent: 'south_america', archetype: 'prosperity',
   blocks: ['BR-MT', 'BR-GO', 'BR-MS', 'BR-SP', 'BR-RJ'],
   bonuses: { taxIncome: 0.20, tradeIncome: 0.15, resourceExtraction: 0.20 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const BR_CONVERGENCE: LeyLineDef = {
-  id: 'BR-CONVERGENCE', name: 'Brazil — the Southern Cross', continent: 'south_america', archetype: 'convergence',
+  id: 'BR-CONVERGENCE', name: 'Brazil — the Southern Cross', lineType: 'land', continent: 'south_america', archetype: 'convergence',
   blocks: ['BR-TO', 'BR-BA', 'BR-MG', 'BR-RS'],
   bonuses: { navalSupport: 0.15, populationGrowth: 0.15, oilExtraction: 0.10 },
   tradeoffs: { foodYield: -0.05 },
@@ -255,19 +279,19 @@ const BR_CONVERGENCE: LeyLineDef = {
 
 // ── India ──
 const IN_DOMINION: LeyLineDef = {
-  id: 'IN-DOMINION', name: 'India — the Northern Bastion', continent: 'asia', archetype: 'dominion',
+  id: 'IN-DOMINION', name: 'India — the Northern Bastion', lineType: 'land', continent: 'asia', archetype: 'dominion',
   blocks: ['IN-KA', 'IN-PB', 'IN-HR', 'IN-UP', 'IN-BI'],
   bonuses: { weaponProduction: 0.15, troopDamage: 0.15, deploymentSpeed: 0.10 },
   tradeoffs: { infraMaintenance: 0.10 },
 }
 const IN_PROSPERITY: LeyLineDef = {
-  id: 'IN-PROSPERITY', name: 'India — the Ganges Road', continent: 'asia', archetype: 'prosperity',
+  id: 'IN-PROSPERITY', name: 'India — the Ganges Road', lineType: 'land', continent: 'asia', archetype: 'prosperity',
   blocks: ['IN-GJ', 'IN-RJ', 'IN-MP', 'IN-MH', 'IN-TN'],
   bonuses: { taxIncome: 0.15, tradeIncome: 0.15, populationGrowth: 0.20 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const IN_CONVERGENCE: LeyLineDef = {
-  id: 'IN-CONVERGENCE', name: 'India — the Eastern Arc', continent: 'asia', archetype: 'convergence',
+  id: 'IN-CONVERGENCE', name: 'India — the Eastern Arc', lineType: 'land', continent: 'asia', archetype: 'convergence',
   blocks: ['IN-WB', 'IN-NE', 'IN-OR', 'IN-KR'],
   bonuses: { navalSupport: 0.15, researchSpeed: 0.10, resourceExtraction: 0.15 },
   tradeoffs: { foodYield: -0.08 },
@@ -275,19 +299,19 @@ const IN_CONVERGENCE: LeyLineDef = {
 
 // ── Canada ──
 const CA_DOMINION: LeyLineDef = {
-  id: 'CA-DOMINION', name: 'Canada — the Northern Shield', continent: 'north_america', archetype: 'dominion',
+  id: 'CA-DOMINION', name: 'Canada — the Northern Shield', lineType: 'land', continent: 'north_america', archetype: 'dominion',
   blocks: ['CA-BC', 'CA-AB', 'CA-SK', 'CA-MB'],
   bonuses: { weaponProduction: 0.15, troopDamage: 0.10, deploymentRange: 0.20 },
   tradeoffs: { infraMaintenance: 0.15 },
 }
 const CA_PROSPERITY: LeyLineDef = {
-  id: 'CA-PROSPERITY', name: 'Canada — the St Lawrence Artery', continent: 'north_america', archetype: 'prosperity',
+  id: 'CA-PROSPERITY', name: 'Canada — the St Lawrence Artery', lineType: 'land', continent: 'north_america', archetype: 'prosperity',
   blocks: ['CA-ON', 'CA-QC', 'CA-NB', 'CA-NS'],
   bonuses: { taxIncome: 0.20, tradeIncome: 0.20, oilExtraction: 0.15 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const CA_CONVERGENCE: LeyLineDef = {
-  id: 'CA-CONVERGENCE', name: 'Canada — the Arctic Meridian', continent: 'north_america', archetype: 'convergence',
+  id: 'CA-CONVERGENCE', name: 'Canada — the Arctic Meridian', lineType: 'land', continent: 'north_america', archetype: 'convergence',
   blocks: ['CA-YT', 'CA-NT', 'CA-NU', 'CA-NL'],
   bonuses: { navalSupport: 0.20, researchSpeed: 0.10, resourceExtraction: 0.20 },
   tradeoffs: { foodYield: -0.15, populationGrowth: -0.10 },
@@ -295,19 +319,19 @@ const CA_CONVERGENCE: LeyLineDef = {
 
 // ── Mexico ──
 const MX_DOMINION: LeyLineDef = {
-  id: 'MX-DOMINION', name: 'Mexico — the Northern Frontier', continent: 'north_america', archetype: 'dominion',
+  id: 'MX-DOMINION', name: 'Mexico — the Northern Frontier', lineType: 'land', continent: 'north_america', archetype: 'dominion',
   blocks: ['MX-BC', 'MX-SO', 'MX-CH', 'MX-CO', 'MX-NL'],
   bonuses: { weaponProduction: 0.15, troopDamage: 0.10, deploymentSpeed: 0.15 },
   tradeoffs: { infraMaintenance: 0.10 },
 }
 const MX_PROSPERITY: LeyLineDef = {
-  id: 'MX-PROSPERITY', name: 'Mexico — the Gulf Corridor', continent: 'north_america', archetype: 'prosperity',
+  id: 'MX-PROSPERITY', name: 'Mexico — the Gulf Corridor', lineType: 'land', continent: 'north_america', archetype: 'prosperity',
   blocks: ['MX-TM', 'MX-SL', 'MX-JA', 'MX-MC', 'MX-YU'],
   bonuses: { taxIncome: 0.15, tradeIncome: 0.20, oilExtraction: 0.20 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const MX_CONVERGENCE: LeyLineDef = {
-  id: 'MX-CONVERGENCE', name: 'Mexico — the Pacific Gateway', continent: 'north_america', archetype: 'convergence',
+  id: 'MX-CONVERGENCE', name: 'Mexico — the Pacific Gateway', lineType: 'land', continent: 'north_america', archetype: 'convergence',
   blocks: ['MX-DU', 'MX-JA', 'MX-MC'],
   bonuses: { navalSupport: 0.20, researchSpeed: 0.10, tradeIncome: 0.10 },
   tradeoffs: { foodYield: -0.05 },
@@ -315,19 +339,19 @@ const MX_CONVERGENCE: LeyLineDef = {
 
 // ── Nigeria ──
 const NG_DOMINION: LeyLineDef = {
-  id: 'NG-DOMINION', name: 'Nigeria — the Savanna Ridge', continent: 'africa', archetype: 'dominion',
+  id: 'NG-DOMINION', name: 'Nigeria — the Savanna Ridge', lineType: 'land', continent: 'africa', archetype: 'dominion',
   blocks: ['NG-NW', 'NG-NC', 'NG-NE'],
   bonuses: { weaponProduction: 0.15, troopDamage: 0.15, deploymentSpeed: 0.10 },
   tradeoffs: { infraMaintenance: 0.10 },
 }
 const NG_PROSPERITY: LeyLineDef = {
-  id: 'NG-PROSPERITY', name: 'Nigeria — the Niger Delta', continent: 'africa', archetype: 'prosperity',
+  id: 'NG-PROSPERITY', name: 'Nigeria — the Niger Delta', lineType: 'land', continent: 'africa', archetype: 'prosperity',
   blocks: ['NG-LG', 'NG-SW', 'NG-SS'],
   bonuses: { taxIncome: 0.15, oilExtraction: 0.30, tradeIncome: 0.15 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const NG_CONVERGENCE: LeyLineDef = {
-  id: 'NG-CONVERGENCE', name: 'Nigeria — the Rift Crossing', continent: 'africa', archetype: 'convergence',
+  id: 'NG-CONVERGENCE', name: 'Nigeria — the Rift Crossing', lineType: 'land', continent: 'africa', archetype: 'convergence',
   blocks: ['NG-SE', 'NG-NC', 'NG-SW'],
   bonuses: { navalSupport: 0.10, populationGrowth: 0.20, resourceExtraction: 0.15 },
   tradeoffs: { foodYield: -0.08 },
@@ -335,22 +359,92 @@ const NG_CONVERGENCE: LeyLineDef = {
 
 // ── Turkey ──
 const TR_DOMINION: LeyLineDef = {
-  id: 'TR-DOMINION', name: 'Turkey — the Anatolian Spine', continent: 'asia', archetype: 'dominion',
+  id: 'TR-DOMINION', name: 'Turkey — the Anatolian Spine', lineType: 'land', continent: 'asia', archetype: 'dominion',
   blocks: ['TR-IS', 'TR-MA', 'TR-AN', 'TR-EA', 'TR-SE'],
   bonuses: { weaponProduction: 0.15, troopDamage: 0.15, deploymentSpeed: 0.10 },
   tradeoffs: { infraMaintenance: 0.10 },
 }
 const TR_PROSPERITY: LeyLineDef = {
-  id: 'TR-PROSPERITY', name: 'Turkey — the Bosphorus Route', continent: 'asia', archetype: 'prosperity',
+  id: 'TR-PROSPERITY', name: 'Turkey — the Bosphorus Route', lineType: 'land', continent: 'asia', archetype: 'prosperity',
   blocks: ['TR-IS', 'TR-MA', 'TR-AE', 'TR-MD'],
   bonuses: { taxIncome: 0.20, tradeIncome: 0.25, navalSupport: 0.10 },
   tradeoffs: { armyUpkeep: 0.05 },
 }
 const TR_CONVERGENCE: LeyLineDef = {
-  id: 'TR-CONVERGENCE', name: 'Turkey — the Black Sea Gate', continent: 'asia', archetype: 'convergence',
+  id: 'TR-CONVERGENCE', name: 'Turkey — the Black Sea Gate', lineType: 'land', continent: 'asia', archetype: 'convergence',
   blocks: ['TR-BS', 'TR-AN', 'TR-EA'],
   bonuses: { navalSupport: 0.20, researchSpeed: 0.10, deploymentRange: 0.15 },
   tradeoffs: { foodYield: -0.08 },
+}
+
+// ══════════════════════════════════════════════
+//  SEA LEY LINES (former Trade Routes)
+// ══════════════════════════════════════════════
+
+const SEA_NORTH_ATLANTIC: LeyLineDef = {
+  id: 'north-atlantic-lane', name: 'North Atlantic Lane', lineType: 'sea',
+  continent: 'north_america', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'New York', fromCountry: 'US', fromCoords: [-74, 40.71], to: 'Rotterdam', toCountry: 'NL', toCoords: [4.48, 51.92], resourceTypes: ['goods'], oil: 0, fish: 0, tradedGoods: 1400, lengthNm: 3459 },
+}
+const SEA_SUEZ: LeyLineDef = {
+  id: 'suez-canal-lane', name: 'Suez Canal Lane', lineType: 'sea',
+  continent: 'africa', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Port Said', fromCountry: 'EG', fromCoords: [32.3, 31.26], to: 'Jebel Ali', toCountry: 'AE', toCoords: [55.03, 25.01], resourceTypes: ['oil', 'goods'], oil: 350, fish: 0, tradedGoods: 1200, lengthNm: 3927 },
+}
+const SEA_HORMUZ: LeyLineDef = {
+  id: 'hormuz-strait-lane', name: 'Hormuz Strait Lane', lineType: 'sea',
+  continent: 'asia', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Dubai', fromCountry: 'AE', fromCoords: [55.27, 25.2], to: 'Mumbai', toCountry: 'IN', toCoords: [72.88, 19.08], resourceTypes: ['oil'], oil: 500, fish: 0, tradedGoods: 0, lengthNm: 1491 },
+}
+const SEA_PANAMA: LeyLineDef = {
+  id: 'panama-canal-lane', name: 'Panama Canal Lane', lineType: 'sea',
+  continent: 'north_america', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Colón', fromCountry: 'PA', fromCoords: [-79.9, 9.36], to: 'Los Angeles', toCountry: 'US', toCoords: [-118.25, 33.75], resourceTypes: ['goods'], oil: 0, fish: 0, tradedGoods: 1500, lengthNm: 3990 },
+}
+const SEA_CAPE: LeyLineDef = {
+  id: 'cape-route', name: 'Cape Route', lineType: 'sea',
+  continent: 'africa', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Cape Town', fromCountry: 'ZA', fromCoords: [18.42, -33.92], to: 'Rotterdam', toCountry: 'NL', toCoords: [4.48, 51.92], resourceTypes: ['oil', 'goods'], oil: 280, fish: 0, tradedGoods: 900, lengthNm: 8333 },
+}
+const SEA_SOUTH_CHINA: LeyLineDef = {
+  id: 'south-china-sea-lane', name: 'South China Sea Lane', lineType: 'sea',
+  continent: 'asia', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Shanghai', fromCountry: 'CN', fromCoords: [121.47, 31.23], to: 'Singapore', toCountry: 'SG', toCoords: [103.82, 1.35], resourceTypes: ['goods'], oil: 200, fish: 0, tradedGoods: 3200, lengthNm: 2500 },
+}
+const SEA_MEDITERRANEAN: LeyLineDef = {
+  id: 'mediterranean-lane', name: 'Mediterranean Lane', lineType: 'sea',
+  continent: 'europe', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Barcelona', fromCountry: 'IT', fromCoords: [2.17, 41.39], to: 'Istanbul', toCountry: 'TR', toCoords: [28.98, 41.01], resourceTypes: ['goods'], oil: 0, fish: 0, tradedGoods: 2100, lengthNm: 1800 },
+}
+const SEA_ENGLISH_CHANNEL: LeyLineDef = {
+  id: 'english-channel-lane', name: 'English Channel Lane', lineType: 'sea',
+  continent: 'europe', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Rotterdam', fromCountry: 'NL', fromCoords: [4.48, 51.92], to: 'London', toCountry: 'GB', toCoords: [-0.12, 51.51], resourceTypes: ['goods'], oil: 0, fish: 0, tradedGoods: 1000, lengthNm: 227 },
+}
+const SEA_MALACCA: LeyLineDef = {
+  id: 'malacca-strait-lane', name: 'Malacca Strait Lane', lineType: 'sea',
+  continent: 'asia', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Singapore', fromCountry: 'SG', fromCoords: [103.85, 1.29], to: 'Shanghai', toCountry: 'CN', toCoords: [121.47, 31.23], resourceTypes: ['oil', 'goods'], oil: 200, fish: 0, tradedGoods: 800, lengthNm: 3023 },
+}
+const SEA_PACIFIC: LeyLineDef = {
+  id: 'trans-pacific-lane', name: 'Trans-Pacific Lane', lineType: 'sea',
+  continent: 'asia', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Tokyo', fromCountry: 'JP', fromCoords: [139.69, 35.69], to: 'Los Angeles', toCountry: 'US', toCoords: [-118.24, 34.05], resourceTypes: ['goods'], oil: 0, fish: 0, tradedGoods: 3900, lengthNm: 5500 },
+}
+const SEA_ARABIAN: LeyLineDef = {
+  id: 'arabian-sea-lane', name: 'Arabian Sea Lane', lineType: 'sea',
+  continent: 'asia', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Mumbai', fromCountry: 'IN', fromCoords: [72.88, 19.08], to: 'Mombasa', toCountry: 'KE', toCoords: [39.66, -4.05], resourceTypes: ['goods'], oil: 0, fish: 0, tradedGoods: 2700, lengthNm: 5800 },
+}
+const SEA_BALTIC: LeyLineDef = {
+  id: 'baltic-lane', name: 'Baltic Lane', lineType: 'sea',
+  continent: 'europe', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Rotterdam', fromCountry: 'NL', fromCoords: [4.47, 51.92], to: 'St. Petersburg', toCountry: 'RU', toCoords: [30.32, 59.93], resourceTypes: ['oil', 'goods'], oil: 100, fish: 0, tradedGoods: 1500, lengthNm: 1400 },
+}
+const SEA_EAST_AFRICA: LeyLineDef = {
+  id: 'east-africa-lane', name: 'East Africa Lane', lineType: 'sea',
+  continent: 'africa', archetype: 'prosperity', blocks: [], bonuses: {}, tradeoffs: {},
+  seaData: { from: 'Mombasa', fromCountry: 'KE', fromCoords: [39.66, -4.05], to: 'Djibouti', toCountry: 'DJ', toCoords: [43.15, 11.59], resourceTypes: ['goods'], oil: 0, fish: 0, tradedGoods: 1200, lengthNm: 4200 },
 }
 
 export const LEY_LINE_DEFS: LeyLineDef[] = [
@@ -378,6 +472,10 @@ export const LEY_LINE_DEFS: LeyLineDef[] = [
   NG_DOMINION, NG_PROSPERITY, NG_CONVERGENCE,
   // Turkey
   TR_DOMINION, TR_PROSPERITY, TR_CONVERGENCE,
+  // Sea Lines (IDs match trade-routes.geojson)
+  SEA_MALACCA, SEA_SUEZ, SEA_PANAMA, SEA_HORMUZ, SEA_CAPE,
+  SEA_ENGLISH_CHANNEL, SEA_NORTH_ATLANTIC, SEA_PACIFIC,
+  SEA_SOUTH_CHINA, SEA_MEDITERRANEAN, SEA_ARABIAN, SEA_BALTIC, SEA_EAST_AFRICA,
 ]
 
 
@@ -441,9 +539,9 @@ export function getLeyLinesForContinent(c: Continent): LeyLineDef[] {
   return LEY_LINE_DEFS.filter(l => l.continent === c)
 }
 
-/** Get the Ley Line(s) that a given region belongs to */
+/** Get the Ley Line(s) that a given region belongs to (land lines only) */
 export function getLeyLinesForRegion(regionId: string): LeyLineDef[] {
-  return LEY_LINE_DEFS.filter(l => l.blocks.includes(regionId))
+  return LEY_LINE_DEFS.filter(l => l.lineType === 'land' && l.blocks.includes(regionId))
 }
 
 /** Get resonance definition for a continent */
@@ -453,6 +551,9 @@ export function getResonance(c: Continent): ContinentalResonance | undefined {
 
 /** All unique country codes involved in a Ley Line */
 export function getCountriesInLine(line: LeyLineDef): string[] {
+  if (line.lineType === 'sea' && line.seaData) {
+    return [line.seaData.fromCountry, line.seaData.toCountry].filter((v, i, a) => a.indexOf(v) === i)
+  }
   const ccs = new Set<string>()
   line.blocks.forEach(b => {
     const cc = b.split('-')[0]
@@ -460,3 +561,9 @@ export function getCountriesInLine(line: LeyLineDef): string[] {
   })
   return [...ccs]
 }
+
+/** Get only land or sea lines */
+export function getLeyLinesByType(type: LeyLineType): LeyLineDef[] {
+  return LEY_LINE_DEFS.filter(l => l.lineType === type)
+}
+

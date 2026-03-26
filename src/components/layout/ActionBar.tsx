@@ -14,7 +14,8 @@ import {
   Croissant,
   Fish,
   Beef,
-  Anchor
+  Landmark,
+  Layers
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { usePlayerStore } from '../../stores/playerStore'
@@ -35,6 +36,8 @@ export default function ActionBar() {
   const player = usePlayerStore()
   const battles = useBattleStore((s) => s.battles)
   const companyStore = useCompanyStore()
+  const mapLayerVisibility = useUIStore((s) => s.mapLayerVisibility)
+  const { cycleMapLayers } = useUIStore()
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
 
@@ -341,16 +344,16 @@ export default function ActionBar() {
         </button>
       </div>
 
-      {/* ═══ TRADE LANES ═══ */}
+      {/* ═══ COUNTRY ═══ */}
       <div className="action-bar__slot">
         <button
-          className={`action-bar__btn${activePanel === 'trade_routes' ? ' action-bar__btn--active' : ''}`}
-          onClick={() => togglePanel('trade_routes')}
-          title="Maritime Trade Routes"
+          className={`action-bar__btn${activePanel === 'government' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => togglePanel('government')}
+          title="Country"
         >
-          <span className="action-bar__icon"><Anchor {...ICON_PROPS} /></span>
-          <span className="action-bar__label">TRADE</span>
-          <span className="action-bar__status action-bar__status--neutral">LANES</span>
+          <span className="action-bar__icon"><Landmark {...ICON_PROPS} /></span>
+          <span className="action-bar__label">COUNTRY</span>
+          <span className="action-bar__status action-bar__status--neutral">GOV</span>
         </button>
       </div>
 
@@ -395,6 +398,21 @@ export default function ActionBar() {
           <span className="action-bar__icon"><Backpack {...ICON_PROPS} /></span>
           <span className="action-bar__label">INVENTORY</span>
           <span className="action-bar__status action-bar__status--neutral">ITEMS</span>
+        </button>
+      </div>
+
+      {/* ═══ MAP LAYERS (cycle toggle) ═══ */}
+      <div className="action-bar__slot">
+        <button
+          className={`action-bar__btn${mapLayerVisibility.leyLines || mapLayerVisibility.seaLines ? ' action-bar__btn--active' : ''}`}
+          onClick={cycleMapLayers}
+          title={`Map Layers: ${mapLayerVisibility.leyLines && mapLayerVisibility.seaLines ? 'ALL' : mapLayerVisibility.leyLines ? 'LAND' : mapLayerVisibility.seaLines ? 'SEA' : 'OFF'}`}
+        >
+          <span className="action-bar__icon"><Layers {...ICON_PROPS} color={mapLayerVisibility.leyLines || mapLayerVisibility.seaLines ? '#a78bfa' : '#475569'} /></span>
+          <span className="action-bar__label">LAYERS</span>
+          <span className={`action-bar__status action-bar__status--${mapLayerVisibility.leyLines || mapLayerVisibility.seaLines ? 'good' : 'danger'}`}>
+            {mapLayerVisibility.leyLines && mapLayerVisibility.seaLines ? 'ALL' : mapLayerVisibility.leyLines ? 'LAND' : mapLayerVisibility.seaLines ? 'SEA' : 'OFF'}
+          </span>
         </button>
       </div>
     </div>

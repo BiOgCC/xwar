@@ -8,7 +8,9 @@ import { Shield, RefreshCw, Play, Zap, Database, Users, Swords, Globe,
   AlertTriangle, CheckCircle, LogOut, Activity, Newspaper, Anchor, Search,
   Settings, DollarSign, Package, BarChart3, Droplet, Wrench, Atom, Bitcoin,
   Wheat, Fish, Crosshair, CakeSlice, Beef, Medal, Leaf, CupSoda, UtensilsCrossed,
-  ShieldAlert, Dices } from 'lucide-react'
+  ShieldAlert, Dices, Ship } from 'lucide-react'
+import { LEY_LINE_DEFS } from '../data/leyLineRegistry'
+import type { LeyLineDef as RegistryLineDef } from '../data/leyLineRegistry'
 
 // ── API ───────────────────────────────────────────────────────────────────────
 const B = 'http://localhost:3001'
@@ -105,7 +107,8 @@ export default function AdminPage() {
   const [giveForm, setGiveForm]       = useState({ playerId:'', money:0, oil:0, materialX:0, bitcoin:0 })
   const [genCc, setGenCc]             = useState('')
   const [createLine, setCreateLine]   = useState(false)
-  const [lineForm, setLineForm]       = useState({ id:'', name:'', continent:'europe', archetype:'dominion', blocks:'', countryCode:'' })
+  const [lineForm, setLineForm]       = useState({ id:'', name:'', continent:'europe', archetype:'dominion', blocks:'', countryCode:'', lineType:'land' as 'land'|'sea', from:'', fromCountry:'', fromLng:'', fromLat:'', to:'', toCountry:'', toLng:'', toLat:'', oil:'0', fish:'0', tradedGoods:'0', lengthNm:'0' })
+  const [lineTypeFilter, setLineTypeFilter] = useState<'all'|'land'|'sea'>('all')
   const [routeId, setRouteId]         = useState('')
   const [routeMinutes, setRouteMinutes] = useState(60)
   const [resetId, setResetId]         = useState('')
@@ -348,7 +351,24 @@ export default function AdminPage() {
     </div>
   )
 
-  const filteredLines = lines.filter(l => !lineFilter || l.id.toLowerCase().includes(lineFilter.toLowerCase()) || l.name.toLowerCase().includes(lineFilter.toLowerCase()) || (l.countryCode??'').toLowerCase().includes(lineFilter.toLowerCase()))
+  // Merge DB lines (land) with client-side sea line defs
+  const seaLineDefs: LeyLine[] = LEY_LINE_DEFS.filter(d => d.lineType === 'sea').map(d => ({
+    id: d.id, name: d.name, archetype: d.archetype, blocks: d.blocks ?? [],
+    bonuses: d.bonuses as Record<string,number>, tradeoffs: d.tradeoffs as Record<string,number>,
+    enabled: true, autoGen: false, countryCode: d.seaData?.fromCountry ?? null, updatedAt: '',
+    lineType: 'sea' as const, seaData: d.seaData,
+  }))
+  const allMergedLines: (LeyLine & { lineType?: string; seaData?: any })[] = [
+    ...lines.map(l => ({ ...l, lineType: (l as any).lineType ?? 'land' })),
+    ...seaLineDefs,
+  ]
+  const filteredLines = allMergedLines.filter(l => {
+    const lt = (l as any).lineType ?? 'land'
+    if (lineTypeFilter !== 'all' && lt !== lineTypeFilter) return false
+    if (!lineFilter) return true
+    const q = lineFilter.toLowerCase()
+    return l.id.toLowerCase().includes(q) || l.name.toLowerCase().includes(q) || (l.countryCode??'').toLowerCase().includes(q)
+  })
   const filteredPlayers = players.filter(p => !playerSearch || p.name?.toLowerCase().includes(playerSearch.toLowerCase()) || (p.countryCode??'').toLowerCase().includes(playerSearch.toLowerCase()))
 
   const ARCH_C: Record<string,string> = { dominion:'#ef4444', prosperity:'#f59e0b', convergence:'#8b5cf6' }
@@ -710,6 +730,14 @@ export default function AdminPage() {
                 <Search size={12} style={{ position:'absolute', left:10, color:'#475569', pointerEvents:'none' }}/>
                 <input value={lineFilter} onChange={e=>setLineFilter(e.target.value)} placeholder="Filter lines…" style={{ ...S.input, paddingLeft:28 }}/>
               </div>
+              {/* Type filter */}
+              <div style={{ display:'flex', gap:2, background:'rgba(255,255,255,0.04)', borderRadius:7, padding:2, border:'1px solid rgba(255,255,255,0.08)' }}>
+                {([['all','All','#94a3b8'],['land','🌍 Land','#a855f7'],['sea','⚓ Sea','#00e5ff']] as const).map(([val,label,clr])=>(
+                  <button key={val} onClick={()=>setLineTypeFilter(val as any)} style={{ background: lineTypeFilter===val?`${clr}20`:'transparent', border:'none', color: lineTypeFilter===val?clr:'#475569', borderRadius:5, padding:'4px 10px', fontSize:10, fontWeight:700, cursor:'pointer', letterSpacing:'0.04em' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               <button onClick={()=>setCreateLine(c=>!c)} style={btn('#22d38a')}><Plus size={13}/>New Line</button>
               <button onClick={runEngine} disabled={busy==='engine'} style={btn('#22d38a',busy==='engine')}><Play size={13}/>Run Engine</button>
               <div style={{ display:'flex', gap:8 }}>
@@ -723,14 +751,46 @@ export default function AdminPage() {
             {createLine && (
               <div style={{ background:'rgba(34,211,138,0.04)', border:'1px solid rgba(34,211,138,0.18)', borderRadius:10, padding:18 }}>
                 <div style={{ ...S.sectionTitle, color:'#22d38a', marginBottom:12 }}><Plus size={13}/>CREATE NEW LINE</div>
+                {/* Line type toggle */}
+                <div style={{ display:'flex', gap:6, marginBottom:12 }}>
+                  {(['land','sea'] as const).map(t=>(
+                    <button key={t} onClick={()=>setLineForm(x=>({...x,lineType:t}))} style={{ background: lineForm.lineType===t?(t==='land'?'rgba(168,85,247,0.2)':'rgba(0,229,255,0.2)'):'rgba(255,255,255,0.04)', border:`1px solid ${lineForm.lineType===t?(t==='land'?'#a855f7':'#00e5ff'):'rgba(255,255,255,0.08)'}`, color: lineForm.lineType===t?(t==='land'?'#a855f7':'#00e5ff'):'#64748b', borderRadius:6, padding:'5px 14px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                      {t==='land'?'🌍 Land Line':'⚓ Sea Line'}
+                    </button>
+                  ))}
+                </div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:12 }}>
-                  {[{l:'Line ID*',k:'id',ph:'DE-DOMINION'},{l:'Name*',k:'name',ph:'Germany — Iron Cross'},{l:'Country',k:'countryCode',ph:'DE'}].map(f=>(
+                  {[{l:'Line ID*',k:'id',ph:lineForm.lineType==='land'?'DE-DOMINION':'my-sea-route'},{l:'Name*',k:'name',ph:lineForm.lineType==='land'?'Germany — Iron Cross':'My Sea Route'},{l:'Country',k:'countryCode',ph:'DE'}].map(f=>(
                     <div key={f.k}><label style={S.label}>{f.l}</label><input value={(lineForm as any)[f.k]} onChange={e=>setLineForm(x=>({...x,[f.k]:e.target.value}))} placeholder={f.ph} style={S.input}/></div>
                   ))}
                   <div><label style={S.label}>Archetype</label><select value={lineForm.archetype} onChange={e=>setLineForm(x=>({...x,archetype:e.target.value}))} style={S.input}><option value="dominion">⚔️ Dominion</option><option value="prosperity">💰 Prosperity</option><option value="convergence">🔮 Convergence</option></select></div>
                   <div><label style={S.label}>Continent</label><select value={lineForm.continent} onChange={e=>setLineForm(x=>({...x,continent:e.target.value}))} style={S.input}>{['north_america','south_america','europe','africa','asia','oceania'].map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-                  <div><label style={S.label}>Blocks* (comma separated)</label><input value={lineForm.blocks} onChange={e=>setLineForm(x=>({...x,blocks:e.target.value}))} placeholder="DE-BY, DE-BW" style={S.input}/></div>
+                  {lineForm.lineType==='land' && (
+                    <div><label style={S.label}>Blocks* (comma separated)</label><input value={lineForm.blocks} onChange={e=>setLineForm(x=>({...x,blocks:e.target.value}))} placeholder="DE-BY, DE-BW" style={S.input}/></div>
+                  )}
                 </div>
+                {/* Sea data fields */}
+                {lineForm.lineType==='sea' && (
+                  <div style={{ background:'rgba(0,229,255,0.04)', border:'1px solid rgba(0,229,255,0.12)', borderRadius:8, padding:14, marginBottom:12 }}>
+                    <div style={{ fontSize:9, color:'#00e5ff', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>⚓ SEA ROUTE DATA</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
+                      <div><label style={S.label}>From Port*</label><input value={lineForm.from} onChange={e=>setLineForm(x=>({...x,from:e.target.value}))} placeholder="New York" style={S.input}/></div>
+                      <div><label style={S.label}>From Country*</label><input value={lineForm.fromCountry} onChange={e=>setLineForm(x=>({...x,fromCountry:e.target.value}))} placeholder="US" style={S.input} maxLength={3}/></div>
+                      <div><label style={S.label}>From Lng</label><input value={lineForm.fromLng} onChange={e=>setLineForm(x=>({...x,fromLng:e.target.value}))} placeholder="-74" style={S.input}/></div>
+                      <div><label style={S.label}>From Lat</label><input value={lineForm.fromLat} onChange={e=>setLineForm(x=>({...x,fromLat:e.target.value}))} placeholder="40.71" style={S.input}/></div>
+                      <div><label style={S.label}>To Port*</label><input value={lineForm.to} onChange={e=>setLineForm(x=>({...x,to:e.target.value}))} placeholder="Rotterdam" style={S.input}/></div>
+                      <div><label style={S.label}>To Country*</label><input value={lineForm.toCountry} onChange={e=>setLineForm(x=>({...x,toCountry:e.target.value}))} placeholder="NL" style={S.input} maxLength={3}/></div>
+                      <div><label style={S.label}>To Lng</label><input value={lineForm.toLng} onChange={e=>setLineForm(x=>({...x,toLng:e.target.value}))} placeholder="4.48" style={S.input}/></div>
+                      <div><label style={S.label}>To Lat</label><input value={lineForm.toLat} onChange={e=>setLineForm(x=>({...x,toLat:e.target.value}))} placeholder="51.92" style={S.input}/></div>
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginTop:8 }}>
+                      <div><label style={S.label}>Oil / tick</label><input type="number" value={lineForm.oil} onChange={e=>setLineForm(x=>({...x,oil:e.target.value}))} style={S.input}/></div>
+                      <div><label style={S.label}>Fish / tick</label><input type="number" value={lineForm.fish} onChange={e=>setLineForm(x=>({...x,fish:e.target.value}))} style={S.input}/></div>
+                      <div><label style={S.label}>Traded Goods $</label><input type="number" value={lineForm.tradedGoods} onChange={e=>setLineForm(x=>({...x,tradedGoods:e.target.value}))} style={S.input}/></div>
+                      <div><label style={S.label}>Length (nm)</label><input type="number" value={lineForm.lengthNm} onChange={e=>setLineForm(x=>({...x,lengthNm:e.target.value}))} style={S.input}/></div>
+                    </div>
+                  </div>
+                )}
                 <div style={{ display:'flex', gap:8 }}>
                   <button onClick={submitCreateLine} style={btn('#22d38a')}><Plus size={13}/>Create</button>
                   <button onClick={()=>setCreateLine(false)} style={btn('#475569')}>Cancel</button>
@@ -740,9 +800,9 @@ export default function AdminPage() {
 
             {/* Stats */}
             <div style={{ display:'flex', gap:10 }}>
-              <span style={{ fontSize:11, color:'#8b5cf6', background:'rgba(139,92,246,0.1)', padding:'4px 12px', borderRadius:20, fontWeight:600 }}>{lines.length} in DB</span>
-              {staticLines.length>0 && <span style={{ fontSize:11, color:'#475569', background:'rgba(71,85,105,0.1)', padding:'4px 12px', borderRadius:20 }}>+{staticLines.length} static-only</span>}
-              {filteredLines.length!==lines.length && <span style={{ fontSize:11, color:'#f59e0b', background:'rgba(245,158,11,0.1)', padding:'4px 12px', borderRadius:20 }}>{filteredLines.length} shown</span>}
+              <span style={{ fontSize:11, color:'#a855f7', background:'rgba(168,85,247,0.1)', padding:'4px 12px', borderRadius:20, fontWeight:600 }}>🌍 {lines.length} land in DB</span>
+              <span style={{ fontSize:11, color:'#00e5ff', background:'rgba(0,229,255,0.1)', padding:'4px 12px', borderRadius:20, fontWeight:600 }}>⚓ {seaLineDefs.length} sea (static)</span>
+              {filteredLines.length!==allMergedLines.length && <span style={{ fontSize:11, color:'#f59e0b', background:'rgba(245,158,11,0.1)', padding:'4px 12px', borderRadius:20 }}>{filteredLines.length} shown</span>}
             </div>
 
             {/* Line rows */}
@@ -752,25 +812,39 @@ export default function AdminPage() {
                 : filteredLines.map(line => {
                   const a = ARCH[line.archetype]??ARCH.dominion
                   const open = expandedLine===line.id
+                  const lt = (line as any).lineType ?? 'land'
+                  const isSea = lt === 'sea'
+                  const sd = (line as any).seaData
                   return (
                     <div key={line.id} className="hrow" style={{ borderBottom:'1px solid rgba(255,255,255,0.05)', opacity:line.enabled?1:0.5 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 4px' }}>
-                        <div style={{ width:3, height:32, borderRadius:2, background:line.enabled?a.color:'#1e293b', flexShrink:0 }}/>
-                        <span style={{ fontFamily:'monospace', fontSize:11, color:a.color, minWidth:130, fontWeight:700 }}>{line.id}</span>
+                        <div style={{ width:3, height:32, borderRadius:2, background: isSea ? '#00e5ff' : (line.enabled?a.color:'#1e293b'), flexShrink:0 }}/>
+                        {/* Type badge */}
+                        <span style={{ fontSize:8, padding:'2px 6px', borderRadius:3, background: isSea?'rgba(0,229,255,0.12)':'rgba(168,85,247,0.12)', color: isSea?'#00e5ff':'#a855f7', fontWeight:700, flexShrink:0 }}>
+                          {isSea?'⚓ SEA':'🌍 LAND'}
+                        </span>
+                        <span style={{ fontFamily:'monospace', fontSize:11, color: isSea?'#00e5ff':a.color, minWidth:130, fontWeight:700 }}>{line.id}</span>
                         <span style={{ fontSize:12, color:'#cbd5e1', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{line.name}</span>
-                        <span style={{ fontSize:9, padding:'2px 7px', borderRadius:12, background:`${a.color}18`, color:a.color, border:`1px solid ${a.color}38`, fontWeight:700 }}>{a.label}</span>
-                        <span style={{ fontSize:10, color:'#475569', minWidth:70, textAlign:'right' }}>{line.blocks.length} regions</span>
+                        {!isSea && <span style={{ fontSize:9, padding:'2px 7px', borderRadius:12, background:`${a.color}18`, color:a.color, border:`1px solid ${a.color}38`, fontWeight:700 }}>{a.label}</span>}
+                        {isSea && sd && <span style={{ fontSize:10, color:'#64748b' }}>{sd.from} → {sd.to}</span>}
+                        {!isSea && <span style={{ fontSize:10, color:'#475569', minWidth:70, textAlign:'right' }}>{line.blocks.length} regions</span>}
+                        {isSea && sd && <span style={{ fontSize:10, color:'#475569' }}>{sd.lengthNm?.toLocaleString()} nm</span>}
                         <span style={{ fontSize:10, color:'#334155', minWidth:28 }}>{line.countryCode??'—'}</span>
                         {line.autoGen && <span style={{ fontSize:9, color:'#334155', background:'rgba(51,65,85,0.2)', padding:'1px 5px', borderRadius:3 }}>AUTO</span>}
-                        <button onClick={()=>toggleLine(line.id,line.enabled)} style={{ background:'transparent', border:`1px solid ${line.enabled?'#22d38a':'#334155'}30`, borderRadius:5, color:line.enabled?'#22d38a':'#475569', cursor:'pointer', padding:'3px 6px', display:'flex' }}>
-                          {line.enabled?<ToggleRight size={15}/>:<ToggleLeft size={15}/>}
-                        </button>
-                        <button onClick={()=>deleteLine(line.id)} style={{ background:'transparent', border:'1px solid rgba(239,68,68,0.25)', borderRadius:5, color:'#ef4444', cursor:'pointer', padding:'3px 6px', display:'flex' }}><Trash2 size={13}/></button>
+                        {isSea && <span style={{ fontSize:9, color:'#334155', background:'rgba(0,229,255,0.08)', padding:'1px 5px', borderRadius:3, border:'1px solid rgba(0,229,255,0.15)' }}>STATIC</span>}
+                        {!isSea && (
+                          <>
+                            <button onClick={()=>toggleLine(line.id,line.enabled)} style={{ background:'transparent', border:`1px solid ${line.enabled?'#22d38a':'#334155'}30`, borderRadius:5, color:line.enabled?'#22d38a':'#475569', cursor:'pointer', padding:'3px 6px', display:'flex' }}>
+                              {line.enabled?<ToggleRight size={15}/>:<ToggleLeft size={15}/>}
+                            </button>
+                            <button onClick={()=>deleteLine(line.id)} style={{ background:'transparent', border:'1px solid rgba(239,68,68,0.25)', borderRadius:5, color:'#ef4444', cursor:'pointer', padding:'3px 6px', display:'flex' }}><Trash2 size={13}/></button>
+                          </>
+                        )}
                         <button onClick={()=>setExpandedLine(open?null:line.id)} style={{ background:'transparent', border:'1px solid rgba(255,255,255,0.08)', borderRadius:5, color:'#64748b', cursor:'pointer', padding:'3px 6px', display:'flex' }}>
                           {open?<ChevronUp size={13}/>:<ChevronDown size={13}/>}
                         </button>
                       </div>
-                      {open && (
+                      {open && !isSea && (
                         <div style={{ padding:'12px 8px 16px', display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:16, borderTop:'1px solid rgba(255,255,255,0.05)' }}>
                           <div>
                             <div style={{ ...S.label, marginBottom:8 }}>Regions ({line.blocks.length})</div>
@@ -789,6 +863,34 @@ export default function AdminPage() {
                             {Object.entries(line.tradeoffs).length===0
                               ? <span style={{ color:'#334155', fontSize:11 }}>None</span>
                               : Object.entries(line.tradeoffs).map(([k,v])=><div key={k} style={{ fontSize:11, color:'#f87171', fontFamily:'monospace' }}>{v>0?'+':''}{(v*100).toFixed(0)}% {k}</div>)}
+                          </div>
+                        </div>
+                      )}
+                      {open && isSea && sd && (
+                        <div style={{ padding:'12px 8px 16px', borderTop:'1px solid rgba(0,229,255,0.12)' }}>
+                          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:12 }}>
+                            <div>
+                              <div style={S.label}>From</div>
+                              <div style={{ fontSize:12, color:'#00e5ff', fontWeight:600 }}>{sd.from}</div>
+                              <div style={{ fontSize:10, color:'#475569' }}>{sd.fromCountry} [{sd.fromCoords?.[0]}, {sd.fromCoords?.[1]}]</div>
+                            </div>
+                            <div>
+                              <div style={S.label}>To</div>
+                              <div style={{ fontSize:12, color:'#00e5ff', fontWeight:600 }}>{sd.to}</div>
+                              <div style={{ fontSize:10, color:'#475569' }}>{sd.toCountry} [{sd.toCoords?.[0]}, {sd.toCoords?.[1]}]</div>
+                            </div>
+                            <div>
+                              <div style={S.label}>Distance</div>
+                              <div style={{ fontSize:14, color:'#e2e8f0', fontWeight:700, fontFamily:'Share Tech Mono,monospace' }}>{sd.lengthNm?.toLocaleString()} nm</div>
+                            </div>
+                            <div>
+                              <div style={S.label}>Resources</div>
+                              <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                                {sd.oil > 0 && <span style={{ fontSize:10, color:'#3b82f6' }}>🛢️ {sd.oil} oil/tick</span>}
+                                {sd.fish > 0 && <span style={{ fontSize:10, color:'#60a5fa' }}>🐟 {sd.fish} fish/tick</span>}
+                                {sd.tradedGoods > 0 && <span style={{ fontSize:10, color:'#22d38a' }}>📦 ${sd.tradedGoods.toLocaleString()}/tick</span>}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}

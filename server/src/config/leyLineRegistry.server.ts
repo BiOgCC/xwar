@@ -11,10 +11,11 @@
 import type {
   LeyLineDef,
   LeyLineArchetype,
+  LeyLineType,
   Continent,
 } from '../types/leyline.types.js'
 
-export type { LeyLineDef, LeyLineArchetype, Continent }
+export type { LeyLineDef, LeyLineArchetype, LeyLineType, Continent }
 
 // ── Archetype metadata (color / label for news events) ──
 
@@ -31,6 +32,7 @@ export const ARCHETYPE_META: Record<LeyLineArchetype, { label: string; color: st
 const RU_DOMINION: LeyLineDef = {
   id:        'RU-DOMINION',
   name:      'The Siberian Spine',
+  lineType:  'land',
   continent: 'asia',
   archetype: 'dominion',
   blocks: [
@@ -44,6 +46,7 @@ const RU_DOMINION: LeyLineDef = {
 const RU_PROSPERITY: LeyLineDef = {
   id:        'RU-PROSPERITY',
   name:      'The Iron Silk Road',
+  lineType:  'land',
   continent: 'europe',
   archetype: 'prosperity',
   blocks: [
@@ -57,6 +60,7 @@ const RU_PROSPERITY: LeyLineDef = {
 const RU_CONVERGENCE: LeyLineDef = {
   id:        'RU-CONVERGENCE',
   name:      'The Arctic Veil',
+  lineType:  'land',
   continent: 'europe',
   archetype: 'convergence',
   blocks: [
@@ -72,6 +76,7 @@ const RU_CONVERGENCE: LeyLineDef = {
 const NA_PROSPERITY: LeyLineDef = {
   id:        'NA-PROSPERITY',
   name:      'The Atlantic Corridor',
+  lineType:  'land',
   continent: 'north_america',
   archetype: 'prosperity',
   blocks: [
@@ -87,6 +92,7 @@ const NA_PROSPERITY: LeyLineDef = {
 const NA_DOMINION: LeyLineDef = {
   id:        'NA-DOMINION',
   name:      'The Great Lakes Forge',
+  lineType:  'land',
   continent: 'north_america',
   archetype: 'dominion',
   blocks: [
@@ -101,6 +107,7 @@ const NA_DOMINION: LeyLineDef = {
 const NA_CONVERGENCE: LeyLineDef = {
   id:        'NA-CONVERGENCE',
   name:      'The Pacific Frontier',
+  lineType:  'land',
   continent: 'north_america',
   archetype: 'convergence',
   blocks: [

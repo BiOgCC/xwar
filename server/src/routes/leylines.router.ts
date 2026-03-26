@@ -137,6 +137,7 @@ router.get('/defs', async (_req, res) => {
       ...dbRows.map(r => ({
         id:        r.id,
         name:      r.name,
+        lineType:  'land' as const,
         continent: r.continent,
         archetype: r.archetype,
         blocks:    r.blocks ?? [],

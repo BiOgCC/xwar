@@ -2,11 +2,14 @@
  * Shared Ley Line types used by GameMap, RegionPanel, and stores.
  */
 
+export type LeyLineType = 'land' | 'sea'
+
 export type NodeOwnershipState = 'self' | 'ally' | 'enemy' | 'neutral' | 'unowned'
 
 export interface LeyLineNodeProperties {
   regionId: string
   lineId: string
+  lineType: LeyLineType
   archetype: 'prosperity' | 'dominion' | 'convergence'
   archetypeColor: string
   ownershipState: NodeOwnershipState

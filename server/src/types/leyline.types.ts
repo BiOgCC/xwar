@@ -5,6 +5,7 @@
  */
 
 export type LeyLineArchetype = 'dominion' | 'prosperity' | 'convergence'
+export type LeyLineType = 'land' | 'sea'
 
 export type Continent =
   | 'north_america'
@@ -40,14 +41,31 @@ export interface LeyLineBonus {
   navalAirEffectiveness?: number
 }
 
+/** Data specific to sea lines (trade routes) */
+export interface SeaLineData {
+  from: string
+  fromCountry: string
+  fromCoords: [number, number]
+  to: string
+  toCountry: string
+  toCoords: [number, number]
+  resourceTypes: string[]
+  oil: number
+  fish: number
+  tradedGoods: number
+  lengthNm: number
+}
+
 export interface LeyLineDef {
   id:         string
   name:       string
+  lineType:   LeyLineType
   continent:  Continent
   archetype:  LeyLineArchetype
   blocks:     string[]         // region IDs ordered geographically
   bonuses:    LeyLineBonus
   tradeoffs:  LeyLineBonus
+  seaData?:   SeaLineData      // present only for lineType === 'sea'
 }
 
 // ── Engine output types ──

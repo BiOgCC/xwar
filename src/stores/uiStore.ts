@@ -26,7 +26,7 @@ export interface FloatingText {
   color: string
 }
 
-export type MapLayerKey = 'leyLines' | 'tradeLanes'
+export type MapLayerKey = 'leyLines' | 'seaLines'
 
 export interface UIState {
   activePanel: PanelType
@@ -64,6 +64,7 @@ export interface UIState {
   setForeignCountry: (code: string | null) => void
   setMapTarget: (country: string | null, regionId: string | null, regionName: string | null) => void
   toggleMapLayer: (layer: MapLayerKey) => void
+  cycleMapLayers: () => void
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void
   removeNotification: (id: string) => void
   addChatMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
@@ -86,7 +87,7 @@ export const useUIStore = create<UIState>((set) => ({
   mapTargetCountry: null,
   mapTargetRegion: null,
   mapTargetRegionName: null,
-  mapLayerVisibility: { leyLines: true, tradeLanes: true },
+  mapLayerVisibility: { leyLines: true, seaLines: true },
   showModal: false,
   modalContent: null,
   notifications: [],
@@ -151,6 +152,16 @@ export const useUIStore = create<UIState>((set) => ({
   toggleMapLayer: (layer) => set((state) => ({
     mapLayerVisibility: { ...state.mapLayerVisibility, [layer]: !state.mapLayerVisibility[layer] }
   })),
+
+  // Cycle: land only → sea only → both → none
+  cycleMapLayers: () => set((state) => {
+    const { leyLines, seaLines } = state.mapLayerVisibility
+    if (leyLines && !seaLines) return { mapLayerVisibility: { leyLines: false, seaLines: true } }
+    if (!leyLines && seaLines) return { mapLayerVisibility: { leyLines: true, seaLines: true } }
+    if (leyLines && seaLines) return { mapLayerVisibility: { leyLines: false, seaLines: false } }
+    // both off → land only
+    return { mapLayerVisibility: { leyLines: true, seaLines: false } }
+  }),
 
   cycleResourceView: () => set((state) => {
     const modes: ResourceViewMode[] = ['deposits', 'strategic', 'political']

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useRegionStore } from './regionStore'
 import { useAllianceStore } from './allianceStore'
+import { useWorldStore } from './worldStore'
 import {
   LEY_LINE_DEFS,
   CONTINENTAL_RESONANCE,
@@ -13,10 +14,37 @@ import {
 } from '../data/leyLineRegistry'
 
 /* ══════════════════════════════════════════════
-   XWAR — Ley Line Store
-   Activation, diminishing returns, alliance
-   resonance, and cross-continental stacking
+   XWAR — Unified Ley Line Store
+   Land lines: activation, diminishing returns,
+   alliance resonance, cross-continental stacking.
+   Sea lines: route control, income, disruptions.
    ══════════════════════════════════════════════ */
+
+// ── Sea-line types (formerly tradeRouteStore) ──
+
+/** Three-way control state for a sea route */
+export type RouteControlState = 'active' | 'partial' | 'inactive'
+
+export interface RouteDisruption {
+  routeId: string
+  expiryMs: number
+  reason: string
+}
+
+export interface TradeIncomeResult {
+  routeId: string
+  controlState: RouteControlState
+  moneyGained: number
+  oilGained: number
+}
+
+export interface StrategicObjective {
+  routeId: string
+  addedAt: number
+}
+
+/** Partial income multiplier for routes with only one endpoint controlled */
+const SEA_PARTIAL_INCOME_MULT = 0.30
 
 // ── Computed state types ──
 
@@ -60,6 +88,26 @@ export interface LeyLineState {
   getBonusesForCountry: (countryCode: string) => LeyLineBonus
   getLinesForRegion: (regionId: string) => ActiveLeyLine[]
   isDenialTarget: (regionId: string) => boolean
+
+  // ── Sea line state & actions (from former tradeRouteStore) ──
+  seaRouteGeoJSON: any | null
+  seaRoutesLoaded: boolean
+  selectedSeaRouteId: string | null
+  disruptions: RouteDisruption[]
+  strategicObjectives: StrategicObjective[]
+
+  loadSeaRoutes: () => Promise<void>
+  selectSeaRoute: (id: string | null) => void
+  getSeaLineDefs: () => LeyLineDef[]
+  getRouteControlState: (line: LeyLineDef) => RouteControlState
+  getActiveSeaRoutes: () => LeyLineDef[]
+  computeTradeIncome: () => TradeIncomeResult[]
+  processTradeIncome: () => void
+  disruptRoute: (routeId: string, durationMs: number, reason?: string) => void
+  tickDisruptions: () => void
+  isRouteDisrupted: (routeId: string) => boolean
+  toggleStrategicObjective: (routeId: string) => void
+  isStrategicObjective: (routeId: string) => boolean
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -76,6 +124,19 @@ function areAllied(countryCodes: string[]): { allied: boolean; allianceId: strin
     }
   }
   return { allied: false, allianceId: null }
+
+}
+
+/** Check if a country is controlled by the player or their alliance/empire */
+function isCountryInPlayerAlliance(countryCode: string, playerCode: string): boolean {
+  const world = useWorldStore.getState()
+  if (countryCode === playerCode) return true
+  const playerCountry = world.countries.find(c => c.code === playerCode)
+  const targetCountry = world.countries.find(c => c.code === countryCode)
+  if (!playerCountry || !targetCountry) return false
+  if (playerCountry.empire && targetCountry.empire && playerCountry.empire === targetCountry.empire) return true
+  if (playerCountry.controller && targetCountry.controller === playerCountry.controller) return true
+  return false
 }
 
 /** Compute completion and activation for a single Line */
@@ -171,20 +232,20 @@ function mergeBonuses(bonuses: { bonus: LeyLineBonus; effectiveness: number }[])
   return merged
 }
 
-/** Compute all line statuses */
+/** Compute all line statuses (land lines only — sea lines have separate logic) */
 function computeAllStatuses(defs: LeyLineDef[]): ActiveLeyLine[] {
-  return applyDiminishingReturns(defs.map(computeLineStatus))
+  return applyDiminishingReturns(defs.filter(d => (d.lineType ?? 'land') === 'land').map(computeLineStatus))
 }
 
-/** Compute active lines only */
+/** Compute active lines only (land lines) */
 function computeActiveLines(defs: LeyLineDef[]): ActiveLeyLine[] {
-  const all = defs.map(computeLineStatus)
+  const all = defs.filter(d => (d.lineType ?? 'land') === 'land').map(computeLineStatus)
   return applyDiminishingReturns(all.filter(l => l.active))
 }
 
-/** Compute active resonances */
+/** Compute active resonances (land lines only) */
 function computeActiveResonances(defs: LeyLineDef[]): ActiveResonance[] {
-  const active = defs.map(computeLineStatus).filter(l => l.active)
+  const active = defs.filter(d => (d.lineType ?? 'land') === 'land').map(computeLineStatus).filter(l => l.active)
   const resonances: ActiveResonance[] = []
 
   const byCont = new Map<Continent, ActiveLeyLine[]>()
@@ -243,7 +304,13 @@ export const useLeyLineStore = create<LeyLineState>()((set, get) => ({
       if (!res.ok) return
       const data = await res.json() as { defs: LeyLineDef[] }
       if (Array.isArray(data.defs) && data.defs.length > 0) {
-        set({ defs: data.defs, defsLoaded: true })
+        // Normalize: DB rows may not have lineType — default to 'land'
+        const dbDefs = data.defs.map(d => ({ ...d, lineType: d.lineType ?? 'land' as const }))
+        // Merge with static registry: DB defs override matching IDs,
+        // but static sea line defs (and any other static defs not in DB) are preserved
+        const dbIds = new Set(dbDefs.map(d => d.id))
+        const staticExtras = LEY_LINE_DEFS.filter(d => !dbIds.has(d.id))
+        set({ defs: [...dbDefs, ...staticExtras], defsLoaded: true })
       }
     } catch { /* non-fatal, keep static fallback */ }
   },
@@ -331,6 +398,110 @@ export const useLeyLineStore = create<LeyLineState>()((set, get) => ({
       if (allied) return true
     }
     return false
+  },
+
+  // ═══════════════════════════════════════════════════════════════
+  // SEA LINE STATE & ACTIONS (absorbed from tradeRouteStore)
+  // ═══════════════════════════════════════════════════════════════
+  seaRouteGeoJSON: null,
+  seaRoutesLoaded: false,
+  selectedSeaRouteId: null,
+  disruptions: [],
+  strategicObjectives: [],
+
+  loadSeaRoutes: async () => {
+    try {
+      const res = await fetch('/data/trade-routes.geojson')
+      const geojson = await res.json()
+      set({ seaRouteGeoJSON: geojson, seaRoutesLoaded: true })
+      console.log(`✅ Sea routes loaded: ${geojson?.features?.length ?? 0} routes`)
+    } catch (err) {
+      console.warn('Could not load sea routes GeoJSON:', err)
+    }
+  },
+
+  selectSeaRoute: (id) => set({ selectedSeaRouteId: id }),
+
+  getSeaLineDefs: () => get().defs.filter(d => d.lineType === 'sea'),
+
+  getRouteControlState: (line) => {
+    if (line.lineType !== 'sea' || !line.seaData) return 'inactive'
+    const world = useWorldStore.getState()
+    const playerCountry = world.countries.find(c => c.controller === 'Player Alliance')
+    if (!playerCountry) return 'inactive'
+    const fromOk = isCountryInPlayerAlliance(line.seaData.fromCountry, playerCountry.code)
+    const toOk = isCountryInPlayerAlliance(line.seaData.toCountry, playerCountry.code)
+    if (fromOk && toOk) return 'active'
+    if (fromOk || toOk) return 'partial'
+    return 'inactive'
+  },
+
+  getActiveSeaRoutes: () => {
+    const { defs, getRouteControlState } = get()
+    return defs.filter(d => d.lineType === 'sea' && getRouteControlState(d) === 'active')
+  },
+
+  computeTradeIncome: () => {
+    const { defs, getRouteControlState, isRouteDisrupted } = get()
+    const results: TradeIncomeResult[] = []
+    for (const line of defs) {
+      if (line.lineType !== 'sea' || !line.seaData) continue
+      const controlState = getRouteControlState(line)
+      if (controlState === 'inactive') continue
+      if (isRouteDisrupted(line.id)) continue
+      const mult = controlState === 'active' ? 1 : SEA_PARTIAL_INCOME_MULT
+      const moneyGained = Math.round((line.seaData.tradedGoods + line.seaData.fish * 10) * mult)
+      const oilGained = Math.round(line.seaData.oil * mult)
+      results.push({ routeId: line.id, controlState, moneyGained, oilGained })
+    }
+    return results
+  },
+
+  processTradeIncome: () => {
+    const { computeTradeIncome } = get()
+    const world = useWorldStore.getState()
+    const playerCountry = world.countries.find(c => c.controller === 'Player Alliance')
+    if (!playerCountry) return
+    const results = computeTradeIncome()
+    for (const r of results) {
+      if (r.moneyGained > 0) world.addToFund(playerCountry.code, 'money', r.moneyGained)
+      if (r.oilGained > 0) world.addToFund(playerCountry.code, 'oil', r.oilGained)
+    }
+    const totalMoney = results.reduce((s, r) => s + r.moneyGained, 0)
+    const totalOil = results.reduce((s, r) => s + r.oilGained, 0)
+    if (totalMoney > 0) world.recordEconFlow('sea_routes_money', totalMoney, 'created', 'money')
+    if (totalOil > 0) world.recordEconFlow('sea_routes_oil', totalOil, 'created', 'oil')
+  },
+
+  disruptRoute: (routeId, durationMs, reason = 'naval') => {
+    const expiryMs = Date.now() + durationMs
+    set(s => {
+      const filtered = s.disruptions.filter(d => d.routeId !== routeId)
+      return { disruptions: [...filtered, { routeId, expiryMs, reason }] }
+    })
+    console.log(`⚠️ Sea route disrupted: ${routeId} for ${Math.round(durationMs / 60000)} min`)
+  },
+
+  tickDisruptions: () => {
+    const now = Date.now()
+    set(s => ({ disruptions: s.disruptions.filter(d => d.expiryMs > now) }))
+  },
+
+  isRouteDisrupted: (routeId) => {
+    const now = Date.now()
+    return get().disruptions.some(d => d.routeId === routeId && d.expiryMs > now)
+  },
+
+  toggleStrategicObjective: (routeId) => {
+    set(s => {
+      const exists = s.strategicObjectives.some(o => o.routeId === routeId)
+      if (exists) return { strategicObjectives: s.strategicObjectives.filter(o => o.routeId !== routeId) }
+      return { strategicObjectives: [...s.strategicObjectives, { routeId, addedAt: Date.now() }] }
+    })
+  },
+
+  isStrategicObjective: (routeId) => {
+    return get().strategicObjectives.some(o => o.routeId === routeId)
   },
 }))
 

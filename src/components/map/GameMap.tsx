@@ -9,7 +9,6 @@ import { useUIStore } from '../../stores/uiStore'
 import { ARCHETYPE_META } from '../../data/leyLineRegistry'
 import type { LeyLineDef } from '../../data/leyLineRegistry'
 import { useLeyLineStore } from '../../stores/leyLineStore'
-import { useTradeRouteStore } from '../../stores/tradeRouteStore'
 import { useAllianceStore } from '../../stores/allianceStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { type NodeOwnershipState, OWNERSHIP_COLORS } from '../../types/leyLine'
@@ -260,7 +259,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
 
   // Expose map controls to parent via ref
-  // ── Reactive map layer visibility toggles (Ley Lines / Trade Lanes) ──
+  // ── Reactive map layer visibility toggles (Ley Lines / Sea Lines) ──
   useEffect(() => {
     const m = map.current
     if (!m || !mapLoaded) return
@@ -269,7 +268,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
       'xwar-leyline-glow', 'xwar-leyline-glow-inner', 'xwar-leyline-core',
       'xwar-leyline-spine', 'xwar-leyline-nodes', 'xwar-leyline-labels',
     ]
-    const TRADE_LANE_LAYERS = [
+    const SEA_LINE_LAYERS = [
       'xwar-tr-glow-outer', 'xwar-tr-glow-mid', 'xwar-tr-glow-inner',
       'xwar-tr-core', 'xwar-tr-spine', 'xwar-trade-routes-objective-glow',
       'xwar-tr-port-aura', 'xwar-tr-port-halo',
@@ -284,15 +283,15 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
     }
 
     // Apply current state immediately
-    const { leyLines, tradeLanes } = useUIStore.getState().mapLayerVisibility
+    const { leyLines, seaLines } = useUIStore.getState().mapLayerVisibility
     setVis(LEY_LINE_LAYERS, leyLines)
-    setVis(TRADE_LANE_LAYERS, tradeLanes)
+    setVis(SEA_LINE_LAYERS, seaLines)
 
     // Subscribe to future changes
     const unsub = useUIStore.subscribe(
       (state) => {
         setVis(LEY_LINE_LAYERS, state.mapLayerVisibility.leyLines)
-        setVis(TRADE_LANE_LAYERS, state.mapLayerVisibility.tradeLanes)
+        setVis(SEA_LINE_LAYERS, state.mapLayerVisibility.seaLines)
       }
     )
 
@@ -1042,20 +1041,23 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             })
             .catch((err: any) => console.warn('Could not load oceans.geojson:', err))
 
-          // ── TRADE ROUTES: 13 major maritime lanes ──
-          useTradeRouteStore.getState().loadRoutes().then(() => {
-            const tradeStore = useTradeRouteStore.getState()
-            if (!tradeStore.geojson || !m) return
+          // ── SEA LINES: 13 major maritime lanes ──
+          useLeyLineStore.getState().loadSeaRoutes().then(() => {
+            const leyStore = useLeyLineStore.getState()
+            if (!leyStore.seaRouteGeoJSON || !m) return
+
+            // Build sea line defs lookup
+            const seaDefs = leyStore.getSeaLineDefs()
 
             // Annotate each GeoJSON feature with its control state + disruption
             const annotatedGeoJSON = {
-              ...tradeStore.geojson,
-              features: tradeStore.geojson.features.map((f: any) => {
-                const route = tradeStore.routes.find(r => r.id === f.properties.id)
-                if (!route) return f
-                const controlState = tradeStore.getRouteControlState(route)
-                const disrupted    = tradeStore.isRouteDisrupted(route.id)
-                const isObjective  = tradeStore.isStrategicObjective(route.id)
+              ...leyStore.seaRouteGeoJSON,
+              features: leyStore.seaRouteGeoJSON.features.map((f: any) => {
+                const lineDef = seaDefs.find((d: any) => d.id === f.properties.id)
+                if (!lineDef) return f
+                const controlState = leyStore.getRouteControlState(lineDef)
+                const disrupted    = leyStore.isRouteDisrupted(lineDef.id)
+                const isObjective  = leyStore.isStrategicObjective(lineDef.id)
                 return {
                   ...f,
                   properties: {
@@ -1221,13 +1223,14 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             //  PORT MARKERS — 3-layer composite per endpoint
             // ════════════════════════════════════════════════
             const endpointFeatures: any[] = []
-            tradeStore.routes.forEach(r => {
-              const controlState = tradeStore.getRouteControlState(r)
-              const disrupted    = tradeStore.isRouteDisrupted(r.id)
+            seaDefs.forEach((d: any) => {
+              if (!d.seaData) return
+              const controlState = leyStore.getRouteControlState(d)
+              const disrupted    = leyStore.isRouteDisrupted(d.id)
               const state = disrupted ? 'disrupted' : controlState
               endpointFeatures.push(
-                { type: 'Feature', properties: { label: r.from, routeId: r.id, controlState: state }, geometry: { type: 'Point', coordinates: r.fromCoords } },
-                { type: 'Feature', properties: { label: r.to,   routeId: r.id, controlState: state }, geometry: { type: 'Point', coordinates: r.toCoords } },
+                { type: 'Feature', properties: { label: d.seaData.from, routeId: d.id, controlState: state }, geometry: { type: 'Point', coordinates: d.seaData.fromCoords } },
+                { type: 'Feature', properties: { label: d.seaData.to,   routeId: d.id, controlState: state }, geometry: { type: 'Point', coordinates: d.seaData.toCoords } },
               )
             })
 
@@ -1361,12 +1364,13 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
               const routeId = props?.id
               if (!routeId) return
 
-              const store = useTradeRouteStore.getState()
-              const route = store.routes.find(r => r.id === routeId)
-              if (!route) return
+              const store = useLeyLineStore.getState()
+              const seaDefs = store.getSeaLineDefs()
+              const lineDef = seaDefs.find((r: any) => r.id === routeId)
+              if (!lineDef || !lineDef.seaData) return
 
-              const controlState = store.getRouteControlState(route)
-              const disrupted    = store.isRouteDisrupted(route.id)
+              const controlState = store.getRouteControlState(lineDef)
+              const disrupted    = store.isRouteDisrupted(lineDef.id)
               const finalState   = disrupted ? 'disrupted' : controlState
 
               const statusColors: Record<string, string> = {
@@ -1383,8 +1387,8 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
               }
 
               const mult = finalState === 'active' ? 1 : finalState === 'partial' ? 0.3 : 0
-              const money = Math.round((route.tradedGoods + route.fish * 10) * mult)
-              const oil   = Math.round(route.oil * mult)
+              const money = Math.round((lineDef.seaData!.tradedGoods + lineDef.seaData!.fish * 10) * mult)
+              const oil   = Math.round(lineDef.seaData!.oil * mult)
 
               const incomeLines = []
               if (money > 0) incomeLines.push(`📦 $${money.toLocaleString()}/tick`)
@@ -1393,8 +1397,8 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
               const html = `
                 <div style="font-family:'Orbitron',sans-serif;background:rgba(5,10,25,0.97);border:1px solid ${statusColors[finalState]}44;border-radius:6px;padding:10px 13px;min-width:190px;pointer-events:none;">
-                  <div style="font-size:12px;font-weight:700;color:${statusColors[finalState]};letter-spacing:1px;margin-bottom:4px;">⚓ ${route.name}</div>
-                  <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;">${route.from} → ${route.to}</div>
+                  <div style="font-size:12px;font-weight:700;color:${statusColors[finalState]};letter-spacing:1px;margin-bottom:4px;">⚓ ${lineDef.name}</div>
+                  <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;">${lineDef.seaData!.from} → ${lineDef.seaData!.to}</div>
                   <div style="font-size:11px;font-weight:700;color:${statusColors[finalState]};margin-bottom:5px;">${statusLabels[finalState]}</div>
                   <div style="font-size:11px;color:#e2e8f0;">${incomeLines.join('<br/>')}</div>
                 </div>
@@ -1429,14 +1433,15 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
               const routeId = props?.id
               if (!routeId) return
 
-              const store = useTradeRouteStore.getState()
-              const route = store.routes.find(r => r.id === routeId)
-              if (!route) return
+              const store = useLeyLineStore.getState()
+              const seaDefs = store.getSeaLineDefs()
+              const lineDef = seaDefs.find((r: any) => r.id === routeId)
+              if (!lineDef || !lineDef.seaData) return
 
-              store.selectRoute(routeId)
+              store.selectSeaRoute(routeId)
 
-              const controlState = store.getRouteControlState(route)
-              const disrupted    = store.isRouteDisrupted(route.id)
+              const controlState = store.getRouteControlState(lineDef)
+              const disrupted    = store.isRouteDisrupted(lineDef.id)
               const finalState   = disrupted ? 'disrupted' : controlState
               const isObjective  = store.isStrategicObjective(routeId)
 
@@ -1457,20 +1462,20 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
               }
 
               const mult = finalState === 'active' ? 1 : finalState === 'partial' ? 0.3 : 0
-              const money = Math.round((route.tradedGoods + route.fish * 10) * mult)
-              const oil   = Math.round(route.oil * mult)
+              const money = Math.round((lineDef.seaData!.tradedGoods + lineDef.seaData!.fish * 10) * mult)
+              const oil   = Math.round(lineDef.seaData!.oil * mult)
 
               const resources: string[] = []
-              if (route.oil   > 0) resources.push(`🛢️ Oil base: <b>${route.oil}</b>/tick`)
-              if (route.fish  > 0) resources.push(`🐟 Fish (→$): <b>${route.fish}</b>/tick`)
-              if (route.tradedGoods > 0) resources.push(`📦 Goods: <b>$${route.tradedGoods.toLocaleString()}</b>/tick`)
+              if (lineDef.seaData!.oil   > 0) resources.push(`🛢️ Oil base: <b>${lineDef.seaData!.oil}</b>/tick`)
+              if (lineDef.seaData!.fish  > 0) resources.push(`🐟 Fish (→$): <b>${lineDef.seaData!.fish}</b>/tick`)
+              if (lineDef.seaData!.tradedGoods > 0) resources.push(`📦 Goods: <b>$${lineDef.seaData!.tradedGoods.toLocaleString()}</b>/tick`)
 
               const partialNote = finalState === 'partial' ? (() => {
-                const fromControlled = world.countries.find(c => c.code === route.fromCountry)
-                const toControlled   = world.countries.find(c => c.code === route.toCountry)
+                const fromControlled = world.countries.find(c => c.code === lineDef.seaData!.fromCountry)
+                const toControlled   = world.countries.find(c => c.code === lineDef.seaData!.toCountry)
                 const pCC = playerCountry?.code || ''
                 const fromOk = fromControlled?.code === pCC || fromControlled?.empire === playerCountry?.empire
-                const missingPort = !fromOk ? route.from : route.to
+                const missingPort = !fromOk ? lineDef.seaData!.from : lineDef.seaData!.to
                 return `<div style="font-size:10px;color:#ffb300;margin-top:4px;">⚠️ Capture <b>${missingPort}</b> for full income</div>`
               })() : ''
 
@@ -1481,8 +1486,8 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
               const objBtnLabel = isObjective ? '★ UNMARK OBJECTIVE' : '☆ MARK AS OBJECTIVE'
               const html = `
                 <div style="font-family:'Orbitron',sans-serif;background:rgba(8,12,28,0.97);border:1px solid ${statusColors[finalState]}44;border-radius:8px;padding:14px 16px;min-width:240px;">
-                  <div style="font-size:13px;font-weight:700;color:${statusColors[finalState]};margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">⚓ ${route.name}</div>
-                  <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">${route.from} → ${route.to}<br/><span style="color:#64748b;">${route.lengthNm.toLocaleString()} nm</span></div>
+                  <div style="font-size:13px;font-weight:700;color:${statusColors[finalState]};margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">⚓ ${lineDef.name}</div>
+                  <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">${lineDef.seaData!.from} → ${lineDef.seaData!.to}<br/><span style="color:#64748b;">${lineDef.seaData!.lengthNm.toLocaleString()} nm</span></div>
                   <div style="font-size:11px;color:#e2e8f0;margin-bottom:6px;line-height:1.6;">${resources.join('<br/>')}</div>
                   ${incomeNote}${partialNote}
                   <div style="font-size:12px;font-weight:700;color:${statusColors[finalState]};margin:8px 0 10px;">${statusLabels[finalState]}</div>
@@ -1502,17 +1507,17 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
                 const objBtn = document.getElementById(`tr-obj-btn-${routeId}`)
                 const disBtn = document.getElementById(`tr-dis-btn-${routeId}`)
                 objBtn?.addEventListener('click', () => {
-                  useTradeRouteStore.getState().toggleStrategicObjective(routeId)
+                  useLeyLineStore.getState().toggleStrategicObjective(routeId)
                   popup.remove()
                 })
                 disBtn?.addEventListener('click', () => {
-                  useTradeRouteStore.getState().disruptRoute(routeId, 30 * 60 * 1000, 'manual')
+                  useLeyLineStore.getState().disruptRoute(routeId, 30 * 60 * 1000, 'manual')
                   popup.remove()
                 })
               })
             })
 
-            console.log(`✅ Trade routes rendered: ${tradeStore.routes.length} routes`)
+            console.log(`✅ Sea routes rendered: ${seaDefs.length} routes`)
 
             // ── Animated flowing dash (marching neon effect) ──
             // MapLibre doesn't animate dasharray natively, so we cycle

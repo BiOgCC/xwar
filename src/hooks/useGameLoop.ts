@@ -10,7 +10,7 @@ import { useRegionStore } from '../stores/regionStore'
 import { useMarketStore } from '../stores/market'
 import { useStockStore } from '../stores/stockStore'
 import { useWorldStore } from '../stores/worldStore'
-import { useTradeRouteStore } from '../stores/tradeRouteStore'
+import { useLeyLineStore } from '../stores/leyLineStore'
 import { checkTimeSanity } from '../engine/AntiExploit'
 import { wrapStoreWithIntegrityCheck } from '../engine/storeFreeze'
 import { ENABLE_DIVISIONS } from '../config/features'
@@ -106,11 +106,11 @@ export function useGameLoop() {
       try { useRegionStore.getState().processOceanIncome() } catch (e) { console.warn('[Economy] ocean:', e) }
       try { useRegionStore.getState().processNavalPatrolIncome() } catch (e) { console.warn('[Economy] naval patrol:', e) }
       try { useRegionStore.getState().processInfraOilTick() } catch (e) { console.warn('[Economy] infra oil:', e) }
-      // ── Trade Route income (active = 100%, partial = 30%, disrupted = 0%) ──
+      // ── Sea route income (active = 100%, partial = 30%, disrupted = 0%) ──
       try {
-        useTradeRouteStore.getState().tickDisruptions()     // clear expired disruptions first
-        useTradeRouteStore.getState().processTradeIncome()  // then pay out
-      } catch (e) { console.warn('[Economy] trade routes:', e) }
+        useLeyLineStore.getState().tickDisruptions()     // clear expired disruptions first
+        useLeyLineStore.getState().processTradeIncome()   // then pay out
+      } catch (e) { console.warn('[Economy] sea routes:', e) }
       try {
         const mkt = useMarketStore.getState()
         mkt.tickPrices()

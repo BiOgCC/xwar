@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useLeyLineStore, type ActiveLeyLine } from '../../stores/leyLineStore'
-import { ARCHETYPE_META, type LeyLineArchetype } from '../../data/leyLineRegistry'
+import { ARCHETYPE_META, type LeyLineArchetype, type LeyLineDef } from '../../data/leyLineRegistry'
 import type { GameMapHandle } from '../map/GameMap'
 
 // ─────────────────────── helpers ───────────────────────
@@ -9,6 +9,13 @@ const STATUS_COLORS: Record<string, string> = {
   active:  '#a855f7',
   partial: '#ffb300',
   inactive: '#555577',
+}
+
+const SEA_STATUS_COLORS: Record<string, string> = {
+  active:   '#00e5ff',
+  partial:  '#ffb300',
+  disrupted:'#ff4444',
+  inactive: '#888899',
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -147,6 +154,63 @@ function LineRow({ line, state, onFly }: LineRowProps) {
   )
 }
 
+// ─────────────────────── Sea Line Row ───────────────────────
+
+interface SeaLineRowProps {
+  def: LeyLineDef
+  controlState: string
+  disrupted: boolean
+}
+
+function SeaLineRow({ def, controlState, disrupted }: SeaLineRowProps) {
+  const finalState = disrupted ? 'disrupted' : controlState
+  const color = SEA_STATUS_COLORS[finalState] ?? '#888'
+  const sd = def.seaData!
+
+  const yields: string[] = []
+  if (sd.oil > 0) yields.push(`🛢️ ${sd.oil} oil`)
+  if (sd.tradedGoods > 0) yields.push(`📦 $${sd.tradedGoods.toLocaleString()}`)
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: '3px',
+      padding: '7px 10px', borderRadius: '6px',
+      background: finalState === 'active' ? 'rgba(0,229,255,0.04)' : 'rgba(255,255,255,0.02)',
+      border: `1px solid ${color}22`, marginBottom: '5px',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: color, flexShrink: 0,
+          boxShadow: `0 0 6px ${color}88`,
+        }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color, letterSpacing: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            ⚓ {def.name}
+          </div>
+          <div style={{ fontSize: 9, color: '#64748b', marginTop: 1 }}>
+            {sd.from} → {sd.to} · {sd.lengthNm.toLocaleString()} nm
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color }}>
+            {finalState === 'active' ? '✅ ACTIVE' : finalState === 'partial' ? '⚠️ PARTIAL' : finalState === 'disrupted' ? '🚫 DISRUPTED' : '— INACTIVE'}
+          </div>
+        </div>
+      </div>
+      {yields.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, paddingLeft: 16 }}>
+          {yields.map((y, i) => (
+            <span key={i} style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(0,229,255,0.08)', color: '#00e5ff', fontWeight: 600 }}>
+              {y}/tick
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────── Panel ───────────────────────
 
 interface LeyLinePanelProps {
@@ -156,8 +220,8 @@ interface LeyLinePanelProps {
 export default function LeyLinePanel({ mapRef }: LeyLinePanelProps) {
   const store = useLeyLineStore()
 
+  // Land lines
   const allLines = useMemo(() => store.getAllLineStatus(), [store])
-
   const annotated = useMemo(() => {
     return allLines.map(line => ({
       line,
@@ -168,7 +232,6 @@ export default function LeyLinePanel({ mapRef }: LeyLinePanelProps) {
     })
   }, [allLines])
 
-  // Summary stats
   const stats = useMemo(() => {
     const activeCount = annotated.filter(a => a.state === 'active').length
     const partialCount = annotated.filter(a => a.state === 'partial').length
@@ -176,16 +239,41 @@ export default function LeyLinePanel({ mapRef }: LeyLinePanelProps) {
     return { activeCount, partialCount, inactiveCount }
   }, [annotated])
 
-  // Resonances
   const resonances = useMemo(() => store.getActiveResonances(), [store])
+
+  // Sea lines
+  const seaLineDefs = useMemo(() => store.getSeaLineDefs(), [store])
+  const seaAnnotated = useMemo(() => {
+    return seaLineDefs.map(d => ({
+      def: d,
+      controlState: store.getRouteControlState(d),
+      disrupted: store.isRouteDisrupted(d.id),
+    })).sort((a, b) => {
+      const order: Record<string, number> = { active: 0, partial: 1, disrupted: 2, inactive: 3 }
+      const aState = a.disrupted ? 'disrupted' : a.controlState
+      const bState = b.disrupted ? 'disrupted' : b.controlState
+      return (order[aState] ?? 4) - (order[bState] ?? 4)
+    })
+  }, [seaLineDefs, store])
+
+  const seaStats = useMemo(() => ({
+    active: seaAnnotated.filter(s => !s.disrupted && s.controlState === 'active').length,
+    partial: seaAnnotated.filter(s => !s.disrupted && s.controlState === 'partial').length,
+    disrupted: seaAnnotated.filter(s => s.disrupted).length,
+    inactive: seaAnnotated.filter(s => !s.disrupted && s.controlState === 'inactive').length,
+  }), [seaAnnotated])
 
   const flyTo = (_line: ActiveLeyLine) => {
     // Could fly to the midpoint of the ley line's block region
-    // For now, no-op unless we wire up region coords
   }
 
   return (
     <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: 12, color: '#e2e8f0', padding: '4px 2px' }}>
+
+      {/* ════════════════════ LAND LINES ════════════════════ */}
+      <div style={{ fontSize: 10, color: '#a855f7', letterSpacing: '1.5px', marginBottom: '10px', fontWeight: 700 }}>
+        🌍 LAND CORRIDORS
+      </div>
 
       {/* ── Summary Bar ── */}
       <div style={{
@@ -260,12 +348,12 @@ export default function LeyLinePanel({ mapRef }: LeyLinePanelProps) {
         </div>
       )}
 
-      {/* ── All Lines ── */}
+      {/* ── All Land Lines ── */}
       <div style={{ fontSize: 9, color: '#64748b', letterSpacing: '1px', marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        ALL LEY LINES — SORTED BY STATUS
+        ALL LAND LINES — SORTED BY STATUS
       </div>
 
-      <div style={{ maxHeight: 400, overflowY: 'auto', paddingRight: 2 }}>
+      <div style={{ maxHeight: 280, overflowY: 'auto', paddingRight: 2 }}>
         {annotated.map(({ line, state }) => (
           <LineRow
             key={line.def.id}
@@ -278,18 +366,63 @@ export default function LeyLinePanel({ mapRef }: LeyLinePanelProps) {
 
       {allLines.length === 0 && (
         <div style={{ textAlign: 'center', color: '#475569', fontSize: 11, padding: '20px 0' }}>
-          No ley lines defined yet.
+          No land lines defined yet.
         </div>
       )}
+
+      {/* ════════════════════ SEA LINES ════════════════════ */}
+      <div style={{
+        marginTop: 18, paddingTop: 14,
+        borderTop: '2px solid rgba(0,229,255,0.15)',
+      }}>
+        <div style={{ fontSize: 10, color: '#00e5ff', letterSpacing: '1.5px', marginBottom: '10px', fontWeight: 700 }}>
+          ⚓ SEA LANES
+        </div>
+
+        {/* Sea summary bar */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr',
+          gap: '5px', marginBottom: '12px',
+        }}>
+          {[
+            { label: 'ACTIVE',    value: seaStats.active,   color: '#00e5ff' },
+            { label: 'PARTIAL',   value: seaStats.partial,  color: '#ffb300' },
+            { label: 'DISRUPTED', value: seaStats.disrupted, color: '#ff4444' },
+            { label: 'INACTIVE',  value: seaStats.inactive, color: '#888899' },
+          ].map(s => (
+            <div key={s.label} style={{
+              background: 'rgba(255,255,255,0.04)', border: `1px solid ${s.color}33`,
+              borderRadius: 6, padding: '6px 3px', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 7, color: '#64748b', letterSpacing: '0.5px', marginTop: 1 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── All Sea Lines ── */}
+        <div style={{ maxHeight: 280, overflowY: 'auto', paddingRight: 2 }}>
+          {seaAnnotated.map(({ def, controlState, disrupted }) => (
+            <SeaLineRow key={def.id} def={def} controlState={controlState} disrupted={disrupted} />
+          ))}
+        </div>
+
+        {seaLineDefs.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#475569', fontSize: 11, padding: '20px 0' }}>
+            No sea lanes defined yet.
+          </div>
+        )}
+      </div>
 
       {/* ── Legend ── */}
       <div style={{
         marginTop: 12, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)',
         display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 9, color: '#64748b',
       }}>
-        <span style={{ color: '#a855f7' }}>● Active = Full bonuses</span>
-        <span style={{ color: '#ffb300' }}>● Partial = No bonuses</span>
-        <span>● Inactive = Uncontrolled</span>
+        <span style={{ color: '#a855f7' }}>● Land Active</span>
+        <span style={{ color: '#00e5ff' }}>● Sea Active</span>
+        <span style={{ color: '#ffb300' }}>● Partial</span>
+        <span>● Inactive</span>
       </div>
     </div>
   )

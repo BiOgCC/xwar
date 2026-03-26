@@ -52,6 +52,7 @@ async function loadLeyLineDefs(): Promise<LeyLineDef[]> {
       const dbDefs: LeyLineDef[] = rows.map(r => ({
         id:        r.id,
         name:      r.name,
+        lineType:  (r as any).lineType ?? 'land',
         continent: r.continent as LeyLineDef['continent'],
         archetype: r.archetype as LeyLineDef['archetype'],
         blocks:    (r.blocks ?? []) as string[],
