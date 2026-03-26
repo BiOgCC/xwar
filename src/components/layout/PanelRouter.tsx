@@ -10,7 +10,7 @@ import GovernmentPanel from '../panels/GovernmentPanel'
 import MilitaryPanel from '../panels/MilitaryPanel'
 import MUPanel from '../panels/MUPanel'
 import ArmedForcesPanel from '../panels/ArmedForcesPanel'
-import CyberwarfarePanel from '../panels/CyberwarfarePanel'
+import TacticalOpsPanel from '../panels/TacticalOpsPanel'
 import MissionsPanel from '../panels/MissionsPanel'
 import PrestigePanel from '../panels/PrestigePanel'
 import WarPanel from '../panels/WarPanel'
@@ -298,6 +298,8 @@ export default function PanelRouter() {
               ? '🏴 MILITARY UNIT'
               : activePanel === 'admin'
               ? '🛡️ ADMIN CONTROL CENTER'
+              : activePanel === 'cyberwarfare'
+              ? '🎯 TACTICAL OPERATIONS'
 
               : activePanel === 'foreign_country' && selectedForeignCountry
               ? <><CountryFlag iso={selectedForeignCountry} size={18} style={{ marginRight: '6px' }} />{getCountryName(selectedForeignCountry).toUpperCase()}</>
@@ -428,7 +430,7 @@ export default function PanelRouter() {
           )}
           {activePanel === 'trade_routes' && <TradeRoutePanel />}
           {activePanel === 'government' && <GovernmentPanel />}
-          {activePanel === 'cyberwarfare' && <CyberwarfarePanel />}
+          {activePanel === 'cyberwarfare' && <TacticalOpsPanel />}
           {activePanel === 'missions' && <MissionsPanel />}
           {activePanel === 'prestige' && <PrestigePanel />}
           {activePanel === 'social_club' && <SocialClubPanel />}

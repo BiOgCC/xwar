@@ -141,6 +141,9 @@ export interface BattleState {
   // Mercenary contracts
   createMercenaryContract: (battleId: string, side: 'attacker' | 'defender', ratePerHit: number, totalPool: number) => { success: boolean; message: string }
 
+  // Missile Launcher
+  launchMissile: (battleId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
+
   // NPC test battles
   spawnNPCBattles: () => void
 }
@@ -343,6 +346,89 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     return { battles: { ...state.battles, [battleId]: { ...battle, motd: motd.substring(0, 200) } } }
   }),
 
+  // ====== MISSILE LAUNCHER ======
+  launchMissile: (battleId, side) => {
+    const state = get()
+    const battle = state.battles[battleId]
+    if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
+
+    const player = usePlayerStore.getState()
+    const countryCode = side === 'attacker' ? battle.attackerId : battle.defenderId
+
+    // Only President, VP, and Minister of Defense can launch
+    const gov = useGovernmentStore.getState().governments[countryCode]
+    if (!gov) return { success: false, message: 'No government found.' }
+    const isAuthorized = gov.president === player.name ||
+      gov.vicePresident === player.name ||
+      gov.ministers?.defense === player.name
+    if (!isAuthorized) {
+      return { success: false, message: 'Only President, VP, or Minister of Defense can launch missiles.' }
+    }
+
+    // Check missile launcher level on the region
+    const regionStore = useRegionStore.getState()
+    const region = battle.regionId ? regionStore.getRegion(battle.regionId) : null
+    const level = region?.missileLauncherLevel || 0
+    if (level <= 0) {
+      return { success: false, message: 'No Missile Launcher built. Upgrade in region infrastructure.' }
+    }
+
+    // Check cooldown (5 minutes per country per battle)
+    const MISSILE_COOLDOWN = 5 * 60 * 1000
+    const now = Date.now()
+    const lastLaunch = battle.missileCooldowns?.[countryCode] || 0
+    if (now - lastLaunch < MISSILE_COOLDOWN) {
+      const remaining = Math.ceil((MISSILE_COOLDOWN - (now - lastLaunch)) / 1000)
+      return { success: false, message: `Missile on cooldown! ${remaining}s remaining.` }
+    }
+
+    // Oil cost: 50 per launch from national treasury
+    const OIL_COST = 50
+    const spent = useWorldStore.getState().spendFromFund(countryCode, { oil: OIL_COST })
+    if (!spent) {
+      return { success: false, message: `Not enough oil in treasury. Needs ${OIL_COST} 🛢️.` }
+    }
+
+    // Base damage 666,666 — scales with level: level × (666666 / 5) × 1.5 at max
+    // Level 1 = 666,666 | Level 5 = 999,999 (~1M)
+    const BASE_DAMAGE = 666_666
+    const burstDamage = Math.round(BASE_DAMAGE * (1 + (level - 1) * 0.125))
+
+    // Apply damage
+    set(s => ({
+      battles: {
+        ...s.battles,
+        [battleId]: {
+          ...s.battles[battleId],
+          [side]: {
+            ...s.battles[battleId][side],
+            damageDealt: (s.battles[battleId][side].damageDealt || 0) + burstDamage,
+          },
+          missileCooldowns: {
+            ...(s.battles[battleId].missileCooldowns || {}),
+            [countryCode]: now,
+          },
+          combatLog: [
+            ...s.battles[battleId].combatLog,
+            {
+              tick: s.battles[battleId].ticksElapsed,
+              timestamp: now,
+              type: 'damage' as const,
+              side,
+              message: `🚀 MISSILE LAUNCHED by ${player.name}! ${burstDamage.toLocaleString()} burst damage! (Lv.${level})`,
+            },
+          ],
+          damageFeed: [
+            { playerName: player.name, side, amount: burstDamage, isCrit: true, isDodged: false, time: now },
+            ...(s.battles[battleId].damageFeed || []),
+          ].slice(0, 20),
+        },
+      },
+    }))
+
+    return { success: true, message: `🚀 Missile launched! ${burstDamage.toLocaleString()} damage dealt!` }
+  },
+
   // ====== LEGACY LAUNCH ======
   launchAttack: (attackerId, defenderId, regionName, type = 'invasion', regionId?) => {
     set((state) => {
@@ -498,6 +584,17 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (sideCountry && sideCountry.militaryBaseLevel > 0) {
       finalAmount = Math.round(finalAmount * (1 + 0.05 + Math.random() * 0.15))
     }
+
+    // ── Tactical Ops: Air Strike (+30%) / Naval Strike (+25%) damage bonus ──
+    try {
+      const { useTacticalOpsStore } = require('./tacticalOpsStore')
+      const enemyCode = side === 'attacker' ? battle.defenderId : battle.attackerId
+      const enemyEffects = useTacticalOpsStore.getState().getActiveEffectsForCountry(enemyCode)
+      const hasAirStrike = enemyEffects.some((e: any) => e.effectType === 'air_strike')
+      const hasNavalStrike = enemyEffects.some((e: any) => e.effectType === 'naval_strike')
+      if (hasAirStrike) finalAmount = Math.round(finalAmount * 1.30)
+      if (hasNavalStrike) finalAmount = Math.round(finalAmount * 1.25)
+    } catch (_) { /* tacticalOpsStore not available */ }
 
     const newAttackerDealers = { ...attackerDamageDealers }
     const newDefenderDealers = { ...defenderDamageDealers }

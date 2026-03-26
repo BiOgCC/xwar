@@ -6,8 +6,7 @@ import {
   Drumstick,
   Swords,
   Shield,
-  Monitor,
-  Medal,
+  Target,
   Zap,
   BarChart2,
   Backpack,
@@ -328,30 +327,16 @@ export default function ActionBar() {
       </div>
       )}
 
-      {/* ═══ CYBER ═══ */}
+      {/* ═══ TACTICAL OPS ═══ */}
       <div className="action-bar__slot">
         <button
           className={`action-bar__btn${activePanel === 'cyberwarfare' ? ' action-bar__btn--active' : ''}`}
           onClick={() => togglePanel('cyberwarfare')}
-          title="Cyber [6]"
+          title="Tactical Ops [6]"
         >
           <span className="action-bar__key">6</span>
-          <span className="action-bar__icon"><Monitor {...ICON_PROPS} /></span>
-          <span className="action-bar__label">CYBER</span>
-          <span className="action-bar__status action-bar__status--neutral">OPS</span>
-        </button>
-      </div>
-
-      {/* ═══ MILITARY ═══ */}
-      <div className="action-bar__slot">
-        <button
-          className={`action-bar__btn${activePanel === 'military' ? ' action-bar__btn--active' : ''}`}
-          onClick={() => togglePanel('military')}
-          title="Military [7]"
-        >
-          <span className="action-bar__key">7</span>
-          <span className="action-bar__icon"><Medal {...ICON_PROPS} /></span>
-          <span className="action-bar__label">MILITARY</span>
+          <span className="action-bar__icon"><Target {...ICON_PROPS} /></span>
+          <span className="action-bar__label">TACTICAL</span>
           <span className="action-bar__status action-bar__status--neutral">OPS</span>
         </button>
       </div>

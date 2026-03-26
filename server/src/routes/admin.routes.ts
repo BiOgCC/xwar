@@ -5,7 +5,8 @@
  * GET  /api/admin/country/:cc/preview     — current regions + ley lines for a country
  * POST /api/admin/country/:cc/randomize   — randomly assign regions & regenerate ley lines
  *
- * GET  /api/admin/stats                       — live game stats
+ * GET  /api/admin/stats                       — live game stats + economy KPIs
+ * GET  /api/admin/economy?window=7|14|30|360   — economy flow data for time window
  * POST /api/admin/tick                        — force-run any cron pipeline
  * POST /api/admin/give                        — grant resources to a player
  * GET  /api/admin/logs                        — last 100 news_events
@@ -28,7 +29,11 @@ import { Router, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { eq, sql, desc } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { players, battles, wars, tradeRouteState, newsEvents, leyLineDefs, regionOwnership } from '../db/schema.js'
+import {
+  players, battles, wars, tradeRouteState, newsEvents,
+  leyLineDefs, regionOwnership, countries, armies,
+  companies, items, marketOrders, tradeHistory, casinoResults,
+} from '../db/schema.js'
 import { validate } from '../middleware/validate.js'
 import { runFastCombatPipeline } from '../services/tick/fast-combat.pipeline.js'
 import { runMediumSimPipeline } from '../services/tick/medium-sim.pipeline.js'
@@ -51,7 +56,31 @@ router.use((_req: Request, res: Response, next) => {
 const ok = (res: Response, result: unknown) =>
   res.json({ ok: true, executedAt: new Date().toISOString(), result })
 
-// ── GET /api/admin/stats ──
+// ── Helper: extract number from raw SQL row ──
+const num = (row: Record<string, unknown> | undefined, key: string) =>
+  Number(row?.[key] ?? 0)
+
+// ── Helper: compute Gini coefficient from sorted array ──
+function computeGini(sorted: number[]): number {
+  const n = sorted.length
+  if (n === 0) return 0
+  const total = sorted.reduce((a, b) => a + b, 0)
+  if (total === 0) return 0
+  let sumOfDiffs = 0
+  for (let i = 0; i < n; i++) sumOfDiffs += (2 * (i + 1) - n - 1) * sorted[i]
+  return sumOfDiffs / (n * total)
+}
+
+// ── Player resource columns we track ──
+const PLAYER_RESOURCE_COLS = [
+  'money', 'oil', 'material_x', 'scrap', 'bitcoin',
+  'wheat', 'fish', 'steak', 'bread', 'sushi', 'wagyu',
+  'green_bullets', 'blue_bullets', 'purple_bullets', 'red_bullets',
+  'loot_boxes', 'military_boxes', 'badges_of_honor',
+  'stamina_pills', 'energy_leaves',
+] as const
+
+// ── GET /api/admin/stats ──  (lightweight overview, kept for backward compat)
 router.get('/stats', async (_req, res) => {
   try {
     const countPlayers = await db.execute(sql`SELECT COUNT(*) AS count FROM players`)
@@ -59,10 +88,10 @@ router.get('/stats', async (_req, res) => {
     const countWars    = await db.execute(sql`SELECT COUNT(*) AS count FROM wars WHERE status = 'active'`)
     const totalMoney   = await db.execute(sql`SELECT COALESCE(SUM(money),0) AS total FROM players`)
 
-    const playerCount   = Number((countPlayers[0] as Record<string, unknown>)?.count ?? 0)
-    const activeBattles = Number((countBattles[0] as Record<string, unknown>)?.count ?? 0)
-    const activeWars    = Number((countWars[0]    as Record<string, unknown>)?.count ?? 0)
-    const totalInCirc   = Number((totalMoney[0]   as Record<string, unknown>)?.total ?? 0)
+    const playerCount   = num(countPlayers[0] as Record<string, unknown>, 'count')
+    const activeBattles = num(countBattles[0] as Record<string, unknown>, 'count')
+    const activeWars    = num(countWars[0]    as Record<string, unknown>, 'count')
+    const totalInCirc   = num(totalMoney[0]   as Record<string, unknown>, 'total')
 
     const disrupted = await db.select({ routeId: tradeRouteState.routeId })
       .from(tradeRouteState)
@@ -76,6 +105,348 @@ router.get('/stats', async (_req, res) => {
       disruptedTradeRoutes: disrupted.map(d => d.routeId),
     })
   } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ── GET /api/admin/economy?window=7|14|30|360 ──
+// Full economy KPI dashboard data
+router.get('/economy', async (req, res) => {
+  try {
+    const windowDays = Math.min(Math.max(Number(req.query.window) || 7, 1), 366)
+
+    // ── 1. Resource circulation (player inventories) ──
+    const resourceSumsSql = PLAYER_RESOURCE_COLS.map(c => `COALESCE(SUM(${c}), 0) AS "${c}"`).join(', ')
+    const playerSums = await db.execute(sql.raw(`SELECT ${resourceSumsSql} FROM players`))
+    const playerTotals: Record<string, number> = {}
+    for (const col of PLAYER_RESOURCE_COLS) {
+      playerTotals[col] = num(playerSums[0] as Record<string, unknown>, col)
+    }
+
+    // ── 2. Country fund + forceVault totals (JSONB) ──
+    const countryRows = await db.execute(sql`
+      SELECT
+        COALESCE(SUM((fund->>'money')::numeric), 0)     AS fund_money,
+        COALESCE(SUM((fund->>'oil')::numeric), 0)       AS fund_oil,
+        COALESCE(SUM((fund->>'materialX')::numeric), 0) AS fund_material_x,
+        COALESCE(SUM((fund->>'scraps')::numeric), 0)    AS fund_scrap,
+        COALESCE(SUM((fund->>'bitcoin')::numeric), 0)   AS fund_bitcoin,
+        COALESCE(SUM((force_vault->>'money')::numeric), 0)     AS vault_money,
+        COALESCE(SUM((force_vault->>'oil')::numeric), 0)       AS vault_oil,
+        COALESCE(SUM((force_vault->>'materialX')::numeric), 0) AS vault_material_x,
+        COALESCE(SUM((force_vault->>'scraps')::numeric), 0)    AS vault_scrap,
+        COALESCE(SUM((force_vault->>'bitcoin')::numeric), 0)   AS vault_bitcoin
+      FROM countries
+    `)
+    const cr = (countryRows[0] ?? {}) as Record<string, unknown>
+    const countryTotals = {
+      money:      num(cr, 'fund_money') + num(cr, 'vault_money'),
+      oil:        num(cr, 'fund_oil') + num(cr, 'vault_oil'),
+      material_x: num(cr, 'fund_material_x') + num(cr, 'vault_material_x'),
+      scrap:      num(cr, 'fund_scrap') + num(cr, 'vault_scrap'),
+      bitcoin:    num(cr, 'fund_bitcoin') + num(cr, 'vault_bitcoin'),
+    }
+
+    // ── 3. Army vault totals (JSONB) ──
+    const armyRows = await db.execute(sql`
+      SELECT
+        COALESCE(SUM((vault->>'money')::numeric), 0) AS army_money,
+        COALESCE(SUM((vault->>'oil')::numeric), 0)   AS army_oil
+      FROM armies
+    `)
+    const ar = (armyRows[0] ?? {}) as Record<string, unknown>
+    const armyTotals = {
+      money: num(ar, 'army_money'),
+      oil:   num(ar, 'army_oil'),
+    }
+
+    // ── 4. Combined circulation ──
+    const circulation: Record<string, number> = { ...playerTotals }
+    circulation.money       = (circulation.money ?? 0) + countryTotals.money + armyTotals.money
+    circulation.oil         = (circulation.oil ?? 0) + countryTotals.oil + armyTotals.oil
+    circulation.material_x  = (circulation.material_x ?? 0) + countryTotals.material_x
+    circulation.scrap       = (circulation.scrap ?? 0) + countryTotals.scrap
+    circulation.bitcoin     = (circulation.bitcoin ?? 0) + countryTotals.bitcoin
+
+    // ── 5. Per-player KPIs ──
+    const allMoneys = await db.execute(sql`SELECT money FROM players ORDER BY money ASC`)
+    const moneyArr = (allMoneys as Record<string, unknown>[]).map(r => Number(r.money ?? 0)).sort((a, b) => a - b)
+    const playerCount = moneyArr.length
+    const totalMoney = moneyArr.reduce((a, b) => a + b, 0)
+    const avgMoney = playerCount > 0 ? Math.round(totalMoney / playerCount) : 0
+    const medianMoney = playerCount > 0 ? moneyArr[Math.floor(playerCount / 2)] : 0
+    const giniCoefficient = computeGini(moneyArr)
+
+    // Top 10 richest
+    const top10 = await db.execute(sql`
+      SELECT id, name, country_code, money, level
+      FROM players ORDER BY money DESC LIMIT 10
+    `)
+
+    // Bottom 25% avg vs top 1
+    const bottom25Count = Math.max(1, Math.floor(playerCount * 0.25))
+    const bottom25Avg = playerCount > 0
+      ? Math.round(moneyArr.slice(0, bottom25Count).reduce((a, b) => a + b, 0) / bottom25Count)
+      : 0
+    const richestMoney = moneyArr.length > 0 ? moneyArr[moneyArr.length - 1] : 0
+    const richPoorRatio = bottom25Avg > 0 ? Math.round(richestMoney / bottom25Avg) : 0
+
+    // ── 6. Time-windowed flows ──
+    const intervalStr = `${windowDays} days`
+
+    // Trade volume per resource
+    const tradeVol = await db.execute(sql.raw(`
+      SELECT item_type,
+             COUNT(*)::int AS trade_count,
+             COALESCE(SUM(amount), 0)::bigint AS total_amount,
+             COALESCE(SUM(total_price::numeric), 0)::bigint AS total_value
+      FROM trade_history
+      WHERE timestamp > NOW() - INTERVAL '${intervalStr}'
+      GROUP BY item_type
+      ORDER BY total_value DESC
+    `))
+
+    // Casino net flow
+    const casinoFlow = await db.execute(sql.raw(`
+      SELECT
+        COALESCE(SUM(payout), 0)::bigint      AS total_payout,
+        COALESCE(SUM(bet_amount), 0)::bigint  AS total_bets,
+        COUNT(*)::int                          AS total_spins
+      FROM casino_results
+      WHERE created_at > NOW() - INTERVAL '${intervalStr}'
+    `))
+    const cf = (casinoFlow[0] ?? {}) as Record<string, unknown>
+
+    // Items created
+    const itemsCreated = await db.execute(sql.raw(`
+      SELECT tier, COUNT(*)::int AS count
+      FROM items
+      WHERE created_at > NOW() - INTERVAL '${intervalStr}'
+      GROUP BY tier
+      ORDER BY tier
+    `))
+
+    // New player registrations
+    const newPlayers = await db.execute(sql.raw(`
+      SELECT COUNT(*)::int AS count
+      FROM players
+      WHERE created_at > NOW() - INTERVAL '${intervalStr}'
+    `))
+
+    // Active players (logged in within window)
+    const activePlayers = await db.execute(sql.raw(`
+      SELECT COUNT(*)::int AS count
+      FROM players
+      WHERE last_login > NOW() - INTERVAL '${intervalStr}'
+    `))
+
+    // ── 7. Economy health ──
+    const openOrders = await db.execute(sql`
+      SELECT COUNT(*)::int AS count,
+             COALESCE(SUM(total_price::numeric), 0)::bigint AS total_value
+      FROM market_orders
+      WHERE status = 'open'
+    `)
+    const oo = (openOrders[0] ?? {}) as Record<string, unknown>
+
+    const companyCount = await db.execute(sql`SELECT COUNT(*)::int AS count FROM companies`)
+    const totalItems   = await db.execute(sql`SELECT COUNT(*)::int AS count FROM items`)
+    const avgLevel     = await db.execute(sql`SELECT COALESCE(AVG(level), 1)::numeric(4,1) AS avg FROM players`)
+
+    // Market velocity = trades per player in window
+    const totalTrades = (tradeVol as Record<string, unknown>[]).reduce(
+      (sum, r) => sum + Number((r as Record<string, unknown>).trade_count ?? 0), 0
+    )
+    const marketVelocity = playerCount > 0 ? +(totalTrades / playerCount).toFixed(2) : 0
+
+    ok(res, {
+      windowDays,
+
+      // Resource circulation (combined: players + countries + armies)
+      circulation,
+      // Breakdown
+      playerTotals,
+      countryTotals,
+      armyTotals,
+
+      // Per-player KPIs
+      perPlayer: {
+        count: playerCount,
+        avgMoney,
+        medianMoney,
+        giniCoefficient: +giniCoefficient.toFixed(4),
+        richPoorRatio,
+        top10: (top10 as Record<string, unknown>[]).map(r => ({
+          id: r.id, name: r.name, countryCode: r.country_code,
+          money: Number(r.money), level: Number(r.level),
+        })),
+      },
+
+      // Time-windowed flows
+      flows: {
+        tradeVolume: (tradeVol as Record<string, unknown>[]).map(r => ({
+          itemType: r.item_type,
+          tradeCount: Number(r.trade_count),
+          totalAmount: Number(r.total_amount),
+          totalValue: Number(r.total_value),
+        })),
+        casino: {
+          totalPayout: num(cf, 'total_payout'),
+          totalBets:   num(cf, 'total_bets'),
+          netFlow:     num(cf, 'total_payout') - num(cf, 'total_bets'),
+          totalSpins:  num(cf, 'total_spins'),
+        },
+        itemsCreated: (itemsCreated as Record<string, unknown>[]).map(r => ({
+          tier: r.tier, count: Number(r.count),
+        })),
+        newPlayers:    num((newPlayers[0] ?? {}) as Record<string, unknown>, 'count'),
+        activePlayers: num((activePlayers[0] ?? {}) as Record<string, unknown>, 'count'),
+      },
+
+      // Economy health
+      health: {
+        marketVelocity,
+        openMarketOrders: num(oo, 'count'),
+        openOrdersValue:  num(oo, 'total_value'),
+        activeCompanies:  num((companyCount[0] ?? {}) as Record<string, unknown>, 'count'),
+        totalItems:       num((totalItems[0] ?? {}) as Record<string, unknown>, 'count'),
+        avgPlayerLevel:   Number((avgLevel[0] as Record<string, unknown>)?.avg ?? 1),
+      },
+    })
+  } catch (err) {
+    logger.error(err, '[admin/economy]')
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ── GET /api/admin/economy/wealth-distribution ──
+// Per-level + per-country wealth stats, σ bands, anomaly detection
+router.get('/economy/wealth-distribution', async (_req, res) => {
+  try {
+    // ── 1. Fetch all player data ──
+    const allPlayers = await db.execute(sql`
+      SELECT id, name, country_code, level, money FROM players ORDER BY level ASC, money ASC
+    `) as Record<string, unknown>[]
+
+    // ── 2. Per-level aggregation ──
+    const byLevel = new Map<number, { moneys: number[]; players: { id: string; name: string; cc: string; money: number }[] }>()
+    for (const p of allPlayers) {
+      const lv = Number(p.level ?? 1)
+      const m  = Number(p.money ?? 0)
+      if (!byLevel.has(lv)) byLevel.set(lv, { moneys: [], players: [] })
+      const bucket = byLevel.get(lv)!
+      bucket.moneys.push(m)
+      bucket.players.push({ id: String(p.id), name: String(p.name), cc: String(p.country_code ?? ''), money: m })
+    }
+
+    const stddev = (arr: number[], avg: number) => {
+      if (arr.length < 2) return 0
+      const sumSq = arr.reduce((s, v) => s + (v - avg) ** 2, 0)
+      return Math.sqrt(sumSq / arr.length)
+    }
+
+    const levelStats: {
+      level: number; count: number; min: number; max: number; avg: number; median: number
+      stddev: number; sigma1: number; sigma2: number; sigma3: number
+    }[] = []
+
+    const anomalies: {
+      playerId: string; playerName: string; countryCode: string
+      level: number; money: number; levelAvg: number; levelStddev: number
+      sigmaExceeded: number; severity: 'warning' | 'critical' | 'extreme'
+    }[] = []
+
+    for (const [lv, bucket] of [...byLevel.entries()].sort((a, b) => a[0] - b[0])) {
+      const sorted = [...bucket.moneys].sort((a, b) => a - b)
+      const n   = sorted.length
+      const sum = sorted.reduce((a, b) => a + b, 0)
+      const avg = n > 0 ? sum / n : 0
+      const med = n > 0 ? sorted[Math.floor(n / 2)] : 0
+      const sd  = stddev(sorted, avg)
+
+      const s1 = avg + sd
+      const s2 = avg + 2 * sd
+      const s3 = avg + 3 * sd
+
+      levelStats.push({
+        level: lv, count: n,
+        min: sorted[0] ?? 0, max: sorted[n - 1] ?? 0,
+        avg: Math.round(avg), median: med,
+        stddev: Math.round(sd),
+        sigma1: Math.round(s1), sigma2: Math.round(s2), sigma3: Math.round(s3),
+      })
+
+      // ── Anomaly detection ──
+      for (const p of bucket.players) {
+        if (sd > 0 && p.money > s1) {
+          const sigmasAbove = (p.money - avg) / sd
+          let severity: 'warning' | 'critical' | 'extreme' = 'warning'
+          let sigmaExceeded = 1
+          if (p.money > s3) { severity = 'extreme'; sigmaExceeded = 3 }
+          else if (p.money > s2) { severity = 'critical'; sigmaExceeded = 2 }
+
+          anomalies.push({
+            playerId: p.id, playerName: p.name, countryCode: p.cc,
+            level: lv, money: p.money,
+            levelAvg: Math.round(avg), levelStddev: Math.round(sd),
+            sigmaExceeded, severity,
+          })
+        }
+      }
+    }
+
+    // ── 3. Per-country aggregation ──
+    const byCountry = new Map<string, number[]>()
+    for (const p of allPlayers) {
+      const cc = String(p.country_code ?? 'NONE')
+      if (!byCountry.has(cc)) byCountry.set(cc, [])
+      byCountry.get(cc)!.push(Number(p.money ?? 0))
+    }
+
+    const countryStats = [...byCountry.entries()].map(([cc, moneys]) => {
+      const sorted = [...moneys].sort((a, b) => a - b)
+      const n = sorted.length
+      const sum = sorted.reduce((a, b) => a + b, 0)
+      const avg = n > 0 ? sum / n : 0
+      const sd = stddev(sorted, avg)
+      return {
+        countryCode: cc, count: n,
+        min: sorted[0] ?? 0, max: sorted[n - 1] ?? 0,
+        avg: Math.round(avg), median: sorted[Math.floor(n / 2)] ?? 0,
+        stddev: Math.round(sd),
+      }
+    }).sort((a, b) => b.avg - a.avg)
+
+    // ── 4. Overall stats ──
+    const allMoneys = allPlayers.map(p => Number(p.money ?? 0)).sort((a, b) => a - b)
+    const totalN = allMoneys.length
+    const totalSum = allMoneys.reduce((a, b) => a + b, 0)
+    const overallAvg = totalN > 0 ? totalSum / totalN : 0
+    const overallSd = stddev(allMoneys, overallAvg)
+
+    ok(res, {
+      overall: {
+        count: totalN,
+        min: allMoneys[0] ?? 0,
+        max: allMoneys[totalN - 1] ?? 0,
+        avg: Math.round(overallAvg),
+        median: totalN > 0 ? allMoneys[Math.floor(totalN / 2)] : 0,
+        stddev: Math.round(overallSd),
+        sigma1: Math.round(overallAvg + overallSd),
+        sigma2: Math.round(overallAvg + 2 * overallSd),
+        sigma3: Math.round(overallAvg + 3 * overallSd),
+      },
+      levelStats,
+      countryStats,
+      anomalies: anomalies.sort((a, b) => b.sigmaExceeded - a.sigmaExceeded || b.money - a.money),
+      anomalyCounts: {
+        warning:  anomalies.filter(a => a.severity === 'warning').length,
+        critical: anomalies.filter(a => a.severity === 'critical').length,
+        extreme:  anomalies.filter(a => a.severity === 'extreme').length,
+      },
+    })
+  } catch (err) {
+    console.error('[admin/economy/wealth-distribution]', err)
     res.status(500).json({ error: String(err), code: 'INTERNAL' })
   }
 })

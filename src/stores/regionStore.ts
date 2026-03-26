@@ -37,6 +37,7 @@ export interface Region {
   militaryBaseLevel: number
   portLevel: number
   airportLevel: number
+  missileLauncherLevel: number
   // Infrastructure maintenance state
   infraEnabled: Record<string, boolean>    // infraKey -> actively running (draining oil)
   infraDisabledAt: Record<string, number>  // infraKey -> timestamp when disabled (0 = never)
@@ -331,8 +332,9 @@ function computeRegions(): Region[] {
       militaryBaseLevel: 0,
       portLevel: def.countryCode === 'US' ? 1 : 0,
       airportLevel: def.countryCode === 'US' ? 1 : 0,
-      infraEnabled: { bunkerLevel: true, militaryBaseLevel: true, portLevel: true, airportLevel: true },
-      infraDisabledAt: { bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0 },
+      missileLauncherLevel: 0,
+      infraEnabled: { bunkerLevel: true, militaryBaseLevel: true, portLevel: true, airportLevel: true, missileLauncherLevel: true },
+      infraDisabledAt: { bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0, missileLauncherLevel: 0 },
     }
   })
 }
@@ -387,7 +389,7 @@ export interface RegionState {
   updateBoundsFromGeoJSON: (geojson: any, isoKey?: string) => void
   processOceanIncome: () => void
   addDebris: (regionId: string, scrap: number, materialX: number, militaryBoxes: number) => void
-  startScavenge: (regionId: string, divisionIds: string[]) => { success: boolean; message: string }
+  startScavenge: (regionId: string) => { success: boolean; message: string }
   processScavengeTick: () => void
   // Naval Patrol
   startNavalPatrol: (regionId: string) => { success: boolean; message: string }
@@ -405,6 +407,8 @@ export interface RegionState {
   // Capital / core helpers
   isCapitalRegion: (regionId: string) => boolean
   isCoreRegion: (regionId: string) => boolean
+  // Reach visualization
+  getReachableFromRegion: (regionId: string) => { adjacent: string[]; airport: string[]; port: string[] }
 }
 
 const ISO3_TO_ISO2: Record<string, string> = {
@@ -780,9 +784,9 @@ export const useRegionStore = create<RegionState>((set, get) => ({
           debris: (cc === 'MX' || cc === 'CU') ? { scrap: 500000, materialX: 100000, militaryBoxes: 500 } : { scrap: 0, materialX: 0, militaryBoxes: 0 }, scavengeCount: 0,
           revoltPressure: 0, revoltCooldownUntil: 0, noDefenderTicks: 0,
           revoltBattleId: null, revoltTriggerType: null,
-          bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0,
-          infraEnabled: { bunkerLevel: true, militaryBaseLevel: true, portLevel: true, airportLevel: true },
-          infraDisabledAt: { bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0 },
+          bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0, missileLauncherLevel: 0,
+          infraEnabled: { bunkerLevel: true, militaryBaseLevel: true, portLevel: true, airportLevel: true, missileLauncherLevel: true },
+          infraDisabledAt: { bunkerLevel: 0, militaryBaseLevel: 0, portLevel: 0, airportLevel: 0, missileLauncherLevel: 0 },
         })
       })
 
@@ -831,40 +835,28 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     } : r)
   })),
 
-  startScavenge: (regionId, divisionIds) => {
+  startScavenge: (regionId) => {
     const state = get()
     const region = state.regions.find(r => r.id === regionId)
     if (!region) return { success: false, message: 'Region not found.' }
-    if (region.debris.scrap <= 0 && region.debris.materialX <= 0 && region.debris.militaryBoxes <= 0) {
-      return { success: false, message: 'No debris to scavenge.' }
-    }
-    if (region.scavengeCount >= 4) return { success: false, message: 'Debris fully scavenged.' }
-    if (divisionIds.length === 0) return { success: false, message: 'Select at least one division.' }
 
-    // Validate: only Recon and Jeep
-    const armyStore = useArmyStore.getState()
     const player = usePlayerStore.getState()
-    for (const id of divisionIds) {
-      const div = armyStore.divisions[id]
-      if (!div) return { success: false, message: `Division ${id} not found.` }
-      if (div.ownerId !== player.name) return { success: false, message: 'Not your division.' }
-      if (div.type !== 'recon' && div.type !== 'jeep') return { success: false, message: 'Only Recon and Jeep can scavenge.' }
-      if (div.status !== 'ready') return { success: false, message: `${div.name} is not ready.` }
+
+    // Check stamina cost
+    const SCAVENGE_STAMINA_COST = 10
+    if (player.stamina < SCAVENGE_STAMINA_COST) {
+      return { success: false, message: `Not enough stamina (${SCAVENGE_STAMINA_COST} required).` }
     }
 
-    // Check if this player already has a mission on this region
-    const existing = state.scavengeMissions.find(m => m.regionId === regionId && m.playerId === player.name)
-    if (existing) return { success: false, message: 'Already scavenging this region.' }
+    // Limit: 1 concurrent mission per player
+    const existing = state.scavengeMissions.find(m => m.playerId === player.name)
+    if (existing) return { success: false, message: 'You already have an active scavenge mission.' }
+
+    // Spend stamina
+    player.consumeBar('stamina', SCAVENGE_STAMINA_COST)
 
     const waveIndex = region.scavengeCount
     const now = Date.now()
-
-    // Set divisions to scavenging status
-    divisionIds.forEach(id => {
-      useArmyStore.setState(s => ({
-        divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'scavenging' } }
-      }))
-    })
 
     // Increment scavenge count on region
     set(s => ({
@@ -873,7 +865,7 @@ export const useRegionStore = create<RegionState>((set, get) => ({
         id: `scav_${now}`,
         regionId,
         playerId: player.name,
-        divisionIds,
+        divisionIds: [],
         startedAt: now,
         endsAt: now + SCAVENGE_DURATION,
         waveIndex,
@@ -881,7 +873,7 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     }))
 
     const share = SCAVENGE_SHARES[waveIndex]
-    return { success: true, message: `Scavenging! Wave ${waveIndex + 1}/4 (${Math.round(share * 100)}% share). Returns in 30 min.` }
+    return { success: true, message: `⚙️ Scavengers deployed! Wave ${waveIndex + 1}/4 (${Math.round(share * 100)}% share). Returns in 30 min.` }
   },
 
   processScavengeTick: () => {
@@ -1365,5 +1357,27 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     if (!region || region.isOcean) return false
     // A region is "core" if it still belongs to its original country
     return region.countryCode === region.controlledBy
+  },
+
+  // ====== REACH VISUALIZATION ======
+
+  getReachableFromRegion: (regionId) => {
+    const { regions } = get()
+    const from = regions.find(r => r.id === regionId)
+    if (!from) return { adjacent: [], airport: [], port: [] }
+
+    // Adjacent (non-ocean) regions
+    const adjacent = from.adjacent.filter(adjId => {
+      const adj = regions.find(r => r.id === adjId)
+      return adj && !adj.isOcean
+    })
+
+    // Airport reach (non-adjacent, within radius)
+    const airport = getAirportReachableRegions(regionId)
+
+    // Port reach (non-adjacent, coastal-to-coastal within radius)
+    const port = getPortReachableRegions(regionId)
+
+    return { adjacent, airport, port }
   },
 }))

@@ -646,12 +646,28 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         // Skip disabled companies
         if (c.disabledUntil && Date.now() < c.disabledUntil) return c
         
+        // ── Tactical Ops: Power Grid Attack (33% chance to skip) ──
+        try {
+          const { useTacticalOpsStore } = require('./tacticalOpsStore')
+          const effects = useTacticalOpsStore.getState().getActiveEffectsForCountry(c.location)
+          const hasPowerGridAttack = effects.some((e: any) => e.effectType === 'power_grid_attack')
+          if (hasPowerGridAttack && Math.random() < 0.33) return c // sabotaged — skip tick
+        } catch (_) { /* tacticalOpsStore not available */ }
+
         const effectiveLevel = Math.min(6, c.level)
         const bonus = getLocationBonus(c)
         // Apply Economic Theory research bonus to production
         const player = usePlayerStore.getState()
         const ecoBonuses = useResearchStore.getState().getEconomyBonuses(player.countryCode || 'US')
-        const pointsGenerated = effectiveLevel * (1 + bonus / 100) * ecoBonuses.productionBonus
+        let pointsGenerated = effectiveLevel * (1 + bonus / 100) * ecoBonuses.productionBonus
+
+        // ── Tactical Ops: Company Sabotage (-20% production) ──
+        try {
+          const { useTacticalOpsStore } = require('./tacticalOpsStore')
+          const effects = useTacticalOpsStore.getState().getActiveEffectsForCountry(c.location)
+          const hasCompanySabotage = effects.some((e: any) => e.effectType === 'company_sabotage')
+          if (hasCompanySabotage) pointsGenerated *= 0.80
+        } catch (_) { /* tacticalOpsStore not available */ }
         
         return {
           ...c,

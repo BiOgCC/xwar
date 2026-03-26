@@ -101,6 +101,8 @@ export interface Battle {
   vengeanceBuff: Record<'attacker' | 'defender', number>  // side → tick when buff expires
   /** Active mercenary contracts — funded bounty pools that pay per hit */
   mercenaryContracts: MercenaryContract[]
+  /** Missile launcher cooldowns — countryCode → last launch timestamp */
+  missileCooldowns?: Record<string, number>
 }
 
 export interface MercenaryContract {

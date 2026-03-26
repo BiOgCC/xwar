@@ -1,0 +1,152 @@
+# Tactical Ops Rework — Strip Minigames, Keep Effects
+
+Replace Breach Protocol puzzles, stamina races, mission board slots, and 1v1 duels with a **fund → launch → effect** system.
+
+---
+
+## Two Tiers of Operations
+
+| | Country Ops (President launches) | Player Ops (Solo) |
+|---|---|---|
+| **Who funds** | Any citizen via micro-missions | Player pays directly |
+| **Who launches** | President only (once funded) | Any player |
+| **Ops** | Company Sabotage, Logistics Disruption, Power Grid Attack, Air Strike, Naval Strike | Resource Intel, War Intel, Disinformation, Bunker Override |
+| **Base success** | 60% + research bonus | 60% + research bonus |
+
+---
+
+## Intel Ops — "Undercover" Mechanic
+
+> [!IMPORTANT]
+> Resource Intel, War Intel, and Disinformation do NOT resolve instantly. They go **undercover**.
+
+**Flow:**
+
+1. Player launches intel op → radar UI shows **"SCANNING..."** with a **30-minute countdown**
+2. During those 30 minutes, enemy country gets a **subtle alert** (icon in their feed)
+3. **Detection roll every 5 minutes** (30% base chance per tick — ~83% cumulative chance of being spotted)
+4. **If NOT detected** → Intel succeeds silently. Report/effect delivered. Cheapest outcome
+5. **If detected** → A **fast battle spawns** (2-hour rounds, max 2 rounds)
+   - If the **attacker wins** the battle → intel still succeeds (they fought through)
+   - If **no defenders show up** within the 2h window → attacker auto-wins (timing play!)
+   - If the **defender wins** → intel op fails, resources lost
+
+This creates a **timing game**: launch intel ops when the enemy is asleep or busy in other battles for easy intel. If they catch you, it becomes a quick fight.
+
+---
+
+## Bunker Override — Whale Op
+
+> [!CAUTION]
+> Bunker Override costs **20 ₿ + 20 🎖️** — the ultimate pre-attack softener for wealthy players.
+
+Effect: Halves enemy bunker defense for 24 hours. Meant to be launched right before a major coordinated attack.
+
+---
+
+## Casual Micro-Missions (Country Op Funding)
+
+Each Country Op needs **15 funding points** before the president can launch. Missions:
+
+| Mission | Cost | Points | Who can do it |
+|---|---|---|---|
+| 🔧 Supply Run | 10 work energy | +1 | Anyone |
+| 💧 Field Support | 20 stamina | +1 | Anyone |
+| 🎖️ Pledge Badge | 1 Badge of Honor | +2 | Anyone |
+| ₿ War Bonds | 1 Bitcoin | +3 | Economy players |
+| ⚔️ Battle Veteran | Deal 500+ dmg in any battle | +2 | Combat players |
+
+---
+
+## Research Tree
+
+Add to `MILITARY_DOCTRINE` between `mil_5` (Elite Forces) and `mil_6` (Rapid Deployment):
+
+```
+mil_ops — Tactical Doctrine — 250,000💰 — "+10% tactical ops success chance"
+```
+
+Base 60% → 70% with research.
+
+---
+
+## Proposed Changes
+
+### Client Store Layer
+
+---
+
+#### [NEW] [tacticalOpsStore.ts](file:///c:/Users/Usuario/Warx/xwar/src/stores/tacticalOpsStore.ts)
+
+Zustand store replacing `cyberStore` and `militaryStore` minigame logic:
+
+- **`COUNTRY_OPS`** — 5 ops (sabotage, logistics, power grid, air strike, naval strike)
+- **`PLAYER_OPS`** — 4 ops (resource intel, war intel, disinformation, bunker override)
+- **`fundingState`** — per-country, per-op funding progress
+- **`completeMission(opId, missionType)`** — deducts player resources, adds funding points
+- **`launchCountryOp(opId, target)`** — president-only, rolls success, calls API
+- **`launchPlayerOp(opId, target)`** — solo, starts undercover scan or direct effect
+- **`undercover`** — tracks active scanning ops with countdown timers
+- **`activeEffects`** / **`reports`** — preserved from old cyber store
+
+---
+
+#### [MODIFY] [researchStore.ts](file:///c:/Users/Usuario/Warx/xwar/src/stores/researchStore.ts)
+
+Add `mil_ops` research node + `tacticalOpsBonus` to `getMilitaryBonuses`.
+
+---
+
+#### [DELETE] [BreachProtocol.tsx](file:///c:/Users/Usuario/Warx/xwar/src/components/panels/BreachProtocol.tsx)
+
+Entire puzzle minigame removed.
+
+---
+
+### Client UI Layer
+
+---
+
+#### [NEW] [TacticalOpsPanel.tsx](file:///c:/Users/Usuario/Warx/xwar/src/components/panels/TacticalOpsPanel.tsx)
+
+Replaces `CyberwarfarePanel.tsx` (~1163 → ~350 lines). Three tabs:
+
+1. **🏛️ Country Ops** — funding progress, micro-mission buttons, president launch
+2. **👤 Player Ops** — direct launch with radar/scanning UI for intel ops
+3. **📋 Reports** — intel reports and op history
+
+Intel ops show a **radar animation** with scanning countdown. If detected, battle link appears.
+
+---
+
+### Server Layer
+
+---
+
+#### [MODIFY] [cyber.routes.ts](file:///c:/Users/Usuario/Warx/xwar/server/src/routes/cyber.routes.ts)
+
+Major rewrite (~1327 → ~500 lines):
+
+**Remove:** Breach protocol, stamina race, mission board slots, puzzle endpoints
+
+**Keep:** `applyOperationResult()`, `/effects/:code`, `/reports`, `/stats`
+
+**Add:**
+- `POST /fund` — complete micro-mission, add funding points
+- `POST /launch-country` — president launches funded op (60% + research roll)
+- `POST /launch-player` — solo op launch
+- `POST /intel/scan` — start undercover scan (30-min detection window)
+- `GET  /intel/status/:id` — check scan status
+- Auto-detect timer (every 5 min rolls detection on active scans)
+- On detection: spawn fast battle (2h rounds, type `intel_battle`)
+- On battle resolve: apply or fail the intel op
+
+---
+
+## Verification Plan
+
+1. **Player Op — Resource Intel**: Launch → see radar scanning UI → verify 30-min countdown → test detection spawn + battle
+2. **Country Op Funding**: Complete micro-missions → verify funding bar fills → president launches
+3. **Bunker Override**: Verify 20 BTC + 20 Badge cost → verify bunker halving effect
+4. **Research**: Unlock `mil_ops` → verify success chance increases from 60% to 70%
+5. **Effects check**: Launch successful Power Grid Attack → verify companies disabled in target country

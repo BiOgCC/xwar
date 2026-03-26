@@ -6,7 +6,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Shield, RefreshCw, Play, Zap, Database, Users, Swords, Globe,
   TrendingUp, Trash2, ToggleLeft, ToggleRight, Plus, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle, LogOut, Activity, Newspaper, Anchor, Search,
-  Settings, DollarSign, Package } from 'lucide-react'
+  Settings, DollarSign, Package, BarChart3, Droplet, Wrench, Atom, Bitcoin,
+  Wheat, Fish, Crosshair, CakeSlice, Beef, Medal, Leaf, CupSoda, UtensilsCrossed,
+  ShieldAlert, Dices } from 'lucide-react'
 
 // ── API ───────────────────────────────────────────────────────────────────────
 const B = 'http://localhost:3001'
@@ -82,7 +84,7 @@ function SC({ icon, label, value, color }: { icon:React.ReactNode; label:string;
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [authed, setAuthed]           = useState<boolean|null>(null)
-  const [tab, setTab]                  = useState<'overview'|'players'|'leylines'|'pipelines'|'news'|'market'|'map'>('overview')
+  const [tab, setTab]                  = useState<'overview'|'players'|'leylines'|'pipelines'|'news'|'market'|'economy'|'map'>('overview')
   const [stats, setStats]             = useState<Stats|null>(null)
   const [players, setPlayers]         = useState<Player[]>([])
   const [lines, setLines]             = useState<LeyLine[]>([])
@@ -110,6 +112,15 @@ export default function AdminPage() {
   const [randResult, setRandResult]   = useState<any>(null)
   const [previewBusy, setPreviewBusy] = useState(false)
   const [previewResult, setPreviewResult] = useState<any>(null)
+
+  // ── Economy dashboard state ──
+  const [econ, setEcon]                 = useState<any>(null)
+  const [econWindow, setEconWindow]     = useState(7)
+  const [econLoading, setEconLoading]   = useState(false)
+  // ── Wealth distribution state ──
+  const [wealthDist, setWealthDist]     = useState<any>(null)
+  const [wdLoading, setWdLoading]       = useState(false)
+  const [wdHover, setWdHover]           = useState<number | null>(null)
 
   const notify = (msg:string, type:'ok'|'err'='ok') => { setToast({msg,type}); setTimeout(()=>setToast(null),3500) }
 
@@ -146,8 +157,29 @@ export default function AdminPage() {
     } catch {}
   },[])
 
+  const loadEcon = useCallback(async (w?: number) => {
+    setEconLoading(true)
+    try {
+      const d = await api(`/api/admin/economy?window=${w ?? econWindow}`)
+      if (d.ok) setEcon(d.result)
+      else notify(d.error ?? 'Economy load failed', 'err')
+    } catch { notify('Economy request failed', 'err') }
+    setEconLoading(false)
+  }, [econWindow])
+
+  const loadWealthDist = useCallback(async () => {
+    setWdLoading(true)
+    try {
+      const d = await api('/api/admin/economy/wealth-distribution')
+      if (d.ok) setWealthDist(d.result)
+      else notify(d.error ?? 'Wealth distribution load failed', 'err')
+    } catch { notify('Wealth distribution request failed', 'err') }
+    setWdLoading(false)
+  }, [])
+
   useEffect(()=>{ load() },[load])
   useEffect(()=>{ if (tab==='players') loadPlayers() },[tab,loadPlayers])
+  useEffect(()=>{ if (tab==='economy') { loadEcon(); loadWealthDist() } },[tab,loadEcon,loadWealthDist])
 
   // ── Actions ──
   const runPipeline = async (pipeline: string, job?: string) => {
@@ -285,6 +317,7 @@ export default function AdminPage() {
   return (
     <div style={{ background:'#070d16', minHeight:'100vh', color:'#e2e8f0', fontFamily:'Inter,system-ui,sans-serif' }}>
       <style>{`
+        html,body,#root{overflow:auto!important;height:auto!important;min-height:100vh}
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#0f172a}::-webkit-scrollbar-thumb{background:#1e293b;border-radius:4px}
@@ -304,7 +337,7 @@ export default function AdminPage() {
           <span style={{ fontFamily:'Share Tech Mono,monospace', fontSize:14, fontWeight:700, letterSpacing:'0.08em' }}>XWAR <span style={{ color:'#8b5cf6' }}>ADMIN</span></span>
           <div style={{ width:1, height:20, background:'rgba(255,255,255,0.1)' }}/>
           {/* Tabs */}
-          {(['overview','players','leylines','pipelines','news','market','map'] as const).map(t => (
+          {(['overview','players','leylines','pipelines','news','market','economy','map'] as const).map(t => (
             <button key={t} onClick={()=>setTab(t)} style={{ background: tab===t?'rgba(139,92,246,0.15)':'transparent', border:'none', color: tab===t?'#8b5cf6':'#64748b', borderRadius:6, padding:'5px 12px', fontSize:11, fontWeight:700, cursor:'pointer', letterSpacing:'0.06em', textTransform:'uppercase' }}>
               {t}
             </button>
@@ -726,6 +759,497 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* ── ECONOMY ── */}
+        {tab==='economy' && (() => {
+          // Human-readable resource labels + icons
+          const RES_META: Record<string, { label: string; icon: any; color: string }> = {
+            money: { label: 'Money', icon: DollarSign, color: '#22c55e' },
+            oil: { label: 'Oil', icon: Droplet, color: '#3b82f6' },
+            material_x: { label: 'MaterialX', icon: Atom, color: '#a855f7' },
+            scrap: { label: 'Scrap', icon: Wrench, color: '#94a3b8' },
+            bitcoin: { label: 'Bitcoin', icon: Bitcoin, color: '#f59e0b' },
+            wheat: { label: 'Wheat', icon: Wheat, color: '#eab308' },
+            fish: { label: 'Fish', icon: Fish, color: '#60a5fa' },
+            steak: { label: 'Steak', icon: Beef, color: '#f43f5e' },
+            bread: { label: 'Bread', icon: CakeSlice, color: '#fcd34d' },
+            sushi: { label: 'Sushi', icon: UtensilsCrossed, color: '#f472b6' },
+            wagyu: { label: 'Wagyu', icon: Beef, color: '#ef4444' },
+            green_bullets: { label: 'Green Ammo', icon: Crosshair, color: '#22c55e' },
+            blue_bullets: { label: 'Blue Ammo', icon: Crosshair, color: '#3b82f6' },
+            purple_bullets: { label: 'Purple Ammo', icon: Crosshair, color: '#a855f7' },
+            red_bullets: { label: 'Red Ammo', icon: Crosshair, color: '#ef4444' },
+            loot_boxes: { label: 'Loot Boxes', icon: Package, color: '#f97316' },
+            military_boxes: { label: 'Military Boxes', icon: ShieldAlert, color: '#22d38a' },
+            badges_of_honor: { label: 'Badges', icon: Medal, color: '#22d38a' },
+            stamina_pills: { label: 'Magic Tea', icon: CupSoda, color: '#a78bfa' },
+            energy_leaves: { label: 'Energy Leaves', icon: Leaf, color: '#4ade80' },
+          }
+
+          const fmt = (n: number) => n >= 1e9 ? `${(n/1e9).toFixed(1)}B` : n >= 1e6 ? `${(n/1e6).toFixed(1)}M` : n >= 1e3 ? `${(n/1e3).toFixed(1)}K` : String(n)
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+              {/* Header + time range picker */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                <div style={S.sectionTitle}><BarChart3 size={14} color="#22d38a"/> ECONOMY DASHBOARD</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[7, 14, 30, 360].map(w => (
+                    <button key={w} onClick={() => { setEconWindow(w); loadEcon(w) }}
+                      style={{ background: econWindow === w ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${econWindow === w ? '#8b5cf6' : 'rgba(255,255,255,0.08)'}`,
+                        color: econWindow === w ? '#8b5cf6' : '#64748b', borderRadius: 6, padding: '5px 12px',
+                        fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}>
+                      {w}d
+                    </button>
+                  ))}
+                  <button onClick={() => loadEcon()} style={btn('#64748b', econLoading)} disabled={econLoading}>
+                    <RefreshCw size={12}/> {econLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                </div>
+              </div>
+
+              {econLoading && !econ && (
+                <div style={{ textAlign: 'center', padding: 60, color: '#64748b', fontSize: 13 }}>
+                  <span style={{ animation: 'spin 0.8s linear infinite', display: 'inline-block', fontSize: 24 }}>⟳</span>
+                  <div style={{ marginTop: 12 }}>Loading economy data…</div>
+                </div>
+              )}
+
+              {econ && (
+                <>
+                  {/* ── Resource Circulation Grid ── */}
+                  <div style={S.card}>
+                    <div style={{ ...S.sectionTitle, marginBottom: 14 }}><TrendingUp size={13} color="#22d38a"/> TOTAL IN CIRCULATION</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+                      {Object.entries(econ.circulation).map(([key, val]) => {
+                        const meta = RES_META[key]
+                        if (!meta) return null
+                        const Icon = meta.icon
+                        return (
+                          <div key={key} style={{
+                            background: `${meta.color}08`, border: `1px solid ${meta.color}22`,
+                            borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10
+                          }}>
+                            <div style={{ color: meta.color, background: `${meta.color}15`, padding: 7, borderRadius: 7 }}><Icon size={16}/></div>
+                            <div>
+                              <div style={{ fontSize: 9, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 2 }}>{meta.label}</div>
+                              <div style={{ fontSize: 16, fontWeight: 800, color: '#e2e8f0', fontFamily: 'Share Tech Mono,monospace' }}>{fmt(val as number)}</div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {/* Breakdown footnote */}
+                    <div style={{ display: 'flex', gap: 16, marginTop: 12, fontSize: 10, color: '#475569', flexWrap: 'wrap' }}>
+                      <span>👤 Player inventories</span>
+                      <span>🏛️ Country funds: ${fmt(econ.countryTotals?.money ?? 0)}</span>
+                      <span>⚔️ Army vaults: ${fmt(econ.armyTotals?.money ?? 0)}</span>
+                    </div>
+                  </div>
+
+                  {/* ── Per-Player KPIs ── */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div style={S.card}>
+                      <div style={{ ...S.sectionTitle, marginBottom: 14 }}><Users size={13} color="#3b82f6"/> PER-PLAYER WEALTH</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        {[
+                          { label: 'Avg Money', value: `$${fmt(econ.perPlayer.avgMoney)}`, color: '#22c55e' },
+                          { label: 'Median Money', value: `$${fmt(econ.perPlayer.medianMoney)}`, color: '#3b82f6' },
+                          { label: 'Gini Coefficient', value: econ.perPlayer.giniCoefficient.toFixed(4), color: econ.perPlayer.giniCoefficient > 0.6 ? '#ef4444' : econ.perPlayer.giniCoefficient > 0.4 ? '#f59e0b' : '#22c55e' },
+                          { label: 'Rich/Poor Ratio', value: `${econ.perPlayer.richPoorRatio}x`, color: econ.perPlayer.richPoorRatio > 100 ? '#ef4444' : '#f59e0b' },
+                        ].map(s => (
+                          <div key={s.label} style={{ background: `${s.color}0a`, border: `1px solid ${s.color}20`, borderRadius: 8, padding: '10px 14px' }}>
+                            <div style={{ fontSize: 9, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 3 }}>{s.label}</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: s.color, fontFamily: 'Share Tech Mono,monospace' }}>{s.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Gini explanation */}
+                      <div style={{ marginTop: 10, fontSize: 10, color: '#475569', lineHeight: 1.6 }}>
+                        Gini: 0 = perfect equality, 1 = maximum inequality. 
+                        {econ.perPlayer.giniCoefficient > 0.6 && <span style={{ color: '#ef4444' }}> ⚠️ High inequality!</span>}
+                        {econ.perPlayer.giniCoefficient <= 0.4 && <span style={{ color: '#22c55e' }}> ✓ Healthy distribution</span>}
+                      </div>
+                    </div>
+
+                    {/* Top 10 Richest */}
+                    <div style={S.card}>
+                      <div style={{ ...S.sectionTitle, marginBottom: 10 }}><Medal size={13} color="#f59e0b"/> TOP 10 RICHEST</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                        {econ.perPlayer.top10?.map((p: any, i: number) => (
+                          <div key={p.id} className="hrow" style={{ display: 'grid', gridTemplateColumns: '24px 1fr 60px 80px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: i < 3 ? '#f59e0b' : '#475569', textAlign: 'center' }}>{i + 1}</span>
+                            <span style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                            <span style={{ fontSize: 10, color: '#64748b', textAlign: 'right' }}>Lv.{p.level}</span>
+                            <span style={{ fontSize: 11, color: '#22c55e', fontFamily: 'monospace', fontWeight: 700, textAlign: 'right' }}>${fmt(p.money)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Economy Health + Flows ── */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                    {/* Health metrics */}
+                    <div style={S.card}>
+                      <div style={{ ...S.sectionTitle, marginBottom: 12 }}><Activity size={13} color="#22d38a"/> ECONOMY HEALTH</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {[
+                          { label: 'Market Velocity', value: `${econ.health.marketVelocity} trades/player`, color: '#3b82f6' },
+                          { label: 'Open Market Orders', value: `${econ.health.openMarketOrders} ($${fmt(econ.health.openOrdersValue)})`, color: '#f59e0b' },
+                          { label: 'Active Companies', value: econ.health.activeCompanies, color: '#22d38a' },
+                          { label: 'Total Items', value: fmt(econ.health.totalItems), color: '#8b5cf6' },
+                          { label: 'Avg Player Level', value: econ.health.avgPlayerLevel.toFixed(1), color: '#60a5fa' },
+                        ].map(s => (
+                          <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>{s.label}</span>
+                            <span style={{ fontSize: 12, color: s.color, fontFamily: 'monospace', fontWeight: 700 }}>{s.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Casino flow */}
+                    <div style={S.card}>
+                      <div style={{ ...S.sectionTitle, marginBottom: 12 }}><Dices size={13} color="#f97316"/> CASINO FLOW ({econWindow}d)</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {[
+                          { label: 'Total Bets', value: `$${fmt(econ.flows.casino.totalBets)}`, color: '#f59e0b' },
+                          { label: 'Total Payouts', value: `$${fmt(econ.flows.casino.totalPayout)}`, color: '#22c55e' },
+                          { label: 'Net Flow', value: `${econ.flows.casino.netFlow >= 0 ? '+' : ''}$${fmt(econ.flows.casino.netFlow)}`, color: econ.flows.casino.netFlow <= 0 ? '#22c55e' : '#ef4444' },
+                          { label: 'Total Spins', value: econ.flows.casino.totalSpins, color: '#94a3b8' },
+                        ].map(s => (
+                          <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>{s.label}</span>
+                            <span style={{ fontSize: 13, color: s.color, fontFamily: 'monospace', fontWeight: 700 }}>{s.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 10, color: '#475569' }}>
+                        {econ.flows.casino.netFlow <= 0
+                          ? <span style={{ color: '#22c55e' }}>✓ Casino is a net sink (healthy)</span>
+                          : <span style={{ color: '#ef4444' }}>⚠️ Casino is a net faucet — players winning more than losing</span>}
+                      </div>
+                    </div>
+
+                    {/* Player activity */}
+                    <div style={S.card}>
+                      <div style={{ ...S.sectionTitle, marginBottom: 12 }}><Users size={13} color="#3b82f6"/> PLAYER ACTIVITY ({econWindow}d)</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {[
+                          { label: 'New Registrations', value: econ.flows.newPlayers, color: '#22d38a' },
+                          { label: 'Active Players', value: econ.flows.activePlayers, color: '#3b82f6' },
+                          { label: 'Total Players', value: econ.perPlayer.count, color: '#94a3b8' },
+                          { label: 'Retention Rate', value: econ.perPlayer.count > 0 ? `${((econ.flows.activePlayers / econ.perPlayer.count) * 100).toFixed(0)}%` : '—', color: econ.flows.activePlayers / econ.perPlayer.count > 0.5 ? '#22c55e' : '#f59e0b' },
+                        ].map(s => (
+                          <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>{s.label}</span>
+                            <span style={{ fontSize: 13, color: s.color, fontFamily: 'monospace', fontWeight: 700 }}>{s.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Items created */}
+                      {econ.flows.itemsCreated?.length > 0 && (
+                        <div style={{ marginTop: 14 }}>
+                          <div style={{ ...S.label, marginBottom: 6 }}>Items Produced ({econWindow}d)</div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {econ.flows.itemsCreated.map((i: any) => (
+                              <span key={i.tier} style={{ fontSize: 10, background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', padding: '3px 10px', borderRadius: 12, border: '1px solid rgba(139,92,246,0.2)', fontWeight: 700 }}>
+                                T{i.tier}: {i.count}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Trade Volume table ── */}
+                  {econ.flows.tradeVolume?.length > 0 && (
+                    <div style={S.card}>
+                      <div style={{ ...S.sectionTitle, marginBottom: 14 }}><TrendingUp size={13} color="#f59e0b"/> TRADE VOLUME ({econWindow}d)</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 0, marginBottom: 6 }}>
+                        {['Resource', 'Trades', 'Volume', 'Value ($)'].map(h => (
+                          <div key={h} style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, padding: '0 8px 6px' }}>{h}</div>
+                        ))}
+                      </div>
+                      {econ.flows.tradeVolume.map((tv: any) => {
+                        const meta = RES_META[tv.itemType]
+                        return (
+                          <div key={tv.itemType} className="hrow" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 0, padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <div style={{ padding: '0 8px', fontSize: 12, color: meta?.color ?? '#e2e8f0', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {meta && <meta.icon size={13}/>} {meta?.label ?? tv.itemType}
+                            </div>
+                            <div style={{ padding: '0 8px', fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>{tv.tradeCount}</div>
+                            <div style={{ padding: '0 8px', fontSize: 12, color: '#cbd5e1', fontFamily: 'monospace' }}>{fmt(tv.totalAmount)}</div>
+                            <div style={{ padding: '0 8px', fontSize: 12, color: '#22c55e', fontFamily: 'monospace', fontWeight: 700 }}>${fmt(tv.totalValue)}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* ═══ WEALTH DISTRIBUTION ═══ */}
+                  {wealthDist && (() => {
+                    const wd = wealthDist
+                    const ls = wd.levelStats as any[]
+                    const cs = wd.countryStats as any[]
+                    const anomalies = wd.anomalies as any[]
+                    const ac = wd.anomalyCounts
+
+                    // Chart dimensions
+                    const chartW = 1260, chartH = 320, padL = 70, padR = 20, padT = 30, padB = 50
+                    const plotW = chartW - padL - padR
+                    const plotH = chartH - padT - padB
+
+                    const maxVal = Math.max(...ls.map((l: any) => l.sigma3), ...ls.map((l: any) => l.max), 1)
+                    const barW = ls.length > 0 ? Math.max(8, Math.min(48, Math.floor(plotW / ls.length) - 4)) : 20
+                    const toY = (v: number) => padT + plotH - (v / maxVal) * plotH
+                    const toX = (i: number) => padL + (i / Math.max(ls.length - 1, 1)) * (plotW - barW) + barW / 2
+
+                    // Y-axis gridlines
+                    const yTicks: number[] = []
+                    const step = Math.pow(10, Math.floor(Math.log10(maxVal / 4 || 1)))
+                    for (let v = 0; v <= maxVal; v += step) yTicks.push(v)
+
+                    return (
+                      <>
+                        {/* Overall Stats */}
+                        <div style={S.card}>
+                          <div style={{ ...S.sectionTitle, marginBottom: 14, justifyContent: 'space-between' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><BarChart3 size={13} color="#8b5cf6"/> WEALTH DISTRIBUTION</span>
+                            <button onClick={loadWealthDist} disabled={wdLoading} style={btn('#64748b', wdLoading)}>
+                              <RefreshCw size={12}/> {wdLoading ? 'Loading…' : 'Refresh'}
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+                            {[
+                              { label: 'Total Players', value: wd.overall.count, color: '#3b82f6' },
+                              { label: 'Min', value: `$${fmt(wd.overall.min)}`, color: '#64748b' },
+                              { label: 'Max', value: `$${fmt(wd.overall.max)}`, color: '#ef4444' },
+                              { label: 'Average', value: `$${fmt(wd.overall.avg)}`, color: '#22c55e' },
+                              { label: 'Median', value: `$${fmt(wd.overall.median)}`, color: '#3b82f6' },
+                              { label: 'Std Dev', value: `$${fmt(wd.overall.stddev)}`, color: '#f59e0b' },
+                              { label: 'σ+1', value: `$${fmt(wd.overall.sigma1)}`, color: '#f59e0b' },
+                              { label: 'σ+2', value: `$${fmt(wd.overall.sigma2)}`, color: '#f97316' },
+                              { label: 'σ+3', value: `$${fmt(wd.overall.sigma3)}`, color: '#ef4444' },
+                            ].map(s => (
+                              <div key={s.label} style={{ background: `${s.color}0a`, border: `1px solid ${s.color}20`, borderRadius: 8, padding: '8px 14px', minWidth: 100, flex: 1 }}>
+                                <div style={{ fontSize: 9, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 2 }}>{s.label}</div>
+                                <div style={{ fontSize: 16, fontWeight: 800, color: s.color, fontFamily: 'Share Tech Mono,monospace' }}>{s.value}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Interactive SVG Chart */}
+                          <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: '8px 0', overflow: 'hidden', position: 'relative' }}>
+                            <svg width={chartW} height={chartH} style={{ display: 'block', width: '100%', height: 'auto' }} viewBox={`0 0 ${chartW} ${chartH}`}>
+                              {/* Y-axis gridlines */}
+                              {yTicks.map(v => (
+                                <g key={v}>
+                                  <line x1={padL} y1={toY(v)} x2={chartW - padR} y2={toY(v)} stroke="rgba(255,255,255,0.06)" strokeDasharray="4,4"/>
+                                  <text x={padL - 8} y={toY(v) + 3} textAnchor="end" fill="#475569" fontSize={9} fontFamily="monospace">{fmt(v)}</text>
+                                </g>
+                              ))}
+
+                              {/* σ bands */}
+                              {ls.length > 1 && (
+                                <>
+                                  {/* σ1 band */}
+                                  <path d={`M ${toX(0)} ${toY(ls[0]?.sigma1 ?? 0)} ${ls.map((l: any, i: number) => `L ${toX(i)} ${toY(l.sigma1)}`).join(' ')}`} fill="none" stroke="#f59e0b" strokeWidth={1} strokeDasharray="6,3" opacity={0.6}/>
+                                  {/* σ2 band */}
+                                  <path d={`M ${toX(0)} ${toY(ls[0]?.sigma2 ?? 0)} ${ls.map((l: any, i: number) => `L ${toX(i)} ${toY(l.sigma2)}`).join(' ')}`} fill="none" stroke="#f97316" strokeWidth={1} strokeDasharray="4,4" opacity={0.5}/>
+                                  {/* σ3 band */}
+                                  <path d={`M ${toX(0)} ${toY(ls[0]?.sigma3 ?? 0)} ${ls.map((l: any, i: number) => `L ${toX(i)} ${toY(l.sigma3)}`).join(' ')}`} fill="none" stroke="#ef4444" strokeWidth={1.5} strokeDasharray="3,3" opacity={0.5}/>
+                                  {/* Labels */}
+                                  <text x={chartW - padR + 4} y={toY(ls[ls.length - 1]?.sigma1 ?? 0)} fill="#f59e0b" fontSize={8} fontFamily="monospace" dominantBaseline="middle">σ+1</text>
+                                  <text x={chartW - padR + 4} y={toY(ls[ls.length - 1]?.sigma2 ?? 0)} fill="#f97316" fontSize={8} fontFamily="monospace" dominantBaseline="middle">σ+2</text>
+                                  <text x={chartW - padR + 4} y={toY(ls[ls.length - 1]?.sigma3 ?? 0)} fill="#ef4444" fontSize={8} fontFamily="monospace" dominantBaseline="middle">σ+3</text>
+                                </>
+                              )}
+
+                              {/* Bars (avg per level) */}
+                              {ls.map((l: any, i: number) => {
+                                const x = toX(i) - barW / 2
+                                const barH = (l.avg / maxVal) * plotH
+                                const isHovered = wdHover === i
+                                return (
+                                  <g key={l.level}
+                                    onMouseEnter={() => setWdHover(i)}
+                                    onMouseLeave={() => setWdHover(null)}
+                                    style={{ cursor: 'pointer' }}>
+                                    {/* Bar */}
+                                    <rect x={x} y={toY(l.avg)} width={barW} height={barH}
+                                      fill={isHovered ? '#8b5cf6' : '#6366f1'} rx={3} opacity={isHovered ? 1 : 0.7}/>
+                                    {/* Min-Max whisker */}
+                                    <line x1={toX(i)} y1={toY(l.min)} x2={toX(i)} y2={toY(l.max)}
+                                      stroke={isHovered ? '#e2e8f0' : '#64748b'} strokeWidth={1}/>
+                                    <line x1={toX(i) - 4} y1={toY(l.max)} x2={toX(i) + 4} y2={toY(l.max)}
+                                      stroke={isHovered ? '#ef4444' : '#64748b'} strokeWidth={1.5}/>
+                                    <line x1={toX(i) - 4} y1={toY(l.min)} x2={toX(i) + 4} y2={toY(l.min)}
+                                      stroke={isHovered ? '#22c55e' : '#64748b'} strokeWidth={1.5}/>
+                                    {/* X label */}
+                                    <text x={toX(i)} y={chartH - padB + 16} textAnchor="middle"
+                                      fill={isHovered ? '#e2e8f0' : '#64748b'} fontSize={10} fontFamily="monospace" fontWeight={isHovered ? 700 : 400}>
+                                      Lv{l.level}
+                                    </text>
+                                    {/* Hover tooltip */}
+                                    {isHovered && (
+                                      <g>
+                                        <rect x={toX(i) - 70} y={toY(l.max) - 74} width={140} height={68}
+                                          fill="rgba(15,23,42,0.95)" stroke="rgba(139,92,246,0.4)" rx={6}/>
+                                        <text x={toX(i)} y={toY(l.max) - 56} textAnchor="middle" fill="#8b5cf6" fontSize={10} fontWeight={700} fontFamily="monospace">
+                                          Level {l.level} ({l.count} players)
+                                        </text>
+                                        <text x={toX(i)} y={toY(l.max) - 42} textAnchor="middle" fill="#22c55e" fontSize={9} fontFamily="monospace">Avg: ${fmt(l.avg)} | Med: ${fmt(l.median)}</text>
+                                        <text x={toX(i)} y={toY(l.max) - 28} textAnchor="middle" fill="#94a3b8" fontSize={9} fontFamily="monospace">Min: ${fmt(l.min)} | Max: ${fmt(l.max)}</text>
+                                        <text x={toX(i)} y={toY(l.max) - 14} textAnchor="middle" fill="#f59e0b" fontSize={9} fontFamily="monospace">σ: ${fmt(l.stddev)} | σ+3: ${fmt(l.sigma3)}</text>
+                                      </g>
+                                    )}
+                                  </g>
+                                )
+                              })}
+
+                              {/* Avg line */}
+                              {ls.length > 1 && (
+                                <path d={`M ${toX(0)} ${toY(ls[0]?.avg ?? 0)} ${ls.map((l: any, i: number) => `L ${toX(i)} ${toY(l.avg)}`).join(' ')}`}
+                                  fill="none" stroke="#8b5cf6" strokeWidth={2} opacity={0.8}/>
+                              )}
+                            </svg>
+                            {/* Legend */}
+                            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', padding: '8px 0 4px', fontSize: 10 }}>
+                              {[
+                                { color: '#6366f1', label: 'Avg Wealth (bar)' },
+                                { color: '#8b5cf6', label: 'Avg Line' },
+                                { color: '#64748b', label: 'Min–Max Whisker' },
+                                { color: '#f59e0b', label: 'σ+1 threshold' },
+                                { color: '#f97316', label: 'σ+2 threshold' },
+                                { color: '#ef4444', label: 'σ+3 threshold' },
+                              ].map(l => (
+                                <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748b' }}>
+                                  <span style={{ width: 12, height: 3, background: l.color, borderRadius: 2, display: 'inline-block' }}/> {l.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Per-Level Stats Table */}
+                        <div style={S.card}>
+                          <div style={{ ...S.sectionTitle, marginBottom: 12 }}><Database size={13} color="#6366f1"/> PER-LEVEL BREAKDOWN</div>
+                          <div style={{ overflowX: 'auto' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '50px 50px 80px 80px 80px 80px 80px 90px 90px 90px', gap: 0, minWidth: 800 }}>
+                              {['Level', '#', 'Min', 'Max', 'Avg', 'Median', 'StdDev', 'σ+1', 'σ+2', 'σ+3'].map(h => (
+                                <div key={h} style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const, padding: '4px 6px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>{h}</div>
+                              ))}
+                              {ls.map((l: any) => (
+                                <>
+                                  <div key={`${l.level}-lv`} style={{ padding: '5px 6px', fontSize: 12, color: '#8b5cf6', fontWeight: 700, fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{l.level}</div>
+                                  <div key={`${l.level}-n`} style={{ padding: '5px 6px', fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{l.count}</div>
+                                  <div key={`${l.level}-min`} style={{ padding: '5px 6px', fontSize: 11, color: '#64748b', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(l.min)}</div>
+                                  <div key={`${l.level}-max`} style={{ padding: '5px 6px', fontSize: 11, color: '#ef4444', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(l.max)}</div>
+                                  <div key={`${l.level}-avg`} style={{ padding: '5px 6px', fontSize: 11, color: '#22c55e', fontFamily: 'monospace', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(l.avg)}</div>
+                                  <div key={`${l.level}-med`} style={{ padding: '5px 6px', fontSize: 11, color: '#3b82f6', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(l.median)}</div>
+                                  <div key={`${l.level}-sd`} style={{ padding: '5px 6px', fontSize: 11, color: '#f59e0b', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(l.stddev)}</div>
+                                  <div key={`${l.level}-s1`} style={{ padding: '5px 6px', fontSize: 11, color: '#f59e0b', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(l.sigma1)}</div>
+                                  <div key={`${l.level}-s2`} style={{ padding: '5px 6px', fontSize: 11, color: '#f97316', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(l.sigma2)}</div>
+                                  <div key={`${l.level}-s3`} style={{ padding: '5px 6px', fontSize: 11, color: '#ef4444', fontFamily: 'monospace', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(l.sigma3)}</div>
+                                </>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Per-Country Stats */}
+                        <div style={S.card}>
+                          <div style={{ ...S.sectionTitle, marginBottom: 12 }}><Globe size={13} color="#3b82f6"/> PER-COUNTRY WEALTH</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '60px 50px 80px 80px 80px 80px 80px', gap: 0 }}>
+                            {['Country', '#', 'Min', 'Max', 'Avg', 'Median', 'StdDev'].map(h => (
+                              <div key={h} style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const, padding: '4px 6px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>{h}</div>
+                            ))}
+                            {cs.map((c: any) => (
+                              <>
+                                <div key={`${c.countryCode}-cc`} style={{ padding: '5px 6px', fontSize: 12, color: '#60a5fa', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{c.countryCode}</div>
+                                <div key={`${c.countryCode}-n`} style={{ padding: '5px 6px', fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{c.count}</div>
+                                <div key={`${c.countryCode}-min`} style={{ padding: '5px 6px', fontSize: 11, color: '#64748b', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(c.min)}</div>
+                                <div key={`${c.countryCode}-max`} style={{ padding: '5px 6px', fontSize: 11, color: '#ef4444', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(c.max)}</div>
+                                <div key={`${c.countryCode}-avg`} style={{ padding: '5px 6px', fontSize: 11, color: '#22c55e', fontFamily: 'monospace', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(c.avg)}</div>
+                                <div key={`${c.countryCode}-med`} style={{ padding: '5px 6px', fontSize: 11, color: '#3b82f6', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(c.median)}</div>
+                                <div key={`${c.countryCode}-sd`} style={{ padding: '5px 6px', fontSize: 11, color: '#f59e0b', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(c.stddev)}</div>
+                              </>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 🚨 Anomaly Detection */}
+                        <div style={{ ...S.card, border: anomalies.length > 0 ? '1px solid rgba(239,68,68,0.25)' : undefined }}>
+                          <div style={{ ...S.sectionTitle, marginBottom: 14, justifyContent: 'space-between' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <AlertTriangle size={13} color={anomalies.length > 0 ? '#ef4444' : '#22c55e'}/>
+                              ANOMALY DETECTION (σ OUTLIERS)
+                            </span>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {ac.extreme > 0 && <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '2px 10px', borderRadius: 12, fontWeight: 700 }}>🔴 {ac.extreme} EXTREME</span>}
+                              {ac.critical > 0 && <span style={{ fontSize: 10, background: 'rgba(249,115,22,0.15)', color: '#f97316', padding: '2px 10px', borderRadius: 12, fontWeight: 700 }}>🟠 {ac.critical} CRITICAL</span>}
+                              {ac.warning > 0 && <span style={{ fontSize: 10, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', padding: '2px 10px', borderRadius: 12, fontWeight: 700 }}>🟡 {ac.warning} WARNING</span>}
+                              {anomalies.length === 0 && <span style={{ fontSize: 10, background: 'rgba(34,211,138,0.12)', color: '#22c55e', padding: '2px 10px', borderRadius: 12, fontWeight: 700 }}>✓ No anomalies</span>}
+                            </div>
+                          </div>
+
+                          {anomalies.length > 0 ? (
+                            <>
+                              <p style={{ fontSize: 11, color: '#64748b', marginBottom: 14, lineHeight: 1.6 }}>
+                                Players flagged whose money exceeds the standard deviation threshold for their level.
+                                <b style={{ color: '#f59e0b' }}> σ+1</b> = warning,
+                                <b style={{ color: '#f97316' }}> σ+2</b> = critical (possible exploit),
+                                <b style={{ color: '#ef4444' }}> σ+3</b> = extreme (likely hack/dupe).
+                              </p>
+                              <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 50px 90px 90px 80px 80px', gap: 0 }}>
+                                {['Severity', 'Player', 'Level', 'Money', 'Lvl Avg', 'Lvl σ', 'σ Over'].map(h => (
+                                  <div key={h} style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const, padding: '4px 6px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>{h}</div>
+                                ))}
+                                {anomalies.map((a: any, i: number) => {
+                                  const severityColors = { warning: '#f59e0b', critical: '#f97316', extreme: '#ef4444' }
+                                  const sc = severityColors[a.severity as keyof typeof severityColors] || '#f59e0b'
+                                  return (
+                                    <>
+                                      <div key={`${a.playerId}-sev-${i}`} style={{ padding: '5px 6px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                        <span style={{ fontSize: 9, background: `${sc}18`, color: sc, padding: '2px 8px', borderRadius: 10, fontWeight: 700, border: `1px solid ${sc}30`, textTransform: 'uppercase' as const }}>
+                                          {a.severity === 'extreme' ? '🔴' : a.severity === 'critical' ? '🟠' : '🟡'} {a.severity}
+                                        </span>
+                                      </div>
+                                      <div key={`${a.playerId}-name-${i}`} style={{ padding: '5px 6px', fontSize: 12, color: '#e2e8f0', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.04)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {a.playerName}
+                                        <span style={{ fontSize: 10, color: '#475569', marginLeft: 6 }}>{a.countryCode}</span>
+                                      </div>
+                                      <div key={`${a.playerId}-lv-${i}`} style={{ padding: '5px 6px', fontSize: 11, color: '#8b5cf6', fontFamily: 'monospace', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{a.level}</div>
+                                      <div key={`${a.playerId}-money-${i}`} style={{ padding: '5px 6px', fontSize: 12, color: sc, fontFamily: 'monospace', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(a.money)}</div>
+                                      <div key={`${a.playerId}-avg-${i}`} style={{ padding: '5px 6px', fontSize: 11, color: '#22c55e', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(a.levelAvg)}</div>
+                                      <div key={`${a.playerId}-sd-${i}`} style={{ padding: '5px 6px', fontSize: 11, color: '#f59e0b', fontFamily: 'monospace', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>${fmt(a.levelStddev)}</div>
+                                      <div key={`${a.playerId}-sig-${i}`} style={{ padding: '5px 6px', fontSize: 11, color: sc, fontFamily: 'monospace', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>&gt; σ+{a.sigmaExceeded}</div>
+                                    </>
+                                  )
+                                })}
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ textAlign: 'center', padding: 30, color: '#22c55e', fontSize: 12 }}>
+                              <CheckCircle size={24} style={{ marginBottom: 8, opacity: 0.6 }}/>
+                              <div>All players within expected wealth distribution for their level. No suspicious outliers detected.</div>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )
+                  })()}
+                </>
+              )}
+            </div>
+          )
+        })()}
+
         {/* ── MAP PIPELINE ── */}
         {tab==='map' && (
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>

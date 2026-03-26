@@ -5,8 +5,9 @@ import type { Country } from '../../stores/worldStore'
 import { useWorldStore } from '../../stores/worldStore'
 import type { Region } from '../../stores/regionStore'
 import { useRegionStore } from '../../stores/regionStore'
-import { ARCHETYPE_META } from '../../data/leyLineRegistry'
-import type { LeyLineDef } from '../../data/leyLineRegistry'
+import { useUIStore } from '../../stores/uiStore'
+import { ARCHETYPE_META } from '../../data/leyLineRegistry'
+import type { LeyLineDef } from '../../data/leyLineRegistry'
 import { useLeyLineStore } from '../../stores/leyLineStore'
 import { useTradeRouteStore } from '../../stores/tradeRouteStore'
 import { useAllianceStore } from '../../stores/allianceStore'
@@ -1518,6 +1519,124 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             requestAnimationFrame(animateDashes)
           })
 
+          // ── REACH VISUALIZATION SOURCES + LAYERS ──
+          // Created here inside the GeoJSON .then() to ensure map style is loaded
+          const emptyFC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+          try {
+            m.addSource('xwar-reach-arcs', { type: 'geojson', data: emptyFC })
+            m.addSource('xwar-reach-dots', { type: 'geojson', data: emptyFC })
+            m.addSource('xwar-reach-source', { type: 'geojson', data: emptyFC })
+
+            // Arc glow
+            m.addLayer({
+              id: 'xwar-reach-arc-glow',
+              type: 'line',
+              source: 'xwar-reach-arcs',
+              paint: {
+                'line-color': ['get', 'color'] as any,
+                'line-width': 8,
+                'line-opacity': 0.12,
+                'line-blur': 6,
+              },
+            })
+            // Arc core
+            m.addLayer({
+              id: 'xwar-reach-arc-core',
+              type: 'line',
+              source: 'xwar-reach-arcs',
+              paint: {
+                'line-color': ['get', 'color'] as any,
+                'line-width': 2,
+                'line-opacity': 0.6,
+                'line-dasharray': [4, 3],
+              },
+            })
+            // Arc spine (thin bright center)
+            m.addLayer({
+              id: 'xwar-reach-arc-spine',
+              type: 'line',
+              source: 'xwar-reach-arcs',
+              paint: {
+                'line-color': '#ffffff',
+                'line-width': 0.6,
+                'line-opacity': 0.35,
+              },
+            })
+
+            // Target dots — outer glow
+            m.addLayer({
+              id: 'xwar-reach-dot-glow',
+              type: 'circle',
+              source: 'xwar-reach-dots',
+              paint: {
+                'circle-radius': 14,
+                'circle-color': ['get', 'color'] as any,
+                'circle-opacity': 0.15,
+                'circle-blur': 1,
+              },
+            })
+            // Target dots — core
+            m.addLayer({
+              id: 'xwar-reach-dot-core',
+              type: 'circle',
+              source: 'xwar-reach-dots',
+              paint: {
+                'circle-radius': 6,
+                'circle-color': ['get', 'color'] as any,
+                'circle-opacity': 0.85,
+                'circle-stroke-color': '#000',
+                'circle-stroke-width': 1.5,
+              },
+            })
+            // Target label
+            m.addLayer({
+              id: 'xwar-reach-dot-label',
+              type: 'symbol',
+              source: 'xwar-reach-dots',
+              minzoom: 3,
+              layout: {
+                'text-field': ['get', 'name'],
+                'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                'text-size': 9,
+                'text-offset': [0, 1.6],
+                'text-allow-overlap': false,
+              },
+              paint: {
+                'text-color': ['get', 'color'] as any,
+                'text-halo-color': 'rgba(0,0,0,0.9)',
+                'text-halo-width': 1.5,
+              },
+            })
+
+            // Source pulse — outer ring
+            m.addLayer({
+              id: 'xwar-reach-source-ring',
+              type: 'circle',
+              source: 'xwar-reach-source',
+              paint: {
+                'circle-radius': 18,
+                'circle-color': '#22d38a',
+                'circle-opacity': 0.18,
+                'circle-blur': 0.8,
+              },
+            })
+            // Source center dot
+            m.addLayer({
+              id: 'xwar-reach-source-dot',
+              type: 'circle',
+              source: 'xwar-reach-source',
+              paint: {
+                'circle-radius': 7,
+                'circle-color': '#22d38a',
+                'circle-opacity': 0.95,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-width': 2,
+              },
+            })
+          } catch (err) {
+            console.warn('[GameMap] reach layer init:', err)
+          }
+
           setMapLoaded(true)
         })
         .catch(() => { setMapLoaded(true) })
@@ -1609,6 +1728,138 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
       srcDebris.setData({ type: 'FeatureCollection', features: featuresDebris })
     })
 
+    // ── REACH VISUALIZATION: highlight reachable regions from selected region ──
+
+    function buildReachArcGeoJSON(
+      fromPos: [number, number],
+      targets: { id: string; pos: [number, number]; type: 'adjacent' | 'airport' | 'port' }[]
+    ): GeoJSON.FeatureCollection {
+      const TYPE_COLORS: Record<string, string> = {
+        adjacent: '#f59e0b',  // amber
+        airport: '#a855f7',   // purple
+        port: '#06b6d4',      // cyan
+      }
+      const features: GeoJSON.Feature[] = targets.map(t => {
+        const [x1, y1] = fromPos
+        let [x2, y2] = t.pos
+        if (Math.abs(x2 - x1) > 180) { x2 = x2 < x1 ? x2 + 360 : x2 - 360 }
+        const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        const bowFactor = Math.min(dist * 0.18, 12)
+        const midX = (x1 + x2) / 2
+        const midY = (y1 + y2) / 2 + bowFactor
+        const pts: number[][] = []
+        const steps = 20
+        for (let i = 0; i <= steps; i++) {
+          const s = i / steps
+          const u = 1 - s
+          let px = u * u * x1 + 2 * u * s * midX + s * s * x2
+          let py = u * u * y1 + 2 * u * s * midY + s * s * y2
+          if (px > 180) px -= 360
+          else if (px < -180) px += 360
+          pts.push([px, py])
+        }
+        return {
+          type: 'Feature',
+          properties: { reachType: t.type, color: TYPE_COLORS[t.type] },
+          geometry: { type: 'LineString', coordinates: pts },
+        }
+      })
+      return { type: 'FeatureCollection', features }
+    }
+
+    function buildReachDotsGeoJSON(
+      targets: { id: string; pos: [number, number]; type: 'adjacent' | 'airport' | 'port'; name: string }[]
+    ): GeoJSON.FeatureCollection {
+      const TYPE_COLORS: Record<string, string> = {
+        adjacent: '#f59e0b',
+        airport: '#a855f7',
+        port: '#06b6d4',
+      }
+      return {
+        type: 'FeatureCollection',
+        features: targets.map(t => ({
+          type: 'Feature',
+          properties: { reachType: t.type, color: TYPE_COLORS[t.type], name: t.name },
+          geometry: { type: 'Point', coordinates: t.pos },
+        })),
+      }
+    }
+
+    function buildSourceDotGeoJSON(pos: [number, number]): GeoJSON.FeatureCollection {
+      return {
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Point', coordinates: pos },
+        }],
+      }
+    }
+
+    function updateReachLayers(selectedRegionId: string | null) {
+      if (!m) return
+      const emptyFC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+      // Sources may not exist yet if GeoJSON hasn't loaded — check first
+      const arcSrc = m.getSource('xwar-reach-arcs') as maplibregl.GeoJSONSource | undefined
+      const dotSrc = m.getSource('xwar-reach-dots') as maplibregl.GeoJSONSource | undefined
+      const srcSrc = m.getSource('xwar-reach-source') as maplibregl.GeoJSONSource | undefined
+      if (!arcSrc || !dotSrc || !srcSrc) return  // Layers not booted yet
+
+      // Clear if no selection
+      if (!selectedRegionId) {
+        arcSrc.setData(emptyFC)
+        dotSrc.setData(emptyFC)
+        srcSrc.setData(emptyFC)
+        return
+      }
+
+      const { regions, getReachableFromRegion } = useRegionStore.getState()
+      const from = regions.find(r => r.id === selectedRegionId)
+      if (!from || from.isOcean) {
+        arcSrc.setData(emptyFC)
+        dotSrc.setData(emptyFC)
+        srcSrc.setData(emptyFC)
+        return
+      }
+
+      const reach = getReachableFromRegion(selectedRegionId)
+
+      // Build target list
+      const targets: { id: string; pos: [number, number]; type: 'adjacent' | 'airport' | 'port'; name: string }[] = []
+      const seen = new Set<string>()
+
+      reach.adjacent.forEach(id => {
+        if (seen.has(id)) return; seen.add(id)
+        const r = regions.find(rr => rr.id === id)
+        if (r) targets.push({ id, pos: r.position, type: 'adjacent', name: r.name })
+      })
+      reach.airport.forEach(id => {
+        if (seen.has(id)) return; seen.add(id)
+        const r = regions.find(rr => rr.id === id)
+        if (r) targets.push({ id, pos: r.position, type: 'airport', name: r.name })
+      })
+      reach.port.forEach(id => {
+        if (seen.has(id)) return; seen.add(id)
+        const r = regions.find(rr => rr.id === id)
+        if (r) targets.push({ id, pos: r.position, type: 'port', name: r.name })
+      })
+
+      // Update sources with computed reach data
+      arcSrc.setData(buildReachArcGeoJSON(from.position, targets))
+      dotSrc.setData(buildReachDotsGeoJSON(targets))
+      srcSrc.setData(buildSourceDotGeoJSON(from.position))
+    }
+
+    // Subscribe to selectedRegionId changes
+    let prevSelectedRegionId = useUIStore.getState().selectedRegionId
+    updateReachLayers(prevSelectedRegionId)
+    const unsubReach = useUIStore.subscribe((state) => {
+      if (state.selectedRegionId === prevSelectedRegionId) return
+      prevSelectedRegionId = state.selectedRegionId
+      updateReachLayers(state.selectedRegionId)
+    })
+
     // Force resize once after layout settles (single timeout is enough)
     const resizeObserver = new ResizeObserver(() => {
       map.current?.resize()
@@ -1620,6 +1871,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
     return () => {
       unsubDeposits()
       unsubDebris()
+      unsubReach()
       resizeObserver.disconnect()
       if (map.current) {
         map.current.remove()

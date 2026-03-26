@@ -28,6 +28,7 @@ import researchRoutes from './routes/research.routes.js'
 import tradeRouteRoutes from './routes/trade-routes.routes.js'
 import adminRoutes from './routes/admin.routes.js'
 import leyLineRoutes from './routes/leylines.router.js'
+import gameRoutes from './routes/game.routes.js'
 
 import { generalLimiter, authLimiter, casinoLimiter } from './middleware/rateLimit.js'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -92,6 +93,7 @@ if (runApi) {
   app.use('/api/trade-routes', tradeRouteRoutes)
   app.use('/api/admin', authLimiter, adminRoutes)
   app.use('/api/ley-lines', leyLineRoutes)
+  app.use('/api/game', gameRoutes)
 
   // ── Global error handler (must be AFTER routes) ──
   app.use(errorHandler)

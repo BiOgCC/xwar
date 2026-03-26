@@ -3,7 +3,6 @@ import { useWorldStore } from '../../stores/worldStore'
 import { getCountryName } from '../../stores/battleStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useRegionStore } from '../../stores/regionStore'
-import { useArmyStore } from '../../stores/army'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { useMarketStore, RESOURCE_BY_KEY } from '../../stores/marketStore'
@@ -13,9 +12,9 @@ import { ARCHETYPE_META } from '../../data/leyLineRegistry'
 import { OWNERSHIP_COLORS, type NodeOwnershipState } from '../../types/leyLine'
 import { useAllianceStore } from '../../stores/allianceStore'
 import { useWorldStore as _useWorldStore } from '../../stores/worldStore'
-import type { Division } from '../../stores/army/types'
 import CountryFlag from '../shared/CountryFlag'
-import { Anchor, Plane, Shield, Landmark, Home, Briefcase, Swords, Star, Power } from 'lucide-react'
+import { Anchor, Plane, Shield, Landmark, Home, Briefcase, Swords, Star, Power, Rocket } from 'lucide-react'
+import { isCoastalRegion } from '../../utils/geography'
 
 
 // Oil cost per infrastructure level [0, 1, 2, 3, 4, 5]
@@ -30,14 +29,11 @@ export default function RegionPanel() {
 
   const world = useWorldStore()
   const player = usePlayerStore()
-  const armyStore = useArmyStore()
   const govStore = useGovernmentStore()
   const market = useMarketStore()
   const battleStore = useBattleStore()
 
   const [activeTab, setActiveTab] = useState<RegionTab>('home')
-  const [showScavenge, setShowScavenge] = useState(false)
-  const [selectedDivs, setSelectedDivs] = useState<string[]>([])
   const [scavengeMsg, setScavengeMsg] = useState('')
   const [navalMsg, setNavalMsg] = useState<string | null>(null)
   const [revoltMsg, setRevoltMsg] = useState<string | null>(null)
@@ -55,14 +51,8 @@ export default function RegionPanel() {
   const controllerName = getCountryName(region.controlledBy)
 
   const hasDebris = region.debris.scrap > 0 || region.debris.materialX > 0 || region.debris.militaryBoxes > 0
-  const canScavenge = hasDebris && region.scavengeCount < 4
 
-  const scavengeableDivs = (Object.values(armyStore.divisions) as Division[]).filter(
-    (d) => d.ownerId === player.name && (d.type === 'recon' || d.type === 'jeep') && d.status === 'ready'
-  )
-
-  const activeMissions = scavengeMissions.filter(m => m.regionId === region.id)
-  const playerMission = activeMissions.find(m => m.playerId === player.name)
+  const playerMission = scavengeMissions.find(m => m.playerId === player.name)
   const activePatrol = getPlayerPatrol(region.id)
 
   const isOccupied = !region.isOcean && region.controlledBy !== region.countryCode
@@ -71,17 +61,9 @@ export default function RegionPanel() {
     govStore.canTriggerRevolt(region.countryCode, player.name) && !region.revoltBattleId
   const hasActiveRevolt = !!region.revoltBattleId
 
-  const handleToggleDiv = (divId: string) => {
-    setSelectedDivs(prev => prev.includes(divId) ? prev.filter(id => id !== divId) : [...prev, divId])
-  }
-
   const handleStartScavenge = () => {
-    const result = startScavenge(region.id, selectedDivs)
+    const result = startScavenge(region.id)
     setScavengeMsg(result.message)
-    if (result.success) {
-      setSelectedDivs([])
-      setShowScavenge(false)
-    }
   }
 
   const handleGoToCountry = () => {
@@ -213,6 +195,28 @@ export default function RegionPanel() {
           )
         })}
       </div>
+
+      {/* ─── Scavenge Action (always visible below tabs on land) ─── */}
+      {!region.isOcean && (
+        <div style={{ marginBottom: 10 }}>
+          {playerMission ? (
+            <div style={{ padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'rgba(34,211,138,0.08)', border: '1px solid rgba(34,211,138,0.25)', fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 600, color: 'var(--accent-primary)', textAlign: 'center', letterSpacing: '0.05em' }}>
+              🔧 SCAVENGING — RETURNS IN {Math.max(0, Math.ceil((playerMission.endsAt - Date.now()) / 60000))} MIN
+            </div>
+          ) : (
+            <button
+              className="hud-btn-outline"
+              style={{ width: '100%', justifyContent: 'center', color: player.stamina >= 10 ? 'var(--accent-warning)' : 'var(--text-muted)', borderColor: player.stamina >= 10 ? 'rgba(245,158,11,0.3)' : 'var(--border-secondary)', cursor: player.stamina >= 10 ? 'pointer' : 'not-allowed' }}
+              disabled={player.stamina < 10}
+              onClick={handleStartScavenge}
+            >
+              🔧 SEND SCAVENGERS &nbsp;
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: 8, opacity: 0.7 }}>⚡ 10 STA</span>
+            </button>
+          )}
+          {scavengeMsg && <div style={{ fontFamily: 'var(--font-display)', fontSize: 9, color: 'var(--accent-warning)', textAlign: 'center', marginTop: 6 }}>{scavengeMsg}</div>}
+        </div>
+      )}
 
       {/* ═══════════════ HOME TAB ═══════════════ */}
       {activeTab === 'home' && (
@@ -466,8 +470,9 @@ export default function RegionPanel() {
                 {([
                   { key: 'bunkerLevel' as const, label: 'Bunker', Icon: Shield, bonusText: 'Defense bonus', bonusPct: [0, 10, 15, 20, 25, 30], color: '#22d38a' },
                   { key: 'militaryBaseLevel' as const, label: 'Military base', Icon: Landmark, bonusText: 'Attack bonus', bonusPct: [0, 5, 10, 15, 20, 25], color: '#ef4444' },
-                  { key: 'portLevel' as const, label: 'Port', Icon: Anchor, bonusText: 'Naval damage', bonusPct: [0, 5, 8, 10, 14, 18], color: '#0ea5e9' },
+                  ...(isCoastalRegion(region.id) ? [{ key: 'portLevel' as const, label: 'Port', Icon: Anchor, bonusText: 'Naval damage', bonusPct: [0, 5, 8, 10, 14, 18], color: '#0ea5e9' }] : []),
                   { key: 'airportLevel' as const, label: 'Airport', Icon: Plane, bonusText: 'Air strike range', bonusPct: [0, 10, 15, 20, 25, 30], color: '#a855f7' },
+                  { key: 'missileLauncherLevel' as const, label: 'Missile Launcher', Icon: Rocket, bonusText: 'Burst damage', bonusPct: [0, 10, 20, 30, 40, 50], color: '#f97316' },
                 ] as const).map(inf => {
                   const level = region[inf.key]
                   const isEnabled = region.infraEnabled?.[inf.key] !== false
@@ -637,62 +642,7 @@ export default function RegionPanel() {
             )
           })()}
 
-          {/* ─── Debris / Scavenge ─── */}
-          {hasDebris && (
-            <div className="hud-card" style={{ borderColor: 'rgba(245,158,11,0.2)' }}>
-              <div className="hud-card__title" style={{ color: 'var(--accent-warning)' }}>⚙️ BATTLEFIELD DEBRIS ({4 - region.scavengeCount} WAVES LEFT)</div>
 
-              <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-                {region.debris.scrap > 0 && <span style={{ fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)' }}>⚙️ {region.debris.scrap.toLocaleString()}</span>}
-                {region.debris.materialX > 0 && <span style={{ fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700, color: '#ec4899' }}>⚛️ {region.debris.materialX.toLocaleString()}</span>}
-                {region.debris.militaryBoxes > 0 && <span style={{ fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700, color: 'var(--accent-warning)' }}>📦 x{region.debris.militaryBoxes}</span>}
-              </div>
-
-              {playerMission ? (
-                <div style={{ padding: '8px 10px', borderRadius: 'var(--radius-sm)', background: 'rgba(34,211,138,0.08)', border: '1px solid rgba(34,211,138,0.25)', fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 600, color: 'var(--accent-primary)', textAlign: 'center', letterSpacing: '0.05em' }}>
-                  🔧 SCAVENGING — RETURNS IN {Math.max(0, Math.ceil((playerMission.endsAt - Date.now()) / 60000))} MIN
-                </div>
-              ) : canScavenge && !showScavenge ? (
-                <button className="hud-btn-outline" style={{ width: '100%', justifyContent: 'center', color: 'var(--accent-warning)', borderColor: 'rgba(245,158,11,0.3)' }} onClick={() => setShowScavenge(true)}>
-                  🔧 SEND SCAVENGERS
-                </button>
-              ) : showScavenge ? (
-                <div style={{ background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ ...sectionTitleStyle, fontSize: 9, color: 'var(--accent-warning)', marginBottom: 8 }}>SELECT RECON / JEEP DIVISIONS</div>
-
-                  {scavengeableDivs.length === 0 ? (
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.05em', marginBottom: 10 }}>No ready divisions available.</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 130, overflowY: 'auto', marginBottom: 10 }}>
-                      {scavengeableDivs.map(d => (
-                        <label key={d.id} style={{
-                          display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 11,
-                          background: selectedDivs.includes(d.id) ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${selectedDivs.includes(d.id) ? 'rgba(245,158,11,0.4)' : 'transparent'}`,
-                        }}>
-                          <input type="checkbox" checked={selectedDivs.includes(d.id)} onChange={() => handleToggleDiv(d.id)} style={{ accentColor: '#f59e0b' }} />
-                          <span style={{ fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 700, color: d.type === 'recon' ? 'var(--accent-primary)' : 'var(--accent-secondary)', letterSpacing: '0.05em' }}>
-                            {d.type === 'recon' ? '🔍' : '🚗'} {d.name}
-                          </span>
-                          <span style={{ fontFamily: 'var(--font-display)', fontSize: 8, color: 'var(--text-muted)', marginLeft: 'auto' }}>⭐{d.starQuality}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="hud-btn-outline" style={{ flex: 1, justifyContent: 'center', color: selectedDivs.length > 0 ? 'var(--accent-warning)' : 'var(--text-muted)', borderColor: selectedDivs.length > 0 ? 'rgba(245,158,11,0.4)' : 'var(--border-secondary)' }} disabled={selectedDivs.length === 0} onClick={handleStartScavenge}>
-                      SEND ({selectedDivs.length})
-                    </button>
-                    <button className="hud-btn-outline" style={{ justifyContent: 'center', padding: '4px 14px' }} onClick={() => { setShowScavenge(false); setSelectedDivs([]) }}>
-                      CANCEL
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {scavengeMsg && <div style={{ fontFamily: 'var(--font-display)', fontSize: 9, color: 'var(--accent-warning)', textAlign: 'center', marginTop: 6 }}>{scavengeMsg}</div>}
-            </div>
-          )}
         </div>
       )}
 
