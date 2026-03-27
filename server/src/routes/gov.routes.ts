@@ -702,4 +702,112 @@ router.post('/set-citizen-dividend', requireAuth as any, validate(dividendSchema
   }
 })
 
+// ═══════════════════════════════════════════════
+//  POST /api/gov/appoint — Appoint VP / ministers (president only)
+// ═══════════════════════════════════════════════
+
+const appointSchema = z.object({
+  countryCode: z.string().min(2).max(4),
+  position: z.enum(['vicePresident', 'defenseMinister', 'ecoMinister']),
+  playerName: z.string().min(1).max(32).nullable(),
+})
+
+const POSITION_COL: Record<string, string> = {
+  vicePresident: 'vice_president',
+  defenseMinister: 'defense_minister',
+  ecoMinister: 'eco_minister',
+}
+
+router.post('/appoint', requireAuth as any, validate(appointSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { countryCode, position, playerName } = req.body
+
+    const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!gov || !player || gov.president !== player.name) {
+      res.status(403).json({ error: 'Only the president can appoint government positions.' }); return
+    }
+
+    // If playerName is provided, verify they are a citizen of this country
+    if (playerName) {
+      const [target] = await db.select().from(players)
+        .where(eq(players.name, playerName)).limit(1)
+      if (!target || target.countryCode !== countryCode) {
+        res.status(400).json({ error: `${playerName} is not a citizen of ${countryCode}.` }); return
+      }
+    }
+
+    const col = POSITION_COL[position]
+    await db.execute(sql`
+      UPDATE governments SET ${sql.raw(col)} = ${playerName} WHERE country_code = ${countryCode}
+    `)
+
+    const positionLabel: Record<string, string> = {
+      vicePresident: 'Vice President',
+      defenseMinister: 'Minister of Defense',
+      ecoMinister: 'Minister of Economy',
+    }
+
+    const msg = playerName
+      ? `${playerName} appointed as ${positionLabel[position]}.`
+      : `${positionLabel[position]} position cleared.`
+
+    res.json({ success: true, message: msg })
+  } catch (err) {
+    console.error('[GOV] Appoint error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
+//  POST /api/gov/appoint-congress — Add/remove congress members (president only)
+// ═══════════════════════════════════════════════
+
+const appointCongressSchema = z.object({
+  countryCode: z.string().min(2).max(4),
+  playerName: z.string().min(1).max(32),
+  action: z.enum(['add', 'remove']),
+})
+
+router.post('/appoint-congress', requireAuth as any, validate(appointCongressSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { countryCode, playerName, action } = req.body
+
+    const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!gov || !player || gov.president !== player.name) {
+      res.status(403).json({ error: 'Only the president can manage congress.' }); return
+    }
+
+    const congress = (gov.congress as string[]) || []
+
+    if (action === 'add') {
+      // Verify citizenship
+      const [target] = await db.select().from(players)
+        .where(eq(players.name, playerName)).limit(1)
+      if (!target || target.countryCode !== countryCode) {
+        res.status(400).json({ error: `${playerName} is not a citizen of ${countryCode}.` }); return
+      }
+      if (congress.includes(playerName)) {
+        res.status(400).json({ error: `${playerName} is already in congress.` }); return
+      }
+      if (congress.length >= 10) {
+        res.status(400).json({ error: 'Congress is full (max 10 members).' }); return
+      }
+      const newCongress = [...congress, playerName]
+      await db.update(governments).set({ congress: newCongress }).where(eq(governments.countryCode, countryCode))
+      res.json({ success: true, message: `${playerName} added to congress.`, congress: newCongress })
+    } else {
+      const newCongress = congress.filter((m: string) => m !== playerName)
+      await db.update(governments).set({ congress: newCongress }).where(eq(governments.countryCode, countryCode))
+      res.json({ success: true, message: `${playerName} removed from congress.`, congress: newCongress })
+    }
+  } catch (err) {
+    console.error('[GOV] Appoint congress error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 export default router

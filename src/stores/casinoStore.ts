@@ -118,7 +118,10 @@ export interface CasinoState {
   totalSpins: number
   totalWon: number
   totalLost: number
-  casinoPool: number            // Pool-based payouts: losers fund winners
+  casinoPool: number
+  // Server-resolved outcome (do NOT use for local money/item grants)
+  _serverPayout: number
+  _serverItem: EquipItem | null
   spinForBet: (betAmount: number) => void
   resolveResult: () => void
   resetCasino: () => void
@@ -141,42 +144,55 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
   totalWon: 0,
   totalLost: 0,
   casinoPool: 5_000_000,  // Seeded at $5M — losers fund winners
+  _serverPayout: 0,
+  _serverItem: null,
 
   spinForBet: (betAmount: number) => {
     const player = usePlayerStore.getState()
     if (player.money < betAmount || get().phase === 'spinning') return
 
-    // Player pays the bet
-    player.spendMoney(betAmount)
-
-    // 15% of bet goes to player's country treasury
-    const betTax = Math.floor(betAmount * 0.15)
-    useWorldStore.getState().addTreasuryTax(player.countryCode, betTax)
-
-    // Track casino spins
-    player.incrementCasinoSpins()
-
     const segments = getSegmentsForBet(betAmount)
-    const winIndex = weightedRandomIndex(segments)
     const segCount = segments.length
     const segAngle = 360 / segCount
-    const targetSegCenter = winIndex * segAngle + segAngle / 2
-    // CSS rotate() is clockwise: to put segment at top pointer, rotate by (360 - center)
-    const landAngle = 360 - targetSegCenter
+
+    // Start spinning immediately with a placeholder index (will be replaced when server responds)
     const fullSpins = (5 + Math.floor(Math.random() * 3)) * 360
-    const finalAngle = fullSpins + landAngle + spinCounter * 360 * 10
     spinCounter++
 
     set({
       phase: 'spinning',
       currentBet: betAmount,
-      targetAngle: finalAngle,
-      resultIndex: winIndex,
       activeSegments: segments,
+      _serverPayout: 0,
+      _serverItem: null,
     })
 
-    // Persist to backend (fire-and-forget)
-    import('../api/client').then(({ casinoWheelSpin }) => casinoWheelSpin(betAmount).catch(() => {}))
+    // Call backend — server deducts money, rolls RNG, inserts item to DB
+    import('../api/client').then(async ({ casinoWheelSpin }) => {
+      try {
+        const res: any = await casinoWheelSpin(betAmount)
+        // res = { index, segment, payout, resultType, itemTier, item? }
+        const idx: number = typeof res.index === 'number' ? res.index : 0
+        const targetSegCenter = idx * segAngle + segAngle / 2
+        const landAngle = 360 - targetSegCenter
+        const finalAngle = fullSpins + landAngle + spinCounter * 360 * 10
+
+        set({
+          targetAngle: finalAngle,
+          resultIndex: idx,
+          _serverPayout: res.payout ?? 0,
+          _serverItem: res.item ?? null,
+        })
+
+        // Deduct money from local state immediately (server already deducted)
+        player.spendMoney(betAmount)
+        player.incrementCasinoSpins()
+      } catch (err: any) {
+        // Spin failed (e.g. insufficient funds server-side) — cancel
+        console.error('[Casino] Wheel spin failed:', err.message)
+        set({ phase: 'idle' })
+      }
+    })
   },
 
   resolveResult: () => {
@@ -192,57 +208,33 @@ export const useCasinoStore = create<CasinoState>((set, get) => ({
 
     switch (segment.type) {
       case 'multiply': {
-        // Payout drawn from pool (not minted from thin air)
-        const rawPayout = Math.floor(s.currentBet * segment.multiplier)
-        const payout = Math.min(rawPayout, s.casinoPool)
+        // Apply server-validated payout (never trust client calculation)
+        const payout = s._serverPayout
         if (payout > 0) {
           player.earnMoney(payout)
-          // Deduct from pool
-          set(prev => ({ casinoPool: prev.casinoPool - payout }))
         }
-
         winText = 'YOU WON!'
         winAmount = `$${payout.toLocaleString()}`
         break
       }
       case 'item': {
-        // Item created from thin air
-        const tier = segment.itemTier || 't4'
-        const allSlots: EquipSlot[] = tier === 't6'
-          ? ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots', 'vehicle']
-          : ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots']
-        const slot = allSlots[Math.floor(Math.random() * allSlots.length)]
-        const category = slot === 'weapon' ? 'weapon' as const
-          : slot === 'vehicle' ? 'vehicle' as const
-          : 'armor' as const
-        const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][Math.floor(Math.random() * WEAPON_SUBTYPES[tier].length)] : undefined
-        const result = generateStats(category, slot, tier, subtype)
-
-        const newItem: EquipItem = {
-          id: `casino_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-          name: `🎰 ${result.name}`,
-          slot, category, tier,
-          equipped: false,
-          durability: 100,
-          stats: result.stats,
-          weaponSubtype: result.weaponSubtype,
-          location: 'inventory',
+        // Item was inserted in DB by the server; add to local inventory from server response
+        const item = s._serverItem
+        if (item) {
+          useInventoryStore.getState().addItem(item)
+          set({ lastWonItem: item })
+          winAmount = `${(item.tier || '').toUpperCase()} ${(item.slot || '').toUpperCase()}`
+        } else {
+          winAmount = segment.label
         }
-        useInventoryStore.getState().addItem(newItem)
         winText = 'JACKPOT!'
-        winAmount = `${tier.toUpperCase()} ${slot.toUpperCase()}`
-        // Store won item for popup display
-        set({ lastWonItem: newItem })
         break
       }
       case 'bankrupt': {
-        // Money already lost (deducted on bet) — 95% feeds the casino pool
-        const poolContribution = Math.floor(s.currentBet * 0.95)
-        set(prev => ({ casinoPool: prev.casinoPool + poolContribution }))
+        // Money already deducted server-side
         winText = 'BANKRUPT!'
         winAmount = `LOST $${s.currentBet.toLocaleString()}`
         winType = 'lose'
-        // Track casino loss
         player.addCasinoLoss(s.currentBet)
         break
       }

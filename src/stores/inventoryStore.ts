@@ -97,7 +97,7 @@ export interface InventoryState {
   fetchInventory: () => Promise<void>
   openLootBox: () => Promise<LootBoxResult | null>
   openMilitaryBox: () => Promise<LootBoxResult | null>
-  openSupplyBox: () => LootBoxResult | null
+  openSupplyBox: () => Promise<LootBoxResult | null>
   dismantleItem: (itemId: string) => Promise<{ success: boolean; scrapGained: number; message: string }>
   sellItem: (itemId: string) => Promise<{ success: boolean; moneyGained: number; message: string }>
   equipItem: (itemId: string) => Promise<{ success: boolean; message: string }>
@@ -347,74 +347,60 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     const playerStore = usePlayerStore.getState()
     if (playerStore.militaryBoxes <= 0) return null
 
-    usePlayerStore.getState().removeResource('militaryBoxes', 1, 'milbox_open')
-
-    let item: any = null
     try {
       const res: any = await api.post('/inventory/open-box', { boxType: 'military' })
-      if (res.success && res.item) {
-        item = res.item
-      }
-    } catch(e) {
-      console.warn('Military box API unavailable, using local generation')
+      if (!res.success || !res.item) return null
+
+      // Decrement box count (server already did, reflect locally)
+      usePlayerStore.getState().removeResource('militaryBoxes', 1, 'milbox_open')
+
+      set(s => ({ items: [...s.items, res.item], totalCasesOpened: s.totalCasesOpened + 1 }))
+      const inv = get()
+      const ps = usePlayerStore.getState()
+      useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
+        totalDamageDone: ps.damageDone, totalMoney: ps.money,
+        totalItemsProduced: ps.itemsProduced, playerLevel: ps.level,
+        totalCasesOpened: inv.totalCasesOpened, totalItemsDismantled: inv.totalItemsDismantled,
+      })
+      return { rewardType: 'item' as LootBoxRewardType, item: res.item, scrap: 0, money: 0, oil: 0, badgesOfHonor: 0 }
+    } catch(e: any) {
+      console.error('Military box error:', e.message)
+      return null
     }
-
-    // Local fallback: generate item client-side if API didn't return one
-    if (!item) {
-      item = rollMilitaryBoxItem()
-    }
-
-    set(s => ({ items: [...s.items, item] }))
-    set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
-    const inv = get()
-    const ps = usePlayerStore.getState()
-    useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-      totalDamageDone: ps.damageDone,
-      totalMoney: ps.money,
-      totalItemsProduced: ps.itemsProduced,
-      playerLevel: ps.level,
-      totalCasesOpened: inv.totalCasesOpened,
-      totalItemsDismantled: inv.totalItemsDismantled,
-    })
-
-    return { rewardType: 'item' as LootBoxRewardType, item, scrap: 0, money: 0, oil: 0, badgesOfHonor: 0 }
   },
 
-  openSupplyBox: () => {
+  openSupplyBox: async () => {
     if (!rateLimiter.check('openSupplyBox')) return null
     const playerStore = usePlayerStore.getState()
     if (playerStore.supplyBoxes <= 0) return null
 
-    usePlayerStore.getState().removeResource('supplyBoxes', 1, 'supplybox_open')
+    try {
+      const res: any = await api.post('/inventory/open-box', { boxType: 'supply' })
+      if (!res.success) return null
 
-    // Supply Box drops: 30% bullets, 50% scraps, 20% food
-    const roll = Math.random() * 100
-    let rewardType: LootBoxRewardType = 'resources'
-    let scrap = 0, money = 0, oil = 0
+      // Reflect box decrement locally (server already applied)
+      usePlayerStore.getState().removeResource('supplyBoxes', 1, 'supplybox_open')
 
-    if (roll < 50) {
-      // 50% chance: scraps (200-800)
-      scrap = 200 + Math.floor(Math.random() * 600)
-      usePlayerStore.getState().addResource('scrap', scrap, 'supply_box')
-    } else if (roll < 80) {
-      // 30% chance: random bullet type (10-30 bullets)
-      const bulletTypes = ['greenBullets', 'blueBullets', 'purpleBullets', 'redBullets'] as const
-      const bulletType = bulletTypes[Math.floor(Math.random() * bulletTypes.length)]
-      const bulletAmount = 10 + Math.floor(Math.random() * 20)
-      usePlayerStore.getState().addResource(bulletType, bulletAmount, 'supply_box')
-      // Encode bullet reward in money field for display purposes
-      money = bulletAmount // will be shown as bullet count in the reward reveal
-    } else {
-      // 20% chance: random food (50-150)
-      const foodTypes = ['bread', 'sushi', 'wagyu'] as const
-      const foodType = foodTypes[Math.floor(Math.random() * foodTypes.length)]
-      const foodAmount = 50 + Math.floor(Math.random() * 100)
-      usePlayerStore.getState().addResource(foodType, foodAmount, 'supply_box')
-      oil = foodAmount // encode food amount for display
+      let rewardType: LootBoxRewardType = 'resources'
+      let scrap = 0, money = 0, oil = 0
+
+      if (res.rewardType === 'resources' && res.scrap) {
+        usePlayerStore.getState().addResource('scrap', res.scrap, 'supply_box')
+        scrap = res.scrap
+      } else if (res.rewardType === 'bullets' && res.bulletType && res.bulletAmount) {
+        usePlayerStore.getState().addResource(res.bulletType, res.bulletAmount, 'supply_box')
+        money = res.bulletAmount
+      } else if (res.rewardType === 'food' && res.foodType && res.foodAmount) {
+        usePlayerStore.getState().addResource(res.foodType, res.foodAmount, 'supply_box')
+        oil = res.foodAmount
+      }
+
+      set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
+      return { rewardType, scrap, money, oil, badgesOfHonor: 0 }
+    } catch(e: any) {
+      console.error('Supply box error:', e.message)
+      return null
     }
-
-    set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
-    return { rewardType, scrap, money, oil, badgesOfHonor: 0 }
   },
 
   dismantleItem: async (itemId) => {

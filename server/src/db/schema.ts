@@ -410,6 +410,9 @@ export const tradeHistory = pgTable('trade_history', {
 export const governments = pgTable('governments', {
   countryCode:      varchar('country_code', { length: 4 }).primaryKey().references(() => countries.code),
   president:        varchar('president', { length: 32 }),
+  vicePresident:    varchar('vice_president', { length: 32 }),
+  defenseMinister:  varchar('defense_minister', { length: 32 }),
+  ecoMinister:      varchar('eco_minister', { length: 32 }),
   taxRate:          integer('tax_rate').default(25),
   swornEnemy:       varchar('sworn_enemy', { length: 4 }),
   congress:         jsonb('congress').default([]),

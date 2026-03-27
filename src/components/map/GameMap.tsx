@@ -87,6 +87,7 @@ const COUNTRY_ISO: Record<string, string> = {
   'Botswana': 'BWA', 'Namibia': 'NAM', 'Somalia': 'SOM', 'Eritrea': 'ERI',
   'Mauritania': 'MRT',
   'Australia': 'AUS', 'New Zealand': 'NZL', 'Papua New Guinea': 'PNG',
+  'Greenland': 'GRL',
 }
 
 // Reverse: ISO3 (from GeoJSON) → game country name
@@ -498,6 +499,21 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             currentMarkers.push(marker)
           })
 
+          // ── Greenland static marker (not a playable country, but needs label) ──
+          const glEl = document.createElement('div')
+          glEl.className = 'country-marker marker-large'
+          const glFlag = document.createElement('span')
+          glFlag.className = 'fi fi-gl country-marker__flag'
+          const glTxt = document.createElement('span')
+          glTxt.className = 'country-marker__text'
+          glTxt.innerText = 'Greenland'
+          glEl.appendChild(glFlag)
+          glEl.appendChild(glTxt)
+          const glMarker = new maplibregl.Marker({ element: glEl })
+            .setLngLat([-42.0, 71.5])
+            .addTo(m)
+          currentMarkers.push(glMarker)
+
           // Build game country color map
           const gameColors: Record<string, string> = {}
           const controlledISOs: string[] = []
@@ -506,6 +522,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             if (iso) { gameColors[iso] = c.color; controlledISOs.push(iso) }
           })
           gameColors['OCE'] = '#0077be' // Base oceanic color
+          gameColors['GRL'] = '#4a6fa5' // Greenland — Arctic blue-grey (autonomous Danish territory)
 
           // Generate unique hex color for every country/state
           const colorExpr: any[] = ['match', ['get', 'adm0_a3']]
@@ -578,7 +595,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             type: 'symbol',
             source: 'xwar-states',
             filter: ['!=', ['get', 'isOcean'], true],
-            minzoom: 3.5, // appear as user zooms in
+            minzoom: 2.5, // appear as user zooms in
             layout: {
               'text-field': ['get', 'name'],
               'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { players, playerSkills, playerSpecialization, items } from '../db/schema.js'
+import { players, playerSkills, playerSpecialization, items, governments } from '../db/schema.js'
 import { v4 as uuidv4 } from 'uuid'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { calculateAttackDamage, grantXP, spendMoney, earnMoney, consumeBar } from '../services/player.service.js'
@@ -42,7 +42,6 @@ router.get('/', async (req, res) => {
 // ── GET /api/player/all ── Lightweight player directory
 router.get('/all', async (req, res) => {
   try {
-    // Return all players (name, countryCode) for searching
     const allPlayers = await db.select({
       name: players.name,
       country: players.countryCode,
@@ -54,6 +53,66 @@ router.get('/all', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' })
   }
 })
+
+// ── GET /api/player/country ── Player's country info + gov role
+router.get('/country', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+
+    const [player] = await db.select({
+      id: players.id,
+      countryCode: players.countryCode,
+    }).from(players).where(eq(players.id, playerId)).limit(1)
+
+    if (!player || !player.countryCode) {
+      res.status(404).json({ error: 'Player not found' })
+      return
+    }
+
+    const { countryCode } = player
+
+    // Get government for this country
+    const [gov] = await db.select().from(governments)
+      .where(eq(governments.countryCode, countryCode)).limit(1)
+
+    // Determine this player's gov role
+    let govRole: string = 'citizen'
+    if (gov) {
+      if (gov.president === playerId) govRole = 'president'
+      else if (gov.vicePresident === playerId) govRole = 'vice_president'
+      else if (gov.defenseMinister === playerId) govRole = 'defense_minister'
+      else if (gov.ecoMinister === playerId) govRole = 'eco_minister'
+      else {
+        const congressRaw = gov.congress as unknown
+        const congress: string[] = Array.isArray(congressRaw) ? congressRaw : []
+        if (congress.includes(playerId)) govRole = 'congress_member'
+      }
+    }
+
+    // Population = count of players in this country
+    const [countResult] = await db.execute(
+      sql`SELECT COUNT(*) as count FROM players WHERE country_code = ${countryCode}`
+    )
+    const population = Number((countResult as any)?.count ?? 0)
+
+    res.json({
+      countryCode,
+      govRole,
+      population,
+      government: gov ? {
+        presidentId: gov.president,
+        vicePresidentId: gov.vicePresident,
+        defenseMinisterId: gov.defenseMinister,
+        ecoMinisterId: gov.ecoMinister,
+      } : null,
+    })
+  } catch (err) {
+    console.error('[PLAYER] Country info error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+
 
 // ── PATCH /api/player/ammo ── Equip ammo type
 router.patch('/ammo', async (req, res) => {

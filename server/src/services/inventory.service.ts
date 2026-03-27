@@ -66,7 +66,7 @@ function generateStats(
   return { name: 'Unknown', stats: {} }
 }
 
-function rollItemOfTier(tier: EquipTier, ownerId: string) {
+export function rollItemOfTier(tier: EquipTier, ownerId: string) {
   let category: EquipCategory = Math.random() < 0.66 ? 'armor' : 'weapon'
   let slot: EquipSlot = 'weapon'
 

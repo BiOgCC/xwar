@@ -112,6 +112,9 @@ export interface MilitaryContract {
 export interface Government {
   countryId: string
   president: string | null
+  vicePresident: string | null
+  defenseMinister: string | null
+  ecoMinister: string | null
   congress: string[]
   candidates: Candidate[]
   taxRate: number

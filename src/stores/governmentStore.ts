@@ -140,6 +140,8 @@ export interface GovernmentState {
   recruitEquipmentFromMarket: (countryCode: string, orderId: string) => { success: boolean; message: string }
   buyCasesForCountry: (countryCode: string, quantity: number) => { success: boolean; message: string }
   appointRole: (countryCode: string, targetId: string, role: 'vicepresident' | 'minister' | 'congress' | 'citizen') => { success: boolean; message: string }
+  appointPosition: (countryCode: string, position: 'vicePresident' | 'defenseMinister' | 'ecoMinister', playerName: string | null) => Promise<{ success: boolean; message: string }>
+  appointCongressMember: (countryCode: string, playerName: string, action: 'add' | 'remove') => Promise<{ success: boolean; message: string }>
   // Revolt system
   canTriggerRevolt: (countryCode: string, playerId: string) => boolean
   // Citizen dividend
@@ -167,6 +169,9 @@ function mkGov(code: string, president: string, congress: string[]): Government 
   return {
     countryId: code,
     president,
+    vicePresident: null,
+    defenseMinister: null,
+    ecoMinister: null,
     congress: [president, ...congress.slice(0, 4)],
     candidates: [],
     taxRate: 10,
@@ -1496,4 +1501,47 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     worldState.recordEconFlow('citizen_dividend', totalSpend, 'destroyed')
     worldState.recordEconFlow('citizen_dividend_payout', perCitizen, 'created')
   },
+
+  appointPosition: async (countryCode, position, playerName) => {
+    try {
+      const res: any = await api.post('/gov/appoint', { countryCode, position, playerName })
+      // Update local state immediately
+      set(s => {
+        const gov = s.governments[countryCode]
+        if (!gov) return s
+        return {
+          governments: {
+            ...s.governments,
+            [countryCode]: { ...gov, [position]: playerName }
+          }
+        }
+      })
+      return { success: true, message: res.message || 'Position updated' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Appointment failed' }
+    }
+  },
+
+  appointCongressMember: async (countryCode, playerName, action) => {
+    try {
+      const res: any = await api.post('/gov/appoint-congress', { countryCode, playerName, action })
+      // Update local congress list from response
+      if (res.congress) {
+        set(s => {
+          const gov = s.governments[countryCode]
+          if (!gov) return s
+          return {
+            governments: {
+              ...s.governments,
+              [countryCode]: { ...gov, congress: res.congress }
+            }
+          }
+        })
+      }
+      return { success: true, message: res.message || 'Congress updated' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Congress update failed' }
+    }
+  },
 }))
+

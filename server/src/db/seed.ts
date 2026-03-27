@@ -4,7 +4,7 @@
  */
 import 'dotenv/config'
 import { db } from './connection.js'
-import { countries, governments, regionalDeposits, countryStocks } from './schema.js'
+import { countries, governments, regionalDeposits, countryStocks, countryResearch, countryLeyLineBuff } from './schema.js'
 
 interface CountrySeed {
   code: string; name: string; controller: string; empire: string | null
@@ -315,6 +315,30 @@ async function seed() {
     }).onConflictDoNothing()
   }
   console.log(`  ✓ ${uniqueCountries.length} country stocks seeded`)
+
+  // Country Research (military + economy tech tree starting state)
+  console.log('🔬 Seeding country research...')
+  for (const c of uniqueCountries) {
+    await db.insert(countryResearch).values({
+      countryCode: c.code,
+      militaryUnlocked: [],
+      economyUnlocked: [],
+      currentResearch: null,
+    }).onConflictDoNothing()
+  }
+  console.log(`  ✓ ${uniqueCountries.length} country research rows seeded`)
+
+  // Country Ley Line Buff (blank merged bonuses — engine will compute)
+  console.log('✨ Seeding ley line buff rows...')
+  for (const c of uniqueCountries) {
+    await db.insert(countryLeyLineBuff).values({
+      countryCode: c.code,
+      activeLineIds: [],
+      mergedBonuses: {},
+      mergedTradeoffs: {},
+    }).onConflictDoNothing()
+  }
+  console.log(`  ✓ ${uniqueCountries.length} ley line buff rows seeded`)
 
   console.log('\n✅ Seed complete!')
   process.exit(0)

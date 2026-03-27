@@ -3,6 +3,7 @@ import { usePlayerStore } from '../../stores/playerStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { useWorldStore } from '../../stores/worldStore'
 import GovHomeTab from './government/GovHomeTab'
+import GovPeopleTab from './government/GovPeopleTab'
 
 import { GovAccountTab, GovCitizenshipTab } from './government/GovSmallTabs'
 import GovRegionTab from './government/GovRegionTab'
@@ -14,13 +15,14 @@ import CountryFlag from '../shared/CountryFlag'
 import '../../styles/gov.css'
 
 import {
-  Home, BarChart2, Wallet, Users, MapPin, Zap, Microscope, Scroll, Landmark, Shield
+  Home, BarChart2, Wallet, Users, MapPin, Zap, Microscope, Scroll, Landmark, Shield, Users2
 } from 'lucide-react'
 
-type GovTab = 'home' | 'account' | 'citizenship' | 'regions' | 'leylines' | 'research' | 'laws' | 'military'
+type GovTab = 'home' | 'people' | 'account' | 'citizenship' | 'regions' | 'leylines' | 'research' | 'laws' | 'military'
 
 const TABS: { id: GovTab; label: string; icon: React.ReactNode }[] = [
   { id: 'home', label: 'Home', icon: <Home size={18} strokeWidth={2} /> },
+  { id: 'people', label: 'Govt', icon: <Users2 size={18} strokeWidth={2} /> },
   { id: 'laws', label: 'Laws', icon: <Scroll size={18} strokeWidth={2} /> },
   { id: 'account', label: 'Account', icon: <Wallet size={18} strokeWidth={2} /> },
 
@@ -73,6 +75,7 @@ export default function GovernmentPanel() {
       {/* Tab Content */}
       <div className="gov-content">
         {tab === 'home' && <GovHomeTab />}
+        {tab === 'people' && <GovPeopleTab />}
 
         {tab === 'account' && <GovAccountTab />}
         {tab === 'citizenship' && <GovCitizenshipTab />}

@@ -3,12 +3,29 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { players, playerSkills, playerSpecialization, items } from '../db/schema.js'
+import { players, playerSkills, playerSpecialization, items, governments } from '../db/schema.js'
 import { signToken } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { generateStarterKit } from '../services/inventory.service.js'
 
 const router = Router()
+
+// All valid game country codes
+const VALID_COUNTRIES = new Set([
+  'US','CA','MX','CU','BS','GT','HN','SV','NI','CR','PA','JM','HT','DO','TT',
+  'BR','AR','CO','VE','PE','CL','EC','BO','PY','UY','GY','SR',
+  'GB','DE','FR','ES','IT','PL','UA','RO','NL','BE','SE','NO','FI','DK','AT','CH',
+  'CZ','PT','GR','HU','IE','IS','RS','BY','BG','SK','HR','LT','LV','EE','SI',
+  'BA','AL','MK','ME','MD',
+  'RU','KZ','UZ','TM','KG','TJ',
+  'CN','JP','KR','KP','TW','MN',
+  'TH','VN','PH','MY','ID','MM','LA','KH','SG','BN',
+  'IN','PK','BD','NP','LK','AF',
+  'TR','IR','IQ','SA','AE','IL','SY','JO','LB','YE','OM','KW','QA','GE','AM','AZ',
+  'NG','ZA','EG','ET','KE','TZ','GH','CI','CM','AO','MZ','MA','DZ','TN','LY',
+  'SD','SS','CD','UG','SN','ML','BF','NE','TD','MG','SO','ZM','ZW','BW','NA','MW',
+  'AU','NZ','PG',
+])
 
 // ── Schemas ──
 const registerSchema = z.object({
@@ -26,6 +43,12 @@ const loginSchema = z.object({
 router.post('/register', validate(registerSchema), async (req, res) => {
   try {
     const { name, password, countryCode } = req.body
+
+    // Validate country is a real game country
+    if (!VALID_COUNTRIES.has(countryCode)) {
+      res.status(400).json({ error: `"${countryCode}" is not a valid game country code.` })
+      return
+    }
 
     // Check if name taken
     const existing = await db.select({ id: players.id }).from(players).where(eq(players.name, name)).limit(1)
@@ -64,18 +87,32 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       await db.insert(items).values(starterItems)
     }
 
+    // Ensure the country has a government row (create if missing)
+    const [existingGov] = await db.select({ countryCode: governments.countryCode })
+      .from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    if (!existingGov) {
+      await db.insert(governments).values({
+        countryCode,
+        president: null,
+        vicePresident: null,
+        defenseMinister: null,
+        ecoMinister: null,
+      })
+    }
+
     // Generate token
     const token = signToken({ playerId: player.id, playerName: player.name })
 
     res.status(201).json({
       token,
-      player: { id: player.id, name: player.name },
+      player: { id: player.id, name: player.name, countryCode },
     })
   } catch (err) {
     console.error('[AUTH] Register error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
+
 
 // ── POST /api/auth/login ──
 router.post('/login', validate(loginSchema), async (req, res) => {

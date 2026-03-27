@@ -250,7 +250,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setAvatar: (path) => {
     set({ avatar: path })
-    import('../api/client').then(({ setAvatar }) => setAvatar(path).catch(() => {}))
+    import('../api/client').then(({ api }) => api.patch('/player/avatar', { avatar: path }).catch(() => {}))
   },
   equipAmmo: (type) => {
     set({ equippedAmmo: type })
@@ -598,6 +598,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     })
     useSpecializationStore.getState().recordWork()
     useAllianceStore.getState().contributeIdeologyXP(1)
+    // Sync work action to backend (fire-and-forget)
+    import('../api/client').then(({ api }) => api.post('/player/work').catch(() => {}))
   },
 
   doEntrepreneurship: () => {
@@ -814,10 +816,76 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   fetchPlayer: async () => {
     try {
       const { api } = await import('../api/client')
-      const res = await api.get<Partial<PlayerState>>('/player')
-      if (res && res.name) {
-        set(res)
+      const res = await api.get<any>('/player')
+      if (!res || !res.name) return
+
+      // Remap snake_case API fields to camelCase store fields
+      const patch: Partial<PlayerState> = {
+        name: res.name,
+        role: res.role,
+        countryCode: res.countryCode ?? res.country_code,
+        country: res.country ?? res.country_code,
+
+        // Resources
+        money: Number(res.money) || 0,
+        bread: res.bread ?? 0,
+        sushi: res.sushi ?? 0,
+        wagyu: res.wagyu ?? 0,
+        oil: res.oil ?? 0,
+        materialX: res.materialX ?? res.material_x ?? 0,
+        scrap: res.scrap ?? 0,
+        bitcoin: res.bitcoin ?? 0,
+        greenBullets: res.greenBullets ?? res.green_bullets ?? 0,
+        blueBullets: res.blueBullets ?? res.blue_bullets ?? 0,
+        purpleBullets: res.purpleBullets ?? res.purple_bullets ?? 0,
+        redBullets: res.redBullets ?? res.red_bullets ?? 0,
+        lootBoxes: res.lootBoxes ?? res.loot_boxes ?? 0,
+        militaryBoxes: res.militaryBoxes ?? res.military_boxes ?? 0,
+        supplyBoxes: res.supplyBoxes ?? res.supply_boxes ?? 0,
+        badgesOfHonor: res.badgesOfHonor ?? res.badges_of_honor ?? 0,
+        magicTea: res.magicTea ?? res.magic_tea ?? 0,
+        energyLeaves: res.energyLeaves ?? res.energy_leaves ?? 0,
+        lootChancePool: res.lootChancePool ?? res.loot_chance_pool ?? 0,
+
+        // XP & Leveling
+        level: res.level ?? 1,
+        experience: res.experience ?? 0,
+        experienceToNext: res.experienceToNext ?? res.expToNext ?? res.experience_to_next ?? 100,
+        skillPoints: res.skillPoints ?? res.skill_points ?? 0,
+
+        // Bars
+        stamina: Number(res.stamina) || 0,
+        maxStamina: res.maxStamina ?? res.max_stamina ?? 120,
+        hunger: res.hunger ?? 0,
+        maxHunger: res.maxHunger ?? res.max_hunger ?? 6,
+        work: res.work ?? 0,
+        maxWork: res.maxWork ?? res.max_work ?? 120,
+        entrepreneurship: res.entrepreneurship ?? 0,
+        maxEntrepreneurship: res.maxEntrepreneurship ?? res.max_entrepreneurship ?? 120,
+
+        // Production
+        productionBar: res.productionBar ?? res.production_bar ?? 0,
+        productionBarMax: res.productionBarMax ?? res.production_bar_max ?? 100,
+
+        // Combat
+        equippedAmmo: res.equippedAmmo ?? res.equipped_ammo ?? 'none',
+        enlistedArmyId: res.enlistedArmyId ?? res.enlisted_army_id ?? null,
+        avatar: res.avatar ?? '/assets/avatars/avatar_male.png',
+        damageDone: res.damageDone ?? res.damage_done ?? 0,
+        itemsProduced: res.itemsProduced ?? res.items_produced ?? 0,
+
+        // Shame counters
+        muteCount: res.muteCount ?? res.mute_count ?? 0,
+        deathCount: res.deathCount ?? res.death_count ?? 0,
+        battlesLost: res.battlesLost ?? res.battles_lost ?? 0,
+        totalCasinoLosses: res.totalCasinoLosses ?? res.total_casino_losses ?? 0,
+        bankruptcyCount: res.bankruptcyCount ?? res.bankruptcy_count ?? 0,
+        countrySwitches: res.countrySwitches ?? res.country_switches ?? 0,
+        casinoSpins: res.casinoSpins ?? res.casino_spins ?? 0,
+        itemsDestroyed: res.itemsDestroyed ?? res.items_destroyed ?? 0,
       }
+
+      set(patch)
     } catch (err) {
       console.error('Failed to fetch player state:', err)
     }

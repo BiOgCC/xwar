@@ -126,10 +126,13 @@ router.get('/region/:regionId', requireAuth as any, (req, res) => {
 
 router.get('/defs', async (_req, res) => {
   try {
-    // Load DB-defined lines (enabled only)
-    const dbRows = await db.select().from(leyLineDefsTable).where(eq(leyLineDefsTable.enabled, true))
+    // 3-second timeout guard against postgres OOM / slow queries
+    const query = db.select().from(leyLineDefsTable).where(eq(leyLineDefsTable.enabled, true))
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('DB timeout')), 3000)
+    )
+    const dbRows = (await Promise.race([query, timeout])) as any[]
 
-    // Merge: DB first, static fallback for any missing IDs
     const dbIds = new Set(dbRows.map(r => r.id))
     const staticFallback = LEY_LINE_DEFS.filter(l => !dbIds.has(l.id))
 
@@ -149,8 +152,9 @@ router.get('/defs', async (_req, res) => {
     ]
 
     res.json({ defs, count: defs.length, computedAt: new Date().toISOString() })
-  } catch (err) {
-    // Fallback to static on DB error
+  } catch (err: any) {
+    if (err?.code === '53200') console.warn('[ley-lines/defs] Postgres OOM — static fallback')
+    else if (err?.message === 'DB timeout') console.warn('[ley-lines/defs] DB timeout — static fallback')
     res.json({
       defs: LEY_LINE_DEFS.map(l => ({ ...l, source: 'static' as const })),
       count: LEY_LINE_DEFS.length,

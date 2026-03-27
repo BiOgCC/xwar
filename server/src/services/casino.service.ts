@@ -3,10 +3,12 @@
  * Prevents client-side manipulation of outcomes
  */
 import { db } from '../db/connection.js'
-import { players } from '../db/schema.js'
+import { players, items } from '../db/schema.js'
 import { eq, sql } from 'drizzle-orm'
 import { spendMoney, earnMoney } from './player.service.js'
+import { rollItemOfTier } from './inventory.service.js'
 import crypto from 'crypto'
+import { v4 as uuidv4 } from 'uuid'
 
 /** Crypto-safe random number between 0 and 1 */
 function cryptoRandom(): number {
@@ -298,11 +300,26 @@ export async function spinWheel(playerId: string, betAmount: number) {
   for (let i = 0; i < segments.length; i++) { roll -= segments[i].probability; if (roll <= 0) { idx = i; break } }
   const seg = segments[idx]
 
-  let payout = 0, resultType: 'win' | 'lose' | 'item' = 'lose', itemTier: string | undefined
+  let payout = 0
+  let resultType: 'win' | 'lose' | 'item' = 'lose'
+  let item: Record<string, unknown> | null = null
 
-  if (seg.type === 'multiply') { payout = Math.floor(betAmount * seg.multiplier); await earnMoney(playerId, payout); resultType = 'win' }
-  else if (seg.type === 'item') { itemTier = seg.itemTier; resultType = 'item' }
-  else { await trackLoss(playerId, betAmount) }
+  if (seg.type === 'multiply') {
+    payout = Math.floor(betAmount * seg.multiplier)
+    await earnMoney(playerId, payout)
+    resultType = 'win'
+  } else if (seg.type === 'item') {
+    // Generate item server-side and insert into DB
+    const tier = (seg.itemTier || 't4') as any
+    const rawItem = rollItemOfTier(tier, playerId)
+    const itemId = uuidv4()
+    item = { ...rawItem, id: itemId }
+    await db.insert(items).values(item as any)
+    resultType = 'item'
+  } else {
+    await trackLoss(playerId, betAmount)
+  }
 
-  return { index: idx, segment: seg.label, payout, resultType, itemTier }
+  return { index: idx, segment: seg.label, payout, resultType, item }
 }
+

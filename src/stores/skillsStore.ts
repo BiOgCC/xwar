@@ -76,29 +76,29 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
     if (player.skillPoints < cost) return false
 
-    // Spend skill points (use updater to avoid race condition)
-    usePlayerStore.setState(s => ({ skillPoints: s.skillPoints - cost }))
+    // Call backend first — apply local state only on success
+    import('../api/client').then(async ({ allocateSkillsApi }) => {
+      try {
+        const res: any = await allocateSkillsApi(tree, skill)
+        if (!res.success) return
 
-    if (tree === 'military') {
-      set((s) => ({
-        military: { ...s.military, [skill]: currentLevel + 1 },
-      }))
-      // Update player bar maximums based on skills
-      if (skill === 'stamina') {
-        usePlayerStore.setState({ maxStamina: 120 + (currentLevel + 1) * 24 })
-      } else if (skill === 'hunger') {
-        usePlayerStore.setState({ maxHunger: 6 + (currentLevel + 1) })
+        // Backend confirmed — now apply locally
+        usePlayerStore.setState(s => ({ skillPoints: s.skillPoints - cost }))
+
+        if (tree === 'military') {
+          set(s => ({ military: { ...s.military, [skill]: currentLevel + 1 } }))
+          if (skill === 'stamina') usePlayerStore.setState({ maxStamina: 120 + (currentLevel + 1) * 24 })
+          else if (skill === 'hunger') usePlayerStore.setState({ maxHunger: 6 + (currentLevel + 1) })
+        } else {
+          set(s => ({ economic: { ...s.economic, [skill]: currentLevel + 1 } }))
+          if (skill === 'work') usePlayerStore.setState({ maxWork: 120 + (currentLevel + 1) * 24 })
+          else if (skill === 'entrepreneurship') usePlayerStore.setState({ maxEntrepreneurship: 120 + (currentLevel + 1) * 18 })
+        }
+      } catch(e: any) {
+        console.error('[Skills] Assign failed:', e.message)
       }
-    } else {
-      set((s) => ({
-        economic: { ...s.economic, [skill]: currentLevel + 1 },
-      }))
-      if (skill === 'work') {
-        usePlayerStore.setState({ maxWork: 120 + (currentLevel + 1) * 24 })
-      } else if (skill === 'entrepreneurship') {
-        usePlayerStore.setState({ maxEntrepreneurship: 120 + (currentLevel + 1) * 18 })
-      }
-    }
+    })
+
     return true
   },
 

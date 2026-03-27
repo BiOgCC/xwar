@@ -171,3 +171,116 @@
 .auth-toggle button:hover {
   text-decoration: underline;
 }
+
+/* ── CountryPicker ─────────────────────────────────── */
+.country-picker {
+  position: relative;
+  width: 100%;
+}
+
+.country-picker-trigger {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 11px 14px;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.country-picker-trigger:hover,
+.country-picker-trigger.country-picker-open {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.18);
+}
+
+.country-picker-trigger.country-picker-error {
+  border-color: #ef4444;
+}
+
+.country-picker-flag { font-size: 20px; flex-shrink: 0; }
+.country-picker-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.country-picker-code { font-size: 11px; color: #64748b; font-weight: 600; flex-shrink: 0; }
+.country-picker-chevron { font-size: 10px; color: #64748b; flex-shrink: 0; }
+
+.country-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0; right: 0;
+  background: #0e1829;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+  z-index: 9999;
+  overflow: hidden;
+  max-height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.country-picker-search-wrap {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+
+.country-picker-search {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  padding: 7px 10px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-family: var(--font-body);
+}
+
+.country-picker-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.country-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.country-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.country-picker-item:hover {
+  background: rgba(59,130,246,0.15);
+  color: #fff;
+}
+
+.country-picker-item.selected {
+  background: rgba(59,130,246,0.25);
+  color: #fff;
+}
+
+.country-picker-empty {
+  padding: 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+}
+

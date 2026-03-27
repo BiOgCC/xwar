@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { register, login } from '../../api/client'
 import { useAuthStore } from '../../stores/authStore'
 import { usePlayerStore } from '../../stores/playerStore'
+import CountryPicker from './CountryPicker'
 
 interface FieldError { path: string; message: string }
 
@@ -21,13 +22,11 @@ export default function AuthScreen() {
     setError('')
     setFieldErrors([])
 
-    // Client-side pre-checks
     if (!name.trim()) { setError('Commander name is required.'); return }
     if (!isLogin && name.trim().length < 3) { setError('Name must be at least 3 characters.'); return }
     if (!isLogin && !/^[a-zA-Z0-9_]+$/.test(name)) { setError('Name may only contain letters, numbers, and underscores.'); return }
     if (!password) { setError('Password is required.'); return }
     if (!isLogin && password.length < 6) { setError('Password must be at least 6 characters.'); return }
-    if (!isLogin && country.length !== 2) { setError('Country code must be exactly 2 letters (e.g. US).'); return }
 
     setIsLoading(true)
     try {
@@ -37,13 +36,12 @@ export default function AuthScreen() {
         await usePlayerStore.getState().fetchPlayer()
         setAuthenticated(true)
       } else {
-        const res = await register(name.trim(), password, country.toUpperCase())
-        usePlayerStore.setState({ name: res.player.name, countryCode: country.toUpperCase() })
+        const res = await register(name.trim(), password, country)
+        usePlayerStore.setState({ name: res.player.name, countryCode: country })
         await usePlayerStore.getState().fetchPlayer()
         setAuthenticated(true)
       }
     } catch (err: any) {
-      // Parse server validation details if available
       if (err?.details && Array.isArray(err.details) && err.details.length > 0) {
         setFieldErrors(err.details as FieldError[])
         setError('Please fix the errors below.')
@@ -68,7 +66,6 @@ export default function AuthScreen() {
     <div className="auth-screen">
       <div className="auth-container">
 
-        {/* Logo */}
         <div className="auth-header">
           <h1 className="auth-title">
             <span style={{ color: '#3b82f6' }}>⬡</span> XWAR
@@ -76,7 +73,6 @@ export default function AuthScreen() {
           <div className="auth-subtitle">GLOBAL DOMINATION</div>
         </div>
 
-        {/* General error */}
         {error && (
           <div className="auth-error">
             <span style={{ marginRight: 6 }}>⚠</span>{error}
@@ -134,22 +130,19 @@ export default function AuthScreen() {
             )}
           </div>
 
-          {/* Country (register only) */}
+          {/* Country picker — register only */}
           {!isLogin && (
             <div className="auth-input-group">
-              <label>FACTION / COUNTRY CODE</label>
-              <input
-                type="text"
+              <label>CHOOSE YOUR NATION 🌍</label>
+              <CountryPicker
                 value={country}
-                onChange={(e) => { setCountry(e.target.value.toUpperCase().slice(0,2)); setError(''); setFieldErrors([]) }}
-                placeholder="e.g. US, DE, JP"
-                maxLength={2}
-                style={getFieldError('countryCode') ? { borderColor: '#ef4444' } : {}}
+                onChange={(code) => { setCountry(code); setError(''); setFieldErrors([]) }}
+                error={getFieldError('countryCode')}
               />
               {getFieldError('countryCode') && (
                 <div className="auth-field-error">{getFieldError('countryCode')}</div>
               )}
-              <div className="auth-hint">2-letter ISO code — your starting nation</div>
+              <div className="auth-hint">Your starting nation — defines your government &amp; economy</div>
             </div>
           )}
 

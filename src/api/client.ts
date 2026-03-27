@@ -259,8 +259,8 @@ export async function switchCountryApi(countryCode: string) {
   return api.patch('/player/country', { countryCode })
 }
 
-export async function allocateSkillsApi(skill: string, points: number) {
-  return api.post('/player/skills', { skill, points })
+export async function allocateSkillsApi(tree: 'military' | 'economic', skill: string) {
+  return api.post('/player/skills', { tree, skill })
 }
 
 export async function getAllPlayers() {

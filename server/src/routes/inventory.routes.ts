@@ -1,10 +1,11 @@
 import { Router } from 'express'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { items } from '../db/schema.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { rollLootBoxItem, rollMilitaryBoxItem } from '../services/inventory.service.js'
 import { players } from '../db/schema.js'
+import { v4 as uuidv4 } from 'uuid'
 
 const router = Router()
 router.use(requireAuth as any)
@@ -144,13 +145,13 @@ router.post('/sell/:id', async (req, res) => {
   }
 })
 
-// ── POST /api/inventory/open-box ── Open a loot box (server-side RNG)
+// ── POST /api/inventory/open-box ── Open a loot/military/supply box (server-side RNG)
 router.post('/open-box', async (req, res) => {
   try {
     const { playerId } = (req as AuthRequest).player!
-    const { boxType } = req.body // 'loot' or 'military'
+    const { boxType } = req.body // 'loot', 'military', or 'supply'
 
-    if (!['loot', 'military'].includes(boxType)) {
+    if (!['loot', 'military', 'supply'].includes(boxType)) {
       res.status(400).json({ error: 'Invalid box type' })
       return
     }
@@ -159,8 +160,53 @@ router.post('/open-box', async (req, res) => {
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
 
+    // ── Supply Box (no item, only resources) ──────────────────────
+    if (boxType === 'supply') {
+      const supplyBoxes = (player as any).supplyBoxes ?? 0
+      if (supplyBoxes <= 0) {
+        res.status(400).json({ error: 'No supply boxes available' })
+        return
+      }
+
+      // Decrement supply boxes
+      await db.execute(sql`UPDATE players SET supply_boxes = supply_boxes - 1 WHERE id = ${playerId}`)
+
+      // Roll reward (server RNG)
+      const roll = Math.random() * 100
+      let reward: Record<string, unknown> = {}
+      let rewardType = 'resources'
+
+      if (roll < 50) {
+        // 50%: scrap (200-800)
+        const scrap = 200 + Math.floor(Math.random() * 601)
+        await db.execute(sql`UPDATE players SET scrap = scrap + ${scrap} WHERE id = ${playerId}`)
+        reward = { scrap }
+      } else if (roll < 80) {
+        // 30%: random bullets (10-30)
+        const bulletFields = ['green_bullets', 'blue_bullets', 'purple_bullets', 'red_bullets'] as const
+        const bulletTypes = ['greenBullets', 'blueBullets', 'purpleBullets', 'redBullets'] as const
+        const rIdx = Math.floor(Math.random() * bulletFields.length)
+        const amount = 10 + Math.floor(Math.random() * 21)
+        await db.execute(sql`UPDATE players SET ${sql.raw(bulletFields[rIdx])} = ${sql.raw(bulletFields[rIdx])} + ${amount} WHERE id = ${playerId}`)
+        reward = { bulletType: bulletTypes[rIdx], bulletAmount: amount }
+        rewardType = 'bullets'
+      } else {
+        // 20%: food (50-150)
+        const foodTypes = ['bread', 'sushi', 'wagyu'] as const
+        const foodType = foodTypes[Math.floor(Math.random() * foodTypes.length)]
+        const amount = 50 + Math.floor(Math.random() * 101)
+        await db.execute(sql`UPDATE players SET ${sql.raw(foodType)} = ${sql.raw(foodType)} + ${amount} WHERE id = ${playerId}`)
+        reward = { foodType, foodAmount: amount }
+        rewardType = 'food'
+      }
+
+      res.json({ success: true, rewardType, ...reward })
+      return
+    }
+
+    // ── Loot / Military Box ───────────────────────────────────────
     const boxField = boxType === 'loot' ? 'lootBoxes' : 'militaryBoxes'
-    const boxCount = player[boxField]!
+    const boxCount = player[boxField as keyof typeof player] as number
     if (boxCount <= 0) {
       res.status(400).json({ error: `No ${boxType} boxes available` })
       return
@@ -174,8 +220,10 @@ router.post('/open-box', async (req, res) => {
     // Roll item (server-side RNG)
     const newItem = boxType === 'loot' ? rollLootBoxItem(playerId) : rollMilitaryBoxItem(playerId)
 
-    // Insert into DB
-    await db.insert(items).values(newItem)
+    // Insert into DB with real UUID
+    const itemId = uuidv4()
+    const insertedItem = { ...newItem, id: itemId }
+    await db.insert(items).values(insertedItem)
 
     // Add bonus resources for loot boxes
     let bonusMoney = 0
@@ -191,7 +239,7 @@ router.post('/open-box', async (req, res) => {
 
     res.json({
       success: true,
-      item: newItem,
+      item: insertedItem,
       bonusMoney,
       bonusScrap,
     })
@@ -200,5 +248,6 @@ router.post('/open-box', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' })
   }
 })
+
 
 export default router
