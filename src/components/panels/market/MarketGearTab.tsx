@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState } from 'react'
 import { getStatIcon } from '../../shared/StatIcon'
 import { usePlayerStore } from '../../../stores/playerStore'
-import { useInventoryStore, type EquipItem, TIER_COLORS, TIER_LABELS, TIER_ORDER, SLOT_ICONS, getItemImagePath, ARMOR_SLOTS } from '../../../stores/inventoryStore'
+import { useInventoryStore, type EquipItem, TIER_COLORS, TIER_LABELS, TIER_ORDER, SLOT_ICONS, getItemImagePath, ARMOR_SLOTS, WEAPON_SUBTYPES } from '../../../stores/inventoryStore'
 import { useMarketStore } from '../../../stores/market'
 import type { EquipTier, EquipSlot } from '../../../stores/inventoryStore'
 
@@ -34,30 +34,28 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
   const [showSellPicker, setShowSellPicker] = useState(false)
   const [detailOrder, setDetailOrder] = useState<any | null>(null)
 
-  /* ── Group listings by slot+tier ── */
+  /* ── Equipment listings ── */
   const listings = market.getEquipmentListings()
-  const grouped = useMemo(() => {
-    const map: Record<string, typeof listings> = {}
-    for (const o of listings) {
-      if (!o.equipSnapshot) continue
-      const key = `${o.equipSnapshot.slot}:${o.equipSnapshot.tier}`
-      if (!map[key]) map[key] = []
-      map[key].push(o)
-    }
-    return map
-  }, [listings])
 
-  /* Helper: cheapest price for slot+tier */
-  const cheapest = (slot: string, tier: string) => {
-    const key = `${slot}:${tier}`
-    const list = grouped[key]
-    if (!list || list.length === 0) return null
+  /** Filter listings matching slot+tier and optional subtype */
+  const getFiltered = (slot: string, tier: string, subtype?: string) => {
+    return listings.filter(o => {
+      if (!o.equipSnapshot) return false
+      if (o.equipSnapshot.slot !== slot || o.equipSnapshot.tier !== tier) return false
+      if (subtype) return o.equipSnapshot.weaponSubtype === subtype
+      return true
+    })
+  }
+
+  /* Helper: cheapest price for slot+tier+subtype */
+  const cheapest = (slot: string, tier: string, subtype?: string) => {
+    const list = getFiltered(slot, tier, subtype)
+    if (list.length === 0) return null
     return list.reduce((min, o) => o.totalPrice < min.totalPrice ? o : min, list[0])
   }
 
-  const count = (slot: string, tier: string) => {
-    const key = `${slot}:${tier}`
-    return grouped[key]?.length ?? 0
+  const count = (slot: string, tier: string, subtype?: string) => {
+    return getFiltered(slot, tier, subtype).length
   }
 
   /* Format price compactly */
@@ -89,42 +87,78 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
         <div key={slot} className="gear-mkt-category">
           <div className="gear-mkt-category__title">{label}</div>
           <div className="gear-mkt-row">
-            {TIER_ORDER.map(tier => {
-              const tierColor = TIER_COLORS[tier]
-              const imgUrl = getItemImagePath(tier, slot, slot === 'weapon' ? 'weapon' : 'armor', undefined, false)
-              const cheapestOrder = cheapest(slot, tier)
-              const qty = count(slot, tier)
-              return (
-                <div
-                  key={tier}
-                  className="gear-mkt-tile"
-                  style={{ '--tile-color': tierColor } as React.CSSProperties}
-                  onClick={() => {
-                    if (cheapestOrder) {
-                      setDetailOrder(cheapestOrder)
-                    }
-                  }}
-                  title={`${TIER_LABELS[tier]} ${label} — ${qty} listed`}
-                >
-                  <div className="gear-mkt-tile__img">
-                    {imgUrl ? (
-                      <img src={imgUrl} alt={`${tier} ${slot}`} onError={e => { e.currentTarget.style.display = 'none' }} />
-                    ) : (
-                      <span className="gear-mkt-tile__img-emoji">{SLOT_ICONS[slot]}</span>
-                    )}
-                  </div>
-                  <div className="gear-mkt-tile__price">
-                    <span style={{ fontSize: '8px', color: '#fbbf24' }}>💰</span>
-                    <span className="gear-mkt-tile__price-val">
-                      {cheapestOrder ? fmtPrice(cheapestOrder.totalPrice) : '—'}
-                    </span>
-                  </div>
-                  <div className={`gear-mkt-tile__qty ${qty > 0 ? 'gear-mkt-tile__qty--available' : 'gear-mkt-tile__qty--zero'}`}>
-                    {qty}
-                  </div>
-                </div>
+            {slot === 'weapon' ? (
+              /* Weapons: one tile per subtype per tier (T5 shows Tank+RPG, T6 shows Jet+Warship) */
+              TIER_ORDER.flatMap(tier =>
+                WEAPON_SUBTYPES[tier].map(sub => {
+                  const tierColor = TIER_COLORS[tier]
+                  const imgUrl = getItemImagePath(tier, slot, 'weapon', sub as any, false)
+                  const cheapestOrder = cheapest(slot, tier, sub)
+                  const qty = count(slot, tier, sub)
+                  const subLabel = sub.charAt(0).toUpperCase() + sub.slice(1)
+                  return (
+                    <div
+                      key={`${tier}-${sub}`}
+                      className="gear-mkt-tile"
+                      style={{ '--tile-color': tierColor } as React.CSSProperties}
+                      onClick={() => { if (cheapestOrder) setDetailOrder(cheapestOrder) }}
+                      title={`${TIER_LABELS[tier]} ${subLabel} — ${qty} listed`}
+                    >
+                      <div className="gear-mkt-tile__img">
+                        {imgUrl ? (
+                          <img src={imgUrl} alt={`${tier} ${sub}`} onError={e => { e.currentTarget.style.display = 'none' }} />
+                        ) : (
+                          <span className="gear-mkt-tile__img-emoji">{SLOT_ICONS[slot]}</span>
+                        )}
+                      </div>
+                      <div className="gear-mkt-tile__price">
+                        <span style={{ fontSize: '8px', color: '#fbbf24' }}>💰</span>
+                        <span className="gear-mkt-tile__price-val">
+                          {cheapestOrder ? fmtPrice(cheapestOrder.totalPrice) : '—'}
+                        </span>
+                      </div>
+                      <div className={`gear-mkt-tile__qty ${qty > 0 ? 'gear-mkt-tile__qty--available' : 'gear-mkt-tile__qty--zero'}`}>
+                        {qty}
+                      </div>
+                    </div>
+                  )
+                })
               )
-            })}
+            ) : (
+              /* Armor: one tile per tier */
+              TIER_ORDER.map(tier => {
+                const tierColor = TIER_COLORS[tier]
+                const imgUrl = getItemImagePath(tier, slot, 'armor', undefined, false)
+                const cheapestOrder = cheapest(slot, tier)
+                const qty = count(slot, tier)
+                return (
+                  <div
+                    key={tier}
+                    className="gear-mkt-tile"
+                    style={{ '--tile-color': tierColor } as React.CSSProperties}
+                    onClick={() => { if (cheapestOrder) setDetailOrder(cheapestOrder) }}
+                    title={`${TIER_LABELS[tier]} ${label} — ${qty} listed`}
+                  >
+                    <div className="gear-mkt-tile__img">
+                      {imgUrl ? (
+                        <img src={imgUrl} alt={`${tier} ${slot}`} onError={e => { e.currentTarget.style.display = 'none' }} />
+                      ) : (
+                        <span className="gear-mkt-tile__img-emoji">{SLOT_ICONS[slot]}</span>
+                      )}
+                    </div>
+                    <div className="gear-mkt-tile__price">
+                      <span style={{ fontSize: '8px', color: '#fbbf24' }}>💰</span>
+                      <span className="gear-mkt-tile__price-val">
+                        {cheapestOrder ? fmtPrice(cheapestOrder.totalPrice) : '—'}
+                      </span>
+                    </div>
+                    <div className={`gear-mkt-tile__qty ${qty > 0 ? 'gear-mkt-tile__qty--available' : 'gear-mkt-tile__qty--zero'}`}>
+                      {qty}
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
         </div>
       ))}
@@ -161,8 +195,8 @@ export default function MarketGearTab({ showFb }: MarketGearTabProps) {
         if (snap.stats.dodge) statEntries.push({ label: 'EVA', val: `${snap.stats.dodge}%`, color: '#34d399' })
         if (snap.stats.precision) statEntries.push({ label: 'ACC', val: `${snap.stats.precision}%`, color: '#38bdf8' })
 
-        // All listings for same slot+tier
-        const slotTierListings = grouped[`${snap.slot}:${snap.tier}`] || []
+        // All listings for same slot+tier+subtype
+        const slotTierListings = getFiltered(snap.slot, snap.tier, snap.weaponSubtype || undefined)
         const currentIdx = slotTierListings.findIndex((o: any) => o.id === order.id)
 
         return (

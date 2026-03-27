@@ -228,7 +228,7 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
               {battle.rounds.map((rd, ri) => (
                 <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px' }}>
                   <CountryFlag iso={battle.attackerId} size={12} />
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: rd.status === 'active' ? '#e2e8f0' : '#94a3b8' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, color: rd.status === 'active' ? '#e2e8f0' : '#94a3b8', textShadow: rd.status === 'active' ? '0 0 4px rgba(239,68,68,0.3)' : 'none' }}>
                     ⚔️ {(rd.attackerDmgTotal || 0) > 999 ? `${((rd.attackerDmgTotal || 0) / 1000).toFixed(0)}K` : rd.attackerDmgTotal || 0}!
                   </span>
                 </div>
@@ -259,7 +259,7 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '80px', alignItems: 'flex-end' }}>
               {battle.rounds.map((rd, ri) => (
                 <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: rd.status === 'active' ? '#e2e8f0' : '#94a3b8' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, color: rd.status === 'active' ? '#e2e8f0' : '#94a3b8', textShadow: rd.status === 'active' ? '0 0 4px rgba(239,68,68,0.3)' : 'none' }}>
                     🛡️ {(rd.defenderDmgTotal || 0) > 999 ? `${((rd.defenderDmgTotal || 0) / 1000).toFixed(0)}K` : rd.defenderDmgTotal || 0}!
                   </span>
                   <CountryFlag iso={battle.defenderId} size={12} />
@@ -270,20 +270,20 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
 
           {/* Flags + Score */}
           <div style={{ textAlign: 'center', marginBottom: '4px' }}>
-            <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 600 }}>⚔️ {battle.regionName}</div>
+            <div style={{ fontSize: '9px', color: '#ef4444', fontWeight: 700, fontFamily: "var(--font-display)", letterSpacing: '1px', textShadow: '0 0 8px rgba(239,68,68,0.3)' }}>⚔️ {battle.regionName}</div>
             {(player.heroBuffTicksLeft > 0 && player.heroBuffBattleId === battleId) && (
-              <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', animation: 'pulse 2s infinite', marginTop: '2px' }}>⭐ HERO MODE</div>
+              <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', animation: 'pulse 2s infinite', marginTop: '2px', textShadow: '0 0 8px rgba(245,158,11,0.5)' }}>⭐ HERO MODE</div>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '4px' }}>
             <CountryFlag iso={battle.attackerId} size={24} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 900, color: atkClr, padding: '2px 8px', border: `2px solid ${atkClr}55`, borderRadius: '4px', background: `${atkClr}10`, minWidth: '28px', textAlign: 'center' }}>{battle.attackerRoundsWon}</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 900, color: atkClr, padding: '3px 10px', border: `2px solid ${atkClr}55`, borderRadius: '5px', background: `${atkClr}10`, minWidth: '28px', textAlign: 'center', textShadow: `0 0 10px ${atkClr}66`, boxShadow: `0 0 12px ${atkClr}15, inset 0 0 8px ${atkClr}08` }}>{battle.attackerRoundsWon}</span>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <span style={{ fontSize: '13px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-mono)' }}>
+              <span style={{ fontSize: '12px', fontWeight: 900, color: '#ef4444', fontFamily: 'var(--font-display)', letterSpacing: '1px', textShadow: '0 0 6px rgba(239,68,68,0.3)' }}>
                 {fmtElapsed(battle.rounds[battle.rounds.length - 1]?.startedAt || battle.startedAt)}
               </span>
             </div>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 900, color: defClr, padding: '2px 8px', border: `2px solid ${defClr}55`, borderRadius: '4px', background: `${defClr}10`, minWidth: '28px', textAlign: 'center' }}>{battle.defenderRoundsWon}</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 900, color: defClr, padding: '3px 10px', border: `2px solid ${defClr}55`, borderRadius: '5px', background: `${defClr}10`, minWidth: '28px', textAlign: 'center', textShadow: `0 0 10px ${defClr}66`, boxShadow: `0 0 12px ${defClr}15, inset 0 0 8px ${defClr}08` }}>{battle.defenderRoundsWon}</span>
             <CountryFlag iso={battle.defenderId} size={24} />
           </div>
 
@@ -325,15 +325,15 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
 
           {/* Battle Ticker */}
           {battle.status === 'active' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', marginTop: '4px', background: 'rgba(96,165,250,0.06)', borderRadius: '4px', border: '1px solid rgba(96,165,250,0.12)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px', marginTop: '4px', background: 'rgba(239,68,68,0.06)', borderRadius: '5px', border: '1px solid rgba(239,68,68,0.15)', boxShadow: '0 0 10px rgba(239,68,68,0.05)' }}>
               <span style={{ fontSize: '10px', animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
               <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: combatTickLeft <= 3 ? '#60a5fa' : '#94a3b8' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: combatTickLeft <= 3 ? '#ef4444' : '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
                   <span>NEXT TICK</span>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '10px', color: combatTickLeft <= 3 ? '#60a5fa' : '#3b82f6' }}>{combatTickLeft}s</span>
+                  <span style={{ fontSize: '10px', color: combatTickLeft <= 3 ? '#ef4444' : '#f87171', textShadow: combatTickLeft <= 3 ? '0 0 8px rgba(239,68,68,0.5)' : 'none' }}>{combatTickLeft}s</span>
                 </div>
                 <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '2px' }}>
-                  <div style={{ width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%', background: combatTickLeft <= 3 ? '#60a5fa' : '#3b82f6', transition: 'width 0.9s linear', borderRadius: '2px' }} />
+                  <div style={{ width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%', background: combatTickLeft <= 3 ? '#ef4444' : 'linear-gradient(90deg, #ef4444, #f87171)', transition: 'width 0.9s linear', borderRadius: '2px', boxShadow: combatTickLeft <= 3 ? '0 0 6px rgba(239,68,68,0.5)' : '0 0 4px rgba(239,68,68,0.3)' }} />
                 </div>
               </div>
             </div>
@@ -355,10 +355,10 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ fontSize: '11px' }}>⛰</span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 900, color: atkClr }}>{atkPts}</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 900, color: atkClr, textShadow: `0 0 6px ${atkClr}44` }}>{atkPts}</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#e2e8f0', fontFamily: 'var(--font-mono)' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
                       {fmtElapsed(activeRound.startedAt || battle.startedAt)}
                     </span>
                     {ptsDelta !== 0 && (
@@ -368,16 +368,16 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 900, color: defClr }}>{defPts}</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 900, color: defClr, textShadow: `0 0 6px ${defClr}44` }}>{defPts}</span>
                     <span style={{ fontSize: '11px' }}>⛰</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '3px', height: '10px' }}>
                   <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkFill}%`, background: `linear-gradient(90deg, ${atkClr}66, ${atkClr})`, borderRadius: '5px', transition: 'width 0.5s ease' }} />
+                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkFill}%`, background: `linear-gradient(90deg, ${atkClr}66, ${atkClr})`, borderRadius: '5px', transition: 'width 0.5s ease', boxShadow: `0 0 6px ${atkClr}33` }} />
                   </div>
                   <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${defFill}%`, background: `linear-gradient(270deg, ${defClr}66, ${defClr})`, borderRadius: '5px', transition: 'width 0.5s ease' }} />
+                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${defFill}%`, background: `linear-gradient(270deg, ${defClr}66, ${defClr})`, borderRadius: '5px', transition: 'width 0.5s ease', boxShadow: `0 0 6px ${defClr}33` }} />
                   </div>
                 </div>
               </div>
@@ -387,16 +387,16 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
           {/* Damage Percentage Bar */}
           <div style={{ padding: '4px 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 900, color: atkClr, fontFamily: 'var(--font-mono)' }}>{atkPct.toFixed(2)}%</span>
-              <span style={{ fontSize: '12px', fontWeight: 900, color: defClr, fontFamily: 'var(--font-mono)' }}>{(100 - atkPct).toFixed(2)}%</span>
+              <span style={{ fontSize: '12px', fontWeight: 900, color: atkClr, fontFamily: 'var(--font-display)', textShadow: `0 0 8px ${atkClr}44` }}>{atkPct.toFixed(2)}%</span>
+              <span style={{ fontSize: '12px', fontWeight: 900, color: defClr, fontFamily: 'var(--font-display)', textShadow: `0 0 8px ${defClr}44` }}>{(100 - atkPct).toFixed(2)}%</span>
             </div>
-            <div style={{ position: 'relative', height: '14px', background: 'rgba(0,0,0,0.4)', borderRadius: '7px', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: `linear-gradient(90deg, ${atkClr}88, ${atkClr})`, borderRadius: '7px 0 0 7px', transition: 'width 0.5s ease' }} />
-              <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${100 - atkPct}%`, background: `linear-gradient(270deg, ${defClr}88, ${defClr})`, borderRadius: '0 7px 7px 0', transition: 'width 0.5s ease' }} />
+            <div style={{ position: 'relative', height: '14px', background: 'rgba(0,0,0,0.4)', borderRadius: '7px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkPct}%`, background: `linear-gradient(90deg, ${atkClr}88, ${atkClr})`, borderRadius: '7px 0 0 7px', transition: 'width 0.5s ease', boxShadow: `0 0 8px ${atkClr}44` }} />
+              <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${100 - atkPct}%`, background: `linear-gradient(270deg, ${defClr}88, ${defClr})`, borderRadius: '0 7px 7px 0', transition: 'width 0.5s ease', boxShadow: `0 0 8px ${defClr}44` }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-              <span style={{ fontSize: '9px', fontWeight: 700, color: atkClr, fontFamily: 'var(--font-mono)' }}>⚔️ {fmtDmg(atkDmg)}</span>
-              <span style={{ fontSize: '9px', fontWeight: 700, color: defClr, fontFamily: 'var(--font-mono)' }}>⚔️ {fmtDmg(defDmg)}</span>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: atkClr, fontFamily: 'var(--font-display)' }}>⚔️ {fmtDmg(atkDmg)}</span>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: defClr, fontFamily: 'var(--font-display)' }}>⚔️ {fmtDmg(defDmg)}</span>
             </div>
           </div>
 
@@ -444,9 +444,11 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
                 fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 900,
                 letterSpacing: '1px',
                 position: 'relative',
+                boxShadow: `0 0 16px ${atkClr}12, inset 0 0 12px ${atkClr}06`,
+                transition: 'all 0.15s',
               }}>
               <div style={{ fontSize: '16px', marginBottom: '2px' }}>🛡️</div>
-              <div>DEFEND</div>
+              <div style={{ textShadow: `0 0 8px ${atkClr}66` }}>DEFEND</div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '9px', fontWeight: 700, marginTop: '4px' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#ef4444' }}>
                   <img src="/assets/items/icon_oil.png" alt="oil" style={{ width: '12px', height: '12px' }} />
@@ -467,9 +469,11 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
                 fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 900,
                 letterSpacing: '1px',
                 position: 'relative',
+                boxShadow: `0 0 16px ${defClr}12, inset 0 0 12px ${defClr}06`,
+                transition: 'all 0.15s',
               }}>
               <div style={{ fontSize: '16px', marginBottom: '2px' }}>⚔️</div>
-              <div>RESIST</div>
+              <div style={{ textShadow: `0 0 8px ${defClr}66` }}>RESIST</div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '9px', fontWeight: 700, marginTop: '4px' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#ef4444' }}>
                   <img src="/assets/items/icon_oil.png" alt="oil" style={{ width: '12px', height: '12px' }} />
@@ -495,16 +499,17 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
             {(Object.entries(TACTICAL_ORDERS) as [TacticalOrder, typeof TACTICAL_ORDERS[TacticalOrder]][]).filter(([k]) => k !== 'none').map(([key, ord]) => {
               const isActive = activeOrder === key
               return (
-                <button key={key} disabled={!isPresident}
+                <button key={key}
                   onClick={(e) => { e.stopPropagation(); battleStore.setBattleOrder(battleId, mySide, isActive ? 'none' as TacticalOrder : key) }}
                   title={ord.desc}
                   style={{
-                    flex: 1, padding: '3px 2px', borderRadius: '3px', cursor: isPresident ? 'pointer' : 'default',
+                    flex: 1, padding: '3px 2px', borderRadius: '3px', cursor: 'pointer',
                     background: isActive ? `${ord.color}25` : 'rgba(255,255,255,0.03)',
                     border: `1px solid ${isActive ? `${ord.color}66` : 'rgba(255,255,255,0.08)'}`,
                     color: isActive ? ord.color : '#64748b',
                     fontSize: '7px', fontWeight: 900, fontFamily: 'var(--font-display)',
-                    transition: 'all 0.15s', opacity: isPresident ? 1 : 0.5,
+                    transition: 'all 0.15s',
+                    boxShadow: isActive ? `0 0 8px ${ord.color}22` : 'none',
                   }}>
                   {ord.label}
                 </button>
@@ -530,7 +535,7 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
               }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-              <span style={{ fontSize: '7px', fontWeight: 800, fontFamily: 'var(--font-display)', color: isCrashed ? '#ef4444' : isSurging ? '#fbbf24' : isHot ? '#f59e0b' : '#64748b' }}>
+              <span style={{ fontSize: '7px', fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.5px', color: isCrashed ? '#ef4444' : isSurging ? '#fbbf24' : isHot ? '#f59e0b' : '#64748b', textShadow: isSurging ? '0 0 6px rgba(251,191,36,0.4)' : isCrashed ? '0 0 6px rgba(239,68,68,0.4)' : 'none' }}>
                 {isCrashed ? '💥 CRASHED -20%' : isSurging ? `⚡ SURGE ACTIVE` : `ADRENALINE ${adr}`}
               </span>
               {canSurge && (
@@ -550,14 +555,16 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
 
         {/* ══ SECTION 4: Stats, Food, Equip Best, Remove All ══ */}
         <div className="btl-section">
-          {/* Stats row */}
+          {/* Stats row — all 7 combat stats */}
           <div className="btl-stats-row" style={{ marginBottom: '4px' }}>
             {[
               { icon: '⚔', label: 'DMG', val: `${cs.attackDamage}`, color: '#f87171' },
               { icon: '💥', label: 'CRIT', val: `${cs.critRate}%`, color: '#fb923c' },
-              { icon: '🛡', label: 'ARM', val: `${cs.armorBlock}%`, color: '#94a3b8' },
+              { icon: '✨', label: 'CDMG', val: `${cs.critMultiplier.toFixed(1)}x`, color: '#fbbf24' },
+              { icon: '🛡', label: 'ARM', val: `${cs.armorBlock}`, color: '#94a3b8' },
               { icon: '⚡', label: 'EVA', val: `${cs.dodgeChance}%`, color: '#34d399' },
               { icon: '💫', label: 'ACC', val: `${cs.hitRate}%`, color: '#38bdf8' },
+              { icon: '🔥', label: 'OVER', val: `+${cs.overflowCrit.toFixed(0)}%`, color: '#c084fc' },
             ].map(s => (
               <div key={s.label} className="btl-stat">
                 <span className="btl-stat__icon">{s.icon}</span>
@@ -568,13 +575,13 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
 
           {/* Action buttons */}
           <div className="btl-actions-row">
-            <button className="btl-action-btn" onClick={() => setShowFood(f => !f)} title="Food">
+            <button className="btl-action-btn" onClick={(e) => { e.stopPropagation(); setShowFood(f => !f) }} title="Food">
               🍞 Food
             </button>
-            <button className="btl-action-btn btl-action-btn--equip" onClick={equipBest} title="Equip Best">
+            <button className="btl-action-btn btl-action-btn--equip" onClick={(e) => { e.stopPropagation(); equipBest() }} title="Equip Best">
               ⚡ Best
             </button>
-            <button className="btl-action-btn btl-action-btn--remove" onClick={removeAllEquip} title="Remove All">
+            <button className="btl-action-btn btl-action-btn--remove" onClick={(e) => { e.stopPropagation(); removeAllEquip() }} title="Remove All">
               ✕ Strip
             </button>
           </div>

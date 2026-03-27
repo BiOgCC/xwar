@@ -43,11 +43,11 @@ export default function GovHomeTab() {
     b => b.attackerId === iso || b.defenderId === iso
   )
   const totalDmg = myBattles.reduce((sum, b) => {
-    return sum + b.rounds.reduce((rSum, r) => rSum + (r.attackerDamage || 0) + (r.defenderDamage || 0), 0)
+    return sum + b.rounds.reduce((rSum, r) => rSum + (r.attackerDmgTotal || 0) + (r.defenderDmgTotal || 0), 0)
   }, 0) + weeklyDmg
   const totalDmgRank = computeRank(countries, iso, c => {
     const cBattles = Object.values(battles.battles).filter(b => b.attackerId === c.code || b.defenderId === c.code)
-    return cBattles.reduce((sum, b) => sum + b.rounds.reduce((rSum, r) => rSum + (r.attackerDamage || 0) + (r.defenderDamage || 0), 0), 0) + (world.warFundDamageTracker[c.code] || 0)
+    return cBattles.reduce((sum, b) => sum + b.rounds.reduce((rSum, r) => rSum + (r.attackerDmgTotal || 0) + (r.defenderDmgTotal || 0), 0), 0) + (world.warFundDamageTracker[c.code] || 0)
   })
 
   // Region diff

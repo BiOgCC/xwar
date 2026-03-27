@@ -334,6 +334,11 @@ export function initMockData() {
         createdAt: now - 86400000 * 30,
         weeklyDamageTotal: mockMembers.reduce((s, m) => s + m.weeklyDamage, 0),
         totalDamageTotal: mockMembers.reduce((s, m) => s + m.totalDamage, 0),
+        regionId: '',
+        upgrades: { warDoctrine: 0, barracks: 0, corporateLicense: 0 },
+        cycleDamage: {},
+        lastBudgetPayout: 0,
+        isStateOwned: false,
         vault: {
           treasury: 125000,
           resources: {

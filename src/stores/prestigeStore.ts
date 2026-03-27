@@ -1,5 +1,14 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
+import {
+  getPrestigeRankings,
+  getPrestigeArchive,
+  getPrestigeItems,
+  createPrestigeBlueprint as apiCreateBlueprint,
+  craftPrestigeItem as apiCraftItem,
+  listPrestigeBlueprintOnMarket as apiListBlueprint,
+  buyPrestigeBlueprint as apiBuyBlueprint,
+} from '../api/client'
 
 // ====== TITLES ======
 
@@ -173,6 +182,10 @@ export interface PrestigeState {
   unequipPrestigeItem: (itemId: string) => void
   getPlayerPrestige: (playerId: string) => PrestigePlayer | null
   getPlayerTitle: (playerId: string) => string | null
+  // API-backed fetchers (with fallback)
+  fetchRankings: (week?: number) => Promise<void>
+  fetchItems: (playerId?: string) => Promise<void>
+  fetchArchive: (week: number) => Promise<void>
 }
 
 let bpCounter = 0
@@ -354,8 +367,57 @@ export const usePrestigeStore = create<PrestigeState>((set, get) => {
         get().calculateWeeklyRankings()
       }
 
+      // Attempt to fetch from backend API (fire-and-forget)
+      get().fetchRankings().catch(() => {})
+      get().fetchItems().catch(() => {})
+
       // Mark snapshot taken (rankings recalculation is deferred to backend)
       set({ lastHourlySnapshotAt: now })
+    },
+
+    // ── API-backed fetchers (graceful fallback) ──
+
+    fetchRankings: async (week?: number) => {
+      try {
+        const res = await getPrestigeRankings(week)
+        if (res.success) {
+          set({
+            rankings: res.rankings,
+            prestigePlayers: res.prestigePlayers || get().prestigePlayers,
+            currentWeek: res.currentWeek || get().currentWeek,
+          })
+        }
+      } catch {
+        // Backend not available — keep existing state
+      }
+    },
+
+    fetchItems: async (playerId?: string) => {
+      try {
+        const res = await getPrestigeItems(playerId)
+        if (res.success) {
+          set({
+            items: res.items || get().items,
+            blueprints: res.blueprints || get().blueprints,
+          })
+        }
+      } catch {
+        // Backend not available — keep existing state
+      }
+    },
+
+    fetchArchive: async (week: number) => {
+      try {
+        const res = await getPrestigeArchive(week)
+        if (res.success && res.archive) {
+          // Merge into existing archive (avoiding duplicates)
+          const existing = new Set(get().archive.map(a => a.archiveId))
+          const merged = [...get().archive, ...res.archive.filter((a: any) => !existing.has(a.archiveId))]
+          set({ archive: merged })
+        }
+      } catch {
+        // Backend not available — keep existing state
+      }
     },
   }
 })

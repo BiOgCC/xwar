@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import type { ResourceId } from './market/types'
 import { getRegionById } from '../data/regionRegistry'
+import { useWorldStore } from './worldStore'
 
 // ====== TYPES ======
 
@@ -161,6 +162,9 @@ export interface MilitaryUnit {
   // Budget cycle tracking
   cycleDamage: Record<string, number>  // memberName → damage dealt this budget cycle
   lastBudgetPayout: number             // last payout amount (for UI display)
+  // State-owned MU fields
+  isStateOwned: boolean
+  governmentCountryCode?: string       // set when isStateOwned === true
 }
 
 // ====== STORE ======
@@ -176,6 +180,8 @@ export interface MUState {
 
   // Actions
   createUnit: (name: string, regionId?: string) => { success: boolean; message: string }
+  createStateUnit: (countryCode: string, name: string, regionId?: string) => { success: boolean; message: string }
+  dissolveStateUnit: (unitId: string) => { success: boolean; message: string }
   joinUnit: (unitId: string) => { success: boolean; message: string }
   leaveUnit: () => { success: boolean; message: string }
   applyToUnit: (unitId: string, message?: string) => { success: boolean; message: string }
@@ -296,6 +302,7 @@ export const useMUStore = create<MUState>((set, get) => ({
       totalDamageTotal: player.damageDone,
       cycleDamage: {},
       lastBudgetPayout: 0,
+      isStateOwned: false,
     }
 
     set(s => ({
@@ -304,6 +311,117 @@ export const useMUStore = create<MUState>((set, get) => ({
     }))
 
     return { success: true, message: `🏴 Military Unit "${name}" created!` }
+  },
+
+  // ── State-Owned MU: Create ──
+  createStateUnit: (countryCode, name, regionId) => {
+    if (!name.trim()) return { success: false, message: 'Unit name cannot be empty.' }
+
+    // Cost: $100,000 from national fund
+    const STATE_MU_COST = 100_000
+    const ws = useWorldStore.getState()
+    const country = ws.getCountry(countryCode)
+    if (!country || country.fund.money < STATE_MU_COST)
+      return { success: false, message: `National fund needs $${STATE_MU_COST.toLocaleString()}. Current: $${(country?.fund.money ?? 0).toLocaleString()}.` }
+
+    const ok = ws.spendFromFund(countryCode, { money: STATE_MU_COST })
+    if (!ok) return { success: false, message: 'Failed to deduct from national fund.' }
+
+    const selectedRegion = regionId ? getRegionById(regionId) : null
+    const unitId = `smu_${countryCode}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    const newUnit: MilitaryUnit = {
+      id: unitId,
+      name: name.trim(),
+      bannerUrl: '',
+      avatarUrl: '',
+      ownerId: `GOV_${countryCode}`,
+      ownerName: `Government of ${countryCode}`,
+      ownerCountry: countryCode,
+      countryCode,
+      regionId: regionId || '',
+      locationRegion: selectedRegion?.name || country?.name || 'Unknown',
+      members: [],
+      applications: [],
+      badges: [],
+      transactions: [{
+        id: `txn_${Date.now()}_init`,
+        type: 'deposit',
+        amount: STATE_MU_COST,
+        currency: 'money',
+        playerName: `GOV_${countryCode}`,
+        description: 'State MU creation (national fund)',
+        timestamp: Date.now(),
+      }],
+      donations: [],
+      contracts: [],
+      vault: { treasury: 0, resources: {} },
+      upgrades: { ...DEFAULT_UPGRADES },
+      createdAt: Date.now(),
+      weeklyDamageTotal: 0,
+      totalDamageTotal: 0,
+      cycleDamage: {},
+      lastBudgetPayout: 0,
+      isStateOwned: true,
+      governmentCountryCode: countryCode,
+    }
+
+    set(s => ({
+      units: { ...s.units, [unitId]: newUnit },
+    }))
+
+    // Register in government store (lazy import to avoid circular deps)
+    import('./governmentStore').then(({ useGovernmentStore }) => {
+      useGovernmentStore.setState((s: any) => ({
+        governments: {
+          ...s.governments,
+          [countryCode]: {
+            ...s.governments[countryCode],
+            stateMilitaryUnits: [...(s.governments[countryCode].stateMilitaryUnits || []), unitId],
+          },
+        },
+      }))
+    })
+
+    return { success: true, message: `🏛️ State Military Unit "${name}" created!` }
+  },
+
+  // ── State-Owned MU: Dissolve ──
+  dissolveStateUnit: (unitId) => {
+    const player = usePlayerStore.getState()
+    const unit = get().units[unitId]
+    if (!unit) return { success: false, message: 'Unit not found.' }
+    if (!unit.isStateOwned) return { success: false, message: 'This is not a state-owned MU.' }
+
+    const cc = unit.governmentCountryCode || unit.countryCode
+
+    // Eject all members
+    const { playerUnitId } = get()
+    const wasInUnit = playerUnitId === unitId
+
+    // Remove unit
+    set(s => {
+      const newUnits = { ...s.units }
+      delete newUnits[unitId]
+      return {
+        units: newUnits,
+        playerUnitId: wasInUnit ? null : s.playerUnitId,
+      }
+    })
+
+    // Remove from government store (lazy import to avoid circular deps)
+    import('./governmentStore').then(({ useGovernmentStore }) => {
+      useGovernmentStore.setState((s: any) => ({
+        governments: {
+          ...s.governments,
+          [cc]: {
+            ...s.governments[cc],
+            stateMilitaryUnits: (s.governments[cc].stateMilitaryUnits || []).filter((id: string) => id !== unitId),
+          },
+        },
+      }))
+    })
+
+    return { success: true, message: `🏛️ State MU "${unit.name}" has been dissolved.` }
   },
 
   joinUnit: (unitId) => {
@@ -351,21 +469,22 @@ export const useMUStore = create<MUState>((set, get) => ({
     if (!unit) return { success: false, message: 'Unit not found.' }
     const playerName = usePlayerStore.getState().name
 
-    // Owner can't leave if others remain
-    if (unit.ownerId === playerName && unit.members.length > 1) {
+    // Owner can't leave if others remain (player-owned MUs only)
+    if (!unit.isStateOwned && unit.ownerId === playerName && unit.members.length > 1) {
       return { success: false, message: 'Transfer ownership before leaving.' }
     }
 
     const newMembers = unit.members.filter(m => m.name !== playerName)
 
-    if (newMembers.length === 0) {
-      // Disband unit
+    if (newMembers.length === 0 && !unit.isStateOwned) {
+      // Disband player-owned unit when empty
       set(s => {
         const newUnits = { ...s.units }
         delete newUnits[playerUnitId]
         return { units: newUnits, playerUnitId: null }
       })
     } else {
+      // State MUs persist even when empty
       set(s => ({
         units: {
           ...s.units,

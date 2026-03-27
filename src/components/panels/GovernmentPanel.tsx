@@ -3,26 +3,29 @@ import { usePlayerStore } from '../../stores/playerStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { useWorldStore } from '../../stores/worldStore'
 import GovHomeTab from './government/GovHomeTab'
-import GovFinanceTab from './government/GovFinanceTab'
-import { GovAccountTab, GovCitizenshipTab, GovWarTab } from './government/GovSmallTabs'
+
+import { GovAccountTab, GovCitizenshipTab } from './government/GovSmallTabs'
+import GovRegionTab from './government/GovRegionTab'
 import GovLeyLinesTab from './government/GovLeyLinesTab'
 import GovResearchTab from './government/GovResearchTab'
 import GovLawsTab from './government/GovLawsTab'
+import GovMilitaryTab from './government/GovMilitaryTab'
 import CountryFlag from '../shared/CountryFlag'
 import '../../styles/gov.css'
 
 import {
-  Home, BarChart2, Wallet, Users, Swords, Zap, Microscope, Scroll, Landmark, Vote
+  Home, BarChart2, Wallet, Users, MapPin, Zap, Microscope, Scroll, Landmark, Shield
 } from 'lucide-react'
 
-type GovTab = 'home' | 'finance' | 'account' | 'citizenship' | 'war' | 'leylines' | 'research' | 'laws'
+type GovTab = 'home' | 'account' | 'citizenship' | 'regions' | 'leylines' | 'research' | 'laws' | 'military'
 
 const TABS: { id: GovTab; label: string; icon: React.ReactNode }[] = [
   { id: 'home', label: 'Home', icon: <Home size={18} strokeWidth={2} /> },
   { id: 'laws', label: 'Laws', icon: <Scroll size={18} strokeWidth={2} /> },
   { id: 'account', label: 'Account', icon: <Wallet size={18} strokeWidth={2} /> },
-  { id: 'finance', label: 'Government', icon: <Landmark size={18} strokeWidth={2} /> },
-  { id: 'war', label: 'Wars', icon: <Swords size={18} strokeWidth={2} /> },
+
+  { id: 'military', label: 'Military', icon: <Shield size={18} strokeWidth={2} /> },
+  { id: 'regions', label: 'Regions', icon: <MapPin size={18} strokeWidth={2} /> },
   { id: 'citizenship', label: 'Citizens', icon: <Users size={18} strokeWidth={2} /> },
   { id: 'leylines', label: 'Ley Lines', icon: <Zap size={18} strokeWidth={2} /> },
   { id: 'research', label: 'Research', icon: <Microscope size={18} strokeWidth={2} /> },
@@ -70,13 +73,14 @@ export default function GovernmentPanel() {
       {/* Tab Content */}
       <div className="gov-content">
         {tab === 'home' && <GovHomeTab />}
-        {tab === 'finance' && <GovFinanceTab />}
+
         {tab === 'account' && <GovAccountTab />}
         {tab === 'citizenship' && <GovCitizenshipTab />}
-        {tab === 'war' && <GovWarTab />}
+        {tab === 'regions' && <GovRegionTab />}
         {tab === 'leylines' && <GovLeyLinesTab />}
         {tab === 'research' && <GovResearchTab />}
         {tab === 'laws' && <GovLawsTab />}
+        {tab === 'military' && <GovMilitaryTab />}
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useStockStore, BOND_DURATIONS } from '../../stores/stockStore'
+import { useWorldStore } from '../../stores/worldStore'
 import type { CountryStock } from '../../stores/stockStore'
 import '../../styles/stocks.css'
 
@@ -31,7 +32,8 @@ function Sparkline({ history }: { history: { price: number }[] }) {
 export default function StockMarketPanel() {
   const player = usePlayerStore()
   const stockStore = useStockStore()
-  const { stocks, portfolio, marketPool, transactions, bonds } = stockStore
+  const { stocks, portfolio, stockPool, bondPool, transactions, bonds } = stockStore
+  const warFund = useWorldStore(s => s.warFund)
 
   const [tab, setTab] = useState<'shares' | 'bonds' | 'log'>('shares')
   const [selectedStock, setSelectedStock] = useState<string | null>(null)
@@ -61,6 +63,7 @@ export default function StockMarketPanel() {
   useEffect(() => {
     stockStore.fetchStocks()
     stockStore.fetchHoldings()
+    stockStore.fetchPoolBalances()
   }, [])
 
   const selected: CountryStock | undefined = selectedStock ? stockStore.getStock(selectedStock) : undefined
@@ -86,8 +89,17 @@ export default function StockMarketPanel() {
           PORTFOLIO: <span className="stock-header__value">${portfolioValue.toLocaleString()}</span>
           <span className="stock-header__sep">|</span>
           CASH: <span className="stock-header__cash">${player.money.toLocaleString()}</span>
-          <span className="stock-header__sep">|</span>
-          POOL: <span className="stock-header__pool">${marketPool.toLocaleString()}</span>
+        </div>
+        <div className="stock-header__pools">
+          <span className="stock-header__pool-item" title="Stock liquidity pool — sells pay from here">
+            📈 Stock Pool: <span className="stock-header__pool">${stockPool.toLocaleString()}</span>
+          </span>
+          <span className="stock-header__pool-item" title="Bond liquidity pool — wins pay from here">
+            🎲 Bond Pool: <span className="stock-header__pool">${bondPool.toLocaleString()}</span>
+          </span>
+          <span className="stock-header__pool-item" title="Global War Fund — war rewards pay from here">
+            ⚔️ War Fund: <span className="stock-header__pool" style={{ color: '#f59e0b' }}>${warFund.toLocaleString()}</span>
+          </span>
         </div>
       </div>
 
@@ -155,7 +167,7 @@ export default function StockMarketPanel() {
                 </div>
               </div>
               <div className="stock-trade__summary">
-                <div>Cost: <strong>${(selected.price * qty).toLocaleString()}</strong> (1% to country, 99% to pool)</div>
+                <div>Cost: <strong>${(selected.price * qty).toLocaleString()}</strong> (30% to country, 70% to pool)</div>
                 {holding && <div>You own: <strong>{holding.shares} shares</strong> (avg ${holding.avgBuyPrice})</div>}
               </div>
               <div className="stock-trade__actions">
@@ -258,8 +270,8 @@ export default function StockMarketPanel() {
 
             <button className="bond-form__submit"
               disabled={!bondCode || player.money < bondAmount}
-              onClick={() => {
-                const r = stockStore.openBond(bondCode, bondDir, bondAmount, bondDuration)
+              onClick={async () => {
+                const r = await stockStore.openBond(bondCode, bondDir, bondAmount, bondDuration)
                 showMsg(r.message, r.success ? 'success' : 'error')
               }}>
               OPEN {bondDir.toUpperCase()} BOND — ${bondAmount.toLocaleString()}
@@ -348,7 +360,11 @@ export default function StockMarketPanel() {
             ))
           )}
           <div className="stock-log__pool">
-            MARKET POOL BALANCE: <span className="stock-log__pool-val">${marketPool.toLocaleString()}</span>
+            STOCK POOL: <span className="stock-log__pool-val">${stockPool.toLocaleString()}</span>
+            <span className="stock-header__sep" style={{ margin: '0 8px' }}>|</span>
+            BOND POOL: <span className="stock-log__pool-val">${bondPool.toLocaleString()}</span>
+            <span className="stock-header__sep" style={{ margin: '0 8px' }}>|</span>
+            WAR FUND: <span className="stock-log__pool-val" style={{ color: '#f59e0b' }}>${warFund.toLocaleString()}</span>
           </div>
         </div>
       )}

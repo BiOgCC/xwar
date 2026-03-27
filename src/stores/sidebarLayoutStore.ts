@@ -32,7 +32,6 @@ const DEFAULT_BOTTOM: SidebarItem[] = [
   { id: 'prestige', icon: '⭐', label: 'PRESTIGE' },
   { id: 'diplomacy', icon: '🕊️', label: 'DIPLOMACY' },
   { id: 'history', icon: '📜', label: 'HISTORY' },
-  { id: 'trade_routes', icon: '⚓', label: 'TRADE LANES' },
   { id: 'admin', icon: '🛡️', label: 'ADMIN' },
 ]
 

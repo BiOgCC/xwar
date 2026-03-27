@@ -42,10 +42,10 @@ export type { BattleType, CombatLogEntry, BattleSide, BattleTick, BattleRound, T
 // ====== TACTICAL ORDERS ======
 export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; desc: string; effects: OrderEffects; color: string }> = {
   none: { label: 'NONE', desc: 'No active order', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#64748b' },
-  charge: { label: 'CHARGE', desc: '+20% ATK, -15% dodge, -10% armor', effects: { atkMult: 1.20, armorMult: 0.90, dodgeMult: 0.85, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#ef4444' },
-  fortify: { label: 'FORTIFY', desc: '+25% armor, +10% dodge, -15% ATK', effects: { atkMult: 0.85, armorMult: 1.25, dodgeMult: 1.10, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#3b82f6' },
-  precision: { label: 'PRECISION', desc: '+15% hit, +15% crit, -10% speed', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0.15, critBonus: 15, speedMult: 1.10 }, color: '#f59e0b' },
-  blitz: { label: 'BLITZ', desc: '+25% speed, -10% hit, -10% armor', effects: { atkMult: 1, armorMult: 0.90, dodgeMult: 1, hitBonus: -0.10, critBonus: 0, speedMult: 0.75 }, color: '#22d38a' },
+  charge: { label: 'CHARGE', desc: '+15% ATK damage', effects: { atkMult: 1.15, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#ef4444' },
+  fortify: { label: 'FORTIFY', desc: '+20% armor, +8% dodge', effects: { atkMult: 1, armorMult: 1.20, dodgeMult: 1.08, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#3b82f6' },
+  precision: { label: 'PRECISION', desc: '+12% hit, +10% crit', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0.12, critBonus: 10, speedMult: 1 }, color: '#f59e0b' },
+  blitz: { label: 'BLITZ', desc: '+20% speed', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 0.80 }, color: '#22d38a' },
 }
 
 
@@ -359,10 +359,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const gov = useGovernmentStore.getState().governments[countryCode]
     if (!gov) return { success: false, message: 'No government found.' }
     const isAuthorized = gov.president === player.name ||
-      gov.vicePresident === player.name ||
-      gov.ministers?.defense === player.name
+      (gov.congress.length > 0 && gov.congress[0] === player.name)  // VP = first congress member
     if (!isAuthorized) {
-      return { success: false, message: 'Only President, VP, or Minister of Defense can launch missiles.' }
+      return { success: false, message: 'Only President or Vice President can launch missiles.' }
     }
 
     // Check missile launcher level on the region
@@ -1336,9 +1335,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           // Damage-weighted reward: share based on player's contribution
           const myAtkDmg = battle.attackerDamageDealers[ps.name] || 0
           const totalAtkDmg = battle.attacker.damageDealt || 1
+          const worldState = useWorldStore.getState()
           if (playerCC === battle.attackerId && myAtkDmg > 0) {
             const myShare = getWarRewardShare(winnerRewards.totalMoney, myAtkDmg, totalAtkDmg)
-            ps.earnMoney(myShare)
+            // Draw from war fund instead of creating money
+            const actualPayout = Math.max(5000, worldState.drawFromWarFund(myShare))
+            ps.earnMoney(actualPayout)  // local state sync only
             const milB = useSpecializationStore.getState().getMilitaryBonuses()
             ps.addResource('badgesOfHonor', 1 + (milB?.bohWinBonus || 0), 'battle_win')
           } else if (playerCC === battle.defenderId) {
@@ -1347,7 +1349,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             const totalDefDmg = battle.defender.damageDealt || 1
             if (myDefDmg > 0) {
               const myShare = getWarRewardShare(loserRewards.totalMoney, myDefDmg, totalDefDmg)
-              ps.earnMoney(myShare)
+              const actualPayout = Math.max(5000, worldState.drawFromWarFund(myShare))
+              ps.earnMoney(actualPayout)  // local state sync only
             }
           }
           newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}! 💰 Pool: $${winnerRewards.totalMoney.toLocaleString()} (damage-weighted)` })
@@ -1366,9 +1369,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           // Damage-weighted reward: share based on player's contribution
           const dMyDefDmg = battle.defenderDamageDealers[dPs.name] || 0
           const dTotalDefDmg = battle.defender.damageDealt || 1
+          const dWorldState = useWorldStore.getState()
           if (dPlayerCC === battle.defenderId && dMyDefDmg > 0) {
             const dMyShare = getWarRewardShare(dWinnerRewards.totalMoney, dMyDefDmg, dTotalDefDmg)
-            dPs.earnMoney(dMyShare)
+            // Draw from war fund instead of creating money
+            const dActualPayout = Math.max(5000, dWorldState.drawFromWarFund(dMyShare))
+            dPs.earnMoney(dActualPayout)  // local state sync only
             const milB = useSpecializationStore.getState().getMilitaryBonuses()
             dPs.addResource('badgesOfHonor', 1 + (milB?.bohWinBonus || 0), 'battle_win')
           } else if (dPlayerCC === battle.attackerId) {
@@ -1377,7 +1383,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             const dTotalAtkDmg = battle.attacker.damageDealt || 1
             if (dMyAtkDmg > 0) {
               const dMyShare = getWarRewardShare(dLoserRewards.totalMoney, dMyAtkDmg, dTotalAtkDmg)
-              dPs.earnMoney(dMyShare)
+              const dActualPayout = Math.max(5000, dWorldState.drawFromWarFund(dMyShare))
+              dPs.earnMoney(dActualPayout)  // local state sync only
             }
           }
           newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}! 💰 Pool: $${dWinnerRewards.totalMoney.toLocaleString()} (damage-weighted)` })

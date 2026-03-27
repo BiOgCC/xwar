@@ -416,6 +416,7 @@ export const governments = pgTable('governments', {
   laws:             jsonb('laws').default({}),
   nuclearAuthorized: boolean('nuclear_authorized').default(false),
   elections:        jsonb('elections').default({}),
+  citizenDividendPercent: integer('citizen_dividend_percent').default(0),
 })
 
 // ═══════════════════════════════════════════════
@@ -580,6 +581,16 @@ export const bonds = pgTable('bonds', {
   interestRate: numeric('interest_rate', { precision: 5, scale: 2 }),
   maturityAt:   timestamp('maturity_at').notNull(),
   status:       varchar('status', { length: 16 }).default('active'),
+})
+
+// ═══════════════════════════════════════════════
+//  MARKET POOLS (stock & bond liquidity pools)
+// ═══════════════════════════════════════════════
+
+export const marketPools = pgTable('market_pools', {
+  id:        varchar('id', { length: 16 }).primaryKey(),       // 'global'
+  stockPool: bigint('stock_pool', { mode: 'number' }).default(5_000_000),
+  bondPool:  bigint('bond_pool', { mode: 'number' }).default(2_000_000),
 })
 
 // ═══════════════════════════════════════════════

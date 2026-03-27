@@ -132,4 +132,6 @@ export interface Government {
   conscriptionActive: boolean
   importTariff: number         // 0-50%
   minimumWage: number          // 0 = disabled
+  stateMilitaryUnits: string[] // MU IDs owned by the government
+  citizenDividendPercent: number  // 0-30%, president sets, auto-distributes treasury to citizens
 }

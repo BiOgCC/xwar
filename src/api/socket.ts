@@ -56,6 +56,10 @@ class SocketManager {
     this.socket?.emit('join:market')
   }
 
+  joinCountry(countryCode: string) {
+    this.socket?.emit('join:country', countryCode)
+  }
+
   // Add event listener
   on(event: string, callback: (...args: any[]) => void) {
     if (!this.socket) this.connect()
@@ -69,3 +73,20 @@ class SocketManager {
 }
 
 export const socketManager = new SocketManager()
+
+// ── Presence Heartbeat ──
+let _presenceInterval: ReturnType<typeof setInterval> | null = null
+
+export function startPresenceHeartbeat() {
+  if (_presenceInterval) return
+  _presenceInterval = setInterval(() => {
+    socketManager.socket?.emit('presence:heartbeat')
+  }, 30_000)
+}
+
+export function stopPresenceHeartbeat() {
+  if (_presenceInterval) {
+    clearInterval(_presenceInterval)
+    _presenceInterval = null
+  }
+}

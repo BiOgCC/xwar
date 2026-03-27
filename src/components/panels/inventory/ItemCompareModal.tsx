@@ -5,9 +5,15 @@ import {
   getItemImagePath,
   TIER_COLORS,
   TIER_LABELS,
-  getScrapReturn,
   type EquipItem,
 } from '../../../stores/inventoryStore'
+
+/** Estimate scrap return based on tier and durability */
+function getScrapReturn(tier: string, durability: number): number {
+  const BASE_SCRAP: Record<string, number> = { t1: 5, t2: 15, t3: 40, t4: 80, t5: 150, t6: 250 }
+  const base = BASE_SCRAP[tier] || 10
+  return Math.max(1, Math.floor(base * (durability / 100)))
+}
 
 interface Props {
   item: EquipItem

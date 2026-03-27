@@ -142,6 +142,9 @@ export interface GovernmentState {
   appointRole: (countryCode: string, targetId: string, role: 'vicepresident' | 'minister' | 'congress' | 'citizen') => { success: boolean; message: string }
   // Revolt system
   canTriggerRevolt: (countryCode: string, playerId: string) => boolean
+  // Citizen dividend
+  setCitizenDividend: (countryId: string, percent: number) => Promise<{ success: boolean; message: string }>
+  processCitizenDividend: (ticksPerDay: number) => void
 }
 
 // Helper to create mock citizens
@@ -183,6 +186,8 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     conscriptionActive: false,
     importTariff: 0,
     minimumWage: 0,
+    stateMilitaryUnits: [],
+    citizenDividendPercent: 0,
   }
 }
 
@@ -699,6 +704,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
       battlesSurvived: 0,
       starQuality: listing.starQuality,
       statModifiers: listing.statModifiers,
+      deployedToPMC: false,
     }
 
     useArmyStore.setState(s => ({
@@ -1033,10 +1039,16 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
           qualifiedDamage += dmg
         }
 
-        // Must have at least MIN_ACTIVE_FIGHTERS unique qualified fighters
-        if (qualifiedFighters >= MIN_ACTIVE_FIGHTERS && qualifiedDamage > 0) {
-          eligible.push({ id: mu.id, damage: qualifiedDamage })
-          totalDamage += qualifiedDamage
+        // State MUs: lower threshold (1 fighter) and 1.5× damage weight
+        const isState = mu.isStateOwned === true
+        const minFighters = isState ? 1 : MIN_ACTIVE_FIGHTERS
+        const damageWeight = isState ? 1.5 : 1.0
+
+        // Must have at least minFighters unique qualified fighters
+        if (qualifiedFighters >= minFighters && qualifiedDamage > 0) {
+          const weightedDamage = Math.floor(qualifiedDamage * damageWeight)
+          eligible.push({ id: mu.id, damage: weightedDamage })
+          totalDamage += weightedDamage
         }
       })
 
@@ -1181,6 +1193,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
       battlesSurvived: 0,
       starQuality: listing.starQuality,
       statModifiers: listing.statModifiers,
+      deployedToPMC: false,
     }
 
     useArmyStore.setState(s => ({
@@ -1415,5 +1428,72 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     })
 
     return { success: true, message: `Vote cast with ${pp.toFixed(1)} Political Power!` }
+  },
+
+  // ── Citizen Dividend ──
+  setCitizenDividend: async (countryId, percent) => {
+    const clamped = Math.max(0, Math.min(30, Math.round(percent)))
+    const gov = get().governments[countryId]
+    if (!gov) return { success: false, message: 'Government not found.' }
+
+    // President-only check
+    const player = usePlayerStore.getState()
+    if (gov.president !== player.name) {
+      return { success: false, message: 'Only the president can set citizen dividend.' }
+    }
+
+    // Persist via API
+    try {
+      const res: any = await api.post('/gov/set-citizen-dividend', { countryCode: countryId, percent: clamped })
+      if (!res.success) return { success: false, message: res.error || 'Failed to set dividend' }
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Server error' }
+    }
+
+    set(s => ({
+      governments: {
+        ...s.governments,
+        [countryId]: { ...s.governments[countryId], citizenDividendPercent: clamped },
+      },
+    }))
+
+    return { success: true, message: `Citizen dividend set to ${clamped}%` }
+  },
+
+  processCitizenDividend: (ticksPerDay) => {
+    const state = get()
+    const worldState = useWorldStore.getState()
+    const ps = usePlayerStore.getState()
+    const playerCountry = ps.countryCode || 'US'
+
+    // Only process for the player's country
+    const gov = state.governments[playerCountry]
+    if (!gov || gov.citizenDividendPercent <= 0) return
+
+    const country = worldState.getCountry(playerCountry)
+    if (!country || country.fund.money <= 0) return
+
+    const citizenCount = gov.citizens.length
+    if (citizenCount <= 0) return
+
+    // Calculate per-tick dividend from treasury
+    const dailyPercent = gov.citizenDividendPercent / 100
+    const dividendPerTick = Math.floor(country.fund.money * dailyPercent / Math.max(1, ticksPerDay))
+    if (dividendPerTick <= 0) return
+
+    const perCitizen = Math.floor(dividendPerTick / citizenCount)
+    if (perCitizen <= 0) return
+
+    const totalSpend = perCitizen * citizenCount
+
+    // Deduct from country fund
+    useWorldStore.getState().spendFromFund(playerCountry, { money: totalSpend })
+
+    // Credit the local player their share
+    ps.earnMoney(perCitizen)
+
+    // Log in economy ledger
+    worldState.recordEconFlow('citizen_dividend', totalSpend, 'destroyed')
+    worldState.recordEconFlow('citizen_dividend_payout', perCitizen, 'created')
   },
 }))

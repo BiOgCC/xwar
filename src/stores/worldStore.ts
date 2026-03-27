@@ -322,6 +322,7 @@ export interface WorldState {
   contributeToWarFund: (attackerId: string, defenderId: string) => void
   recordWarFundDamage: (countryCode: string, damage: number) => void
   recordWarFundBattleOutcome: (winnerCode: string, loserCode: string) => void
+  drawFromWarFund: (amount: number) => number
   distributeWarFund: () => void
   // Economy Ledger
   recordEconFlow: (source: string, amount: number, type: 'created' | 'destroyed', resource?: string) => void
@@ -339,7 +340,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   lastAutoIncomeAt: Date.now(),
   fundHistory: [],
   lastFundSnapshotAt: 0,
-  warFund: 0,
+  warFund: 5_000_000,
   warFundDamageTracker: {},
   warFundBattleOutcomes: {},
   economyLedger: {
@@ -861,9 +862,9 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     })
   },
 
-  // ── War Fund: drain 2% from both treasuries into global pool ──
+  // ── War Fund: drain 5% from both treasuries into global pool ──
   contributeToWarFund: (attackerId, defenderId) => set(state => {
-    const rate = 0.02
+    const rate = 0.05
     let totalContribution = 0
     const updatedCountries = state.countries.map(c => {
       if (c.code === attackerId || c.code === defenderId) {
@@ -898,6 +899,15 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     outcomes[loserCode] = { ...outcomes[loserCode], losses: outcomes[loserCode].losses + 1 }
     return { warFundBattleOutcomes: outcomes }
   }),
+
+  // ── Draw from war fund for individual player payouts ──
+  drawFromWarFund: (amount) => {
+    const state = get()
+    const actual = Math.min(amount, state.warFund)
+    if (actual <= 0) return 0
+    set({ warFund: state.warFund - actual })
+    return actual
+  },
 
   // ── 24h distribution: damage-proportional, losers get 0.3x multiplier ──
   distributeWarFund: () => {

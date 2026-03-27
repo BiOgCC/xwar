@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useMUStore, UPGRADE_TRACKS, type MilitaryUnit, type MUMember, type MUTransaction, type MUDonation, type MUContract, type UpgradeTrack } from '../../stores/muStore'
 import { usePlayerStore } from '../../stores/playerStore'
+import { useGovernmentStore } from '../../stores/governmentStore'
 import CountryFlag from '../shared/CountryFlag'
 import RegionPicker from '../shared/RegionPicker'
 import { getRegionById } from '../../data/regionRegistry'
-import { Heart, Users, Crown, Shield, Swords, TrendingUp, Mountain, Wallet, Plus, ArrowDownLeft, ArrowUpRight, FileText, Gift, ScrollText, Star, Award, Zap } from 'lucide-react'
+import { Heart, Users, Crown, Shield, Swords, TrendingUp, Mountain, Wallet, Plus, ArrowDownLeft, ArrowUpRight, FileText, Gift, ScrollText, Star, Award, Zap, Landmark } from 'lucide-react'
 
 type MUTab = 'home' | 'members' | 'upgrades' | 'vault' | 'applications' | 'contracts' | 'rankings' | 'badges'
 
@@ -122,7 +123,10 @@ function NoUnitView() {
                     🏴 {unit.name}
                   </div>
                   <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>
-                    <CountryFlag iso={unit.countryCode} size={12} /> {unit.members.length} Members • Owner: {unit.ownerName}
+                    <CountryFlag iso={unit.countryCode} size={12} /> {unit.members.length} Members
+                    {unit.isStateOwned
+                      ? <span style={{ color: '#3b82f6', fontWeight: 700, marginLeft: '4px' }}>🏛️ STATE</span>
+                      : <> • Owner: {unit.ownerName}</>}
                   </div>
                 </div>
                 <button
@@ -275,16 +279,30 @@ export default function MUPanel() {
             }}>
               🏴
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 600, letterSpacing: '0.5px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 600, letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 🏴 Military Unit
+                {unit.isStateOwned && (
+                  <span style={{
+                    padding: '1px 6px', borderRadius: '3px', fontSize: '7px', fontWeight: 900,
+                    background: 'rgba(59,130,246,0.15)', color: '#3b82f6',
+                    border: '1px solid rgba(59,130,246,0.3)',
+                  }}>🏛️ STATE</span>
+                )}
               </div>
               <div style={{ fontSize: '14px', fontWeight: 900, color: '#e2e8f0', marginTop: '1px' }}>
                 {unit.name}
               </div>
-              <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '3px' }}>
-                Owned by <CountryFlag iso={unit.ownerCountry} size={12} /> <strong style={{ color: '#e2e8f0' }}>{unit.ownerName}</strong>
-              </div>
+              {unit.isStateOwned ? (
+                <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '3px' }}>
+                  <Landmark size={10} style={{ verticalAlign: '-2px', marginRight: '3px' }} />
+                  State Military Unit of <CountryFlag iso={unit.countryCode} size={12} /> <strong style={{ color: '#3b82f6' }}>{unit.governmentCountryCode || unit.countryCode}</strong>
+                </div>
+              ) : (
+                <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '3px' }}>
+                  Owned by <CountryFlag iso={unit.ownerCountry} size={12} /> <strong style={{ color: '#e2e8f0' }}>{unit.ownerName}</strong>
+                </div>
+              )}
               <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '1px' }}>
                 Located in <CountryFlag iso={unit.countryCode} size={12} /> {unit.regionId ? (getRegionById(unit.regionId)?.name ?? unit.locationRegion) : unit.locationRegion}
               </div>

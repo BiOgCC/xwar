@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useBattleStore, getCountryName } from '../../../stores/battleStore'
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useWorldStore } from '../../../stores/worldStore'
@@ -60,6 +60,13 @@ export default function BattleListView({ onSelectBattle }: Props) {
   const filteredActive = filterBattles(activeBattles)
   const filteredPast = filterBattles(pastBattles)
 
+  // Summary stats
+  const stats = useMemo(() => {
+    const myBattles = activeBattles.filter(b => b.attackerId === iso || b.defenderId === iso)
+    const contractCount = allBattles.reduce((n, b) => n + (b.mercenaryContracts || []).filter(c => c.remaining > 0).length, 0)
+    return { active: activeBattles.length, mine: myBattles.length, contracts: contractCount }
+  }, [activeBattles, allBattles, iso])
+
   // Orders for display
   const activeOrders = activeBattles.filter(b => {
     const mySide: 'attacker' | 'defender' = iso === b.attackerId ? 'attacker' : 'defender'
@@ -70,7 +77,7 @@ export default function BattleListView({ onSelectBattle }: Props) {
   const subTabs: { id: SubTab; icon: string; label: string }[] = [
     { id: 'active', icon: '⚔️', label: 'Active' },
     { id: 'history', icon: '📋', label: 'History' },
-    { id: 'contracts', icon: '📄', label: 'Contracts' },
+    { id: 'contracts', icon: '💰', label: 'Contracts' },
   ]
 
   const filters: { id: Filter; icon: string; label: string }[] = [
@@ -116,9 +123,9 @@ export default function BattleListView({ onSelectBattle }: Props) {
         {/* Flags + Score */}
         <div className="btl-card__flags">
           <CountryFlag iso={battle.attackerId} size={18} />
-          <span className="btl-card__score" style={{ color: atkClr }}>{battle.attackerRoundsWon}</span>
-          <span className="btl-card__vs">vs</span>
-          <span className="btl-card__score" style={{ color: defClr }}>{battle.defenderRoundsWon}</span>
+          <span className="btl-card__score" style={{ color: atkClr, textShadow: `0 0 8px ${atkClr}44` }}>{battle.attackerRoundsWon}</span>
+          <span className="btl-card__vs">VS</span>
+          <span className="btl-card__score" style={{ color: defClr, textShadow: `0 0 8px ${defClr}44` }}>{battle.defenderRoundsWon}</span>
           <CountryFlag iso={battle.defenderId} size={18} />
         </div>
 
@@ -127,7 +134,7 @@ export default function BattleListView({ onSelectBattle }: Props) {
 
         {/* Ground points */}
         {battle.status === 'active' && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', fontWeight: 700, marginBottom: '2px', fontFamily: 'var(--font-mono)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', fontWeight: 700, marginBottom: '2px', fontFamily: 'var(--font-display)' }}>
             <span style={{ color: atkClr }}>⛰ {rdAtkPts}</span>
             <span style={{ color: defClr }}>{rdDefPts} ⛰</span>
           </div>
@@ -135,8 +142,8 @@ export default function BattleListView({ onSelectBattle }: Props) {
 
         {/* Damage bar */}
         <div className="btl-card__dmg-bar">
-          <div className="btl-card__dmg-fill" style={{ width: `${atkPct}%`, background: atkClr }} />
-          <div className="btl-card__dmg-fill" style={{ width: `${100 - atkPct}%`, background: defClr }} />
+          <div className="btl-card__dmg-fill" style={{ width: `${atkPct}%`, background: atkClr, boxShadow: `0 0 4px ${atkClr}44` }} />
+          <div className="btl-card__dmg-fill" style={{ width: `${100 - atkPct}%`, background: defClr, boxShadow: `0 0 4px ${defClr}44` }} />
         </div>
 
         {/* Damage totals */}
@@ -151,7 +158,7 @@ export default function BattleListView({ onSelectBattle }: Props) {
             <span className="btl-card__activity-dot" />
             <span>R{battle.rounds.length}</span>
             {battle.rounds.length > 1 && (
-              <span style={{ marginLeft: 'auto', color: '#3b82f6', fontWeight: 800 }}>
+              <span style={{ marginLeft: 'auto', color: atkClr, fontWeight: 800 }}>
                 {battle.rounds.filter(r => r.status === 'attacker_won').length}W
               </span>
             )}
@@ -163,6 +170,20 @@ export default function BattleListView({ onSelectBattle }: Props) {
 
   return (
     <div className="btl-list">
+      {/* Summary Stats Bar */}
+      <div className="btl-summary-bar">
+        {[
+          { label: 'ACTIVE', value: stats.active, color: '#ef4444' },
+          { label: 'YOUR BATTLES', value: stats.mine, color: '#f59e0b' },
+          { label: 'CONTRACTS', value: stats.contracts, color: '#a855f7' },
+        ].map(s => (
+          <div key={s.label} className="btl-summary-stat" style={{ border: `1px solid ${s.color}33` }}>
+            <div className="btl-summary-stat__value" style={{ color: s.color }}>{s.value}</div>
+            <div className="btl-summary-stat__label">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
       {/* Sub-tabs */}
       <div className="btl-subtabs">
         {subTabs.map(t => (
@@ -197,22 +218,23 @@ export default function BattleListView({ onSelectBattle }: Props) {
           {/* Orders section */}
           {activeOrders.length > 0 && (
             <div className="btl-orders">
-              <div className="btl-orders__title">⚙ Orders</div>
+              <div className="btl-section-header btl-section-header--amber">⚙ ACTIVE ORDERS</div>
               {activeOrders.map(b => {
                 const mySide: 'attacker' | 'defender' = iso === b.attackerId ? 'attacker' : 'defender'
                 const order = mySide === 'attacker' ? b.attackerOrder : b.defenderOrder
                 return (
                   <div key={b.id} style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '3px 6px', fontSize: '8px', color: '#e2e8f0',
-                    background: 'rgba(255,255,255,0.02)', borderRadius: '3px',
-                    marginBottom: '2px',
+                    padding: '4px 8px', fontSize: '8px', color: '#e2e8f0',
+                    background: 'rgba(245,158,11,0.04)', borderRadius: '4px',
+                    marginBottom: '2px', border: '1px solid rgba(245,158,11,0.12)',
+                    fontFamily: 'var(--font-display)',
                   }}>
                     <CountryFlag iso={b.attackerId} size={12} />
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#94a3b8' }}>
                       {b.regionName}
                     </span>
-                    <span style={{ fontWeight: 800, color: '#60a5fa', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
+                    <span style={{ fontWeight: 800, color: '#f59e0b', fontFamily: 'var(--font-display)', letterSpacing: '0.5px', textShadow: '0 0 6px rgba(245,158,11,0.3)' }}>
                       {order?.toUpperCase()}
                     </span>
                   </div>
@@ -224,9 +246,9 @@ export default function BattleListView({ onSelectBattle }: Props) {
           {/* Battle grid */}
           <div className="btl-grid">
             {filteredActive.length === 0 ? (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '30px 10px', color: '#334155' }}>
-                <div style={{ fontSize: '24px', marginBottom: '6px', opacity: 0.3 }}>⚔️</div>
-                <div style={{ fontSize: '10px' }}>No active battles matching filter.</div>
+              <div className="btl-empty">
+                <div className="btl-empty__icon">⚔️</div>
+                <div className="btl-empty__text">No active battles matching filter.</div>
               </div>
             ) : (
               filteredActive.slice(0, visibleCount).map(renderBattleCard)
@@ -243,13 +265,17 @@ export default function BattleListView({ onSelectBattle }: Props) {
       {/* History tab */}
       {subTab === 'history' && (
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '3px', padding: '4px 0' }}>
+          <div className="btl-section-header">BATTLE HISTORY — RECENT ENGAGEMENTS</div>
           {filteredPast.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '30px', color: '#334155', fontSize: '10px' }}>No battle history.</div>
+            <div className="btl-empty">
+              <div className="btl-empty__icon">📋</div>
+              <div className="btl-empty__text">No battle history.</div>
+            </div>
           ) : (
             filteredPast.slice(-50).reverse().map(b => (
-              <div key={b.id} className={`btl-history-row btl-history-row--${b.status}`} onClick={() => onSelectBattle(b.id)} style={{ cursor: 'pointer' }}>
+              <div key={b.id} className={`btl-history-row btl-history-row--${b.status}`} onClick={() => onSelectBattle(b.id)}>
                 <CountryFlag iso={b.attackerId} size={14} />
-                <span style={{ fontSize: '8px', color: '#64748b' }}>vs</span>
+                <span style={{ fontSize: '8px', color: '#64748b', fontFamily: 'var(--font-display)' }}>VS</span>
                 <CountryFlag iso={b.defenderId} size={14} />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.regionName}</span>
                 <span className="btl-history-result" style={{ color: b.status === 'attacker_won' ? '#ef4444' : '#3b82f6' }}>
@@ -264,38 +290,35 @@ export default function BattleListView({ onSelectBattle }: Props) {
       {/* Contracts tab */}
       {subTab === 'contracts' && (
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', padding: '4px 0' }}>
+          <div className="btl-section-header btl-section-header--amber">💰 MERCENARY CONTRACTS — ACTIVE BOUNTIES</div>
           {(() => {
             const allContracts = allBattles.flatMap(b =>
               (b.mercenaryContracts || []).filter(c => c.remaining > 0).map(c => ({ ...c, battleId: b.id, regionName: b.regionName, attackerId: b.attackerId, defenderId: b.defenderId }))
             )
             if (allContracts.length === 0) return (
-              <div style={{ textAlign: 'center', padding: '30px', color: '#334155', fontSize: '10px' }}>
-                <div style={{ fontSize: '24px', marginBottom: '6px', opacity: 0.3 }}>💰</div>
-                No active mercenary contracts.
+              <div className="btl-empty">
+                <div className="btl-empty__icon">💰</div>
+                <div className="btl-empty__text">No active mercenary contracts.</div>
               </div>
             )
             return allContracts.map(c => {
               const pct = Math.round((c.remaining / c.totalPool) * 100)
               return (
-                <div key={c.id} onClick={() => onSelectBattle(c.battleId)} style={{
-                  padding: '6px 8px', borderRadius: '4px', cursor: 'pointer',
-                  background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)',
-                  position: 'relative', overflow: 'hidden',
-                }}>
-                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${pct}%`, background: 'rgba(245,158,11,0.06)', transition: 'width 0.5s' }} />
-                  <div style={{ position: 'relative', zIndex: 1 }}>
+                <div key={c.id} className="btl-contract-card" onClick={() => onSelectBattle(c.battleId)}>
+                  <div className="btl-contract-card__fill" style={{ width: `${pct}%` }} />
+                  <div className="btl-contract-card__content">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
                       <CountryFlag iso={c.attackerId} size={12} />
-                      <span style={{ fontSize: '8px', color: '#94a3b8', flex: 1 }}>{c.regionName}</span>
-                      <span style={{ fontSize: '7px', fontWeight: 800, color: c.side === 'attacker' ? '#ef4444' : '#3b82f6' }}>
+                      <span style={{ fontSize: '8px', color: '#94a3b8', flex: 1, fontFamily: 'var(--font-display)' }}>{c.regionName}</span>
+                      <span style={{ fontSize: '7px', fontWeight: 800, color: c.side === 'attacker' ? '#ef4444' : '#3b82f6', fontFamily: 'var(--font-display)' }}>
                         {c.side === 'attacker' ? '⚔️ ATK' : '🛡️ DEF'}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 900, color: '#fbbf24', fontFamily: 'var(--font-mono)' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 900, color: '#fbbf24', fontFamily: 'var(--font-display)', textShadow: '0 0 6px rgba(251,191,36,0.3)' }}>
                         {c.ratePerDamage.toLocaleString()}/1K
                       </span>
-                      <span style={{ fontSize: '8px', color: pct > 30 ? '#94a3b8' : '#ef4444', fontFamily: 'var(--font-mono)' }}>
+                      <span style={{ fontSize: '8px', color: pct > 30 ? '#94a3b8' : '#ef4444', fontFamily: 'var(--font-display)' }}>
                         {c.remaining.toLocaleString()} left ({pct}%)
                       </span>
                     </div>

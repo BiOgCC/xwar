@@ -443,6 +443,39 @@ export async function getArmyInfo(armyId: string) {
 
 
 
+// ── Prestige API ─────────────────────────────────────────────
+
+export async function getPrestigeRankings(week?: number) {
+  const query = week ? `?week=${week}` : ''
+  return api.get<{ success: boolean; rankings: any[]; prestigePlayers: any[]; currentWeek: number }>(`/prestige/rankings${query}`)
+}
+
+export async function getPrestigeArchive(week: number) {
+  return api.get<{ success: boolean; archive: any[] }>(`/prestige/archive/${week}`)
+}
+
+export async function getPrestigeItems(playerId?: string) {
+  const query = playerId ? `?playerId=${playerId}` : ''
+  return api.get<{ success: boolean; items: any[]; blueprints: any[] }>(`/prestige/items${query}`)
+}
+
+export async function createPrestigeBlueprint() {
+  return api.post<{ success: boolean; message: string; blueprint?: any }>('/prestige/blueprint/create')
+}
+
+export async function craftPrestigeItem(blueprintId: string) {
+  return api.post<{ success: boolean; message: string; item?: any }>('/prestige/craft', { blueprintId })
+}
+
+export async function listPrestigeBlueprintOnMarket(blueprintId: string, price: number) {
+  return api.post<{ success: boolean; message: string }>('/prestige/blueprint/list', { blueprintId, price })
+}
+
+export async function buyPrestigeBlueprint(blueprintId: string) {
+  return api.post<{ success: boolean; message: string }>('/prestige/blueprint/buy', { blueprintId })
+}
+
+
 // ── Health ───────────────────────────────────────────────────
 
 export async function healthCheck() {

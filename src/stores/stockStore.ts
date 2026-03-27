@@ -97,7 +97,9 @@ export interface StockState {
   portfolio: Holding[]
   totalInvested: number
   totalRealized: number
-  marketPool: number           // shared liquidity pool
+  marketPool: number           // shared liquidity pool (legacy local)
+  stockPool: number            // server-side stock pool balance
+  bondPool: number             // server-side bond pool balance
   transactions: Transaction[]  // global transaction log
   bonds: Bond[]                // player's active/closed bonds
   lastSessionBoundaryAt: number // timestamp of last 12h session boundary
@@ -105,10 +107,11 @@ export interface StockState {
 
   fetchStocks: () => Promise<void>
   fetchHoldings: () => Promise<void>
+  fetchPoolBalances: () => Promise<void>
   buyShares: (code: string, qty: number) => Promise<{ success: boolean; message: string }>
   sellShares: (holdingId: string) => Promise<{ success: boolean; message: string }>
-  openBond: (code: string, direction: BondDirection, betAmount: number, durationIdx: number) => { success: boolean; message: string }
-  closeBond: (bondId: string) => { success: boolean; message: string }
+  openBond: (code: string, direction: BondDirection, betAmount: number, durationIdx: number) => Promise<{ success: boolean; message: string }>
+  closeBond: (bondId: string) => Promise<{ success: boolean; message: string }>
   resolveExpiredBonds: () => void
   tickMarket: () => void
   processSessionBoundary: () => void
@@ -125,6 +128,8 @@ export const useStockStore = create<StockState>((set, get) => {
     totalInvested: 0,
     totalRealized: 0,
     marketPool: 0,
+    stockPool: 0,
+    bondPool: 0,
     transactions: [],
     bonds: [],
     lastSessionBoundaryAt: Date.now(),
@@ -167,6 +172,14 @@ export const useStockStore = create<StockState>((set, get) => {
           set({ portfolio: mapped })
         }
       } catch (e) { console.error('Error fetching holdings:', e) }
+    },
+    fetchPoolBalances: async () => {
+      try {
+        const res: any = await api.get('/stock/pools')
+        if (res.success) {
+          set({ stockPool: res.stockPool ?? 0, bondPool: res.bondPool ?? 0 })
+        }
+      } catch (e) { console.error('Error fetching pool balances:', e) }
     },
 
     buyShares: async (code, qty) => {
@@ -212,10 +225,12 @@ export const useStockStore = create<StockState>((set, get) => {
         if (res.success) {
           await get().fetchStocks()
           await get().fetchHoldings()
-          usePlayerStore.getState().earnMoney(res.proceeds)
+          // Sync from backend balance — no earnMoney() money creation
+          usePlayerStore.setState({ money: res.newBalance })
+          await get().fetchPoolBalances()
           return { success: true, message: res.message }
         }
-        return { success: false, message: 'Could not sell shares' }
+        return { success: false, message: res.error || 'Could not sell shares' }
       } catch (e: any) {
         return { success: false, message: e.message || 'Error selling shares' }
       }
@@ -223,7 +238,7 @@ export const useStockStore = create<StockState>((set, get) => {
 
     // ── Binary Options Bonds ──
 
-    openBond: (code, direction, betAmount, durationIdx) => {
+    openBond: async (code, direction, betAmount, durationIdx) => {
       if (!rateLimiter.check('stock.bond')) return { success: false, message: 'Too fast! Wait a moment.' }
 
       // Embargo check
@@ -242,36 +257,53 @@ export const useStockStore = create<StockState>((set, get) => {
       const duration = BOND_DURATIONS[durationIdx]
       if (!duration) return { success: false, message: 'Invalid duration' }
 
-      player.spendMoney(betAmount)
+      // Map duration index to API duration string
+      const durationMap: Record<number, string> = { 0: '5', 1: '15', 2: '30' }
 
-      // Bet goes to market pool
-      const bond: Bond = {
-        id: `bond_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        countryCode: code,
-        direction,
-        entryPrice: stock.price,
-        betAmount,
-        openedAt: Date.now(),
-        expiresAt: Date.now() + duration.ms,
-        status: 'open',
+      try {
+        const res: any = await api.post('/stock/bond/open', {
+          countryCode: code,
+          direction,
+          amount: betAmount,
+          duration: durationMap[durationIdx] || '5',
+        })
+        if (res.success) {
+          // Sync player money from backend
+          usePlayerStore.setState({ money: player.money - betAmount })
+          await get().fetchPoolBalances()
+
+          // Add bond to local state
+          const bond: Bond = {
+            id: res.bond?.id || `bond_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            countryCode: code,
+            direction,
+            entryPrice: stock.price,
+            betAmount,
+            openedAt: Date.now(),
+            expiresAt: Date.now() + duration.ms,
+            status: 'open',
+          }
+
+          const tx: Transaction = {
+            id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            type: 'bond_open', code, qty: 1, price: stock.price, total: betAmount,
+            timestamp: Date.now(), playerName: player.name,
+          }
+
+          set(s => ({
+            bonds: [bond, ...s.bonds],
+            transactions: [tx, ...s.transactions].slice(0, 50),
+          }))
+
+          return { success: true, message: res.message || `Opened ${direction.toUpperCase()} bond on ${code} @ $${stock.price} — ${duration.label}` }
+        }
+        return { success: false, message: res.error || 'Could not open bond' }
+      } catch (e: any) {
+        return { success: false, message: e.message || 'Error opening bond' }
       }
-
-      const tx: Transaction = {
-        id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        type: 'bond_open', code, qty: 1, price: stock.price, total: betAmount,
-        timestamp: Date.now(), playerName: player.name,
-      }
-
-      set(s => ({
-        bonds: [bond, ...s.bonds],
-        marketPool: s.marketPool + betAmount,
-        transactions: [tx, ...s.transactions].slice(0, 50),
-      }))
-
-      return { success: true, message: `Opened ${direction.toUpperCase()} bond on ${code} @ $${stock.price} — ${duration.label}` }
     },
 
-    closeBond: (bondId) => {
+    closeBond: async (bondId) => {
       const state = get()
       const bond = state.bonds.find(b => b.id === bondId && b.status === 'open')
       if (!bond) return { success: false, message: 'Bond not found or already closed' }
@@ -285,58 +317,53 @@ export const useStockStore = create<StockState>((set, get) => {
         return { success: false, message: `Bond locked — ${min}:${sec.toString().padStart(2, '0')} remaining` }
       }
 
-      const stock = state.stocks.find(s => s.code === bond.countryCode)
-      if (!stock) return { success: false, message: 'Stock not found' }
+      try {
+        const res: any = await api.post('/stock/bond/settle', { bondId })
+        if (res.success) {
+          const won = res.won
+          const payout = res.payout || 0
 
-      const closePrice = stock.price
-      const priceWentUp = closePrice > bond.entryPrice
-      const priceWentDown = closePrice < bond.entryPrice
-      const won = (bond.direction === 'up' && priceWentUp) || (bond.direction === 'down' && priceWentDown)
+          // Sync from backend balance
+          if (won && res.newBalance !== undefined) {
+            usePlayerStore.setState({ money: res.newBalance })
+          }
+          await get().fetchPoolBalances()
 
-      // Find matching duration multiplier
-      const matchDuration = BOND_DURATIONS.find(d => bond.expiresAt - bond.openedAt === d.ms)
-      const multiplier = matchDuration?.multiplier || 1.5
+          const stock = state.stocks.find(s => s.code === bond.countryCode)
+          const closePrice = stock?.price ?? bond.entryPrice
 
-      let payout = 0
-      if (won) {
-        const grossPayout = Math.floor(bond.betAmount * multiplier)
-        // 10% tax on winnings → country treasury
-        const tax = Math.floor(grossPayout * 0.10)
-        const netPayout = grossPayout - tax
-        const actualPayout = Math.min(netPayout, state.marketPool)
-        usePlayerStore.getState().earnMoney(actualPayout)
-        useWorldStore.getState().addTreasuryTax(bond.countryCode, tax)
-        payout = actualPayout
-      }
+          const tx: Transaction = {
+            id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            type: 'bond_close', code: bond.countryCode, qty: 1,
+            price: closePrice, total: won ? payout : 0,
+            pnl: won ? payout - bond.betAmount : -bond.betAmount,
+            timestamp: Date.now(), playerName: usePlayerStore.getState().name,
+          }
 
-      const tx: Transaction = {
-        id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        type: 'bond_close', code: bond.countryCode, qty: 1,
-        price: closePrice, total: won ? payout : 0,
-        pnl: won ? payout - bond.betAmount : -bond.betAmount,
-        timestamp: Date.now(), playerName: usePlayerStore.getState().name,
-      }
+          set(s => ({
+            bonds: s.bonds.map(b => b.id === bondId ? {
+              ...b, status: won ? 'won' as const : 'lost' as const,
+              closePrice, payout: won ? payout : 0,
+            } : b),
+            transactions: [tx, ...s.transactions].slice(0, 50),
+          }))
 
-      set(s => ({
-        bonds: s.bonds.map(b => b.id === bondId ? {
-          ...b, status: won ? 'won' as const : 'lost' as const,
-          closePrice, payout: won ? payout : 0,
-        } : b),
-        marketPool: won ? s.marketPool - payout : s.marketPool,
-        transactions: [tx, ...s.transactions].slice(0, 50),
-      }))
+          if (won && payout >= 100_000) {
+            useNewsStore.getState().pushEvent('economy',
+              `${usePlayerStore.getState().name} won $${payout.toLocaleString()} on a ${bond.direction.toUpperCase()} bond!`
+            )
+          }
 
-      if (won && payout >= 100_000) {
-        useNewsStore.getState().pushEvent('economy',
-          `${usePlayerStore.getState().name} won $${payout.toLocaleString()} on a ${bond.direction.toUpperCase()} bond!`
-        )
-      }
-
-      return {
-        success: true,
-        message: won
-          ? `WON! ${bond.direction.toUpperCase()} bond paid $${payout.toLocaleString()} (×${multiplier} - 10% tax)`
-          : `LOST! ${bond.direction.toUpperCase()} bond — price went ${priceWentUp ? 'UP' : priceWentDown ? 'DOWN' : 'FLAT'}`,
+          return {
+            success: true,
+            message: res.message || (won
+              ? `WON! ${bond.direction.toUpperCase()} bond paid $${payout.toLocaleString()}`
+              : `LOST! ${bond.direction.toUpperCase()} bond — better luck next time`),
+          }
+        }
+        return { success: false, message: res.error || 'Could not settle bond' }
+      } catch (e: any) {
+        return { success: false, message: e.message || 'Error settling bond' }
       }
     },
 

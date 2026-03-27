@@ -1,17 +1,28 @@
 /**
  * Stock Exchange Routes — Buy/sell country stocks, view holdings.
+ * Money flows: 30% to country treasury, 70% to liquidity pool.
  */
 import { Router } from 'express'
 import { z } from 'zod'
 import { eq, sql, and } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { players, countryStocks, stockHoldings, bonds, wars } from '../db/schema.js'
+import { players, countryStocks, stockHoldings, bonds, wars, marketPools } from '../db/schema.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 
 const router = Router()
 
 const STOCK_TAX_RATE = 0.02
+const TREASURY_SHARE = 0.30  // 30% of buy/bet goes to country treasury
+
+/** Ensure global market pool row exists */
+async function ensurePool() {
+  const [existing] = await db.select().from(marketPools).where(eq(marketPools.id, 'global')).limit(1)
+  if (!existing) {
+    await db.insert(marketPools).values({ id: 'global', stockPool: 5_000_000, bondPool: 2_000_000 })
+      .onConflictDoNothing()
+  }
+}
 
 // ═══════════════════════════════════════════════
 //  POST /api/stock/buy
@@ -61,6 +72,22 @@ router.post('/buy', requireAuth as any, validate(buySchema), async (req, res) =>
       res.status(400).json({ error: `Not enough money. Need $${totalWithTax.toLocaleString()}` }); return
     }
 
+    // ── 30/70 Split: 30% to country treasury, 70% to stock pool ──
+    const treasuryShare = Math.floor(totalCost * TREASURY_SHARE)
+    const poolShare = totalCost - treasuryShare
+
+    await db.execute(sql`
+      UPDATE countries SET fund = jsonb_set(
+        COALESCE(fund, '{}')::jsonb, '{money}',
+        to_jsonb(COALESCE((fund->>'money')::bigint, 0) + ${treasuryShare})
+      ) WHERE code = ${countryCode}
+    `)
+
+    await ensurePool()
+    await db.update(marketPools).set({
+      stockPool: sql`stock_pool + ${poolShare}`,
+    }).where(eq(marketPools.id, 'global'))
+
     // Create stock holding
     await db.insert(stockHoldings).values({
       playerId,
@@ -80,7 +107,9 @@ router.post('/buy', requireAuth as any, validate(buySchema), async (req, res) =>
       pricePerShare,
       totalCost: totalWithTax,
       newBalance: deductResult[0].newBalance,
-      message: `Bought ${shares} ${countryCode} shares at $${pricePerShare.toFixed(2)}/share`,
+      treasuryShare,
+      poolShare,
+      message: `Bought ${shares} ${countryCode} shares at $${pricePerShare.toFixed(2)}/share (30% → treasury, 70% → pool)`,
     })
   } catch (err) {
     console.error('[STOCK] Buy error:', err)
@@ -114,10 +143,34 @@ router.post('/sell', requireAuth as any, validate(sellSchema), async (req, res) 
     const tax = Math.floor(proceeds * STOCK_TAX_RATE)
     const netProceeds = proceeds - tax
 
-    // Add money to player
-    await db.update(players).set({
-      money: sql`${players.money} + ${netProceeds}`,
-    }).where(eq(players.id, playerId))
+    // ── Pay from stock pool (not money creation) ──
+    await ensurePool()
+    const [pool] = await db.select().from(marketPools).where(eq(marketPools.id, 'global')).limit(1)
+    const available = pool?.stockPool ?? 0
+    const actualPayout = Math.min(netProceeds, available)
+    if (actualPayout <= 0) {
+      res.status(400).json({ error: 'Stock market pool depleted — try again later.' }); return
+    }
+
+    // Deduct from pool
+    await db.update(marketPools).set({
+      stockPool: sql`stock_pool - ${actualPayout}`,
+    }).where(eq(marketPools.id, 'global'))
+
+    // Credit player
+    const [updated] = await db.update(players).set({
+      money: sql`${players.money} + ${actualPayout}`,
+    }).where(eq(players.id, playerId)).returning({ newBalance: players.money })
+
+    // Tax portion goes to country treasury
+    if (tax > 0) {
+      await db.execute(sql`
+        UPDATE countries SET fund = jsonb_set(
+          COALESCE(fund, '{}')::jsonb, '{money}',
+          to_jsonb(COALESCE((fund->>'money')::bigint, 0) + ${tax})
+        ) WHERE code = ${holding.countryCode}
+      `)
+    }
 
     // Delete holding
     await db.delete(stockHoldings).where(eq(stockHoldings.id, holdingId))
@@ -128,15 +181,16 @@ router.post('/sell', requireAuth as any, validate(sellSchema), async (req, res) 
     }).where(eq(countryStocks.countryCode, holding.countryCode!))
 
     const buyPrice = parseFloat(holding.buyPrice)
-    const profit = netProceeds - Math.floor(holding.shares * buyPrice)
+    const profit = actualPayout - Math.floor(holding.shares * buyPrice)
 
     res.json({
       success: true,
       shares: holding.shares,
       sellPrice: currentPrice,
-      proceeds: netProceeds,
+      proceeds: actualPayout,
       profit,
-      message: `Sold ${holding.shares} shares for $${netProceeds.toLocaleString()} (${profit >= 0 ? '+' : ''}$${profit.toLocaleString()})`,
+      newBalance: updated?.newBalance ?? 0,
+      message: `Sold ${holding.shares} shares for $${actualPayout.toLocaleString()} (${profit >= 0 ? '+' : ''}$${profit.toLocaleString()})`,
     })
   } catch (err) {
     console.error('[STOCK] Sell error:', err)
@@ -218,6 +272,22 @@ router.post('/bond/open', requireAuth as any, validate(bondSchema), async (req, 
       res.status(400).json({ error: `Not enough money. Need $${amount.toLocaleString()}` }); return
     }
 
+    // ── 30/70 Split: 30% to country treasury, 70% to bond pool ──
+    const treasuryShare = Math.floor(amount * TREASURY_SHARE)
+    const poolShare = amount - treasuryShare
+
+    await db.execute(sql`
+      UPDATE countries SET fund = jsonb_set(
+        COALESCE(fund, '{}')::jsonb, '{money}',
+        to_jsonb(COALESCE((fund->>'money')::bigint, 0) + ${treasuryShare})
+      ) WHERE code = ${countryCode}
+    `)
+
+    await ensurePool()
+    await db.update(marketPools).set({
+      bondPool: sql`bond_pool + ${poolShare}`,
+    }).where(eq(marketPools.id, 'global'))
+
     const durationMinutes = parseInt(duration)
     const maturityAt = new Date(Date.now() + durationMinutes * 60 * 1000)
 
@@ -244,6 +314,8 @@ router.post('/bond/open', requireAuth as any, validate(bondSchema), async (req, 
         ...bond,
         payout: Math.floor(amount * multiplier),
       },
+      treasuryShare,
+      poolShare,
       message: `Bond opened: ${direction.toUpperCase()} on ${countryCode} at $${currentPrice.toFixed(2)} for ${durationMinutes}m (${multiplier}x payout)`,
     })
   } catch (err) {
@@ -290,10 +362,25 @@ router.post('/bond/settle', requireAuth as any, validate(settleSchema), async (r
     const priceWentDown = currentPrice < openPrice
     const won = (direction === 'up' && priceWentUp) || (direction === 'down' && priceWentDown) 
 
+    let actualPayout = 0
+    let newBalance = 0
     if (won) {
-      await db.update(players).set({
-        money: sql`${players.money} + ${payout}`,
-      }).where(eq(players.id, playerId))
+      // ── Pay from bond pool (not money creation) ──
+      await ensurePool()
+      const [pool] = await db.select().from(marketPools).where(eq(marketPools.id, 'global')).limit(1)
+      const available = pool?.bondPool ?? 0
+      actualPayout = Math.min(payout, available)
+
+      if (actualPayout > 0) {
+        await db.update(marketPools).set({
+          bondPool: sql`bond_pool - ${actualPayout}`,
+        }).where(eq(marketPools.id, 'global'))
+
+        const [updated] = await db.update(players).set({
+          money: sql`${players.money} + ${actualPayout}`,
+        }).where(eq(players.id, playerId)).returning({ newBalance: players.money })
+        newBalance = updated?.newBalance ?? 0
+      }
     }
 
     await db.update(bonds).set({ status: won ? 'won' : 'lost' }).where(eq(bonds.id, bondId))
@@ -301,8 +388,9 @@ router.post('/bond/settle', requireAuth as any, validate(settleSchema), async (r
     res.json({
       success: true,
       won,
-      payout: won ? payout : 0,
-      message: won ? `Bond WON! +$${payout.toLocaleString()}` : `Bond expired. Better luck next time.`,
+      payout: won ? actualPayout : 0,
+      newBalance,
+      message: won ? `Bond WON! +$${actualPayout.toLocaleString()}` : `Bond expired. Better luck next time.`,
     })
   } catch (err) {
     console.error('[STOCK] Bond settle error:', err)
@@ -325,5 +413,19 @@ router.get('/bond/my-bonds', requireAuth as any, async (req, res) => {
   }
 })
 
-export default router
+// ═══════════════════════════════════════════════
+//  GET /api/stock/pools — Pool balances for UI
+// ═══════════════════════════════════════════════
 
+router.get('/pools', async (_req, res) => {
+  try {
+    await ensurePool()
+    const [pool] = await db.select().from(marketPools).where(eq(marketPools.id, 'global')).limit(1)
+    res.json({ success: true, stockPool: pool?.stockPool ?? 0, bondPool: pool?.bondPool ?? 0 })
+  } catch (err) {
+    console.error('[STOCK] Pools error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+export default router

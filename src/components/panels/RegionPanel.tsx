@@ -673,8 +673,7 @@ export default function RegionPanel() {
                       background: 'rgba(0,0,0,0.3)', border: `1px solid rgba(255,255,255,0.06)`,
                       cursor: 'pointer',
                     }} onClick={() => {
-                      useUIStore.getState().setSelectedBattleId(battle.id)
-                      useUIStore.getState().setActivePanel('war_combat')
+                      useUIStore.getState().setActivePanel('combat')
                     }}>
                       {/* Region name */}
                       <div style={{ fontFamily: 'var(--font-display)', fontSize: 8, color: 'var(--text-muted)', letterSpacing: '0.08em', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

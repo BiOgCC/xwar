@@ -317,7 +317,7 @@ export default function TacticalOpsPanel() {
                 {/* Success chance pill */}
                 <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                   <Pill label={`✅ ${Math.round(successChance)}% success`} color={GREEN} bg="rgba(34,211,138,0.08)" />
-                  <Pill label={`⏱ ${opDef.duration || '24h'} duration`} color={CYAN} bg="rgba(0,204,255,0.08)" />
+                  <Pill label={`⏱ ${opDef.durationMs ? (opDef.durationMs >= 86400000 ? `${Math.round(opDef.durationMs / 86400000)}d` : opDef.durationMs >= 3600000 ? `${Math.round(opDef.durationMs / 3600000)}h` : `${Math.round(opDef.durationMs / 60000)}m`) : '24h'} duration`} color={CYAN} bg="rgba(0,204,255,0.08)" />
                 </div>
 
                 {/* Micro-missions */}

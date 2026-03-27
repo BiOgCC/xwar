@@ -672,4 +672,34 @@ router.post('/force-vault/spend', requireAuth as any, validate(forceVaultSpendSc
   }
 })
 
+// ═══════════════════════════════════════════════
+//  POST /api/gov/set-citizen-dividend — Set citizen dividend %
+// ═══════════════════════════════════════════════
+
+const dividendSchema = z.object({
+  countryCode: z.string().min(2).max(4),
+  percent: z.number().int().min(0).max(30),
+})
+
+router.post('/set-citizen-dividend', requireAuth as any, validate(dividendSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { countryCode, percent } = req.body
+
+    // Verify president
+    const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!gov || !player || gov.president !== player.name) {
+      res.status(403).json({ error: 'Only the president can set citizen dividend.' }); return
+    }
+
+    await db.update(governments).set({ citizenDividendPercent: percent }).where(eq(governments.countryCode, countryCode))
+
+    res.json({ success: true, message: `Citizen dividend set to ${percent}%` })
+  } catch (err) {
+    console.error('[GOV] Set citizen dividend error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 export default router

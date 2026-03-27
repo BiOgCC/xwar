@@ -33,7 +33,7 @@ import AdminPanel from '../panels/AdminPanel'
 import {
   User, Backpack, BarChart2, Factory, CircleDollarSign,
   Gamepad2, Target, TrendingUp, Handshake, Landmark,
-  ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText, Anchor,
+  ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText,
   Beer, ChevronLeft, Flag, Zap, ShieldAlert
 } from 'lucide-react'
 
@@ -63,7 +63,6 @@ function getSidebarIcon(id: string) {
     case 'diplomacy': return <Handshake {...SIDEBAR_ICON_PROPS} />
     case 'history': return <ScrollText {...SIDEBAR_ICON_PROPS} />
     case 'region': return <Target {...SIDEBAR_ICON_PROPS} />
-    case 'trade_routes': return <Anchor {...SIDEBAR_ICON_PROPS} />
     case 'admin': return <ShieldAlert {...SIDEBAR_ICON_PROPS} color="#ef4444" />
     default: return <User {...SIDEBAR_ICON_PROPS} />
   }

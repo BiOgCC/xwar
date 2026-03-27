@@ -103,14 +103,21 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .war-content::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+}
+.war-content::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.02);
 }
 .war-content::-webkit-scrollbar-thumb {
-  background: rgba(132, 204, 22, 0.3);
-  border-radius: 2px;
+  background: rgba(239, 68, 68, 0.35);
+  border-radius: 3px;
+}
+.war-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(239, 68, 68, 0.55);
 }
 
 /* ====== CARDS ====== */

@@ -347,6 +347,22 @@
   color: #3b82f6;
 }
 
+.stock-header__pools {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  color: rgba(226,232,240,0.35);
+}
+
+.stock-header__pool-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 /* ── Tabs ── */
 .stock-tabs { display: flex; gap: 4px; }
 .stock-tab {

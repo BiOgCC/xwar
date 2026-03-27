@@ -4,7 +4,7 @@ import { useWorldStore } from '../../../stores/worldStore'
 import { useArmyStore } from '../../../stores/army'
 import { useRegionStore } from '../../../stores/regionStore'
 import ResourceIcon from '../../shared/ResourceIcon'
-import { Download, Factory, Scroll, Crown, Store, Pickaxe, Upload, ShieldHalf, LayoutGrid, Handshake, Flame } from 'lucide-react'
+import { Download, Factory, Scroll, Store, Pickaxe, Upload, ShieldHalf, LayoutGrid, Flame } from 'lucide-react'
 
 /** FINANCE tab — Income/spending breakdown, military stats */
 export default function GovFinanceTab() {
@@ -59,11 +59,11 @@ export default function GovFinanceTab() {
       {/* Income */}
       <div className="gov-section gov-section--highlight">
         <div className="gov-section__title gov-section__title--green" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Download size={14} /> INCOME SOURCES</div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ResourceIcon resourceKey="money" size={12} /> Tax Revenue (per tick)</span><span className="gov-stat-row__value" style={{ color: '#22d38a' }}>${Math.floor(fund.money * 0.001).toLocaleString()}</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Factory size={12} color="#22d38a" /> Auto Income (8h)</span><span className="gov-stat-row__value" style={{ color: '#22d38a' }}>${Math.floor(country?.population ? country.population * 2 : 0).toLocaleString()}</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Scroll size={12} color="#f59e0b" /> Military Contracts</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>${totalInvested.toLocaleString()} ({activeContracts.length})</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Crown size={12} color="#a855f7" /> Empire Tribute</span><span className="gov-stat-row__value" style={{ color: '#a855f7' }}>{country?.empire ? 'Active' : 'None'}</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Store size={12} color="#60a5fa" /> Division Sales</span><span className="gov-stat-row__value" style={{ color: '#60a5fa' }}>{divsOnSale} listed</span></div>
+        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Factory size={12} color="#22d38a" /> Auto Income (8h)</span><span className="gov-stat-row__value" style={{ color: '#22d38a' }}>${Math.floor((country?.population ?? 0) * 0.1 * (1 + (country?.portLevel ?? 0) * 0.05 + (country?.airportLevel ?? 0) * 0.05 + (country?.militaryBaseLevel ?? 0) * 0.03 + (country?.bunkerLevel ?? 0) * 0.02)).toLocaleString()}</span></div>
+        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ResourceIcon resourceKey="money" size={12} /> Work Tax (10%)</span><span className="gov-stat-row__value" style={{ color: '#22d38a' }}>Active</span></div>
+        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Store size={12} color="#22d38a" /> Market Tax (5%)</span><span className="gov-stat-row__value" style={{ color: '#22d38a' }}>Active</span></div>
+        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Download size={12} color="#60a5fa" /> Stock/Bond Revenue (30%)</span><span className="gov-stat-row__value" style={{ color: '#60a5fa' }}>Active</span></div>
+        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Pickaxe size={12} color="#a855f7" /> Player Donations</span><span className="gov-stat-row__value" style={{ color: '#a855f7' }}>Open</span></div>
       </div>
 
       {/* Active Deposits */}
@@ -95,10 +95,9 @@ export default function GovFinanceTab() {
       {/* Spending */}
       <div className="gov-section gov-section--red">
         <div className="gov-section__title gov-section__title--red" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={14} /> SPENDING</div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldHalf size={12} color="#ef4444" /> Military Budget</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>{budgetPct}% → ${dailyBudget.toLocaleString()}/day</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldHalf size={12} color="#ef4444" /> Per-Tick Drain</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>${perTickBudget.toLocaleString()}/tick</span></div>
+        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldHalf size={12} color="#ef4444" /> Infrastructure</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>$500K–$1.5M/upgrade</span></div>
+        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldHalf size={12} color="#f59e0b" /> Force Vault Transfers</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>${Number(vault.money).toLocaleString()} allocated</span></div>
         <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><LayoutGrid size={12} color="#f59e0b" /> Army Salary Pools</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>{countryArmies.length} armies</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Handshake size={12} color="#f59e0b" /> Contract Payouts</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>{claimableContracts.length} pending</span></div>
         <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Flame size={12} color="#ef4444" /> Active Wars</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>{activeWars.length} wars</span></div>
       </div>
 
