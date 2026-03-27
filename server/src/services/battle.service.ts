@@ -11,10 +11,10 @@
 
 import type { Server as SocketServer } from 'socket.io'
 import { logger } from '../utils/logger.js'
-import { eq, inArray } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
-  players, playerSkills, divisions as divisionsTable,
+  players, playerSkills, items, divisions as divisionsTable,
   battles as battlesTable, countries,
 } from '../db/schema.js'
 
@@ -32,15 +32,17 @@ export interface OrderEffects {
   dodgeMult: number
   hitBonus: number
   critBonus: number
+  critDmgMult: number
   speedMult: number
 }
 
+// Synced with client battleStore.ts TACTICAL_ORDERS — keep in sync!
 export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; effects: OrderEffects }> = {
-  none:      { label: 'NONE',      effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 1 } },
-  charge:    { label: 'CHARGE',    effects: { atkMult: 1.20, armorMult: 0.90, dodgeMult: 0.85, hitBonus: 0, critBonus: 0, speedMult: 1 } },
-  fortify:   { label: 'FORTIFY',   effects: { atkMult: 0.85, armorMult: 1.25, dodgeMult: 1.10, hitBonus: 0, critBonus: 0, speedMult: 1 } },
-  precision: { label: 'PRECISION', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0.15, critBonus: 15, speedMult: 1.10 } },
-  blitz:     { label: 'BLITZ',     effects: { atkMult: 1, armorMult: 0.90, dodgeMult: 1, hitBonus: -0.10, critBonus: 0, speedMult: 0.75 } },
+  none:      { label: 'NONE',      effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, critDmgMult: 1, speedMult: 1 } },
+  charge:    { label: 'CHARGE',    effects: { atkMult: 1.15, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, critDmgMult: 1, speedMult: 1 } },
+  fortify:   { label: 'FORTIFY',   effects: { atkMult: 1, armorMult: 1.20, dodgeMult: 1.08, hitBonus: 0, critBonus: 0, critDmgMult: 1, speedMult: 1 } },
+  precision: { label: 'PRECISION', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0.12, critBonus: 10, critDmgMult: 1, speedMult: 1 } },
+  blitz:     { label: 'BLITZ',     effects: { atkMult: 1.10, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, critDmgMult: 1.10, speedMult: 1 } },
 }
 
 // Division Types (mirrors client stores/army/types.ts)
@@ -102,6 +104,8 @@ interface BattleSide {
 interface BattleRound {
   attackerPoints: number
   defenderPoints: number
+  attackerDmgTotal: number
+  defenderDmgTotal: number
   status: 'active' | 'attacker_won' | 'defender_won'
   startedAt: number
   endedAt?: number
@@ -270,7 +274,7 @@ class BattleService {
         damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
       },
       attackerRoundsWon: 0, defenderRoundsWon: 0,
-      rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }],
+      rounds: [{ attackerPoints: 0, defenderPoints: 0, attackerDmgTotal: 0, defenderDmgTotal: 0, status: 'active', startedAt: now }],
       currentTick: { attackerDamage: 0, defenderDamage: 0 },
       combatLog: [{
         tick: 0, timestamp: now, type: 'phase_change', side: 'attacker',
@@ -335,7 +339,7 @@ class BattleService {
     else if (countryCode === battle.defenderId) side = 'defender'
     else return { damage: 0, isCrit: false, message: 'Your country is not in this battle.' }
 
-    // Fetch player + skills from DB
+    // Fetch player + skills + equipped items from DB
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
     if (!player) return { damage: 0, isCrit: false, message: 'Player not found.' }
 
@@ -344,20 +348,55 @@ class BattleService {
 
     const [skills] = await db.select().from(playerSkills).where(eq(playerSkills.playerId, playerId)).limit(1)
 
-    // Calculate combat stats (mirrors getPlayerCombatStats)
-    const attackDmg = 100 + (skills?.attack ?? 0) * 20
-    const critRate = 10 + (skills?.critRate ?? 0) * 5
-    const critMultiplier = (100 + (skills?.critDamage ?? 0) * 20) / 100
+    // Aggregate equipped item stats
+    const equippedItems = await db.select().from(items)
+      .where(sql`owner_id = ${playerId} AND equipped = true`)
+    let eqDmg = 0, eqCritRate = 0, eqCritDmg = 0, eqArmor = 0, eqDodge = 0, eqPrecision = 0
+    for (const item of equippedItems) {
+      const st = item.stats as any || {}
+      eqDmg += st.damage || 0
+      eqCritRate += st.critRate || 0
+      eqCritDmg += st.critDamage || 0
+      eqArmor += st.armor || 0
+      eqDodge += st.dodge || 0
+      eqPrecision += st.precision || 0
+    }
 
-    const isCrit = Math.random() * 100 < critRate
-    let damage = isCrit ? Math.floor(attackDmg * (1.5 + critMultiplier)) : attackDmg
+    // Ammo multiplier
+    let ammoMult = 1.0
+    let ammoCritBonus = 0
+    const equippedAmmo = player.equippedAmmo || 'none'
+    if (equippedAmmo !== 'none') {
+      const ammoField = `${equippedAmmo}Bullets` as keyof typeof player
+      const ammoCount = Number((player as any)[ammoField] ?? 0)
+      if (ammoCount > 0) {
+        if (equippedAmmo === 'green') ammoMult = 1.1
+        else if (equippedAmmo === 'blue') ammoMult = 1.2
+        else if (equippedAmmo === 'purple') ammoMult = 1.4
+        else if (equippedAmmo === 'red') { ammoMult = 1.4; ammoCritBonus = 10 }
+        // Consume 1 ammo
+        const bulletCol = equippedAmmo === 'green' ? 'green_bullets' : equippedAmmo === 'blue' ? 'blue_bullets' : equippedAmmo === 'purple' ? 'purple_bullets' : 'red_bullets'
+        await db.execute(sql`UPDATE players SET ${sql.raw(bulletCol)} = GREATEST(0, ${sql.raw(bulletCol)} - 1) WHERE id = ${playerId}`)
+      }
+    }
+
+    // Calculate combat stats (mirrors engine/stats.ts + profileStatsGrid)
+    const baseDmg = 100 + (skills?.attack ?? 0) * 20 + eqDmg
+    const rawHitRate = 50 + eqPrecision + (skills?.precision ?? 0) * 5
+    const overflowCrit = Math.max(0, rawHitRate - 90) * 0.5
+    const critRate = 10 + (skills?.critRate ?? 0) * 5 + eqCritRate + ammoCritBonus + overflowCrit
+    const critMultiplier = 1.5 + ((skills?.critDamage ?? 0) * 20 + eqCritDmg) / 200
+
+    // Tactical order effects
+    const orderFx = TACTICAL_ORDERS[side === 'attacker' ? battle.attackerOrder : battle.defenderOrder].effects
+
+    const isCrit = Math.random() * 100 < (critRate + orderFx.critBonus)
+    let damage = Math.floor(baseDmg * ammoMult)
+    if (isCrit) damage = Math.floor(damage * critMultiplier * orderFx.critDmgMult)
+    damage = Math.round(damage * orderFx.atkMult)
 
     // Cap damage
     damage = Math.min(damage, MAX_DAMAGE_PER_CALL)
-
-    // Apply tactical order
-    const orderFx = TACTICAL_ORDERS[side === 'attacker' ? battle.attackerOrder : battle.defenderOrder].effects
-    damage = Math.round(damage * orderFx.atkMult)
 
     // Apply infra bonus
     const [sideCountry] = await db.select().from(countries)
@@ -732,12 +771,22 @@ class BattleService {
     // ── Ground points ──
     const activeRoundIndex = battle.rounds.length - 1
     const activeRound = battle.rounds[activeRoundIndex]
+
+    // Accumulate division damage into round totals
+    // (player damage is accumulated separately in addDamage())
+    activeRound.attackerDmgTotal += atkTotalDmg
+    activeRound.defenderDmgTotal += defTotalDmg
+
     const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
     const pointIncrement = getPointIncrement(totalGroundPoints)
 
-    if (atkTotalDmg > 0 || defTotalDmg > 0) {
-      if (atkTotalDmg > defTotalDmg) activeRound.attackerPoints += pointIncrement
-      else if (defTotalDmg > atkTotalDmg) activeRound.defenderPoints += pointIncrement
+    // Award ground points based on TOTAL round-accumulated damage, not per-tick
+    const roundAtkDmg = activeRound.attackerDmgTotal
+    const roundDefDmg = activeRound.defenderDmgTotal
+
+    if (roundAtkDmg > 0 || roundDefDmg > 0) {
+      if (roundAtkDmg > roundDefDmg) activeRound.attackerPoints += pointIncrement
+      else if (roundDefDmg > roundAtkDmg) activeRound.defenderPoints += pointIncrement
       else {
         // Tie: division count tiebreaker, then random
         const atkAlive = battle.attacker.engagedDivisionIds.length
@@ -780,7 +829,7 @@ class BattleService {
         })
       } else {
         // New round
-        battle.rounds.push({ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now })
+        battle.rounds.push({ attackerPoints: 0, defenderPoints: 0, attackerDmgTotal: 0, defenderDmgTotal: 0, status: 'active', startedAt: now })
         battle.combatLog.push({
           tick, timestamp: now, type: 'phase_change', side: 'attacker',
           message: `🔔 Round ${battle.rounds.length - 1} complete! New round begins.`,
@@ -889,6 +938,13 @@ class BattleService {
     }
 
     battle.currentTick[side === 'attacker' ? 'attackerDamage' : 'defenderDamage'] += finalAmount
+
+    // Also accumulate player damage into the active round's totals
+    const activeRound = battle.rounds[battle.rounds.length - 1]
+    if (activeRound && activeRound.status === 'active') {
+      if (side === 'attacker') activeRound.attackerDmgTotal = (activeRound.attackerDmgTotal ?? 0) + finalAmount
+      else activeRound.defenderDmgTotal = (activeRound.defenderDmgTotal ?? 0) + finalAmount
+    }
 
     battle.damageFeed = [
       { playerName, side, amount: finalAmount, isCrit, isDodged, time: Date.now() },

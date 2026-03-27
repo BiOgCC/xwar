@@ -363,8 +363,12 @@ export default function InventoryTab() {
       {/* Dismantle Panel */}
       {mode === 'dismantle' && renderDismantlePanel()}
 
-      {/* Resource Summary */}
-      <InventorySummary />
+      {/* Resource Summary – box buttons open loot box modals */}
+      <InventorySummary
+        onOpenLootBox={() => setShowLootBox(true)}
+        onOpenMilitaryBox={() => setShowMilitaryBox(true)}
+        onOpenSupplyBox={() => setShowSupplyBox(true)}
+      />
 
       {/* Weapons Section */}
       {renderWeaponsSection()}
@@ -429,7 +433,7 @@ export default function InventoryTab() {
         </GameModal>
       )}
 
-      {/* Loot Box Openers (hidden, triggered from elsewhere) */}
+      {/* Loot Box Openers – triggered by box buttons in InventorySummary */}
       <LootBoxOpener isOpen={showLootBox} onClose={() => setShowLootBox(false)} onOpenBox={handleLootBoxOpen} boxType="civilian" />
       <LootBoxOpener isOpen={showMilitaryBox} onClose={() => setShowMilitaryBox(false)} onOpenBox={handleMilitaryBoxOpen} boxType="military" />
       <LootBoxOpener isOpen={showSupplyBox} onClose={() => setShowSupplyBox(false)} onOpenBox={handleSupplyBoxOpen} boxType="supply" />

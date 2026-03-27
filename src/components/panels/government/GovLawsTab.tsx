@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useGovernmentStore } from '../../../stores/governmentStore'
-import type { LawType } from '../../../stores/governmentStore'
+import type { LawType } from '../../../types/government.types'
 import { useWorldStore } from '../../../stores/worldStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { Scroll, Scale, ClipboardList, Ban, Shield, Package, DollarSign } from 'lucide-react'
@@ -36,201 +36,39 @@ export default function GovLawsTab() {
   // Which law types need a percent input?
   const needsPercent = lawType === 'import_tariff' || lawType === 'military_spending_change'
 
-  const activeLaws = (Object.values(govStore.laws) as any[]).filter(l => l.countryId === iso && l.status === 'active')
+  const activeLaws = ((gov.laws as any)?.proposals || [] as any[]).filter((l: any) => l.status === 'pending')
 
-  const handleProposeLaw = () => {
+  const handleProposeLaw = async () => {
     if (!isOfficial) { ui.addFloatingText('NOT IN OFFICE', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
     if (needsTarget && !targetIso) { ui.addFloatingText('SELECT TARGET', window.innerWidth / 2, window.innerHeight / 2, '#ef4444'); return }
-    govStore.proposeLaw({
-      countryId: iso,
-      proposerId: player.name,
-      type: lawType,
-      targetCountryId: needsTarget ? targetIso : undefined,
-      newValue: lawType === 'tax_change' ? taxValue
-        : needsAmount ? amountValue
-        : needsPercent ? percentValue
-        : undefined,
-    })
-    ui.addFloatingText('LAW PROPOSED', window.innerWidth / 2, window.innerHeight / 2, '#22d38a')
+    const numericValue = lawType === 'tax_change' ? taxValue
+      : needsAmount ? amountValue
+      : needsPercent ? percentValue
+      : undefined
+    const result = await govStore.proposeLaw(
+      iso,
+      lawType,
+      needsTarget ? targetIso : undefined,
+      numericValue,
+    )
+    ui.addFloatingText(
+      result.success ? 'LAW PROPOSED' : result.message,
+      window.innerWidth / 2, window.innerHeight / 2,
+      result.success ? '#22d38a' : '#ef4444'
+    )
     setTargetIso('')
   }
 
-  const handleVote = (lawId: string, vote: 'for' | 'against') => {
-    govStore.voteOnLaw(lawId, player.name, vote)
-    setTimeout(() => {
-      const updatedLaw = useGovernmentStore.getState().laws[lawId]
-      if (updatedLaw?.status === 'passed') {
-        applyLawEffect(updatedLaw, iso)
-      }
-    }, 50)
+  const handleVote = async (proposalId: string, vote: 'for' | 'against') => {
+    const result = await govStore.voteOnLaw(iso, proposalId, vote)
+    ui.addFloatingText(
+      result.success ? result.message : 'VOTE FAILED',
+      window.innerWidth / 2, window.innerHeight / 2,
+      result.success ? '#22d38a' : '#ef4444'
+    )
   }
 
-  /** Apply the effect of a passed law */
-  const applyLawEffect = (law: any, countryIso: string) => {
-    const cx = window.innerWidth / 2
-    const cy = window.innerHeight / 2
-
-    switch (law.type) {
-      case 'declare_war':
-        if (law.targetCountryId) {
-          useWorldStore.getState().declareWar(countryIso, law.targetCountryId)
-          ui.addFloatingText('WAR DECLARED', cx, cy, '#ef4444')
-        }
-        break
-
-      case 'propose_peace':
-        if (law.targetCountryId) {
-          useWorldStore.getState().endWar(countryIso, law.targetCountryId)
-          ui.addFloatingText(`🕊️ PEACE WITH ${law.targetCountryId}`, cx, cy, '#22d38a')
-        }
-        break
-
-      case 'impeach_president':
-        useGovernmentStore.setState((s: any) => ({
-          governments: {
-            ...s.governments,
-            [countryIso]: { ...s.governments[countryIso], president: null, candidates: [] }
-          }
-        }))
-        ui.addFloatingText('🏛️ PRESIDENT IMPEACHED', cx, cy, '#f59e0b')
-        break
-
-      case 'tax_change':
-        if (law.newValue !== undefined) {
-          useGovernmentStore.setState((s: any) => ({
-            governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], taxRate: law.newValue! } }
-          }))
-          ui.addFloatingText(`TAX → ${law.newValue}%`, cx, cy, '#f59e0b')
-        }
-        break
-
-      case 'declare_sworn_enemy':
-        if (law.targetCountryId) {
-          useGovernmentStore.setState((s: any) => ({
-            governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], swornEnemy: law.targetCountryId! } }
-          }))
-          ui.addFloatingText(`ENEMY: ${law.targetCountryId}`, cx, cy, '#ef4444')
-        }
-        break
-
-      case 'authorize_nuclear_action':
-        useGovernmentStore.setState((s: any) => ({
-          governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], nuclearAuthorized: true } }
-        }))
-        ui.addFloatingText('☢️ AUTHORIZED', cx, cy, '#ef4444')
-        break
-
-      case 'propose_alliance':
-        if (law.targetCountryId) {
-          useGovernmentStore.setState((s: any) => {
-            const g1 = s.governments[countryIso], g2 = s.governments[law.targetCountryId!]
-            return {
-              governments: {
-                ...s.governments,
-                [countryIso]: { ...g1, alliances: [...(g1?.alliances || []).filter((a: any) => a !== law.targetCountryId), law.targetCountryId!] },
-                ...(g2 ? { [law.targetCountryId!]: { ...g2, alliances: [...(g2.alliances || []).filter((a: any) => a !== countryIso), countryIso] } } : {}),
-              }
-            }
-          })
-          ui.addFloatingText(`🤝 ALLIANCE WITH ${law.targetCountryId}`, cx, cy, '#3b82f6')
-        }
-        break
-
-      case 'break_alliance':
-        if (law.targetCountryId) {
-          useGovernmentStore.setState((s: any) => {
-            const g1 = s.governments[countryIso], g2 = s.governments[law.targetCountryId!]
-            return {
-              governments: {
-                ...s.governments,
-                [countryIso]: { ...g1, alliances: (g1?.alliances || []).filter((a: any) => a !== law.targetCountryId) },
-                ...(g2 ? { [law.targetCountryId!]: { ...g2, alliances: (g2.alliances || []).filter((a: any) => a !== countryIso) } } : {}),
-              }
-            }
-          })
-          ui.addFloatingText(`💔 BROKEN WITH ${law.targetCountryId}`, cx, cy, '#ef4444')
-        }
-        break
-
-      // ── NEW ECONOMY / MILITARY POLICY LAWS ──
-
-      case 'print_money':
-        if (law.newValue && law.newValue > 0) {
-          useWorldStore.getState().printMoney(countryIso, law.newValue)
-          ui.addFloatingText(`🖨️ PRINTED $${law.newValue.toLocaleString()}`, cx, cy, '#22d38a')
-        }
-        break
-
-      case 'trade_embargo':
-        if (law.targetCountryId) {
-          useGovernmentStore.setState((s: any) => {
-            const g = s.governments[countryIso]
-            const embargoes = [...(g.embargoes || []).filter((e: any) => e !== law.targetCountryId), law.targetCountryId!]
-            return { governments: { ...s.governments, [countryIso]: { ...g, embargoes } } }
-          })
-          ui.addFloatingText(`🚫 EMBARGO ON ${law.targetCountryId}`, cx, cy, '#ef4444')
-        }
-        break
-
-      case 'lift_embargo':
-        if (law.targetCountryId) {
-          useGovernmentStore.setState((s: any) => {
-            const g = s.governments[countryIso]
-            return { governments: { ...s.governments, [countryIso]: { ...g, embargoes: (g.embargoes || []).filter((e: any) => e !== law.targetCountryId) } } }
-          })
-          ui.addFloatingText(`✅ EMBARGO LIFTED ON ${law.targetCountryId}`, cx, cy, '#22d38a')
-        }
-        break
-
-      case 'conscription':
-        useGovernmentStore.setState((s: any) => ({
-          governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], conscriptionActive: true } }
-        }))
-        ui.addFloatingText('⚔️ CONSCRIPTION ACTIVATED', cx, cy, '#f59e0b')
-        break
-
-      case 'end_conscription':
-        useGovernmentStore.setState((s: any) => ({
-          governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], conscriptionActive: false } }
-        }))
-        ui.addFloatingText('🕊️ CONSCRIPTION ENDED', cx, cy, '#22d38a')
-        break
-
-      case 'import_tariff':
-        if (law.newValue !== undefined) {
-          const clamped = Math.max(0, Math.min(50, law.newValue))
-          useGovernmentStore.setState((s: any) => ({
-            governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], importTariff: clamped } }
-          }))
-          ui.addFloatingText(`📦 TARIFF → ${clamped}%`, cx, cy, '#f59e0b')
-        }
-        break
-
-      case 'minimum_wage':
-        if (law.newValue !== undefined) {
-          useGovernmentStore.setState((s: any) => ({
-            governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], minimumWage: Math.max(0, law.newValue!) } }
-          }))
-          ui.addFloatingText(`💵 MIN WAGE → $${law.newValue.toLocaleString()}`, cx, cy, '#f59e0b')
-        }
-        break
-
-      case 'military_spending_change':
-        if (law.newValue !== undefined) {
-          const clamped = Math.max(0, Math.min(50, law.newValue))
-          useGovernmentStore.setState((s: any) => ({
-            governments: { ...s.governments, [countryIso]: { ...s.governments[countryIso], militaryBudgetPercent: clamped } }
-          }))
-          ui.addFloatingText(`🎖️ MIL BUDGET → ${clamped}%`, cx, cy, '#f59e0b')
-        }
-        break
-
-      case 'nationalize_company_law':
-        // The actual nationalization is done via the existing nationalizeCompany action
-        ui.addFloatingText('🏭 NATIONALIZATION APPROVED', cx, cy, '#f59e0b')
-        break
-    }
-  }
+  // Effects are now applied server-side when a law is voted 'passed'
 
   /** Human-readable label for a law type */
   const lawLabel = (type: string): string => {
@@ -259,11 +97,11 @@ export default function GovLawsTab() {
   /** Extra detail shown on active law cards */
   const lawDetail = (law: any): string => {
     if (law.targetCountryId) return `Target: ${law.targetCountryId}`
-    if (law.type === 'tax_change' && law.newValue !== undefined) return `New Rate: ${law.newValue}%`
-    if (law.type === 'print_money' && law.newValue !== undefined) return `Amount: $${law.newValue.toLocaleString()}`
-    if (law.type === 'import_tariff' && law.newValue !== undefined) return `Tariff: ${law.newValue}%`
-    if (law.type === 'minimum_wage' && law.newValue !== undefined) return `Wage: $${law.newValue.toLocaleString()}`
-    if (law.type === 'military_spending_change' && law.newValue !== undefined) return `Budget: ${law.newValue}%`
+    if (law.lawType === 'tax_change' && law.newValue !== undefined) return `New Rate: ${law.newValue}%`
+    if (law.lawType === 'print_money' && law.newValue !== undefined) return `Amount: $${law.newValue.toLocaleString()}`
+    if (law.lawType === 'import_tariff' && law.newValue !== undefined) return `Tariff: ${law.newValue}%`
+    if (law.lawType === 'minimum_wage' && law.newValue !== undefined) return `Wage: $${law.newValue.toLocaleString()}`
+    if (law.lawType === 'military_spending_change' && law.newValue !== undefined) return `Budget: ${law.newValue}%`
     return ''
   }
 
@@ -305,7 +143,7 @@ export default function GovLawsTab() {
             {needsTarget && (
               <select className="gov-select" value={targetIso} onChange={e => setTargetIso(e.target.value)}>
                 <option value="" disabled>Select Target Country...</option>
-                {world.countries.filter(c => c.code !== iso).map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+                {world.countries.filter((c: any) => c.code !== iso).map((c: any) => <option key={c.code} value={c.code}>{c.name}</option>)}
               </select>
             )}
             {lawType === 'tax_change' && (
@@ -359,12 +197,12 @@ export default function GovLawsTab() {
           : <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {activeLaws.map((law: any) => (
                 <div key={law.id} className="gov-law">
-                  <div style={{ fontSize: '9px', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>{lawLabel(law.type)}</div>
+                  <div style={{ fontSize: '9px', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>{lawLabel(law.lawType)}</div>
                   <div style={{ fontSize: '9px', color: '#94a3b8', margin: '2px 0 4px' }}>
                     {lawDetail(law)}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', color: '#475569', marginBottom: '4px' }}>
-                    <span>By: {law.proposerId}</span>
+                    <span>By: {law.proposedBy}</span>
                     <span style={{ fontFamily: 'var(--font-display)' }}>YEA: {law.votesFor.length} | NAY: {law.votesAgainst.length}</span>
                   </div>
                   {isCongress && !law.votesFor.includes(player.name) && !law.votesAgainst.includes(player.name) && (

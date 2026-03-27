@@ -66,30 +66,65 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
           lastClaimedAt: res.lastClaimedAt ? new Date(res.lastClaimedAt).getTime() : 0,
           showPopup: res.canClaim
         })
+        return
       }
     } catch (err) {
-      console.error('[DailyReward] checkLoginReward error:', err)
+      console.warn('[DailyReward] API unavailable, using local state')
+    }
+    // Fallback: use local state to determine if popup should show
+    const state = get()
+    if (state.canClaim()) {
+      set({ showPopup: true })
     }
   },
 
   claimReward: async () => {
-    try {
-      const res = await claimDailyReward()
-      
-      // Sync player data from db after claiming
-      await usePlayerStore.getState().fetchPlayer()
-      
-      set({
-        loginStreak: res.streak,
-        lastClaimedAt: Date.now(),
-        showPopup: false,
-      })
-      
-      // We map the backend response back into the DailyReward shape for the UI
-      return { success: true, message: res.message, reward: res.reward as DailyReward }
-    } catch (err: any) {
-      return { success: false, message: err.message || 'Failed to claim reward' }
+    const state = get()
+    if (!state.canClaim()) {
+      return { success: false, message: 'Already claimed today' }
     }
+
+    // Determine the current reward
+    const rewardIndex = state.loginStreak % 7
+    const reward = DAILY_REWARDS[rewardIndex]
+    const newStreak = state.loginStreak + 1
+
+    // Apply rewards client-side immediately
+    const player = usePlayerStore.getState()
+    if (reward.money) player.earnMoney(reward.money)
+    if (reward.bitcoin) {
+      usePlayerStore.setState(s => ({ bitcoin: s.bitcoin + reward.bitcoin! }))
+    }
+    if (reward.lootBoxes) {
+      usePlayerStore.setState(s => ({ lootBoxes: s.lootBoxes + reward.lootBoxes! }))
+    }
+    if (reward.militaryBoxes) {
+      usePlayerStore.setState(s => ({ militaryBoxes: s.militaryBoxes + reward.militaryBoxes! }))
+    }
+    if (reward.badgesOfHonor) {
+      usePlayerStore.setState(s => ({ badgesOfHonor: s.badgesOfHonor + reward.badgesOfHonor! }))
+    }
+    if (reward.items) {
+      reward.items.forEach(item => {
+        player.addResource(item.type, item.amount, 'daily_reward')
+      })
+    }
+
+    // Update store state — close popup, advance streak
+    set({
+      loginStreak: newStreak,
+      lastClaimedAt: Date.now(),
+      showPopup: false,
+    })
+
+    // Try API as best-effort (fire-and-forget)
+    try {
+      await claimDailyReward()
+    } catch {
+      // API unavailable — rewards already applied client-side
+    }
+
+    return { success: true, message: `Claimed Day ${rewardIndex + 1} reward!`, reward }
   },
 
   dismissPopup: () => set({ showPopup: false }),

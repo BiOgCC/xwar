@@ -142,6 +142,22 @@ export function GovAccountTab() {
   if (!gov) return null
   return (
     <>
+      {/* Country Funds & Inventory */}
+      <div className="gov-section gov-section--amber">
+        <div className="gov-section__title gov-section__title--amber" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ResourceIcon resourceKey="money" size={14} /> COUNTRY FUNDS & INVENTORY</div>
+        <div className="gov-resource-grid" style={{ gap: '4px' }}>
+          {([['money', 'Money', fund.money], ['oil', 'Oil', fund.oil], ['scrap', 'Scrap', fund.scrap],
+            ['materialX', 'MatX', fund.materialX], ['bitcoin', 'BTC', fund.bitcoin], ['jets', 'Jets', fund.jets],
+          ] as [string, string, number][]).map(([key, label, val]) => (
+            <div key={label} className="gov-resource-cell">
+              <span className="gov-resource-cell__icon" style={{ display: 'flex', marginBottom: '4px' }}><ResourceIcon resourceKey={key} size={20} /></span>
+              <div className="gov-resource-cell__value" style={{ color: '#e2e8f0', fontSize: '10px' }}>{Number(val).toLocaleString()}</div>
+              <div className="gov-resource-cell__label">{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Chart */}
       <div className="gov-section">
         <TreasuryChart iso={iso} />
@@ -192,23 +208,6 @@ export function GovAccountTab() {
         <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Flame size={12} color="#ef4444" /> Active Wars</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>{activeWars.length} wars</span></div>
       </div>
 
-      {/* Force Vault */}
-      <div className="gov-section gov-section--amber">
-        <div className="gov-section__title gov-section__title--amber" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ResourceIcon resourceKey="money" size={14} /> FORCE VAULT</div>
-        <div className="gov-resource-grid" style={{ gap: '4px' }}>
-          {([['money', 'Money', vault.money], ['oil', 'Oil', vault.oil], ['scrap', 'Scrap', vault.scrap],
-            ['materialX', 'MatX', vault.materialX], ['bitcoin', 'BTC', vault.bitcoin], ['jets', 'Jets', vault.jets],
-          ] as [string, string, number][]).map(([key, label, val]) => (
-            <div key={label} className="gov-resource-cell">
-              <span className="gov-resource-cell__icon" style={{ display: 'flex', marginBottom: '4px' }}><ResourceIcon resourceKey={key} size={20} /></span>
-              <div className="gov-resource-cell__value" style={{ color: '#e2e8f0', fontSize: '10px' }}>{Number(val).toLocaleString()}</div>
-              <div className="gov-resource-cell__label">{label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-
 
 
       {/* Contracts */}
@@ -237,25 +236,51 @@ export function GovCitizenshipTab() {
   const ui = useUIStore()
   const iso = player.countryCode || 'US'
   const gov = govStore.governments[iso]
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    govStore.fetchCitizens(iso).finally(() => setLoading(false))
+  }, [iso])
+
   if (!gov) return null
 
-  const roleColors: Record<string, string> = { president: '#22d38a', congress: '#38bdf8', citizen: '#64748b' }
+  const roleColors: Record<string, string> = {
+    president: '#22d38a',
+    vicepresident: '#a78bfa',
+    defense_minister: '#f59e0b',
+    eco_minister: '#38bdf8',
+    congress: '#38bdf8',
+    citizen: '#64748b',
+  }
+  const roleLabel: Record<string, string> = {
+    president: 'PRESIDENT',
+    vicepresident: 'VICE PRES',
+    defense_minister: 'DEF. MIN',
+    eco_minister: 'ECO. MIN',
+    congress: 'CONGRESS',
+    citizen: 'CITIZEN',
+  }
 
   return (
     <>
       <div className="gov-section">
         <div className="gov-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Users size={14} /> CITIZENS ({gov.citizens.length})</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          {[...gov.citizens].sort((a, b) => b.level - a.level).map(c => (
-            <div key={c.id} className={`gov-citizen ${c.role === 'president' ? 'gov-citizen--president' : c.role === 'congress' ? 'gov-citizen--congress' : ''}`}>
-              <div>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#e2e8f0' }}>{c.name}</span>
-                <span style={{ fontSize: '7px', color: roleColors[c.role], marginLeft: '5px', textTransform: 'uppercase', fontWeight: 700 }}>{c.role}</span>
+        {loading ? (
+          <p style={{ fontSize: '9px', color: '#475569', textAlign: 'center', padding: '12px 0' }}>Loading citizens...</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {[...gov.citizens].sort((a, b) => b.level - a.level).map(c => (
+              <div key={c.id} className={`gov-citizen ${c.role === 'president' ? 'gov-citizen--president' : c.role === 'congress' ? 'gov-citizen--congress' : ''}`}>
+                <div>
+                  <span style={{ fontSize: '10px', fontWeight: 600, color: '#e2e8f0' }}>{c.name}</span>
+                  <span style={{ fontSize: '7px', color: roleColors[c.role] || '#64748b', marginLeft: '5px', textTransform: 'uppercase', fontWeight: 700 }}>{roleLabel[c.role] || c.role}</span>
+                </div>
+                <span style={{ fontSize: '9px', color: '#475569', fontFamily: 'var(--font-display)' }}>Lv.{c.level}</span>
               </div>
-              <span style={{ fontSize: '9px', color: '#475569', fontFamily: 'var(--font-display)' }}>Lv.{c.level}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
       <button className="gov-btn gov-btn--green" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} onClick={() => {
         govStore.registerCandidate(iso, player.name, player.name)

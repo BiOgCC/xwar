@@ -294,6 +294,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       magicTeaBuffUntil: buffUntil,
       magicTeaDebuffUntil: debuffUntil,
     })
+    // Persist to backend
+    import('../api/client').then(({ magicTeaApi }) => { magicTeaApi().catch(() => {}) })
     return true
   },
 
@@ -616,9 +618,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     })
     useSpecializationStore.getState().recordWork()
     useAllianceStore.getState().contributeIdeologyXP(1)
+    // Persist to backend
+    import('../api/client').then(({ entrepreneurshipApi }) => { entrepreneurshipApi().catch(() => {}) })
   },
 
-  produce: (industrialistLevel: number) =>
+  produce: (industrialistLevel: number) => {
     set((s) => {
       if (s.productionBar < s.productionBarMax) return {}
       const chance = industrialistLevel * 0.02
@@ -661,7 +665,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         skillPoints: newSP,
         experienceToNext: nextXP,
       }
-    }),
+    })
+    // Persist to backend
+    import('../api/client').then(({ produceApi }) => { produceApi().catch(() => {}) })
+  },
 
   addScrap: (amount) => {
     set((s) => ({ scrap: s.scrap + amount }))

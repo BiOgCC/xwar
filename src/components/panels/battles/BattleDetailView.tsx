@@ -47,6 +47,7 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
   const [mercForm, setMercForm] = useState<{ side: 'attacker' | 'defender' } | null>(null)
   const [mercRate, setMercRate] = useState(10)
   const [mercPool, setMercPool] = useState(100000)
+  const [pickSlot, setPickSlot] = useState<EquipSlot | 'ammo' | null>(null)
   const [scene3DBattle, setScene3DBattle] = useState<{
     atkDivs: { type: DivisionType; name: string; health: number; maxHealth: number }[]
     defDivs: { type: DivisionType; name: string; health: number; maxHealth: number }[]
@@ -115,8 +116,12 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
   // Hit handler
   const handleHit = (side: 'attacker' | 'defender', sideKey: 'atk' | 'def', sideClr: string) => {
     const r = battleStore.playerAttack(battleId, side)
-    if (r.message.includes('Too fast') || r.message.includes('Not enough stamina') || r.message.includes('Not enough oil')) {
+    if (r.message.includes('Too fast') || r.message.includes('Not enough stamina') || r.message.includes('Not enough oil') || r.message.includes('ammo') || r.message.includes('Out of')) {
       ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+      return
+    }
+    if (r.damage <= 0) {
+      ui.addFloatingText(r.message || 'Attack failed!', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
       return
     }
     if (r.isCrit) { setCritSide(sideKey); setTimeout(() => setCritSide(null), 500) }
@@ -222,51 +227,45 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
 
         {/* ══ SECTION 1: Battle Scene — Damage carousel, score, animations, ticker ══ */}
         <div className="btl-section btl-section--transparent">
-          {/* Round damage summary */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '80px' }}>
-              {battle.rounds.map((rd, ri) => (
-                <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px' }}>
-                  <CountryFlag iso={battle.attackerId} size={12} />
-                  <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, color: rd.status === 'active' ? '#e2e8f0' : '#94a3b8', textShadow: rd.status === 'active' ? '0 0 4px rgba(239,68,68,0.3)' : 'none' }}>
-                    ⚔️ {(rd.attackerDmgTotal || 0) > 999 ? `${((rd.attackerDmgTotal || 0) / 1000).toFixed(0)}K` : rd.attackerDmgTotal || 0}!
-                  </span>
+          {/* Round damage summary — only show completed rounds */}
+          {(() => {
+            const completedRounds = battle.rounds.filter(rd => rd.status !== 'active')
+            if (completedRounds.length === 0) return null
+            return (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '80px' }}>
+                  {completedRounds.map((rd, ri) => (
+                    <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px' }}>
+                      <CountryFlag iso={battle.attackerId} size={12} />
+                      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, color: '#94a3b8' }}>
+                        ⚔️ {(rd.attackerDmgTotal || 0) > 999 ? `${((rd.attackerDmgTotal || 0) / 1000).toFixed(0)}K` : rd.attackerDmgTotal || 0}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-              {battle.rounds.map((rd, ri) => {
-                const isActive = rd.status === 'active'
-                const won = rd.status === 'attacker_won'
-                const dotClr = isActive ? '#ef4444' : won ? atkClr : defClr
-                return (
-                  <button key={ri}
-                    onClick={() => { if (!isActive) setViewingRound(viewingRound?.roundIdx === ri ? null : { roundIdx: ri }) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '4px',
-                      padding: '1px 8px', fontSize: '8px', fontWeight: 800,
-                      border: `1px solid ${isActive ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.12)'}`,
-                      borderRadius: '3px', cursor: isActive ? 'default' : 'pointer',
-                      background: isActive ? 'rgba(239,68,68,0.1)' : 'rgba(0,0,0,0.3)',
-                      color: isActive ? '#e2e8f0' : '#94a3b8',
-                    }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: dotClr, display: 'inline-block', boxShadow: isActive ? `0 0 6px ${dotClr}` : 'none' }} />
-                    Round #{ri + 1}
-                  </button>
-                )
-              })}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '80px', alignItems: 'flex-end' }}>
-              {battle.rounds.map((rd, ri) => (
-                <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px' }}>
-                  <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, color: rd.status === 'active' ? '#e2e8f0' : '#94a3b8', textShadow: rd.status === 'active' ? '0 0 4px rgba(239,68,68,0.3)' : 'none' }}>
-                    🛡️ {(rd.defenderDmgTotal || 0) > 999 ? `${((rd.defenderDmgTotal || 0) / 1000).toFixed(0)}K` : rd.defenderDmgTotal || 0}!
-                  </span>
-                  <CountryFlag iso={battle.defenderId} size={12} />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                  {completedRounds.map((rd, ri) => (
+                    <button key={ri}
+                      onClick={() => setViewingRound(viewingRound?.roundIdx === ri ? null : { roundIdx: ri })}
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '1px 8px', fontSize: '8px', fontWeight: 800, border: '1px solid rgba(255,255,255,0.12)', borderRadius: '3px', cursor: 'pointer', background: 'rgba(0,0,0,0.3)', color: '#94a3b8' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: rd.status === 'attacker_won' ? atkClr : defClr, display: 'inline-block' }} />
+                      R{ri + 1} {rd.status === 'attacker_won' ? '⚔️' : '🛡️'}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '80px', alignItems: 'flex-end' }}>
+                  {completedRounds.map((rd, ri) => (
+                    <div key={ri} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px' }}>
+                      <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, color: '#94a3b8' }}>
+                        🛡️ {(rd.defenderDmgTotal || 0) > 999 ? `${((rd.defenderDmgTotal || 0) / 1000).toFixed(0)}K` : rd.defenderDmgTotal || 0}
+                      </span>
+                      <CountryFlag iso={battle.defenderId} size={12} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Flags + Score */}
           <div style={{ textAlign: 'center', marginBottom: '4px' }}>
@@ -275,17 +274,47 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
               <div style={{ fontSize: '7px', fontWeight: 900, color: '#f59e0b', letterSpacing: '1px', animation: 'pulse 2s infinite', marginTop: '2px', textShadow: '0 0 8px rgba(245,158,11,0.5)' }}>⭐ HERO MODE</div>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '2px' }}>
             <CountryFlag iso={battle.attackerId} size={24} />
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 900, color: atkClr, padding: '3px 10px', border: `2px solid ${atkClr}55`, borderRadius: '5px', background: `${atkClr}10`, minWidth: '28px', textAlign: 'center', textShadow: `0 0 10px ${atkClr}66`, boxShadow: `0 0 12px ${atkClr}15, inset 0 0 8px ${atkClr}08` }}>{battle.attackerRoundsWon}</span>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <span style={{ fontSize: '12px', fontWeight: 900, color: '#ef4444', fontFamily: 'var(--font-display)', letterSpacing: '1px', textShadow: '0 0 6px rgba(239,68,68,0.3)' }}>
                 {fmtElapsed(battle.rounds[battle.rounds.length - 1]?.startedAt || battle.startedAt)}
               </span>
+              <span style={{ fontSize: '7px', fontWeight: 700, color: '#64748b', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>R{battle.rounds.length}</span>
             </div>
             <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 900, color: defClr, padding: '3px 10px', border: `2px solid ${defClr}55`, borderRadius: '5px', background: `${defClr}10`, minWidth: '28px', textAlign: 'center', textShadow: `0 0 10px ${defClr}66`, boxShadow: `0 0 12px ${defClr}15, inset 0 0 8px ${defClr}08` }}>{battle.defenderRoundsWon}</span>
             <CountryFlag iso={battle.defenderId} size={24} />
           </div>
+
+          {/* Ground Points — integrated under score */}
+          {activeRound && (() => {
+            const atkPts = activeRound.attackerPoints
+            const defPts = activeRound.defenderPoints
+            const maxP = battle.type === 'quick_battle' ? 200 : 600
+            const atkFill = Math.min(100, (atkPts / maxP) * 100)
+            const defFill = Math.min(100, (defPts / maxP) * 100)
+            const ptsDelta = atkPts - defPts
+            return (
+              <div style={{ marginBottom: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '11px', fontWeight: 900, color: atkClr, textShadow: `0 0 6px ${atkClr}44` }}>⛰ {atkPts}/{maxP}</span>
+                  <span style={{ fontSize: '7px', fontWeight: 800, color: '#64748b', fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>
+                    GROUND{ptsDelta !== 0 && <span style={{ color: ptsDelta > 0 ? atkClr : defClr, marginLeft: '4px' }}>{ptsDelta > 0 ? '+' : ''}{ptsDelta}</span>}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '11px', fontWeight: 900, color: defClr, textShadow: `0 0 6px ${defClr}44` }}>{defPts}/{maxP} ⛰</span>
+                </div>
+                <div style={{ display: 'flex', gap: '3px', height: '8px' }}>
+                  <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkFill}%`, background: `linear-gradient(90deg, ${atkClr}66, ${atkClr})`, borderRadius: '4px', transition: 'width 0.5s ease', boxShadow: `0 0 6px ${atkClr}33` }} />
+                  </div>
+                  <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
+                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${defFill}%`, background: `linear-gradient(270deg, ${defClr}66, ${defClr})`, borderRadius: '4px', transition: 'width 0.5s ease', boxShadow: `0 0 6px ${defClr}33` }} />
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Battle Avatar Animation */}
           <div style={{ position: 'relative' }}>
@@ -340,50 +369,8 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
           )}
         </div>
 
-        {/* ══ SECTION 2: Damage Score & Battle Points ══ */}
+        {/* ══ SECTION 2: Damage Score ══ */}
         <div className="btl-section">
-          {/* Ground Points */}
-          {activeRound && (() => {
-            const atkPts = activeRound.attackerPoints
-            const defPts = activeRound.defenderPoints
-            const maxP = 600
-            const atkFill = Math.min(100, (atkPts / maxP) * 100)
-            const defFill = Math.min(100, (defPts / maxP) * 100)
-            const ptsDelta = atkPts - defPts
-            return (
-              <div style={{ marginBottom: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ fontSize: '11px' }}>⛰</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 900, color: atkClr, textShadow: `0 0 6px ${atkClr}44` }}>{atkPts}</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#ef4444', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
-                      {fmtElapsed(activeRound.startedAt || battle.startedAt)}
-                    </span>
-                    {ptsDelta !== 0 && (
-                      <span style={{ fontSize: '8px', fontWeight: 700, color: ptsDelta > 0 ? atkClr : defClr, fontFamily: 'var(--font-mono)' }}>
-                        ⛰ {ptsDelta > 0 ? '+' : ''}{ptsDelta}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 900, color: defClr, textShadow: `0 0 6px ${defClr}44` }}>{defPts}</span>
-                    <span style={{ fontSize: '11px' }}>⛰</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '3px', height: '10px' }}>
-                  <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${atkFill}%`, background: `linear-gradient(90deg, ${atkClr}66, ${atkClr})`, borderRadius: '5px', transition: 'width 0.5s ease', boxShadow: `0 0 6px ${atkClr}33` }} />
-                  </div>
-                  <div style={{ flex: 1, background: 'rgba(255,255,255,0.06)', borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${defFill}%`, background: `linear-gradient(270deg, ${defClr}66, ${defClr})`, borderRadius: '5px', transition: 'width 0.5s ease', boxShadow: `0 0 6px ${defClr}33` }} />
-                  </div>
-                </div>
-              </div>
-            )
-          })()}
-
           {/* Damage Percentage Bar */}
           <div style={{ padding: '4px 0' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
@@ -399,6 +386,77 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
               <span style={{ fontSize: '9px', fontWeight: 700, color: defClr, fontFamily: 'var(--font-display)' }}>⚔️ {fmtDmg(defDmg)}</span>
             </div>
           </div>
+
+          {/* Weapon Counter-Buff Display */}
+          {(() => {
+            const COUNTER_TABLE: Record<string, { counter: string; perPlayer: number }> = {
+              knife: { counter: 'gun', perPlayer: 0.03 }, gun: { counter: 'rifle', perPlayer: 0.03 },
+              rifle: { counter: 'sniper', perPlayer: 0.03 }, sniper: { counter: 'tank', perPlayer: 0.03 },
+              tank: { counter: 'rpg', perPlayer: 0.05 }, rpg: { counter: 'sniper', perPlayer: 0.03 },
+              jet: { counter: 'warship', perPlayer: 0.05 }, warship: { counter: 'submarine', perPlayer: 0.03 },
+              submarine: { counter: 'jet', perPlayer: 0.03 },
+            }
+            const WPN_EMOJI: Record<string, string> = {
+              knife: '🔪', gun: '🔫', rifle: '🎯', sniper: '🔭', tank: '🪖',
+              rpg: '💣', jet: '✈️', warship: '🚢', submarine: '🤿',
+            }
+            const MIN_HITS = 5, MIN_DMG = 3000
+            const wp = battle.weaponPresence
+            if (!wp) return null
+
+            // Compute per-side buff: "what buffs does THIS side get from enemy weapon usage?"
+            const computeSideBuff = (mySide: 'attacker' | 'defender') => {
+              const enemySide = mySide === 'attacker' ? 'defender' : 'attacker'
+              const enemyPresence = wp[enemySide] || {}
+              const currentTick = battle.ticksElapsed || 0
+              const buffs: { weapon: string; pct: number }[] = []
+              for (const [enemyWeapon, entry] of Object.entries(enemyPresence)) {
+                if (!entry || entry.expiryTick <= currentTick) continue
+                const rule = COUNTER_TABLE[enemyWeapon]
+                if (!rule) continue
+                const qualified = Object.values(entry.players).filter(p => p.hitCount >= MIN_HITS && p.totalDamage >= MIN_DMG).length
+                if (qualified <= 0) continue
+                buffs.push({ weapon: rule.counter, pct: Math.round(rule.perPlayer * qualified * 100) })
+              }
+              return buffs
+            }
+
+            const atkBuffs = computeSideBuff('attacker')
+            const defBuffs = computeSideBuff('defender')
+            if (atkBuffs.length === 0 && defBuffs.length === 0) return null
+
+            const atkTotal = atkBuffs.reduce((s, b) => s + b.pct, 0)
+            const defTotal = defBuffs.reduce((s, b) => s + b.pct, 0)
+
+            return (
+              <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                {atkBuffs.length > 0 && (
+                  <div style={{ flex: 1, padding: '4px 6px', borderRadius: '4px', background: `${atkClr}0a`, border: `1px solid ${atkClr}30`, position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ fontSize: '7px', fontWeight: 900, color: atkClr, fontFamily: 'var(--font-display)', letterSpacing: '0.5px', marginBottom: '2px' }}>
+                      🎯 COUNTER +{atkTotal}%
+                    </div>
+                    {atkBuffs.map(b => (
+                      <div key={b.weapon} style={{ fontSize: '8px', color: '#94a3b8' }}>
+                        {WPN_EMOJI[b.weapon] || '⚔'} {b.weapon.toUpperCase()} +{b.pct}%
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {defBuffs.length > 0 && (
+                  <div style={{ flex: 1, padding: '4px 6px', borderRadius: '4px', background: `${defClr}0a`, border: `1px solid ${defClr}30`, position: 'relative', overflow: 'hidden', textAlign: 'right' }}>
+                    <div style={{ fontSize: '7px', fontWeight: 900, color: defClr, fontFamily: 'var(--font-display)', letterSpacing: '0.5px', marginBottom: '2px' }}>
+                      🎯 COUNTER +{defTotal}%
+                    </div>
+                    {defBuffs.map(b => (
+                      <div key={b.weapon} style={{ fontSize: '8px', color: '#94a3b8' }}>
+                        {WPN_EMOJI[b.weapon] || '⚔'} {b.weapon.toUpperCase()} +{b.pct}%
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Mercenary Contract Banners */}
           {(() => {
@@ -555,23 +613,51 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
 
         {/* ══ SECTION 4: Stats, Food, Equip Best, Remove All ══ */}
         <div className="btl-section">
-          {/* Stats row — all 7 combat stats */}
-          <div className="btl-stats-row" style={{ marginBottom: '4px' }}>
-            {[
-              { icon: '⚔', label: 'DMG', val: `${cs.attackDamage}`, color: '#f87171' },
-              { icon: '💥', label: 'CRIT', val: `${cs.critRate}%`, color: '#fb923c' },
-              { icon: '✨', label: 'CDMG', val: `${cs.critMultiplier.toFixed(1)}x`, color: '#fbbf24' },
-              { icon: '🛡', label: 'ARM', val: `${cs.armorBlock}`, color: '#94a3b8' },
-              { icon: '⚡', label: 'EVA', val: `${cs.dodgeChance}%`, color: '#34d399' },
-              { icon: '💫', label: 'ACC', val: `${cs.hitRate}%`, color: '#38bdf8' },
-              { icon: '🔥', label: 'OVER', val: `+${cs.overflowCrit.toFixed(0)}%`, color: '#c084fc' },
-            ].map(s => (
-              <div key={s.label} className="btl-stat">
-                <span className="btl-stat__icon">{s.icon}</span>
-                <span className="btl-stat__val" style={{ color: s.color }}>{s.val}</span>
+          {/* Stats row — all 7 combat stats (with tactical order adjustments) */}
+          {(() => {
+            const orderKey = activeOrder || 'none'
+            const oFx = TACTICAL_ORDERS[orderKey].effects
+            const oClr = TACTICAL_ORDERS[orderKey].color
+
+            // Compute order-adjusted stats
+            const adjDmg = Math.floor(cs.attackDamage * oFx.atkMult)
+            const adjCrit = cs.critRate + oFx.critBonus
+            const adjHit = Math.min(100, cs.hitRate + (oFx.hitBonus * 100))
+            const adjArm = Math.floor(cs.armorBlock * oFx.armorMult)
+            const adjEva = +(cs.dodgeChance * oFx.dodgeMult).toFixed(1)
+
+            const hasOrder = orderKey !== 'none'
+            const dmgBoosted = oFx.atkMult !== 1
+            const critBoosted = oFx.critBonus !== 0
+            const critDmgBoosted = (oFx.critDmgMult || 1) !== 1
+            const hitBoosted = oFx.hitBonus !== 0
+            const armBoosted = oFx.armorMult !== 1
+            const evaBoosted = oFx.dodgeMult !== 1
+
+            const adjCritDmg = cs.critMultiplier * (oFx.critDmgMult || 1)
+
+            const stats = [
+              { label: 'DMG', val: `${adjDmg}`, color: dmgBoosted ? oClr : '#f87171', boosted: dmgBoosted, bonus: dmgBoosted ? `+${Math.round((oFx.atkMult - 1) * 100)}%` : '' },
+              { label: 'CRIT', val: `${adjCrit}%`, color: critBoosted ? oClr : '#fb923c', boosted: critBoosted, bonus: critBoosted ? `+${oFx.critBonus}` : '' },
+              { label: 'CDMG', val: `${adjCritDmg.toFixed(1)}x`, color: critDmgBoosted ? oClr : '#fbbf24', boosted: critDmgBoosted, bonus: critDmgBoosted ? `+${Math.round(((oFx.critDmgMult || 1) - 1) * 100)}%` : '' },
+              { label: 'ARM', val: `${adjArm}`, color: armBoosted ? oClr : '#94a3b8', boosted: armBoosted, bonus: armBoosted ? `+${Math.round((oFx.armorMult - 1) * 100)}%` : '' },
+              { label: 'EVA', val: `${adjEva}%`, color: evaBoosted ? oClr : '#34d399', boosted: evaBoosted, bonus: evaBoosted ? `+${Math.round((oFx.dodgeMult - 1) * 100)}%` : '' },
+              { label: 'ACC', val: `${adjHit}%`, color: hitBoosted ? oClr : '#38bdf8', boosted: hitBoosted, bonus: hitBoosted ? `+${Math.round(oFx.hitBonus * 100)}%` : '' },
+              { label: 'OVER', val: `+${cs.overflowCrit.toFixed(0)}%`, color: '#c084fc', boosted: false, bonus: '' },
+            ]
+
+            return (
+              <div className="btl-stats-row" style={{ marginBottom: '4px' }}>
+                {stats.map(s => (
+                  <div key={s.label} className="btl-stat" style={s.boosted ? { position: 'relative', background: `${oClr}12`, borderRadius: '3px', boxShadow: `0 0 6px ${oClr}15` } : undefined}>
+                    <span className="btl-stat__icon">{getStatIcon(s.label, s.color, 11)}</span>
+                    <span className="btl-stat__val" style={{ color: s.color, textShadow: s.boosted ? `0 0 6px ${oClr}44` : 'none' }}>{s.val}</span>
+                    {s.boosted && <span style={{ position: 'absolute', top: '-1px', right: '-1px', fontSize: '5px', fontWeight: 900, color: oClr, fontFamily: 'var(--font-display)', lineHeight: 1 }}>{s.bonus}</span>}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )
+          })()}
 
           {/* Action buttons */}
           <div className="btl-actions-row">
@@ -619,7 +705,7 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
                 const ac: Record<string, string> = { none: '#475569', green: '#10b981', blue: '#3b82f6', purple: '#a855f7', red: '#ef4444' }
                 const clr = ac[ammo] || '#475569'
                 return (
-                  <div key="ammo" className="btl-equip-slot">
+                  <div key="ammo" className="btl-equip-slot" style={{ cursor: 'pointer', outline: pickSlot === 'ammo' ? '1px solid #f59e0b' : 'none' }} onClick={(e) => { e.stopPropagation(); setPickSlot(pickSlot === 'ammo' ? null : 'ammo') }}>
                     <div className="btl-equip-slot__label">{label}</div>
                     {ammo !== 'none' ? (
                       <img className="btl-equip-slot__img" src={`/assets/items/ammo_${ammo}.png`} alt={ammo} style={{ filter: `drop-shadow(0 0 4px ${clr}44)` }} onError={e => { e.currentTarget.style.display = 'none' }} />
@@ -634,7 +720,7 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
               const item = equipped.find(i => i.slot === slot)
               if (!item) {
                 return (
-                  <div key={slot} className="btl-equip-slot" style={{ opacity: 0.4 }}>
+                  <div key={slot} className="btl-equip-slot" style={{ opacity: 0.4, cursor: 'pointer', outline: pickSlot === slot ? '1px solid #f59e0b' : 'none' }} onClick={(e) => { e.stopPropagation(); setPickSlot(pickSlot === slot ? null : slot) }}>
                     <div className="btl-equip-slot__label">{label}</div>
                     <div style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', opacity: 0.25 }}>+</div>
                     <div className="btl-equip-slot__tier">—</div>
@@ -648,7 +734,7 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
               const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
 
               return (
-                <div key={slot} className="btl-equip-slot">
+                <div key={slot} className="btl-equip-slot" style={{ cursor: 'pointer', outline: pickSlot === slot ? '1px solid #f59e0b' : 'none' }} onClick={(e) => { e.stopPropagation(); setPickSlot(pickSlot === slot ? null : slot) }}>
                   <div className="btl-equip-slot__label">{label}</div>
                   {img ? (
                     <img className="btl-equip-slot__img" src={img} alt={item.name}
@@ -665,6 +751,68 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
               )
             })}
           </div>
+
+          {/* ── Item Picker Dropdown ── */}
+          {pickSlot && (() => {
+            if (pickSlot === 'ammo') {
+              const ammoTypes: ('none' | 'green' | 'blue' | 'purple' | 'red')[] = ['none', 'green', 'blue', 'purple', 'red']
+              const ac: Record<string, string> = { none: '#475569', green: '#10b981', blue: '#3b82f6', purple: '#a855f7', red: '#ef4444' }
+              const countKey: Record<string, string> = { green: 'greenBullets', blue: 'blueBullets', purple: 'purpleBullets', red: 'redBullets' }
+              return (
+                <div style={{ marginTop: '4px', padding: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                  <div style={{ fontSize: '7px', fontWeight: 800, color: '#64748b', fontFamily: 'var(--font-display)', letterSpacing: '0.5px', marginBottom: '3px', paddingLeft: '4px' }}>SELECT AMMO</div>
+                  {ammoTypes.map(t => {
+                    const count = t === 'none' ? 0 : ((player as any)[countKey[t]] || 0)
+                    const isActive = player.equippedAmmo === t
+                    return (
+                      <button key={t} onClick={(e) => { e.stopPropagation(); player.equipAmmo(t); setPickSlot(null) }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '3px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer', background: isActive ? 'rgba(245,158,11,0.15)' : 'transparent', color: ac[t], fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-display)' }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ac[t], display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ flex: 1, textAlign: 'left' }}>{t === 'none' ? 'NONE' : t.toUpperCase()}</span>
+                        {t !== 'none' && <span style={{ fontSize: '8px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>x{count}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            }
+
+            // Gear slot picker
+            const candidates = inv.items.filter(i => i.location === 'inventory' && i.slot === pickSlot && Number(i.durability) > 0 && !i.equipped)
+            const equippedItem = equipped.find(i => i.slot === pickSlot)
+            return (
+              <div style={{ marginTop: '4px', padding: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '6px', maxHeight: '140px', overflowY: 'auto' }}>
+                <div style={{ fontSize: '7px', fontWeight: 800, color: '#64748b', fontFamily: 'var(--font-display)', letterSpacing: '0.5px', marginBottom: '3px', paddingLeft: '4px' }}>SELECT {pickSlot.toUpperCase()}</div>
+                {equippedItem && (
+                  <button onClick={(e) => { e.stopPropagation(); inv.unequipItem(equippedItem.id); setPickSlot(null) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '3px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer', background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-display)' }}>
+                    ✕ UNEQUIP {equippedItem.name}
+                  </button>
+                )}
+                {candidates.length === 0 && !equippedItem && (
+                  <div style={{ fontSize: '8px', color: '#475569', textAlign: 'center', padding: '6px 0' }}>No items for this slot</div>
+                )}
+                {candidates.map(item => {
+                  const tc = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
+                  const img = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
+                  const dur = Number(item.durability ?? 100)
+                  const mainStat = item.stats.damage ? `DMG ${item.stats.damage}` : item.stats.armor ? `ARM ${item.stats.armor}` : item.stats.critDamage ? `CDMG ${item.stats.critDamage}` : item.stats.dodge ? `EVA ${item.stats.dodge}` : item.stats.precision ? `ACC ${item.stats.precision}` : ''
+                  return (
+                    <button key={item.id} onClick={(e) => { e.stopPropagation(); inv.equipItem(item.id); setPickSlot(null) }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', padding: '3px 6px', border: 'none', borderRadius: '3px', cursor: 'pointer', background: 'transparent', color: '#e2e8f0', fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)', transition: 'background 0.1s' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                      {img && <img src={img} alt={item.name} style={{ width: '18px', height: '18px', objectFit: 'contain', filter: `drop-shadow(0 0 2px ${tc}44)` }} onError={e => { e.currentTarget.style.display = 'none' }} />}
+                      <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                      <span style={{ fontSize: '7px', color: tc, fontWeight: 800 }}>{item.tier?.toUpperCase()}</span>
+                      <span style={{ fontSize: '7px', color: '#94a3b8' }}>{mainStat}</span>
+                      <span style={{ fontSize: '7px', color: dur < 30 ? '#ef4444' : '#64748b' }}>{dur}%</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
 
         {/* ══ SECTION 6: Leaderboard ══ */}

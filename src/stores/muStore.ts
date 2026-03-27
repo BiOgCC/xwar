@@ -310,6 +310,11 @@ export const useMUStore = create<MUState>((set, get) => ({
       playerUnitId: unitId,
     }))
 
+    // Persist to backend (fire-and-forget)
+    import('../api/client').then(({ muCreateApi }) => {
+      muCreateApi(name.trim(), regionId).catch(() => {})
+    })
+
     return { success: true, message: `🏴 Military Unit "${name}" created!` }
   },
 
@@ -459,6 +464,11 @@ export const useMUStore = create<MUState>((set, get) => ({
       playerUnitId: unitId,
     }))
 
+    // Persist to backend
+    import('../api/client').then(({ muJoinApi }) => {
+      muJoinApi(unitId).catch(() => {})
+    })
+
     return { success: true, message: `Joined "${unit.name}"!` }
   },
 
@@ -493,6 +503,9 @@ export const useMUStore = create<MUState>((set, get) => ({
         playerUnitId: null,
       }))
     }
+
+    // Persist leave to backend
+    import('../api/client').then(({ muLeaveApi }) => { muLeaveApi().catch(() => {}) })
 
     return { success: true, message: 'Left the Military Unit.' }
   },
@@ -598,6 +611,9 @@ export const useMUStore = create<MUState>((set, get) => ({
         },
       },
     }))
+
+    // Persist
+    import('../api/client').then(({ muPromoteApi }) => { muPromoteApi(unitId, playerId).catch(() => {}) })
   },
 
   demoteMember: (unitId, playerId) => {
@@ -614,6 +630,9 @@ export const useMUStore = create<MUState>((set, get) => ({
         },
       },
     }))
+
+    // Persist
+    import('../api/client').then(({ muDemoteApi }) => { muDemoteApi(unitId, playerId).catch(() => {}) })
   },
 
   helpMember: (unitId, playerId) => {
@@ -701,6 +720,11 @@ export const useMUStore = create<MUState>((set, get) => ({
         },
       },
     }))
+
+    // Persist to backend
+    import('../api/client').then(({ muRecordDamageApi }) => {
+      muRecordDamageApi(playerUnitId, playerName, damage).catch(() => {})
+    })
   },
 
   recordCycleDamage: (unitId, playerName, damage) => {
@@ -784,6 +808,11 @@ export const useMUStore = create<MUState>((set, get) => ({
       },
     }))
 
+    // Persist to backend
+    import('../api/client').then(({ muDonateApi }) => {
+      muDonateApi(unit.id, 'money', amount).catch(() => {})
+    })
+
     return { success: true, message: `Donated $${amount.toLocaleString()} to ${unit.name}!` }
   },
 
@@ -830,6 +859,11 @@ export const useMUStore = create<MUState>((set, get) => ({
         },
       },
     }))
+
+    // Persist to backend
+    import('../api/client').then(({ muDonateApi }) => {
+      muDonateApi(unit.id, resourceId, amount).catch(() => {})
+    })
 
     return { success: true, message: `Donated ${amount} ${resourceId} to ${unit.name}!` }
   },
@@ -946,6 +980,11 @@ export const useMUStore = create<MUState>((set, get) => ({
         },
       },
     }))
+
+    // Persist to backend
+    import('../api/client').then(({ muUpgradeApi }) => {
+      muUpgradeApi(unit.id, track).catch(() => {})
+    })
 
     return { success: true, message: `${def.name} upgraded to Level ${currentLevel + 1}!` }
   },

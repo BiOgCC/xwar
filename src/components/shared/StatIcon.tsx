@@ -1,4 +1,4 @@
-import { Swords, Target, Flame, Shield, Wind, Crosshair } from 'lucide-react'
+import { Swords, Target, Flame, Shield, Wind, Crosshair, Sparkles } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 /**
@@ -12,12 +12,16 @@ const STAT_ICON_MAP: Record<string, (color: string, size?: number) => ReactNode>
   'CRIT RATE':(c, s = 10) => <Target   size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
   'C.DMG':   (c, s = 10) => <Flame     size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
   'CRIT DMG':(c, s = 10) => <Flame     size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
+  CDMG:      (c, s = 10) => <Flame     size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
   ARM:       (c, s = 10) => <Shield    size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
   ARMOR:     (c, s = 10) => <Shield    size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
   EVA:       (c, s = 10) => <Wind      size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
   EVASION:   (c, s = 10) => <Wind      size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
+  DODGE:     (c, s = 10) => <Wind      size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
   ACC:       (c, s = 10) => <Crosshair size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
   ACCURACY:  (c, s = 10) => <Crosshair size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
+  PRECISION: (c, s = 10) => <Crosshair size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
+  OVER:      (c, s = 10) => <Sparkles  size={s} color={c} strokeWidth={2.5} style={{ flexShrink: 0 }} />,
 }
 
 export function getStatIcon(label: string, color: string, size?: number): ReactNode {
@@ -26,3 +30,4 @@ export function getStatIcon(label: string, color: string, size?: number): ReactN
 }
 
 export default STAT_ICON_MAP
+

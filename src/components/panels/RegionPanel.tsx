@@ -222,6 +222,55 @@ export default function RegionPanel() {
       {activeTab === 'home' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
+          {/* Attack Region / Country buttons (top of home tab) */}
+          {(() => {
+            const playerIso = player.countryCode || 'US'
+            const controllerIso = region.controlledBy
+            if (!controllerIso || controllerIso === playerIso || region.isOcean) return null
+
+            const hasWar = world.wars.some(w =>
+              w.status === 'active' &&
+              ((w.attacker === playerIso && w.defender === controllerIso) ||
+               (w.attacker === controllerIso && w.defender === playerIso))
+            )
+
+            if (hasWar) {
+              return (
+                <button
+                  className="hud-btn-outline"
+                  style={{
+                    width: '100%', justifyContent: 'center', padding: '7px 0',
+                    color: '#f97316', borderColor: 'rgba(249,115,22,0.4)',
+                    fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                  }}
+                  onClick={() => setActivePanel('combat')}
+                >
+                  ⚔️ ATTACK REGION
+                </button>
+              )
+            }
+
+            return (
+              <button
+                className="hud-btn-outline"
+                style={{
+                  width: '100%', justifyContent: 'center', padding: '7px 0',
+                  color: 'var(--text-muted)', borderColor: 'rgba(255,255,255,0.08)',
+                  fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                }}
+                onClick={() => setActivePanel('government')}
+                title="No active war — propose a war declaration in Congress"
+              >
+                📜 DECLARE WAR IN CONGRESS
+              </button>
+            )
+          })()}
+
+          <button className="hud-btn-outline" style={{ width: '100%', justifyContent: 'center', padding: '7px 0' }} onClick={handleGoToCountry}>
+            🌐 COUNTRY
+          </button>
+
+
           {/* ─── Territory Control ─── */}
           <div className="hud-card">
             <div className="hud-card__title">{region.isOcean ? '⚓ NAVAL ZONE' : '🏴 TERRITORY CONTROL'}</div>
@@ -461,8 +510,10 @@ export default function RegionPanel() {
                 </div>
               )}
 
+
+
               {/* ─── UPGRADES (Infrastructure) ─── */}
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8, marginTop: 6 }}>
                 UPGRADES
               </div>
 
@@ -597,16 +648,6 @@ export default function RegionPanel() {
                     </div>
                   )
                 })}
-              </div>
-
-              {/* Action buttons */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                <button className="hud-btn-outline" style={{ flex: 1, justifyContent: 'center', padding: '7px 0' }} onClick={handleGoToCountry}>
-                  🌐 COUNTRY
-                </button>
-                <button className="hud-btn-outline" style={{ flex: 1, justifyContent: 'center', padding: '7px 0', color: 'var(--accent-danger)', borderColor: 'rgba(239,68,68,0.3)' }} onClick={() => setActivePanel('military')}>
-                  ⚔️ MILITARY
-                </button>
               </div>
             </>
           )}

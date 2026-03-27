@@ -41,13 +41,30 @@ export type { BattleType, CombatLogEntry, BattleSide, BattleTick, BattleRound, T
 
 // ====== TACTICAL ORDERS ======
 export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; desc: string; effects: OrderEffects; color: string }> = {
-  none: { label: 'NONE', desc: 'No active order', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#64748b' },
-  charge: { label: 'CHARGE', desc: '+15% ATK damage', effects: { atkMult: 1.15, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#ef4444' },
-  fortify: { label: 'FORTIFY', desc: '+20% armor, +8% dodge', effects: { atkMult: 1, armorMult: 1.20, dodgeMult: 1.08, hitBonus: 0, critBonus: 0, speedMult: 1 }, color: '#3b82f6' },
-  precision: { label: 'PRECISION', desc: '+12% hit, +10% crit', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0.12, critBonus: 10, speedMult: 1 }, color: '#f59e0b' },
-  blitz: { label: 'BLITZ', desc: '+20% speed', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 0.80 }, color: '#22d38a' },
+  none: { label: 'NONE', desc: 'No active order', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, critDmgMult: 1, speedMult: 1 }, color: '#64748b' },
+  charge: { label: 'CHARGE', desc: '+15% ATK damage', effects: { atkMult: 1.15, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, critDmgMult: 1, speedMult: 1 }, color: '#ef4444' },
+  fortify: { label: 'FORTIFY', desc: '+20% armor, +8% dodge', effects: { atkMult: 1, armorMult: 1.20, dodgeMult: 1.08, hitBonus: 0, critBonus: 0, critDmgMult: 1, speedMult: 1 }, color: '#3b82f6' },
+  precision: { label: 'PRECISION', desc: '+12% hit, +10% crit', effects: { atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0.12, critBonus: 10, critDmgMult: 1, speedMult: 1 }, color: '#f59e0b' },
+  blitz: { label: 'BLITZ', desc: '+10% ATK, +10% crit dmg', effects: { atkMult: 1.10, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, critDmgMult: 1.10, speedMult: 1 }, color: '#22d38a' },
 }
 
+
+// ====== WEAPON COUNTER-BUFF SYSTEM ======
+// When enemy players use a weapon, your side's counter-weapon gets a per-player cumulative damage buff.
+const WEAPON_COUNTER_TABLE: Record<string, { counter: string; perPlayer: number }> = {
+  knife:     { counter: 'gun',       perPlayer: 0.03 },  // T1 → T2
+  gun:       { counter: 'rifle',     perPlayer: 0.03 },  // T2 → T3
+  rifle:     { counter: 'sniper',    perPlayer: 0.03 },  // T3 → T4
+  sniper:    { counter: 'tank',      perPlayer: 0.03 },  // T4 → T5
+  tank:      { counter: 'rpg',       perPlayer: 0.05 },  // T5 ↔ T5 same-tier
+  rpg:       { counter: 'sniper',    perPlayer: 0.03 },  // T5 → T4
+  jet:       { counter: 'warship',   perPlayer: 0.05 },  // T6 ↔ T6 same-tier
+  warship:   { counter: 'submarine', perPlayer: 0.03 },  // T6 → T7
+  submarine: { counter: 'jet',       perPlayer: 0.03 },  // T7 → T6
+}
+const COUNTER_BUFF_TICKS = 20       // 20 ticks × 15s = 5 minutes
+const COUNTER_MIN_HITS = 5          // min hits before a player's weapon presence counts
+const COUNTER_MIN_DAMAGE = 3000     // min total damage before a player's weapon presence counts
 
 // ====== HELPERS ======
 
@@ -106,6 +123,7 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     playerAdrenalinePeakAt: {},
     vengeanceBuff: { attacker: -1, defender: -1 },
     mercenaryContracts: [],
+    weaponPresence: { attacker: {}, defender: {} },
   }
 }
 
@@ -119,6 +137,7 @@ export interface BattleState {
 
   launchHOIBattle: (attackerArmyId: string, defenderCountryCode: string, type?: BattleType) => { success: boolean; message: string; battleId?: string }
   processHOICombatTick: () => void
+  processPlayerCombatTick: () => void   // ground points from manual attacks (runs without divisions)
 
   playerAttack: (battleId: string, side?: 'attacker' | 'defender') => { damage: number; isCrit: boolean; isMiss?: boolean; isDodged?: boolean; message: string }
   playerDefend: (battleId: string, side?: 'attacker' | 'defender') => { blocked: number; message: string }
@@ -309,6 +328,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         playerAdrenalinePeakAt: {},
         vengeanceBuff: { attacker: -1, defender: -1 },
         mercenaryContracts: [],
+        weaponPresence: { attacker: {}, defender: {} },
       }
 
       newBattles[battleId] = battle
@@ -515,6 +535,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       playerAdrenalinePeakAt: {},
       vengeanceBuff: { attacker: -1, defender: -1 },
       mercenaryContracts: [],
+      weaponPresence: { attacker: {}, defender: {} },
     }
 
     // Mark divisions as in_combat
@@ -716,6 +737,95 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   }),
 
   // ====== COMBAT TICK PROCESSOR (uses player stats × division multipliers) ======
+  // ══ PLAYER COMBAT TICK: awards ground points from manual attacks (independent of ENABLE_DIVISIONS) ══
+  processPlayerCombatTick: () => {
+    const state = get()
+    const now = Date.now()
+    const newBattles = { ...state.battles }
+    let hasChanges = false
+
+    Object.values(newBattles).forEach(battle => {
+      if (battle.status !== 'active') return
+
+      const atkPlayerDmg = battle.currentTick?.attackerDamage || 0
+      const defPlayerDmg = battle.currentTick?.defenderDamage || 0
+
+      // Only process if there's actual player damage this tick
+      if (atkPlayerDmg <= 0 && defPlayerDmg <= 0) return
+
+      hasChanges = true
+      const tick = (battle.ticksElapsed || 0) + 1
+      const activeRoundIndex = battle.rounds.length - 1
+      const activeRound = { ...battle.rounds[activeRoundIndex] }
+      const isQB = battle.type === 'quick_battle'
+      const maxP = isQB ? QB_POINTS_TO_WIN_ROUND : POINTS_TO_WIN_ROUND
+      const maxRounds = isQB ? QB_ROUNDS_TO_WIN_BATTLE : ROUNDS_TO_WIN_BATTLE
+      const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
+      const pointIncrement = getPointIncrement(totalGroundPoints)
+
+      // Accumulate this tick's damage into per-round totals
+      activeRound.attackerRoundDmg = (activeRound.attackerRoundDmg || 0) + atkPlayerDmg
+      activeRound.defenderRoundDmg = (activeRound.defenderRoundDmg || 0) + defPlayerDmg
+
+      // Award ground points based on ROUND-LONG damage with 50%+ threshold
+      const totalRoundDmg = (activeRound.attackerRoundDmg || 0) + (activeRound.defenderRoundDmg || 0)
+      if (totalRoundDmg > 0) {
+        const atkRoundPct = (activeRound.attackerRoundDmg || 0) / totalRoundDmg
+        const defRoundPct = (activeRound.defenderRoundDmg || 0) / totalRoundDmg
+        if (atkRoundPct > 0.5) {
+          activeRound.attackerPoints += pointIncrement
+        } else if (defRoundPct > 0.5) {
+          activeRound.defenderPoints += pointIncrement
+        }
+        // If exactly 50/50, no points awarded (stalemate)
+      }
+
+      let newRounds = [...battle.rounds.slice(0, -1), activeRound]
+      let newStatus: 'active' | 'attacker_won' | 'defender_won' = battle.status
+      let atkRoundsWon = battle.attackerRoundsWon
+      let defRoundsWon = battle.defenderRoundsWon
+      const newCombatLog = [...battle.combatLog]
+
+      // Check round completion
+      if (activeRound.attackerPoints >= maxP || activeRound.defenderPoints >= maxP) {
+        activeRound.endedAt = now
+        activeRound.ticksElapsed = tick
+        activeRound.attackerDmgTotal = activeRound.attackerRoundDmg || 0
+        activeRound.defenderDmgTotal = activeRound.defenderRoundDmg || 0
+        if (activeRound.attackerPoints >= maxP) { atkRoundsWon++; activeRound.status = 'attacker_won' }
+        else { defRoundsWon++; activeRound.status = 'defender_won' }
+
+        if (atkRoundsWon >= maxRounds) {
+          newStatus = 'attacker_won'
+          if (battle.type === 'invasion') useWorldStore.getState().occupyCountry(battle.defenderId, battle.attackerId, false)
+          if (battle.type === 'revolt' && battle.regionId) useRegionStore.getState().liberateRegion(battle.regionId)
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}!` })
+        } else if (defRoundsWon >= maxRounds) {
+          newStatus = 'defender_won'
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}!` })
+        } else {
+          // New round
+          newRounds = [...newRounds, { attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }]
+          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `🔔 Round ${battle.rounds.length} complete! New round begins.` })
+        }
+      }
+
+      newBattles[battle.id] = {
+        ...battle,
+        ticksElapsed: tick,
+        status: newStatus,
+        attackerRoundsWon: atkRoundsWon,
+        defenderRoundsWon: defRoundsWon,
+        rounds: newRounds,
+        currentTick: { attackerDamage: 0, defenderDamage: 0 },
+        combatLog: newCombatLog.slice(-60),
+      }
+    })
+
+    if (hasChanges) set({ battles: newBattles })
+  },
+
+  // ══ HOI COMBAT TICK (division combat — only runs with ENABLE_DIVISIONS) ══
   processHOICombatTick: () => {
     const state = get()
     const armyStore = useArmyStore.getState()
@@ -1261,26 +1371,23 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       const activeRound = { ...battle.rounds[activeRoundIndex] }
       const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
       const pointIncrement = getPointIncrement(totalGroundPoints)
-      // Award points based on damage dealt this tick
-      // If damage is equal, award based on who has more alive divisions (tiebreaker)
-      // If still tied, flip a coin so points always move forward
-      if (atkTotalDmg > 0 || defTotalDmg > 0) {
-        if (atkTotalDmg > defTotalDmg) {
+      // Accumulate TOTAL damage this tick (division + player manual) into per-round totals
+      const atkTickDmgTotal = atkTotalDmg + (battle.currentTick?.attackerDamage || 0)
+      const defTickDmgTotal = defTotalDmg + (battle.currentTick?.defenderDamage || 0)
+      activeRound.attackerRoundDmg = (activeRound.attackerRoundDmg || 0) + atkTickDmgTotal
+      activeRound.defenderRoundDmg = (activeRound.defenderRoundDmg || 0) + defTickDmgTotal
+
+      // Award points based on ROUND-LONG damage with 50%+ threshold
+      const totalRoundDmg = (activeRound.attackerRoundDmg || 0) + (activeRound.defenderRoundDmg || 0)
+      if (totalRoundDmg > 0) {
+        const atkRoundPct = (activeRound.attackerRoundDmg || 0) / totalRoundDmg
+        const defRoundPct = (activeRound.defenderRoundDmg || 0) / totalRoundDmg
+        if (atkRoundPct > 0.5) {
           activeRound.attackerPoints += pointIncrement
-        } else if (defTotalDmg > atkTotalDmg) {
+        } else if (defRoundPct > 0.5) {
           activeRound.defenderPoints += pointIncrement
-        } else {
-          // Tie: use division count as tiebreaker, then random
-          if (atkDivIds.length > defDivIds.length) {
-            activeRound.attackerPoints += pointIncrement
-          } else if (defDivIds.length > atkDivIds.length) {
-            activeRound.defenderPoints += pointIncrement
-          } else {
-            // True tie: random
-            if (Math.random() < 0.5) activeRound.attackerPoints += pointIncrement
-            else activeRound.defenderPoints += pointIncrement
-          }
         }
+        // 50/50 stalemate → 0 points
       } else if (atkDivIds.length > 0 && defDivIds.length === 0) {
         // Attacker has divisions, defender doesn't: attacker gains ground
         activeRound.attackerPoints += pointIncrement
@@ -1301,8 +1408,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         // Record round end data
         activeRound.endedAt = now
         activeRound.ticksElapsed = tick - (battle.rounds.slice(0, -1).reduce((sum, r) => sum + (r.ticksElapsed || 0), 0))
-        activeRound.attackerDmgTotal = battle.attacker.damageDealt
-        activeRound.defenderDmgTotal = battle.defender.damageDealt
+        activeRound.attackerDmgTotal = activeRound.attackerRoundDmg || 0
+        activeRound.defenderDmgTotal = activeRound.defenderRoundDmg || 0
         if (activeRound.attackerPoints >= POINTS_TO_WIN_ROUND) { atkRoundsWon++; activeRound.status = 'attacker_won' }
         else { defRoundsWon++; activeRound.status = 'defender_won' }
         if (atkRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
@@ -1526,13 +1633,33 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     const player = usePlayerStore.getState()
     const cs = getPlayerCombatStats()
-    // Armor mitigation reduces stamina cost: armor/(armor+100)
-    const armorMit = cs.armorBlock / (cs.armorBlock + 100)
+    // Determine side early for order effects
+    const playerCountry = player.countryCode || 'US'
+    const _earlyMySide = playerCountry === battle.attackerId ? 'attacker' : 'defender'
+    const _orderKey = _earlyMySide === 'attacker' ? battle.attackerOrder : battle.defenderOrder
+    const orderFx = TACTICAL_ORDERS[_orderKey || 'none'].effects
+
+    // Apply order armorMult to stamina cost calculation
+    const effectiveArmor = cs.armorBlock * orderFx.armorMult
+    const armorMit = effectiveArmor / (effectiveArmor + 100)
     const staCost = Math.max(1, Math.ceil(5 * (1 - armorMit)))
     if (player.stamina < staCost) return { damage: 0, isCrit: false, message: `Not enough stamina (${staCost} required).` }
 
+    // ── Ammo Check: all weapons except knife require ammo ──
+    const _eqItems = useInventoryStore.getState().getEquipped()
+    const _weapon = _eqItems.find((e: any) => e.slot === 'weapon')
+    const _weaponSub = _weapon?.weaponSubtype || 'knife'
+    if (_weaponSub !== 'knife') {
+      const _ammoType = player.equippedAmmo
+      if (_ammoType === 'none') return { damage: 0, isCrit: false, message: 'No ammo equipped! Equip ammo to fire.' }
+      const _ammoKey = `${_ammoType}Bullets` as keyof typeof player
+      const _ammoCount = (player[_ammoKey] as number) || 0
+      if (_ammoCount <= 0) return { damage: 0, isCrit: false, message: `Out of ${_ammoType} ammo!` }
+      // Consume 1 ammo
+      player.removeResource(_ammoKey as string, 1, 'combat_ammo')
+    }
+
     // ── Side Selection & Validation ──
-    const playerCountry = player.countryCode || 'US'
     let side: 'attacker' | 'defender'
 
     if (_forceSide) {
@@ -1563,14 +1690,16 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
 
     // cs already computed above (before stamina check)
+    // orderFx already fetched above for stamina calculation
 
     // ══ NON-DETERMINISTIC DAMAGE SYSTEM ══
 
     // 0. Dodge check FIRST — dodge = FREE full-damage hit (no stamina cost)
-    //    8-13% chance to dodge the stamina cost entirely
-    const dodgeChance = 8 + Math.random() * 5
+    //    8-13% base chance, modified by order dodgeMult
+    const baseDodgeChance = 8 + Math.random() * 5
+    const dodgeChance = baseDodgeChance * orderFx.dodgeMult
     const isDodge = Math.random() * 100 < dodgeChance
-    if (isDodge) console.log(`[DODGE] Free hit! dodgeChance=${dodgeChance.toFixed(1)}%`)
+    if (isDodge) console.log(`[DODGE] Free hit! dodgeChance=${dodgeChance.toFixed(1)}% (order: ${_orderKey})`)
 
     // Consume stamina only if NOT a dodge — armor reduces cost
     if (!isDodge) {
@@ -1605,27 +1734,63 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     })
 
     // 1. Miss check — glancing blow (50% base damage, costs stamina)
-    //    Miss chance = 100 - hitRate (10% at max gear, 50% with no precision)
+    //    Miss chance = 100 - hitRate, modified by order hitBonus
+    const effectiveHitRate = Math.min(100, cs.hitRate + (orderFx.hitBonus * 100))
     const missRoll = Math.random() * 100
-    if (!isDodge && missRoll >= cs.hitRate) {
-      const missDmg = Math.max(1, Math.floor(cs.attackDamage * 0.50 * (0.7 + Math.random() * 0.3)))
+    if (!isDodge && missRoll >= effectiveHitRate) {
+      const missDmg = Math.max(1, Math.floor(cs.attackDamage * orderFx.atkMult * 0.50 * (0.7 + Math.random() * 0.3)))
       get().addDamage(battleId, side, missDmg, false, false, player.name)
       import('../api/client').then(({ battleAttack }) => battleAttack(battleId).catch(() => {}))
       return { damage: missDmg, isCrit: false, isMiss: true, message: `💨 Glancing blow! ${missDmg} damage.` }
     }
 
     // 1. Base damage with range (93%–108% of attackDamage → 15% max variance)
+    //    Apply order atkMult here so it affects ALL damage paths
     const baseRoll = 0.93 + Math.random() * 0.15
-    let damage = Math.floor(cs.attackDamage * baseRoll)
+    let damage = Math.floor(cs.attackDamage * baseRoll * orderFx.atkMult)
+
+    // ── Ammo damage multiplier ──
+    const _ammoMult = player.equippedAmmo === 'red' ? 1.4
+      : player.equippedAmmo === 'purple' ? 1.4
+      : player.equippedAmmo === 'blue' ? 1.2
+      : player.equippedAmmo === 'green' ? 1.1 : 1.0
+    damage = Math.floor(damage * _ammoMult)
+
+    // ── Weapon Counter-Buff: check if MY weapon counters an enemy weapon presence ──
+    let counterBuffMsg = ''
+    try {
+      const cbEquipped = useInventoryStore.getState().getEquipped()
+      const cbWpn = cbEquipped.find(e => e.slot === 'weapon')
+      const mySubtype = cbWpn?.weaponSubtype
+      if (mySubtype) {
+        const enemySide = side === 'attacker' ? 'defender' : 'attacker'
+        const enemyPresence = battle.weaponPresence?.[enemySide] ?? {}
+        const currentTick = battle.ticksElapsed || 0
+        for (const [enemyWeapon, entry] of Object.entries(enemyPresence)) {
+          if (!entry || entry.expiryTick <= currentTick) continue
+          const rule = WEAPON_COUNTER_TABLE[enemyWeapon]
+          if (!rule || rule.counter !== mySubtype) continue
+          // Count qualifying players (passed both anti-grief gates)
+          const qualifiedCount = Object.values(entry.players)
+            .filter(p => p.hitCount >= COUNTER_MIN_HITS && p.totalDamage >= COUNTER_MIN_DAMAGE)
+            .length
+          if (qualifiedCount <= 0) continue
+          const mult = 1 + rule.perPlayer * qualifiedCount
+          damage = Math.floor(damage * mult)
+          counterBuffMsg = ` 🎯 COUNTER +${Math.round((mult - 1) * 100)}%`
+          break  // binary per weapon type: only one counter applies
+        }
+      }
+    } catch (e) { /* inventory not loaded */ }
 
     // 2. Crit check (stacks with range, but guaranteed floor at 100% base)
     // Magic Tea buff: +10% crit rate
     const teaPs = usePlayerStore.getState()
     const magicTeaBuffActive = now < teaPs.magicTeaBuffUntil
     const magicTeaCritBonus = magicTeaBuffActive ? 10 : 0
-    const isCrit = Math.random() * 100 < (cs.critRate + magicTeaCritBonus)
+    const isCrit = Math.random() * 100 < (cs.critRate + magicTeaCritBonus + orderFx.critBonus)
     if (isCrit) {
-      damage = Math.floor(damage * cs.critMultiplier)
+      damage = Math.floor(damage * cs.critMultiplier * (orderFx.critDmgMult || 1))
       // Crit floor: never lower than full base attackDamage
       damage = Math.max(damage, cs.attackDamage)
     }
@@ -1726,6 +1891,31 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     get().addDamage(battleId, side, damage, isCrit || precisionSurgeCrit, false, player.name)
 
+    // ── Weapon Counter-Buff: record this weapon's presence for enemy counter ──
+    try {
+      const wpEquipped = useInventoryStore.getState().getEquipped()
+      const wpWeapon = wpEquipped.find(e => e.slot === 'weapon')
+      const wpSubtype = wpWeapon?.weaponSubtype
+      if (wpSubtype) {
+        set(s => {
+          const b = s.battles[battleId]
+          if (!b) return s
+          const presence = b.weaponPresence ?? { attacker: {}, defender: {} }
+          const sidePresence = { ...presence[side] }
+          const entry = sidePresence[wpSubtype] ? { ...sidePresence[wpSubtype], players: { ...sidePresence[wpSubtype].players } } : { players: {}, expiryTick: 0 }
+          const playerStats = entry.players[player.name] ? { ...entry.players[player.name] } : { hitCount: 0, totalDamage: 0 }
+          playerStats.hitCount += 1
+          playerStats.totalDamage += damage
+          entry.players[player.name] = playerStats
+          entry.expiryTick = (b.ticksElapsed || 0) + COUNTER_BUFF_TICKS
+          sidePresence[wpSubtype] = entry
+          return { battles: { ...s.battles, [battleId]: { ...b,
+            weaponPresence: { ...presence, [side]: sidePresence },
+          }}}
+        })
+      }
+    } catch (e) { /* inventory not loaded */ }
+
     // ── Mercenary Contract Payout (instant, based on damage dealt) ──
     let mercPayMsg = ''
     try {
@@ -1791,7 +1981,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       damage,
       isCrit: isCrit || precisionSurgeCrit,
       isDodged: isDodge,
-      message: (isDodge ? `🎯 FREE HIT! ${damage} damage (no stamina cost)!` : isCrit || precisionSurgeCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`) + surgeMsg + muBonusMsg + infraBonusMsg + dropMsg + mercPayMsg,
+      message: (isDodge ? `🎯 FREE HIT! ${damage} damage (no stamina cost)!` : isCrit || precisionSurgeCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`) + counterBuffMsg + surgeMsg + muBonusMsg + infraBonusMsg + dropMsg + mercPayMsg,
     }
   },
 

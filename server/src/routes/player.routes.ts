@@ -45,6 +45,10 @@ router.get('/all', async (req, res) => {
     const allPlayers = await db.select({
       name: players.name,
       country: players.countryCode,
+      level: players.level,
+      avatar: players.avatar,
+      damageDone: players.damageDone,
+      createdAt: players.createdAt,
     }).from(players)
 
     res.json({ success: true, players: allPlayers })
@@ -486,6 +490,102 @@ router.post('/daily-reward', async (req, res) => {
     res.json({ success: true, message, streak: newStreak, grantedMoney })
   } catch (err) {
     console.error('[PLAYER] Daily reward error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/player/entrepreneurship ── Consumes 10 entrepreneurship bar, fills production bar
+router.post('/entrepreneurship', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player) { res.status(404).json({ error: 'Player not found' }); return }
+
+    const entrepreneurship = player.entrepreneurship ?? 0
+    if (entrepreneurship < 10) {
+      res.status(400).json({ error: 'Not enough entrepreneurship energy' })
+      return
+    }
+
+    // Production fill = 25 base (server doesn't have skill data inline, so use base)
+    const fill = 25
+    const newProd = Math.min(player.productionBarMax!, (player.productionBar ?? 0) + fill)
+
+    await db.update(players).set({
+      entrepreneurship: Math.max(0, entrepreneurship - 10),
+      productionBar: newProd,
+    }).where(eq(players.id, playerId))
+
+    res.json({ success: true, productionBar: newProd, entrepreneurship: Math.max(0, entrepreneurship - 10) })
+  } catch (err) {
+    console.error('[PLAYER] Entrepreneurship error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/player/produce ── Convert full production bar into item + XP
+router.post('/produce', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player) { res.status(404).json({ error: 'Player not found' }); return }
+
+    if ((player.productionBar ?? 0) < (player.productionBarMax ?? 100)) {
+      res.status(400).json({ error: 'Production bar not full' })
+      return
+    }
+
+    const xpGain = 30
+    const levelInfo = await grantXP(playerId, xpGain)
+
+    // Reset production bar, increment items produced
+    await db.update(players).set({
+      productionBar: 0,
+      itemsProduced: (player.itemsProduced ?? 0) + 1,
+    }).where(eq(players.id, playerId))
+
+    res.json({ success: true, xpGain, ...levelInfo, itemsProduced: (player.itemsProduced ?? 0) + 1 })
+  } catch (err) {
+    console.error('[PLAYER] Produce error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/player/magic-tea ── Consume 1 magic tea → 12h buff + 12h debuff
+router.post('/magic-tea', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player) { res.status(404).json({ error: 'Player not found' }); return }
+
+    if ((player.magicTea ?? 0) <= 0) { res.status(400).json({ error: 'No magic tea remaining.' }); return }
+
+    const now = Date.now()
+    const buffUntil = player.magicTeaBuffUntil ? new Date(player.magicTeaBuffUntil).getTime() : 0
+    const debuffUntil = player.magicTeaDebuffUntil ? new Date(player.magicTeaDebuffUntil).getTime() : 0
+    if (now < buffUntil || now < debuffUntil) {
+      res.status(400).json({ error: 'Already under magic tea effect.' })
+      return
+    }
+
+    const TWELVE_HOURS = 12 * 60 * 60 * 1000
+    const newBuffUntil = new Date(now + TWELVE_HOURS)
+    const newDebuffUntil = new Date(now + TWELVE_HOURS * 2)
+
+    await db.update(players).set({
+      magicTea: (player.magicTea ?? 0) - 1,
+      magicTeaBuffUntil: newBuffUntil,
+      magicTeaDebuffUntil: newDebuffUntil,
+    }).where(eq(players.id, playerId))
+
+    res.json({
+      success: true,
+      magicTea: (player.magicTea ?? 0) - 1,
+      buffUntil: newBuffUntil.getTime(),
+      debuffUntil: newDebuffUntil.getTime(),
+    })
+  } catch (err) {
+    console.error('[PLAYER] Magic tea error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

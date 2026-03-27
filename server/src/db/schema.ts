@@ -63,7 +63,10 @@ export const players = pgTable('players', {
   bitcoin:       integer('bitcoin').default(0),
   lootBoxes:     integer('loot_boxes').default(0),
   militaryBoxes: integer('military_boxes').default(0),
-  magicTea:     integer('stamina_pills').default(0),
+  supplyBoxes:   integer('supply_boxes').default(0),
+  magicTea:           integer('stamina_pills').default(0),
+  magicTeaBuffUntil:  timestamp('magic_tea_buff_until'),
+  magicTeaDebuffUntil: timestamp('magic_tea_debuff_until'),
   energyLeaves:  integer('energy_leaves').default(0),
   badgesOfHonor: integer('badges_of_honor').default(0),
   lootChancePool: integer('loot_chance_pool').default(0),
@@ -102,6 +105,7 @@ export const players = pgTable('players', {
   casinoSpins:     integer('casino_spins').default(0),
   itemsDestroyed:  integer('items_destroyed').default(0),
 
+  welcomeKitClaimed: boolean('welcome_kit_claimed').default(false),
   createdAt:     timestamp('created_at').defaultNow(),
   lastLogin:     timestamp('last_login').defaultNow(),
   lastRewardClaimed: timestamp('last_reward_claimed'),
@@ -418,8 +422,17 @@ export const governments = pgTable('governments', {
   congress:         jsonb('congress').default([]),
   laws:             jsonb('laws').default({}),
   nuclearAuthorized: boolean('nuclear_authorized').default(false),
+  enrichmentStartedAt:   timestamp('enrichment_started_at'),
+  enrichmentCompletedAt: timestamp('enrichment_completed_at'),
   elections:        jsonb('elections').default({}),
   citizenDividendPercent: integer('citizen_dividend_percent').default(0),
+  // Law-effect columns
+  embargoes:         jsonb('embargoes').default([]),          // string[] of country codes
+  alliances:         jsonb('alliances').default([]),          // string[] of allied country codes
+  conscriptionActive: boolean('conscription_active').default(false),
+  importTariff:      integer('import_tariff').default(0),    // 0-50%
+  minimumWage:       integer('minimum_wage').default(0),
+  militaryBudgetPercent: integer('military_budget_percent').default(0), // 0-50%
 })
 
 // ═══════════════════════════════════════════════
@@ -810,4 +823,57 @@ export const leyLineDefs = pgTable('ley_line_defs', {
   enabledIdx:   index('idx_ley_defs_enabled').on(t.enabled),
 }))
 
+// ═══════════════════════════════════════════════
+//  MILITARY UNITS (Guild / PMC system)
+// ═══════════════════════════════════════════════
 
+export const militaryUnits = pgTable('military_units', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  name:           varchar('name', { length: 64 }).notNull(),
+  bannerUrl:      text('banner_url').default(''),
+  avatarUrl:      text('avatar_url').default(''),
+  ownerId:        varchar('owner_id', { length: 64 }).notNull(),  // player name or GOV_XX
+  ownerName:      varchar('owner_name', { length: 64 }),
+  ownerCountry:   varchar('owner_country', { length: 4 }),
+  countryCode:    varchar('country_code', { length: 4 }).references(() => countries.code),
+  regionId:       varchar('region_id', { length: 32 }).default(''),
+  locationRegion: varchar('location_region', { length: 64 }).default(''),
+  vault:          jsonb('vault').default({ treasury: 0, resources: {} }),
+  upgrades:       jsonb('upgrades').default({ barracks: 0, warDoctrine: 0, logistics: 0, intelligence: 0 }),
+  transactions:   jsonb('transactions').default([]),     // last 50 MUTransaction[]
+  donations:      jsonb('donations').default([]),        // MUDonation[]
+  contracts:      jsonb('contracts').default([]),
+  badges:         jsonb('badges').default([]),
+  applications:   jsonb('applications').default([]),     // MUApplication[]
+  weeklyDamageTotal:  bigint('weekly_damage_total', { mode: 'number' }).default(0),
+  totalDamageTotal:   bigint('total_damage_total', { mode: 'number' }).default(0),
+  cycleDamage:        jsonb('cycle_damage').default({}),  // Record<string, number>
+  lastBudgetPayout:   bigint('last_budget_payout', { mode: 'number' }).default(0),
+  isStateOwned:       boolean('is_state_owned').default(false),
+  governmentCountryCode: varchar('government_country_code', { length: 4 }),
+  createdAt:      timestamp('created_at').defaultNow(),
+}, (table) => ({
+  countryIdx: index('idx_mu_country').on(table.countryCode),
+  ownerIdx: index('idx_mu_owner').on(table.ownerId),
+}))
+
+export const muMembers = pgTable('mu_members', {
+  unitId:       uuid('unit_id').references(() => militaryUnits.id, { onDelete: 'cascade' }).notNull(),
+  playerId:     varchar('player_id', { length: 64 }).notNull(),  // player name
+  playerName:   varchar('player_name', { length: 32 }),
+  level:        integer('level').default(1),
+  countryCode:  varchar('country_code', { length: 4 }),
+  health:       integer('health').default(10),
+  maxHealth:    integer('max_health').default(10),
+  role:         varchar('role', { length: 16 }).default('member'),  // member | commander
+  joinedAt:     timestamp('joined_at').defaultNow(),
+  weeklyDamage: bigint('weekly_damage', { mode: 'number' }).default(0),
+  totalDamage:  bigint('total_damage', { mode: 'number' }).default(0),
+  terrain:      integer('terrain').default(0),
+  wealth:       integer('wealth').default(0),
+  lastActive:   timestamp('last_active').defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.unitId, table.playerId] }),
+  unitIdx: index('idx_mu_members_unit').on(table.unitId),
+  playerIdx: index('idx_mu_members_player').on(table.playerId),
+}))

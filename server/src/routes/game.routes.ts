@@ -15,6 +15,7 @@ import {
   marketOrders, countryStocks, stockHoldings, bonds,
   bounties, armies, armyMembers, alliances,
   dailyRewards, tradeRouteState, newsEvents,
+  militaryUnits, muMembers, companies,
 } from '../db/schema.js'
 import { battleService } from '../services/battle.service.js'
 
@@ -43,6 +44,14 @@ router.get('/state', requireAuth as any, async (req, res) => {
     const governmentMap: Record<string, any> = {}
     for (const g of govRows) { governmentMap[g.countryCode] = g }
 
+    // Auto-seat player as president if no one holds the position for their country
+    const playerCountry = player.countryCode
+    if (playerCountry && governmentMap[playerCountry] && !governmentMap[playerCountry].president) {
+      await db.update(governments).set({ president: player.name! }).where(eq(governments.countryCode, playerCountry))
+      governmentMap[playerCountry] = { ...governmentMap[playerCountry], president: player.name }
+      logger.info(`[GAME] Auto-seated ${player.name} as president of ${playerCountry}`)
+    }
+
     // ── Active Battles (in-memory from battleService) ──
     const activeBattles = battleService.getActiveBattles()
     const battlesMap: Record<string, any> = {}
@@ -66,6 +75,23 @@ router.get('/state', requireAuth as any, async (req, res) => {
     const armyMembersRows = player.enlistedArmyId
       ? await db.select().from(armyMembers).where(eq(armyMembers.armyId, player.enlistedArmyId))
       : []
+
+    // ── Military Unit (Guild) ──
+    const [playerMuMembership] = await db.select().from(muMembers)
+      .where(eq(muMembers.playerId, player.name!)).limit(1)
+    let muData: any = null
+    if (playerMuMembership) {
+      const [muUnit] = await db.select().from(militaryUnits)
+        .where(eq(militaryUnits.id, playerMuMembership.unitId)).limit(1)
+      if (muUnit) {
+        const muMemberRows = await db.select().from(muMembers)
+          .where(eq(muMembers.unitId, muUnit.id))
+        muData = { unit: { ...muUnit, members: muMemberRows }, membership: playerMuMembership }
+      }
+    }
+
+    // ── Companies ──
+    const playerCompanies = await db.select().from(companies).where(eq(companies.ownerId, playerId))
 
     // ── Alliances ──
     const allianceRows = await db.select().from(alliances)
@@ -101,6 +127,8 @@ router.get('/state', requireAuth as any, async (req, res) => {
       bounties: activeBounties,
       army: playerArmy[0] ?? null,
       armyMembers: armyMembersRows,
+      mu: muData,
+      companies: playerCompanies,
       alliances: allianceRows,
       daily: daily ?? null,
       tradeRoutes,

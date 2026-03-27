@@ -45,6 +45,7 @@ export async function hydrateGameState(): Promise<boolean> {
         redBullets: state.player.redBullets ?? 0,
         lootBoxes: state.player.lootBoxes ?? 0,
         militaryBoxes: state.player.militaryBoxes ?? 0,
+        supplyBoxes: state.player.supplyBoxes ?? 0,
         magicTea: state.player.magicTea ?? 0,
         energyLeaves: state.player.energyLeaves ?? 0,
         badgesOfHonor: state.player.badgesOfHonor ?? 0,
@@ -60,6 +61,13 @@ export async function hydrateGameState(): Promise<boolean> {
         avatar: state.player.avatar ?? '/assets/avatars/avatar_male.png',
         damageDone: state.player.damageDone ?? 0,
         itemsProduced: state.player.itemsProduced ?? 0,
+        productionBar: state.player.productionBar ?? 0,
+        productionBarMax: state.player.productionBarMax ?? 100,
+        experienceToNext: state.player.expToNext ?? state.player.experienceToNext ?? 100,
+        magicTeaBuffUntil: state.player.magicTeaBuffUntil
+          ? new Date(state.player.magicTeaBuffUntil).getTime() : 0,
+        magicTeaDebuffUntil: state.player.magicTeaDebuffUntil
+          ? new Date(state.player.magicTeaDebuffUntil).getTime() : 0,
       }))
 
       // Hydrate skills
@@ -84,16 +92,62 @@ export async function hydrateGameState(): Promise<boolean> {
       useWorldStore.setState({ countries: state.countries })
     }
 
+    // Hydrate active wars into worldStore
+    if (state.wars && Array.isArray(state.wars) && state.wars.length > 0) {
+      const { useWorldStore } = await import('../stores/worldStore')
+      const warsMap: Record<string, any> = {}
+      for (const w of state.wars) {
+        const key = w.id || `${w.attackerCode}_${w.defenderCode}`
+        warsMap[key] = {
+          id: key,
+          attacker: w.attackerCode,
+          defender: w.defenderCode,
+          status: w.status || 'active',
+          startedAt: w.startedAt ? new Date(w.startedAt).getTime() : Date.now(),
+        }
+      }
+      useWorldStore.setState((s: any) => ({ ...s, wars: { ...s.wars, ...warsMap } }))
+    }
+
     // Hydrate inventory
     if (state.inventory) {
       const { useInventoryStore } = await import('../stores/inventoryStore')
       useInventoryStore.setState({ items: state.inventory })
     }
 
-    // Hydrate government
+    // Hydrate government — merge with existing defaults to preserve client-only fields
     if (state.government) {
       const { useGovernmentStore } = await import('../stores/governmentStore')
-      useGovernmentStore.setState({ governments: state.government })
+      const existing = useGovernmentStore.getState().governments
+      const merged: Record<string, any> = { ...existing }
+      for (const [iso, dbRow] of Object.entries(state.government as Record<string, any>)) {
+        const base = existing[iso] || {}
+        const congress = Array.isArray(dbRow.congress) ? dbRow.congress : []
+        merged[iso] = {
+          ...base,
+          // Server-authoritative fields
+          president: dbRow.president ?? base.president ?? '',
+          vicePresident: dbRow.vicePresident ?? dbRow.vice_president ?? base.vicePresident ?? '',
+          defenseMinister: dbRow.defenseMinister ?? dbRow.defense_minister ?? base.defenseMinister ?? '',
+          ecoMinister: dbRow.ecoMinister ?? dbRow.eco_minister ?? base.ecoMinister ?? '',
+          taxRate: dbRow.taxRate ?? dbRow.tax_rate ?? base.taxRate ?? 25,
+          swornEnemy: dbRow.swornEnemy ?? dbRow.sworn_enemy ?? base.swornEnemy ?? null,
+          congress,
+          laws: dbRow.laws ?? base.laws ?? { proposals: [] },
+          nuclearAuthorized: dbRow.nuclearAuthorized ?? dbRow.nuclear_authorized ?? false,
+          enrichmentStartedAt: dbRow.enrichmentStartedAt ?? dbRow.enrichment_started_at ?? null,
+          enrichmentCompletedAt: dbRow.enrichmentCompletedAt ?? dbRow.enrichment_completed_at ?? null,
+          citizenDividendPercent: dbRow.citizenDividendPercent ?? dbRow.citizen_dividend_percent ?? 0,
+          embargoes: dbRow.embargoes ?? base.embargoes ?? [],
+          alliances: dbRow.alliances ?? base.alliances ?? [],
+          conscriptionActive: dbRow.conscriptionActive ?? dbRow.conscription_active ?? false,
+          importTariff: dbRow.importTariff ?? dbRow.import_tariff ?? 0,
+          minimumWage: dbRow.minimumWage ?? dbRow.minimum_wage ?? 0,
+          militaryBudgetPercent: dbRow.militaryBudgetPercent ?? dbRow.military_budget_percent ?? 0,
+          countryCode: iso,
+        }
+      }
+      useGovernmentStore.setState({ governments: merged })
     }
 
     // Hydrate market orders
@@ -139,6 +193,66 @@ export async function hydrateGameState(): Promise<boolean> {
       useAllianceStore.setState({ alliances: state.alliances })
     }
 
+    // Hydrate Military Unit (Guild)
+    if (state.mu?.unit) {
+      const { useMUStore } = await import('../stores/muStore')
+      const unit = state.mu.unit
+      const members = unit.members || []
+      const muForStore = {
+        id: unit.id,
+        name: unit.name,
+        bannerUrl: unit.bannerUrl || '',
+        avatarUrl: unit.avatarUrl || '',
+        ownerId: unit.ownerId,
+        ownerName: unit.ownerName || unit.ownerId,
+        ownerCountry: unit.ownerCountry || '',
+        countryCode: unit.countryCode || '',
+        regionId: unit.regionId || '',
+        locationRegion: unit.locationRegion || '',
+        members: members.map((m: any) => ({
+          playerId: m.playerId,
+          name: m.playerName || m.playerId,
+          level: m.level ?? 1,
+          countryCode: m.countryCode || '',
+          health: m.health ?? 10,
+          maxHealth: m.maxHealth ?? 10,
+          role: m.role || 'member',
+          joinedAt: m.joinedAt ? new Date(m.joinedAt).getTime() : Date.now(),
+          weeklyDamage: m.weeklyDamage ?? 0,
+          totalDamage: m.totalDamage ?? 0,
+          terrain: m.terrain ?? 0,
+          wealth: m.wealth ?? 0,
+          lastActive: m.lastActive ? new Date(m.lastActive).getTime() : Date.now(),
+        })),
+        applications: (unit.applications as any[]) || [],
+        badges: (unit.badges as any[]) || [],
+        transactions: (unit.transactions as any[]) || [],
+        donations: (unit.donations as any[]) || [],
+        contracts: (unit.contracts as any[]) || [],
+        vault: (unit.vault as any) || { treasury: 0, resources: {} },
+        upgrades: (unit.upgrades as any) || { barracks: 0, warDoctrine: 0, logistics: 0, intelligence: 0 },
+        createdAt: unit.createdAt ? new Date(unit.createdAt).getTime() : Date.now(),
+        weeklyDamageTotal: unit.weeklyDamageTotal ?? 0,
+        totalDamageTotal: unit.totalDamageTotal ?? 0,
+        cycleDamage: (unit.cycleDamage as any) || {},
+        lastBudgetPayout: unit.lastBudgetPayout ?? 0,
+        isStateOwned: unit.isStateOwned ?? false,
+      }
+      useMUStore.setState({
+        units: { [unit.id]: muForStore as any },
+        playerUnitId: unit.id,
+      })
+    }
+
+    // Hydrate companies
+    if (state.companies && state.companies.length > 0) {
+      const { useCompanyStore } = await import('../stores/companyStore')
+      useCompanyStore.setState((s: any) => ({
+        ...s,
+        companies: state.companies,
+      }))
+    }
+
     // Hydrate sea route disruptions from server
     if (state.tradeRoutes) {
       const { useLeyLineStore } = await import('../stores/leyLineStore')
@@ -146,8 +260,10 @@ export async function hydrateGameState(): Promise<boolean> {
         .filter((r: any) => r.disruptedUntil && new Date(r.disruptedUntil).getTime() > Date.now())
         .map((r: any) => ({
           routeId: r.routeId,
+          activatesAt: r.disruptedActivatesAt ? new Date(r.disruptedActivatesAt).getTime() : Date.now(),
           expiryMs: new Date(r.disruptedUntil).getTime(),
           reason: r.disruptedReason ?? 'unknown',
+          orderedBy: r.disruptedBy ?? 'unknown',
         }))
       useLeyLineStore.setState({ disruptions })
     }

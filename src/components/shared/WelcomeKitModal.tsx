@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
-import { useInventoryStore, generateStats, WEAPON_SUBTYPES, TIER_COLORS, TIER_LABELS } from '../../stores/inventoryStore'
+import { useInventoryStore, WEAPON_SUBTYPES, TIER_COLORS, TIER_LABELS } from '../../stores/inventoryStore'
 import { useArmyStore, DIVISION_TEMPLATES } from '../../stores/army'
 import { ENABLE_DIVISIONS } from '../../config/features'
-import type { EquipTier, EquipSlot, EquipCategory, EquipItem } from '../../types/inventory.types'
+import { api } from '../../api/client'
+import type { EquipTier } from '../../types/inventory.types'
 import type { DivisionType } from '../../stores/army/types'
 
-const STORAGE_KEY = 'xwar_welcome_kit_claimed'
+const DIV_TYPES: DivisionType[] = ['recon', 'assault', 'sniper', 'rpg', 'jeep', 'tank', 'jet', 'warship', 'submarine']
 
-// ── Kit Contents ──
 const RESOURCES = [
   { key: 'money', label: 'Money', amount: 100_000, icon: '💰' },
   { key: 'oil', label: 'Oil', amount: 100_000, icon: '🛢️' },
@@ -20,41 +20,11 @@ const RESOURCES = [
   { key: 'wagyu', label: 'Wagyu', amount: 100_000, icon: '🥩' },
   { key: 'lootBoxes', label: 'Loot Boxes', amount: 50, icon: '📦' },
   { key: 'militaryBoxes', label: 'Military Boxes', amount: 50, icon: '🧰' },
+  { key: 'supplyBoxes', label: 'Supply Boxes', amount: 10, icon: '📋' },
   { key: 'badgesOfHonor', label: 'Badges', amount: 100, icon: '🏅' },
 ]
 
-const DIV_TYPES: DivisionType[] = ['recon', 'assault', 'sniper', 'rpg', 'jeep', 'tank', 'jet', 'warship', 'submarine']
-
 const XP_GRANT = 4000
-
-function buildFullGearKit(): EquipItem[] {
-  const kit: EquipItem[] = []
-  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6', 't7']
-  const armorSlots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
-
-  tiers.forEach(tier => {
-    // All armor slots
-    armorSlots.forEach(slot => {
-      const { name, stats } = generateStats('armor', slot, tier)
-      kit.push({
-        id: `wk-${tier}-${slot}-${Math.random().toString(36).substring(2, 9)}`,
-        name, slot, category: 'armor' as EquipCategory, tier,
-        equipped: false, durability: 100, stats, location: 'inventory',
-      })
-    })
-    // All weapon subtypes for this tier
-    const subtypes = WEAPON_SUBTYPES[tier]
-    subtypes.forEach(subtype => {
-      const { name, stats, weaponSubtype } = generateStats('weapon', 'weapon', tier, subtype)
-      kit.push({
-        id: `wk-${tier}-wpn-${subtype}-${Math.random().toString(36).substring(2, 9)}`,
-        name, slot: 'weapon', category: 'weapon', tier,
-        equipped: false, durability: 100, stats, weaponSubtype, location: 'inventory',
-      })
-    })
-  })
-  return kit
-}
 
 export default function WelcomeKitModal() {
   const [show, setShow] = useState(false)
@@ -69,69 +39,73 @@ export default function WelcomeKitModal() {
 
   if (!show) return null
 
-  const handleClaim = () => {
+  const handleClaim = async () => {
     setAnimating(true)
 
-    // 1. Grant XP
-    usePlayerStore.getState().gainXP(XP_GRANT)
+    try {
+      // 1. Call server to claim welcome kit (generates items + grants resources)
+      const res: any = await api.post('/inventory/claim-welcome-kit')
 
-    // 2. Grant resources
-    RESOURCES.forEach(r => {
-      usePlayerStore.getState().addResource(r.key, r.amount, 'welcome_kit')
-    })
-
-    // 3. Grant full gear set (all tiers, all slots, all weapon subtypes)
-    const gear = buildFullGearKit()
-    gear.forEach(item => useInventoryStore.getState().addItem(item))
-
-    // 4. Grant one of each division type (free, skip cost/pop checks) — divisions only
-    if (ENABLE_DIVISIONS) {
-      const player = usePlayerStore.getState()
-      const armyStore = useArmyStore.getState()
-      const playerCountry = player.countryCode || 'US'
-      const armies = armyStore.getArmiesForCountry(playerCountry)
-      const armyId = armies.length > 0 ? armies[0].id : undefined
-
-      DIV_TYPES.forEach(type => {
-        // Bypass cost — directly create the division
-        const template = DIVISION_TEMPLATES[type]
-        const id = `wk-div-${type}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
-        const division = {
-          id, type, name: `${template.name} (Kit)`,
-          category: template.category,
-          ownerId: player.name,
-          countryCode: playerCountry,
-          manpower: template.manpowerCost,
-          maxManpower: template.manpowerCost,
-          health: Math.floor(template.healthMult * 100),
-          maxHealth: Math.floor(template.healthMult * 100),
-          equipment: [] as string[],
-          experience: 0,
-          stance: 'unassigned' as const,
-          autoTrainingEnabled: false,
-          status: 'ready' as const,
-          trainingProgress: 0,
-          recoveryTicksNeeded: 0,
-          readyAt: 0,
-          reinforcing: false,
-          reinforceProgress: 0,
-          killCount: 0,
-          battlesSurvived: 0,
-          starQuality: 3 as 1 | 2 | 3 | 4 | 5,
-          statModifiers: { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0 },
-          deployedToPMC: false,
+      if (res.success) {
+        // 2. Sync inventory from server response
+        if (res.items) {
+          useInventoryStore.setState({ items: res.items })
         }
-        useArmyStore.setState((s: any) => ({
-          divisions: { ...s.divisions, [id]: division },
-        }))
-        // Assign to first army if exists
-        if (armyId) {
-          useArmyStore.getState().assignDivisionToArmy(id, armyId)
-        }
-      })
+
+        // 3. Refresh player state from server to get updated resources/XP
+        await usePlayerStore.getState().fetchPlayer()
+      } else {
+        // Fallback: if server says already claimed, just close
+        console.warn('[WelcomeKit] Server returned:', res.error)
+      }
+
+      // 4. Grant divisions (client-side — separate system)
+      if (ENABLE_DIVISIONS) {
+        const player = usePlayerStore.getState()
+        const armyStore = useArmyStore.getState()
+        const playerCountry = player.countryCode || 'US'
+        const armies = armyStore.getArmiesForCountry(playerCountry)
+        const armyId = armies.length > 0 ? armies[0].id : undefined
+
+        DIV_TYPES.forEach(type => {
+          const template = DIVISION_TEMPLATES[type]
+          const id = `wk-div-${type}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+          const division = {
+            id, type, name: `${template.name} (Kit)`,
+            category: template.category,
+            ownerId: player.name,
+            countryCode: playerCountry,
+            manpower: template.manpowerCost,
+            maxManpower: template.manpowerCost,
+            health: Math.floor(template.healthMult * 100),
+            maxHealth: Math.floor(template.healthMult * 100),
+            equipment: [] as string[],
+            experience: 0,
+            stance: 'unassigned' as const,
+            autoTrainingEnabled: false,
+            status: 'ready' as const,
+            trainingProgress: 0,
+            recoveryTicksNeeded: 0,
+            readyAt: 0,
+            reinforcing: false,
+            reinforceProgress: 0,
+            killCount: 0,
+            battlesSurvived: 0,
+            starQuality: 3 as 1 | 2 | 3 | 4 | 5,
+            statModifiers: { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0 },
+            deployedToPMC: false,
+          }
+          useArmyStore.setState((s: any) => ({
+            divisions: { ...s.divisions, [id]: division },
+          }))
+          if (armyId) {
+            useArmyStore.getState().assignDivisionToArmy(id, armyId)
+          }
+        })
+      }
+    } catch (err) {
+      console.error('[WelcomeKit] Claim error:', err)
     }
-
-    // DEV: localStorage.setItem(STORAGE_KEY, Date.now().toString())  // Re-enable for production
 
     setTimeout(() => {
       setClaimed(true)
@@ -244,7 +218,7 @@ export default function WelcomeKitModal() {
           <div style={{
             display: 'flex', gap: 3, marginBottom: 14, flexWrap: 'wrap',
           }}>
-            {(['t1', 't2', 't3', 't4', 't5', 't6', 't7'] as EquipTier[]).map(tier => (
+            {(['t1', 't2', 't3', 't4', 't5', 't6'] as EquipTier[]).map(tier => (
               <div key={tier} style={{
                 flex: 1, minWidth: 58, padding: '5px 4px', textAlign: 'center',
                 background: `${TIER_COLORS[tier]}0a`, borderRadius: 4,

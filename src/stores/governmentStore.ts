@@ -93,6 +93,7 @@ export interface GovernmentState {
   electionVotes: Record<string, WeightedVote[]>  // countryCode → votes cast this cycle
 
   fetchGovernment: (countryCode: string) => Promise<void>
+  fetchCitizens: (countryCode: string) => Promise<void>
   setTaxRate: (countryCode: string, taxRate: number) => Promise<{success: boolean, message: string}>
   buildInfrastructure: (countryCode: string, building: 'port'|'airport'|'military_base'|'bunker') => Promise<{success: boolean, message: string}>
   nationalizeCompany: (countryCode: string, companyId: string) => Promise<{success: boolean, message: string}>
@@ -103,13 +104,15 @@ export interface GovernmentState {
   recordContribution: (citizenId: string, type: 'damage' | 'production' | 'donation', amount: number) => void
   getPoliticalPower: (citizenId: string) => number
   castWeightedVote: (countryCode: string, voterId: string, candidateId: string) => { success: boolean; message: string }
-  proposeLaw: (law: Omit<Law, 'id' | 'votesFor' | 'votesAgainst' | 'status' | 'proposedAt' | 'expiresAt'>) => void
-  voteOnLaw: (lawId: string, voterId: string, vote: 'for' | 'against') => void
+  proposeLaw: (countryCode: string, lawType: string, targetCountryId?: string, newValue?: number) => Promise<{ success: boolean; message: string }>
+  voteOnLaw: (countryCode: string, proposalId: string, vote: 'for' | 'against') => Promise<{ success: boolean; message: string }>
   resolveElections: () => void
   resolveLaws: () => void
-  donateToFund: (countryId: string, resource: NationalFundKey, amount: number) => boolean
+  donateToFund: (countryId: string, resource: NationalFundKey, amount: number) => Promise<boolean>
   spendFromFund: (countryId: string, costs: Partial<NationalFund>) => boolean
-  launchNuke: (fromCountry: string, targetCountry: string) => void
+  startEnrichment: (countryCode: string) => Promise<{ success: boolean; message: string }>
+  launchNuke: (fromCountry: string, targetCountry: string) => Promise<{ success: boolean; message: string }>
+  authorizeNuke: (countryCode: string) => Promise<{ success: boolean; message: string }>
   stealNationalFund: (targetId: string, attackerId: string, percentage: number) => void
   // Contribution missions
   startContributionMission: (opId: string, opType: 'cyber' | 'military' | 'nuclear', countryCode: string, startedBy: string, required: Partial<NationalFund>, requiredItems?: { jets?: number; tanks?: number }) => string | null
@@ -181,6 +184,9 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     ideology: null,
     ideologyPoints: { ...DEFAULT_IDEOLOGY_POINTS },
     nuclearAuthorized: false,
+    enrichmentStartedAt: null,
+    enrichmentCompletedAt: null,
+    nukeReady: false,
     citizens: mockCitizens(code, president, congress),
     divisionShop: [],
     militaryBudgetPercent: 5,
@@ -193,6 +199,7 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     minimumWage: 0,
     stateMilitaryUnits: [],
     citizenDividendPercent: 0,
+    laws: { proposals: [] },
   }
 }
 
@@ -246,15 +253,49 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     try {
       const res: any = await api.get(`/gov/country/${countryCode}`)
       if (res.government) {
+        const gov = res.government
+        // Convert DB timestamps to ms for enrichment countdown
+        if (gov.enrichmentStartedAt) gov.enrichmentStartedAt = new Date(gov.enrichmentStartedAt).getTime()
+        if (gov.enrichmentCompletedAt) gov.enrichmentCompletedAt = new Date(gov.enrichmentCompletedAt).getTime()
         set(s => ({
           governments: {
             ...s.governments,
-            [countryCode]: res.government
+            [countryCode]: gov
           }
         }))
       }
     } catch (err) {
       console.error('[Government] Fetch failed', err)
+    }
+  },
+
+  fetchCitizens: async (countryCode) => {
+    try {
+      const { getCitizens } = await import('../api/client')
+      const res = await getCitizens(countryCode)
+      if (res.success && res.citizens) {
+        set(s => {
+          const gov = s.governments[countryCode]
+          if (!gov) return s
+          return {
+            governments: {
+              ...s.governments,
+              [countryCode]: {
+                ...gov,
+                citizens: res.citizens.map(c => ({
+                  id: c.id,
+                  name: c.name,
+                  level: c.level,
+                  role: (c.role as any) || 'citizen',
+                  joinedAt: c.joinedAt,
+                })),
+              },
+            },
+          }
+        })
+      }
+    } catch (err) {
+      console.error('[Government] Fetch citizens failed', err)
     }
   },
 
@@ -306,48 +347,29 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     }
   },
 
-  proposeLaw: (lawData) => set((state) => {
-    const gov = state.governments[lawData.countryId]
-    if (!gov) return state
-    const isGovOfficial = gov.president === lawData.proposerId || gov.congress.includes(lawData.proposerId)
-    if (!isGovOfficial) return state
-
-    const id = `law_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    return {
-      laws: {
-        ...state.laws,
-        [id]: {
-          ...lawData, id,
-          votesFor: [],
-          votesAgainst: [],
-          proposedAt: Date.now(),
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-          status: 'active'
-        }
-      }
+  proposeLaw: async (countryCode, lawType, targetCountryId, newValue) => {
+    try {
+      const { proposeLawApi } = await import('../api/client')
+      const res = await proposeLawApi(countryCode, lawType, targetCountryId, newValue)
+      // Refresh government state from server to get new proposal list
+      get().fetchGovernment(countryCode)
+      return { success: res.success, message: res.message || 'Law proposed.' }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to propose law.' }
     }
-  }),
+  },
 
-  voteOnLaw: (lawId, voterId, vote) => set((state) => {
-    const law = state.laws[lawId]
-    if (!law || law.status !== 'active') return state
-    const gov = state.governments[law.countryId]
-    if (!gov) return state
-    const isCongress = gov.congress.includes(voterId)
-    if (!isCongress) return state
-
-    const votesFor = law.votesFor.filter(id => id !== voterId)
-    const votesAgainst = law.votesAgainst.filter(id => id !== voterId)
-    if (vote === 'for') votesFor.push(voterId)
-    if (vote === 'against') votesAgainst.push(voterId)
-
-    const updatedLaw = { ...law, votesFor, votesAgainst }
-    // Require majority + at least 2 votes to pass; 3 against to fail
-    if (votesFor.length >= 2 && votesFor.length > votesAgainst.length) updatedLaw.status = 'passed'
-    else if (votesAgainst.length >= 3) updatedLaw.status = 'failed'
-
-    return { laws: { ...state.laws, [lawId]: updatedLaw } }
-  }),
+  voteOnLaw: async (countryCode, proposalId, vote) => {
+    try {
+      const { voteLawApi } = await import('../api/client')
+      const res = await voteLawApi(countryCode, proposalId, vote)
+      // Refresh government state to get updated proposals
+      get().fetchGovernment(countryCode)
+      return { success: res.success, message: res.message || `Vote cast: ${vote}` }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to vote.' }
+    }
+  },
 
   resolveElections: () => set((state) => {
     if (Date.now() < state.nextElectionAt) return state
@@ -401,29 +423,28 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     return { laws: newLaws }
   }),
 
-  donateToFund: (countryId, resource, amount) => {
-    const state = get()
-    const gov = state.governments[countryId]
-    if (!gov || amount <= 0) return false
-
-    // Deduct from player first (enforced at store level)
-    const player = usePlayerStore.getState()
-    const balanceMap: Record<NationalFundKey, number> = {
-      money: player.money, oil: player.oil, scrap: player.scrap,
-      materialX: player.materialX, bitcoin: player.bitcoin, jets: 0,
+  donateToFund: async (countryId, resource, amount) => {
+    if (amount <= 0) return false
+    try {
+      const { donateToCountryFund } = await import('../api/client')
+      const res = await donateToCountryFund(countryId, resource, amount)
+      if (res.success) {
+        // Optimistically update local player state
+        const player = usePlayerStore.getState()
+        if (resource === 'money') player.spendMoney(amount)
+        else if (resource === 'oil') player.spendOil(amount)
+        else if (resource === 'scrap') player.spendScrap(amount)
+        else if (resource === 'materialX') player.spendMaterialX(amount)
+        else if (resource === 'bitcoin') player.spendBitcoin(amount)
+        // Update country fund locally
+        useWorldStore.getState().addToFund(countryId, resource as any, amount)
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error('[Gov] Donate to fund failed:', err)
+      return false
     }
-    if (balanceMap[resource] < amount) return false
-
-    if (resource === 'money') player.spendMoney(amount)
-    else if (resource === 'oil') player.spendOil(amount)
-    else if (resource === 'scrap') player.spendScrap(amount)
-    else if (resource === 'materialX') player.spendMaterialX(amount)
-    else if (resource === 'bitcoin') player.spendBitcoin(amount)
-    else return false  // jets handled separately via inventory
-
-    // Add to country fund
-    useWorldStore.getState().addToFund(countryId, resource, amount)
-    return true
   },
 
   spendFromFund: (countryId, costs) => {
@@ -431,27 +452,84 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     return useWorldStore.getState().spendFromFund(countryId, costs)
   },
 
-  launchNuke: (fromCountry, _targetCountry) => set((state) => {
-    const gov = state.governments[fromCountry]
-    if (!gov || !gov.nuclearAuthorized) return state
-    // Deduct nuke costs via worldStore
-    useWorldStore.getState().spendFromFund(fromCountry, {
-      oil: NUKE_COST.oil,
-      scrap: NUKE_COST.scrap,
-      materialX: NUKE_COST.materialX,
-      bitcoin: NUKE_COST.bitcoin,
-      jets: NUKE_COST.jets,
-    })
-    return {
-      governments: {
-        ...state.governments,
-        [fromCountry]: {
-          ...gov,
-          nuclearAuthorized: false,
-        },
-      },
+  startEnrichment: async (countryCode) => {
+    try {
+      const { startEnrichmentApi } = await import('../api/client')
+      const res = await startEnrichmentApi(countryCode)
+      if (res.success) {
+        // Update local state with enrichment timestamps
+        const state = get()
+        const gov = state.governments[countryCode]
+        if (gov) {
+          set({
+            governments: {
+              ...state.governments,
+              [countryCode]: {
+                ...gov,
+                enrichmentStartedAt: res.enrichmentStartedAt ? new Date(res.enrichmentStartedAt).getTime() : Date.now(),
+                enrichmentCompletedAt: res.enrichmentCompletedAt ? new Date(res.enrichmentCompletedAt).getTime() : Date.now() + 7 * 24 * 60 * 60 * 1000,
+                nukeReady: false,
+              },
+            },
+          })
+        }
+      }
+      return { success: res.success, message: res.message }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to start enrichment.' }
     }
-  }),
+  },
+
+  launchNuke: async (fromCountry, targetCountry) => {
+    try {
+      const { launchNukeApi } = await import('../api/client')
+      const res = await launchNukeApi(fromCountry, targetCountry)
+      if (res.success) {
+        // Reset local nuclear state
+        const state = get()
+        const gov = state.governments[fromCountry]
+        if (gov) {
+          set({
+            governments: {
+              ...state.governments,
+              [fromCountry]: {
+                ...gov,
+                nuclearAuthorized: false,
+                enrichmentStartedAt: null,
+                enrichmentCompletedAt: null,
+                nukeReady: false,
+              },
+            },
+          })
+        }
+      }
+      return { success: res.success, message: res.message }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to launch nuclear strike.' }
+    }
+  },
+
+  authorizeNuke: async (countryCode) => {
+    try {
+      const { authorizeNukeApi } = await import('../api/client')
+      const res = await authorizeNukeApi(countryCode)
+      if (res.success) {
+        const state = get()
+        const gov = state.governments[countryCode]
+        if (gov) {
+          set({
+            governments: {
+              ...state.governments,
+              [countryCode]: { ...gov, nuclearAuthorized: true },
+            },
+          })
+        }
+      }
+      return { success: res.success, message: res.message }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to authorize nuclear program.' }
+    }
+  },
 
   stealNationalFund: (targetId, attackerId, percentage) => {
     const pct = percentage / 100

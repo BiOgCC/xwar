@@ -51,6 +51,8 @@ export function useGameLoop() {
 
     // COMBAT (15s) — battle resolution + revolt pressure
     unsubs.push(gameClock.subscribe('combat', () => {
+      // Player combat tick: ground points from manual attacks (always runs)
+      try { useBattleStore.getState().processPlayerCombatTick() } catch (e) { console.warn('[Combat] processPlayerCombatTick:', e) }
       if (ENABLE_DIVISIONS) {
         try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
       }

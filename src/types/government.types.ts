@@ -124,6 +124,9 @@ export interface Government {
   ideology: IdeologyType | null
   ideologyPoints: IdeologyPoints
   nuclearAuthorized: boolean
+  enrichmentStartedAt: number | null   // timestamp when enrichment began
+  enrichmentCompletedAt: number | null  // enrichmentStartedAt + 7 days
+  nukeReady: boolean                    // true once enrichment countdown completes
   citizens: Citizen[]
   divisionShop: DivisionListing[]
   militaryBudgetPercent: number
@@ -137,4 +140,5 @@ export interface Government {
   minimumWage: number          // 0 = disabled
   stateMilitaryUnits: string[] // MU IDs owned by the government
   citizenDividendPercent: number  // 0-30%, president sets, auto-distributes treasury to citizens
+  laws: { proposals?: any[] }  // Server-sourced law proposal list
 }

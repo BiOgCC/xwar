@@ -193,6 +193,32 @@ export async function openBox(boxType: 'loot' | 'military') {
   return api.post('/inventory/open-box', { boxType })
 }
 
+export async function sellItem(itemId: string) {
+  return api.post(`/inventory/sell/${itemId}`)
+}
+
+export async function claimWelcomeKit() {
+  return api.post('/inventory/claim-welcome-kit')
+}
+
+export async function craftItem(tier: string, slot: string, category: string) {
+  return api.post<any>('/inventory/craft', { tier, slot, category })
+}
+
+// ── Skills API ──────────────────────────────────────────────
+
+export async function getMySkills() {
+  return api.get<{ success: boolean; skills: any; availablePoints: number }>('/skills/my-skills')
+}
+
+export async function upgradeSkill(skill: string) {
+  return api.post<{ success: boolean; message: string }>('/skills/upgrade', { skill })
+}
+
+export async function getSpecialization() {
+  return api.get<{ success: boolean; specialization: any }>('/skills/specialization')
+}
+
 // ── World API ────────────────────────────────────────────────
 
 export async function getCountries() {
@@ -237,19 +263,98 @@ export async function spendFromForceVault(countryCode: string, resource: string,
   return api.post('/gov/force-vault/spend', { countryCode, resource, amount })
 }
 
-// ── Player Actions API ───────────────────────────────────────
+// ── Government Fund & Law API ────────────────────────────────
 
-export async function eatFoodApi(type: string) {
-  return api.post('/player/eat', { type })
+export async function donateToCountryFund(countryCode: string, resource: string, amount: number) {
+  return api.post<{ success: boolean; message: string }>('/gov/donate', { countryCode, resource, amount })
 }
+
+export async function startEnrichmentApi(countryCode: string) {
+  return api.post<{ success: boolean; message: string; enrichmentStartedAt?: string; enrichmentCompletedAt?: string }>('/gov/start-enrichment', { countryCode })
+}
+
+export async function launchNukeApi(countryCode: string, targetCode: string) {
+  return api.post<{ success: boolean; message: string }>('/gov/nuke', { countryCode, targetCode })
+}
+
+export async function authorizeNukeApi(countryCode: string) {
+  return api.post<{ success: boolean; message: string }>('/gov/authorize-nuke', { countryCode })
+}
+
+export async function proposeLawApi(countryCode: string, lawType: string, targetCountryId?: string, newValue?: number) {
+  return api.post<{ success: boolean; message: string; proposal?: any }>('/gov/propose-law', { countryCode, lawType, targetCountryId, newValue })
+}
+
+export async function voteLawApi(countryCode: string, proposalId: string, vote: 'for' | 'against') {
+  return api.post<{ success: boolean; message: string }>('/gov/vote-law', { countryCode, proposalId, vote })
+}
+
+export async function setSwornEnemyApi(countryCode: string, enemyCode: string) {
+  return api.post<{ success: boolean; message: string }>('/gov/set-enemy', { countryCode, enemyCode })
+}
+
+// ── Military Unit (Guild) API ────────────────────────────────
+
+export async function muCreateApi(name: string, regionId?: string) {
+  return api.post<{ success: boolean; message: string; unitId?: string }>('/mu/create', { name, regionId })
+}
+export async function muJoinApi(unitId: string) {
+  return api.post<{ success: boolean; message: string }>('/mu/join', { unitId })
+}
+export async function muLeaveApi() {
+  return api.post<{ success: boolean; message: string }>('/mu/leave', {})
+}
+export async function muDonateApi(unitId: string, currency: string, amount: number, message?: string) {
+  return api.post<{ success: boolean; message: string }>('/mu/donate', { unitId, currency, amount, message })
+}
+export async function muDistributeApi(unitId: string, resourceId: string, amount: number) {
+  return api.post<{ success: boolean; message: string }>('/mu/distribute', { unitId, resourceId, amount })
+}
+export async function muUpgradeApi(unitId: string, track: string) {
+  return api.post<{ success: boolean; message: string }>('/mu/upgrade', { unitId, track })
+}
+export async function muPromoteApi(unitId: string, targetPlayerId: string) {
+  return api.post<{ success: boolean; message: string }>('/mu/promote', { unitId, targetPlayerId })
+}
+export async function muDemoteApi(unitId: string, targetPlayerId: string) {
+  return api.post<{ success: boolean; message: string }>('/mu/demote', { unitId, targetPlayerId })
+}
+export async function muRecordDamageApi(unitId: string, playerName: string, damage: number) {
+  return api.post<{ success: boolean }>('/mu/record-damage', { unitId, playerName, damage })
+}
+export async function muListApi(country?: string) {
+  return api.get<{ success: boolean; units: any[] }>(`/mu/list${country ? `?country=${country}` : ''}`)
+}
+export async function muGetApi(unitId: string) {
+  return api.get<{ success: boolean; unit: any }>(`/mu/${unitId}`)
+}
+export async function muPlayerUnitApi() {
+  return api.get<{ success: boolean; unit: any; membership: any }>('/mu/player-unit')
+}
+
+// ── Player Actions API ───────────────────────────────────────
+// NOTE: eatFood(), equipAmmo() defined above are the canonical exports.
+// Use those instead of duplicated *Api variants.
 
 export async function attackApi() {
   return api.post('/player/attack')
 }
 
-export async function equipAmmoApi(type: string) {
-  return api.patch('/player/ammo', { type })
+export async function entrepreneurshipApi() {
+  return api.post<{ success: boolean; productionBar: number; entrepreneurship: number }>('/player/entrepreneurship')
 }
+export async function produceApi() {
+  return api.post<{ success: boolean; xpGain: number; itemsProduced: number }>('/player/produce')
+}
+export async function magicTeaApi() {
+  return api.post<{ success: boolean; magicTea: number; buffUntil: number; debuffUntil: number }>('/player/magic-tea')
+}
+
+/** Kept as alias — stores import this by name */
+export const eatFoodApi = eatFood
+
+/** Kept as alias — stores import this by name */
+export const equipAmmoApi = equipAmmo
 
 export async function consumeBarApi(bar: string, amount: number) {
   return api.post('/player/consume-bar', { bar, amount })
@@ -385,15 +490,10 @@ export async function sabotageRace(opId: string) {
   return api.get<any>(`/cyber/sabotage/race/${opId}`)
 }
 
-// ── Daily Rewards API (extended) ─────────────────────────────
-
-export async function getDailyStatusApi() {
-  return api.get<any>('/daily/status')
-}
-
-export async function claimDailyApi() {
-  return api.post<any>('/daily/claim')
-}
+// ── Daily Rewards API (aliases) ──────────────────────────────
+// Canonical: getDailyStatus() and claimDailyReward() above.
+export const getDailyStatusApi = getDailyStatus
+export const claimDailyApi = claimDailyReward
 
 // ── Army API ─────────────────────────────────────────────────
 
@@ -475,6 +575,22 @@ export async function buyPrestigeBlueprint(blueprintId: string) {
   return api.post<{ success: boolean; message: string }>('/prestige/blueprint/buy', { blueprintId })
 }
 
+
+// ── Citizens API (Playerbase) ────────────────────────────────
+
+export interface CitizenInfo {
+  id: string
+  name: string
+  level: number
+  role: string
+  avatar: string
+  damageDone: number
+  joinedAt: number
+}
+
+export async function getCitizens(countryCode: string) {
+  return api.get<{ success: boolean; citizens: CitizenInfo[]; population: number }>(`/gov/citizens/${countryCode}`)
+}
 
 // ── Health ───────────────────────────────────────────────────
 

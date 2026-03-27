@@ -27,8 +27,10 @@ export type RouteControlState = 'active' | 'partial' | 'inactive'
 
 export interface RouteDisruption {
   routeId: string
-  expiryMs: number
+  activatesAt: number   // when the disruption actually kicks in (after countdown)
+  expiryMs: number      // when the disruption ends
   reason: string
+  orderedBy: string     // country code that ordered it
 }
 
 export interface TradeIncomeResult {
@@ -45,6 +47,21 @@ export interface StrategicObjective {
 
 /** Partial income multiplier for routes with only one endpoint controlled */
 const SEA_PARTIAL_INCOME_MULT = 0.30
+
+/** Disruption costs 60% of the route's per-tick income — makes it a strategic risk/reward call */
+export const DISRUPTION_COST_RATIO = 0.60
+
+/** Disruption timing constants */
+export const DISRUPTION_COUNTDOWN_MS = 6 * 60 * 60 * 1000   // 6 hours before disruption activates
+export const DISRUPTION_DURATION_MS  = 6 * 60 * 60 * 1000   // 6 hours active disruption
+export const DISRUPTION_COOLDOWN_MS  = 48 * 60 * 60 * 1000  // 48 hours before country can disrupt again
+
+/** Compute the disruption cost for a specific sea route */
+export function getDisruptionCost(line: { seaData?: { tradedGoods: number; fish: number; oil: number } }): number {
+  if (!line.seaData) return 0
+  const routeIncome = line.seaData.tradedGoods + line.seaData.fish * 10 + line.seaData.oil * 10
+  return Math.round(routeIncome * DISRUPTION_COST_RATIO)
+}
 
 // ── Computed state types ──
 
@@ -94,6 +111,7 @@ export interface LeyLineState {
   seaRoutesLoaded: boolean
   selectedSeaRouteId: string | null
   disruptions: RouteDisruption[]
+  disruptionCooldowns: Record<string, number>  // countryCode → cooldown expiry timestamp
   strategicObjectives: StrategicObjective[]
 
   loadSeaRoutes: () => Promise<void>
@@ -103,9 +121,13 @@ export interface LeyLineState {
   getActiveSeaRoutes: () => LeyLineDef[]
   computeTradeIncome: () => TradeIncomeResult[]
   processTradeIncome: () => void
-  disruptRoute: (routeId: string, durationMs: number, reason?: string) => void
+  disruptRoute: (routeId: string, reason?: string) => 'ok' | 'already_disrupted' | 'cooldown' | 'insufficient_funds' | 'error'
   tickDisruptions: () => void
   isRouteDisrupted: (routeId: string) => boolean
+  isRoutePendingDisruption: (routeId: string) => boolean
+  getDisruptionStatus: (routeId: string) => { state: 'none' | 'pending' | 'active'; remainingMs: number } | null
+  isCountryOnCooldown: () => boolean
+  getCountryCooldownMs: () => number
   toggleStrategicObjective: (routeId: string) => void
   isStrategicObjective: (routeId: string) => boolean
 }
@@ -407,6 +429,7 @@ export const useLeyLineStore = create<LeyLineState>()((set, get) => ({
   seaRoutesLoaded: false,
   selectedSeaRouteId: null,
   disruptions: [],
+  disruptionCooldowns: {},
   strategicObjectives: [],
 
   loadSeaRoutes: async () => {
@@ -473,13 +496,44 @@ export const useLeyLineStore = create<LeyLineState>()((set, get) => ({
     if (totalOil > 0) world.recordEconFlow('sea_routes_oil', totalOil, 'created', 'oil')
   },
 
-  disruptRoute: (routeId, durationMs, reason = 'naval') => {
-    const expiryMs = Date.now() + durationMs
+  disruptRoute: (routeId, reason = 'naval') => {
+    // Prevent if this route already has a pending or active disruption
+    const existing = get().disruptions.find(d => d.routeId === routeId && d.expiryMs > Date.now())
+    if (existing) return 'already_disrupted'
+
+    // Look up route to compute dynamic cost
+    const lineDef = get().defs.find(d => d.id === routeId)
+    if (!lineDef || !lineDef.seaData) return 'error'
+    const cost = getDisruptionCost(lineDef)
+    if (cost <= 0) return 'error'
+
+    // Check 48h country cooldown
+    const world = useWorldStore.getState()
+    const playerCountry = world.countries.find(c => c.controller === 'Player Alliance')
+    if (!playerCountry) return 'error'
+    const cooldownExpiry = get().disruptionCooldowns[playerCountry.code] || 0
+    if (Date.now() < cooldownExpiry) return 'cooldown'
+
+    // Deduct cost from player's country treasury
+    const spent = world.spendFromFund(playerCountry.code, { money: cost })
+    if (!spent) return 'insufficient_funds'
+
+    // Record in economy ledger
+    world.recordEconFlow('sea_disruption', cost, 'destroyed')
+
+    const now = Date.now()
+    const activatesAt = now + DISRUPTION_COUNTDOWN_MS
+    const expiryMs = activatesAt + DISRUPTION_DURATION_MS
+
     set(s => {
       const filtered = s.disruptions.filter(d => d.routeId !== routeId)
-      return { disruptions: [...filtered, { routeId, expiryMs, reason }] }
+      return {
+        disruptions: [...filtered, { routeId, activatesAt, expiryMs, reason, orderedBy: playerCountry.code }],
+        disruptionCooldowns: { ...s.disruptionCooldowns, [playerCountry.code]: now + DISRUPTION_COOLDOWN_MS },
+      }
     })
-    console.log(`⚠️ Sea route disrupted: ${routeId} for ${Math.round(durationMs / 60000)} min`)
+    console.log(`⚠️ Disruption ordered: ${routeId} — activates in 6h, lasts 6h — cost $${cost.toLocaleString()}`)
+    return 'ok'
   },
 
   tickDisruptions: () => {
@@ -489,7 +543,36 @@ export const useLeyLineStore = create<LeyLineState>()((set, get) => ({
 
   isRouteDisrupted: (routeId) => {
     const now = Date.now()
-    return get().disruptions.some(d => d.routeId === routeId && d.expiryMs > now)
+    return get().disruptions.some(d => d.routeId === routeId && d.activatesAt <= now && d.expiryMs > now)
+  },
+
+  isRoutePendingDisruption: (routeId) => {
+    const now = Date.now()
+    return get().disruptions.some(d => d.routeId === routeId && d.activatesAt > now && d.expiryMs > now)
+  },
+
+  getDisruptionStatus: (routeId) => {
+    const now = Date.now()
+    const d = get().disruptions.find(dd => dd.routeId === routeId && dd.expiryMs > now)
+    if (!d) return null
+    if (d.activatesAt > now) return { state: 'pending', remainingMs: d.activatesAt - now }
+    return { state: 'active', remainingMs: d.expiryMs - now }
+  },
+
+  isCountryOnCooldown: () => {
+    const world = useWorldStore.getState()
+    const playerCountry = world.countries.find(c => c.controller === 'Player Alliance')
+    if (!playerCountry) return false
+    const cooldownExpiry = get().disruptionCooldowns[playerCountry.code] || 0
+    return Date.now() < cooldownExpiry
+  },
+
+  getCountryCooldownMs: () => {
+    const world = useWorldStore.getState()
+    const playerCountry = world.countries.find(c => c.controller === 'Player Alliance')
+    if (!playerCountry) return 0
+    const cooldownExpiry = get().disruptionCooldowns[playerCountry.code] || 0
+    return Math.max(0, cooldownExpiry - Date.now())
   },
 
   toggleStrategicObjective: (routeId) => {

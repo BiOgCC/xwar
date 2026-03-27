@@ -123,28 +123,73 @@ export function rollMilitaryBoxItem(ownerId: string) {
   return rollItemOfTier(tier, ownerId)
 }
 
-/** Generate starter kit for new player (T1-T3 equipment, T3 equipped) */
+/** Generate starter kit for new player (T1-T6 equipment, T3 equipped) */
 export function generateStarterKit(ownerId: string) {
   const kit: ReturnType<typeof rollItemOfTier>[] = []
-  const slots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots', 'weapon']
-  const tiers: EquipTier[] = ['t1', 't2', 't3']
+  const armorSlots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
+  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
 
   tiers.forEach(tier => {
-    slots.forEach(slot => {
-      const category: EquipCategory = slot === 'weapon' ? 'weapon' : 'armor'
-      const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][0] : undefined
-      const result = generateStats(category, slot, tier, subtype)
+    // All armor slots
+    armorSlots.forEach(slot => {
+      const result = generateStats('armor', slot, tier)
       kit.push({
         ownerId,
         name: result.name,
         slot,
-        category,
+        category: 'armor',
         tier,
-        equipped: tier === 't3', // Equip T3 set by default
+        equipped: tier === 't3',
+        durability: '100',
+        weaponSubtype: null,
+        location: 'inventory' as const,
+        stats: result.stats,
+      })
+    })
+    // All weapon subtypes for this tier
+    const subtypes = WEAPON_SUBTYPES[tier]
+    subtypes.forEach(subtype => {
+      const result = generateStats('weapon', 'weapon', tier, subtype)
+      kit.push({
+        ownerId,
+        name: result.name,
+        slot: 'weapon',
+        category: 'weapon',
+        tier,
+        equipped: tier === 't3' && subtype === subtypes[0],
         durability: '100',
         weaponSubtype: result.weaponSubtype || null,
         location: 'inventory' as const,
         stats: result.stats,
+      })
+    })
+  })
+
+  return kit
+}
+
+/** Generate full welcome kit (T1-T7 all slots + all weapon subtypes, nothing equipped) */
+export function generateWelcomeKit(ownerId: string) {
+  const kit: ReturnType<typeof rollItemOfTier>[] = []
+  const armorSlots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
+  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
+
+  tiers.forEach(tier => {
+    armorSlots.forEach(slot => {
+      const result = generateStats('armor', slot, tier)
+      kit.push({
+        ownerId, name: result.name, slot, category: 'armor', tier,
+        equipped: false, durability: '100', weaponSubtype: null,
+        location: 'inventory' as const, stats: result.stats,
+      })
+    })
+    const subtypes = WEAPON_SUBTYPES[tier]
+    subtypes.forEach(subtype => {
+      const result = generateStats('weapon', 'weapon', tier, subtype)
+      kit.push({
+        ownerId, name: result.name, slot: 'weapon', category: 'weapon', tier,
+        equipped: false, durability: '100', weaponSubtype: result.weaponSubtype || null,
+        location: 'inventory' as const, stats: result.stats,
       })
     })
   })

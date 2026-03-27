@@ -33,6 +33,7 @@ export interface OrderEffects {
   dodgeMult: number
   hitBonus: number
   critBonus: number
+  critDmgMult: number
   speedMult: number
 }
 
@@ -56,7 +57,7 @@ export const EMPTY_EQUIP_BONUS: EquipBonus = {
 }
 
 export const NO_ORDER: OrderEffects = {
-  atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, speedMult: 1,
+  atkMult: 1, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, critDmgMult: 1, speedMult: 1,
 }
 
 export const NO_AURA: AuraBonus = {

@@ -50,6 +50,10 @@ export interface BattleRound {
   ticksElapsed?: number
   attackerDmgTotal?: number
   defenderDmgTotal?: number
+  /** Damage accumulated by attacker during this specific round (resets each round) */
+  attackerRoundDmg?: number
+  /** Damage accumulated by defender during this specific round (resets each round) */
+  defenderRoundDmg?: number
 }
 
 export type TacticalOrder = 'none' | 'charge' | 'fortify' | 'precision' | 'blitz'
@@ -60,6 +64,7 @@ export interface OrderEffects {
   dodgeMult: number
   hitBonus: number
   critBonus: number
+  critDmgMult: number
   speedMult: number
 }
 
@@ -103,6 +108,16 @@ export interface Battle {
   mercenaryContracts: MercenaryContract[]
   /** Missile launcher cooldowns — countryCode → last launch timestamp */
   missileCooldowns?: Record<string, number>
+  /** Weapon counter-buff: tracks which weapon subtypes each side has used for counter-buff activation */
+  weaponPresence: Record<'attacker' | 'defender', Record<string, WeaponPresenceEntry>>
+}
+
+/** Per-weapon-subtype presence tracking for counter-buff system */
+export interface WeaponPresenceEntry {
+  /** playerName → { hitCount, totalDamage } */
+  players: Record<string, { hitCount: number; totalDamage: number }>
+  /** Tick when this presence expires (refreshed on every qualifying hit) */
+  expiryTick: number
 }
 
 export interface MercenaryContract {

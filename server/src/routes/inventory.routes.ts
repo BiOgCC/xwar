@@ -3,7 +3,7 @@ import { eq, and, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { items } from '../db/schema.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
-import { rollLootBoxItem, rollMilitaryBoxItem } from '../services/inventory.service.js'
+import { rollLootBoxItem, rollMilitaryBoxItem, generateWelcomeKit } from '../services/inventory.service.js'
 import { players } from '../db/schema.js'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -249,5 +249,156 @@ router.post('/open-box', async (req, res) => {
   }
 })
 
+// ── POST /api/inventory/claim-welcome-kit ── One-time welcome kit grant (server-authoritative)
+router.post('/claim-welcome-kit', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+
+    // Check if already claimed
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player) { res.status(404).json({ error: 'Player not found' }); return }
+
+    if ((player as any).welcomeKitClaimed) {
+      res.status(400).json({ error: 'Welcome kit already claimed' })
+      return
+    }
+
+    // Generate full gear set (T1-T6, all armor slots + all weapon subtypes)
+    const gear = generateWelcomeKit(playerId)
+
+    // Batch insert all items
+    if (gear.length > 0) {
+      await db.insert(items).values(gear)
+    }
+
+    // Grant resources
+    const RESOURCE_GRANTS: Record<string, number> = {
+      money: 100_000,
+      oil: 100_000,
+      material_x: 100_000,
+      scrap: 100_000,
+      bitcoin: 100_000,
+      bread: 100_000,
+      sushi: 100_000,
+      wagyu: 100_000,
+      loot_boxes: 50,
+      military_boxes: 50,
+      supply_boxes: 10,
+      badges_of_honor: 100,
+    }
+
+    // Build SET clause for resource grants
+    const setClauses = Object.entries(RESOURCE_GRANTS)
+      .map(([col, amount]) => `${col} = ${col} + ${amount}`)
+      .join(', ')
+    await db.execute(sql`UPDATE players SET ${sql.raw(setClauses)}, welcome_kit_claimed = true WHERE id = ${playerId}`)
+
+    // Grant XP (update level and experience)
+    const xpGrant = 4000
+    let level = player.level ?? 1
+    let experience = (player.experience ?? 0) + xpGrant
+    let expToNext = player.expToNext ?? 100
+    let skillPoints = player.skillPoints ?? 0
+    while (experience >= expToNext) {
+      experience -= expToNext
+      level++
+      skillPoints += 4
+      if (level <= 10) expToNext = 100
+      else if (level <= 20) expToNext = 150
+      else expToNext = 200
+    }
+    await db.update(players).set({
+      level, experience, expToNext, skillPoints,
+    }).where(eq(players.id, playerId))
+
+    // Fetch the freshly inserted items to return
+    const insertedItems = await db.select().from(items).where(eq(items.ownerId, playerId))
+
+    res.json({
+      success: true,
+      itemCount: gear.length,
+      items: insertedItems,
+      xpGranted: xpGrant,
+      resourceGrants: RESOURCE_GRANTS,
+    })
+  } catch (err) {
+    console.error('[INVENTORY] Welcome kit claim error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/inventory/craft ── Craft an item from scrap
+router.post('/craft', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { tier, slot, category } = req.body
+
+    if (!tier || !slot || !category) {
+      res.status(400).json({ error: 'tier, slot, and category are required' })
+      return
+    }
+
+    const SCRAP_COSTS: Record<string, number> = {
+      t1: 20, t2: 60, t3: 180, t4: 540, t5: 1620, t6: 4860, t7: 14580,
+    }
+    const cost = SCRAP_COSTS[tier]
+    if (!cost) { res.status(400).json({ error: 'Invalid tier' }); return }
+
+    // Check player has scrap
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player) { res.status(404).json({ error: 'Player not found' }); return }
+    if ((player.scrap ?? 0) < cost) {
+      res.status(400).json({ error: `Not enough scrap (need ${cost}, have ${player.scrap ?? 0})` })
+      return
+    }
+
+    // Deduct scrap
+    await db.update(players).set({
+      scrap: (player.scrap ?? 0) - cost,
+    }).where(eq(players.id, playerId))
+
+    // Generate item with server-side RNG
+    const TIER_NUM: Record<string, number> = { t1: 1, t2: 2, t3: 3, t4: 4, t5: 5, t6: 6, t7: 7 }
+    const tierNum = TIER_NUM[tier] || 1
+    const baseDmg = slot === 'weapon' || category === 'weapon' ? Math.floor(20 * Math.pow(tierNum, 1.8) + Math.random() * 10 * tierNum) : 0
+    const baseArmor = category === 'armor' ? Math.floor(8 * Math.pow(tierNum, 1.6) + Math.random() * 5 * tierNum) : 0
+    const baseCritRate = Math.random() < 0.3 ? Math.floor(tierNum * 1.5 + Math.random() * tierNum) : 0
+    const baseCritDmg = Math.random() < 0.25 ? Math.floor(tierNum * 5 + Math.random() * tierNum * 3) : 0
+    const baseDodge = Math.random() < 0.2 ? Math.floor(tierNum * 0.8 + Math.random() * tierNum * 0.5) : 0
+    const basePrecision = Math.random() < 0.2 ? Math.floor(tierNum * 1 + Math.random() * tierNum) : 0
+
+    const WEAPON_SUBTYPES = ['assault_rifle', 'sniper', 'shotgun', 'smg', 'lmg', 'pistol', 'melee']
+    const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[Math.floor(Math.random() * WEAPON_SUBTYPES.length)] : null
+
+    const itemId = uuidv4()
+    const craftedItem = {
+      id: itemId,
+      ownerId: playerId,
+      name: `Crafted ${tier.toUpperCase()} ${slot}`,
+      slot,
+      category,
+      tier,
+      weaponSubtype: subtype,
+      stats: {
+        damage: baseDmg,
+        armor: baseArmor,
+        critRate: baseCritRate,
+        critDamage: baseCritDmg,
+        dodge: baseDodge,
+        precision: basePrecision,
+      },
+      equipped: false,
+      durability: '100',
+      location: 'inventory',
+    }
+
+    await db.insert(items).values(craftedItem)
+
+    res.json({ success: true, item: craftedItem, scrapCost: cost })
+  } catch (err) {
+    console.error('[INVENTORY] Craft error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
 
 export default router

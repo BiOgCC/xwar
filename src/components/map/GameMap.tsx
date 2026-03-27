@@ -8,7 +8,7 @@ import { useRegionStore } from '../../stores/regionStore'
 import { useUIStore } from '../../stores/uiStore'
 import { ARCHETYPE_META } from '../../data/leyLineRegistry'
 import type { LeyLineDef } from '../../data/leyLineRegistry'
-import { useLeyLineStore } from '../../stores/leyLineStore'
+import { useLeyLineStore, getDisruptionCost } from '../../stores/leyLineStore'
 import { useAllianceStore } from '../../stores/allianceStore'
 import { usePlayerStore } from '../../stores/playerStore'
 import { type NodeOwnershipState, OWNERSHIP_COLORS } from '../../types/leyLine'
@@ -1074,13 +1074,15 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
                 if (!lineDef) return f
                 const controlState = leyStore.getRouteControlState(lineDef)
                 const disrupted    = leyStore.isRouteDisrupted(lineDef.id)
+                const pending      = leyStore.isRoutePendingDisruption(lineDef.id)
                 const isObjective  = leyStore.isStrategicObjective(lineDef.id)
                 return {
                   ...f,
                   properties: {
                     ...f.properties,
-                    controlState: disrupted ? 'disrupted' : controlState,
+                    controlState: (disrupted || pending) ? 'disrupted' : controlState,
                     isObjective,
+                    isPending: pending,
                   },
                 }
               }),
@@ -1218,7 +1220,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
             })
 
             // ════════════════════════════════════════════════
-            //  LAYER 6 — Strategic objective white outer pulse
+            //  LAYER 6 — Strategic objective ORANGE outer pulse
             // ════════════════════════════════════════════════
             m.addLayer({
               id: 'xwar-trade-routes-objective-glow',
@@ -1226,10 +1228,26 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
               source: 'xwar-trade-routes',
               filter: ['==', ['get', 'isObjective'], true],
               paint: {
-                'line-color': '#ffffff',
-                'line-width': 14,
-                'line-opacity': 0.14,
+                'line-color': '#ff9500',
+                'line-width': 16,
+                'line-opacity': 0.22,
                 'line-blur': 10,
+              },
+            })
+
+            // ════════════════════════════════════════════════
+            //  LAYER 7 — Pending disruption RED pulse
+            // ════════════════════════════════════════════════
+            m.addLayer({
+              id: 'xwar-trade-routes-pending-glow',
+              type: 'line',
+              source: 'xwar-trade-routes',
+              filter: ['==', ['get', 'isPending'], true],
+              paint: {
+                'line-color': '#ff2200',
+                'line-width': 18,
+                'line-opacity': 0.20,
+                'line-blur': 12,
               },
             })
 
@@ -1500,18 +1518,61 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
                 ? `<div style="font-size:10px;color:#94a3b8;margin-top:4px;">This tick: ${money > 0 ? `$${money.toLocaleString()}` : ''}${oil > 0 ? ` + ${oil} oil` : ''}${mult === 0 ? '—' : ''}</div>`
                 : ''
 
-              const objBtnLabel = isObjective ? '★ UNMARK OBJECTIVE' : '☆ MARK AS OBJECTIVE'
+              // ── Build action buttons based on control state ──
+              const showObjective = controlState !== 'active' // only for routes you don't fully control
+              const pending = store.isRoutePendingDisruption(routeId)
+              const onCooldown = store.isCountryOnCooldown()
+              const showDisrupt   = controlState !== 'active' && !disrupted && !pending && !onCooldown
+              const objBtnLabel   = isObjective ? '★ UNMARK OBJECTIVE' : '☆ MARK AS OBJECTIVE'
+              const costLabel     = `$${getDisruptionCost(lineDef).toLocaleString()}`
+
+              // Format ms into "Xh Ym"
+              const fmtTime = (ms: number) => {
+                const h = Math.floor(ms / 3600000)
+                const m = Math.floor((ms % 3600000) / 60000)
+                return h > 0 ? `${h}h ${m}m` : `${m}m`
+              }
+
+              // Disruption status banner
+              let statusBanner = ''
+              const disStatus = store.getDisruptionStatus(routeId)
+              if (disStatus) {
+                if (disStatus.state === 'pending') {
+                  statusBanner = `<div style="font-size:10px;color:#ffb300;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.25);border-radius:4px;padding:4px 8px;margin-top:6px;">⏱ DISRUPTION INCOMING — activates in <b>${fmtTime(disStatus.remainingMs)}</b></div>`
+                } else if (disStatus.state === 'active') {
+                  statusBanner = `<div style="font-size:10px;color:#ff4444;background:rgba(255,68,68,0.1);border:1px solid rgba(255,68,68,0.25);border-radius:4px;padding:4px 8px;margin-top:6px;">🚫 DISRUPTED — expires in <b>${fmtTime(disStatus.remainingMs)}</b></div>`
+                }
+              }
+
+              // Cooldown note
+              let cooldownNote = ''
+              if (onCooldown && controlState !== 'active') {
+                const cdMs = store.getCountryCooldownMs()
+                cooldownNote = `<div style="font-size:9px;color:#888;margin-top:6px;">🕐 Disruption cooldown: ${fmtTime(cdMs)}</div>`
+              }
+
+              let buttonsHtml = ''
+              if (showObjective || showDisrupt) {
+                buttonsHtml = `<div style="display:flex;gap:6px;flex-wrap:wrap;">`
+                if (showObjective) {
+                  buttonsHtml += `<button id="tr-obj-btn-${routeId}" style="flex:1;min-width:100px;font-size:9px;font-family:'Orbitron',sans-serif;padding:5px 8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;cursor:pointer;letter-spacing:0.5px;">${objBtnLabel}</button>`
+                }
+                if (showDisrupt) {
+                  buttonsHtml += `<button id="tr-dis-btn-${routeId}" style="flex:1;min-width:100px;font-size:9px;font-family:'Orbitron',sans-serif;padding:5px 8px;background:rgba(255,68,68,0.12);border:1px solid rgba(255,68,68,0.35);color:#ff9999;border-radius:4px;cursor:pointer;letter-spacing:0.5px;">⚡ DISRUPT (${costLabel})</button>`
+                }
+                buttonsHtml += `</div>`
+              }
+
               const html = `
                 <div style="font-family:'Orbitron',sans-serif;background:rgba(8,12,28,0.97);border:1px solid ${statusColors[finalState]}44;border-radius:8px;padding:14px 16px;min-width:240px;">
                   <div style="font-size:13px;font-weight:700;color:${statusColors[finalState]};margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">⚓ ${lineDef.name}</div>
                   <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;">${lineDef.seaData!.from} → ${lineDef.seaData!.to}<br/><span style="color:#64748b;">${lineDef.seaData!.lengthNm.toLocaleString()} nm</span></div>
                   <div style="font-size:11px;color:#e2e8f0;margin-bottom:6px;line-height:1.6;">${resources.join('<br/>')}</div>
                   ${incomeNote}${partialNote}
-                  <div style="font-size:12px;font-weight:700;color:${statusColors[finalState]};margin:8px 0 10px;">${statusLabels[finalState]}</div>
-                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                    <button id="tr-obj-btn-${routeId}" style="flex:1;min-width:100px;font-size:9px;font-family:'Orbitron',sans-serif;padding:5px 8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;cursor:pointer;letter-spacing:0.5px;">${objBtnLabel}</button>
-                    <button id="tr-dis-btn-${routeId}" style="flex:1;min-width:100px;font-size:9px;font-family:'Orbitron',sans-serif;padding:5px 8px;background:rgba(255,68,68,0.12);border:1px solid rgba(255,68,68,0.35);color:#ff9999;border-radius:4px;cursor:pointer;letter-spacing:0.5px;">⚡ DISRUPT (30 MIN)</button>
-                  </div>
+                  <div style="font-size:12px;font-weight:700;color:${statusColors[finalState]};margin:8px 0 ${(buttonsHtml || statusBanner || cooldownNote) ? '6' : '0'};">${statusLabels[finalState]}</div>
+                  ${statusBanner}${cooldownNote}
+                  ${buttonsHtml}
+                  <div id="tr-feedback-${routeId}" style="display:none;font-size:10px;margin-top:6px;padding:4px 8px;border-radius:4px;"></div>
                 </div>
               `
 
@@ -1520,16 +1581,32 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
                 .setHTML(html)
                 .addTo(m)
 
-              popup.on('open', () => {
+              // Attach button listeners after DOM renders (rAF ensures elements exist)
+              requestAnimationFrame(() => {
                 const objBtn = document.getElementById(`tr-obj-btn-${routeId}`)
                 const disBtn = document.getElementById(`tr-dis-btn-${routeId}`)
+                const feedbackEl = document.getElementById(`tr-feedback-${routeId}`)
                 objBtn?.addEventListener('click', () => {
                   useLeyLineStore.getState().toggleStrategicObjective(routeId)
                   popup.remove()
                 })
                 disBtn?.addEventListener('click', () => {
-                  useLeyLineStore.getState().disruptRoute(routeId, 30 * 60 * 1000, 'manual')
-                  popup.remove()
+                  const result = useLeyLineStore.getState().disruptRoute(routeId, 'manual')
+                  if (result === 'ok') {
+                    popup.remove()
+                  } else if (feedbackEl) {
+                    feedbackEl.style.display = 'block'
+                    feedbackEl.style.background = 'rgba(255,68,68,0.15)'
+                    feedbackEl.style.color = '#ff6666'
+                    feedbackEl.style.border = '1px solid rgba(255,68,68,0.3)'
+                    const msgs: Record<string, string> = {
+                      cooldown: '🕐 Country on 48h disruption cooldown',
+                      already_disrupted: '⚠ Route already has a pending/active disruption',
+                      insufficient_funds: `⚠ Insufficient funds (need ${costLabel})`,
+                      error: '⚠ Unable to disrupt this route',
+                    }
+                    feedbackEl.textContent = msgs[result] || msgs.error
+                  }
                 })
               })
             })

@@ -3,7 +3,7 @@
  * XP, leveling, damage calc, bar consumption, etc.
  */
 import { db } from '../db/connection.js'
-import { players, items } from '../db/schema.js'
+import { players, items, playerSkills } from '../db/schema.js'
 import { eq, sql } from 'drizzle-orm'
 import { warCardEmitter } from './warCard.service.js'
 
@@ -104,7 +104,10 @@ export async function calculateAttackDamage(playerId: string): Promise<{
   // Get equipped items for stat calculation
   const equippedItems = await db.select()
     .from(items)
-    .where(sql`player_id = ${playerId} AND equipped = true`)
+    .where(sql`owner_id = ${playerId} AND equipped = true`)
+
+  // Get player skills
+  const [skills] = await db.select().from(playerSkills).where(eq(playerSkills.playerId, playerId)).limit(1)
 
   // Aggregate item stats
   let eqDmg = 0, eqCritRate = 0, eqCritDmg = 0
@@ -119,12 +122,14 @@ export async function calculateAttackDamage(playerId: string): Promise<{
     eqPrecision += stats.precision || 0
   }
 
-  // Base damage = 100 + equipment
-  let totalDmg = 100 + eqDmg
-  let totalCritRate = 10 + eqCritRate
-  let totalCritDmg = 100 + eqCritDmg
-  const totalDodge = 5 + eqDodge
-  const totalHitRate = Math.min(100, 50 + eqPrecision)
+  // Base damage = 100 + skills + equipment
+  let totalDmg = 100 + (skills?.attack ?? 0) * 20 + eqDmg
+  const rawHitRate = 50 + eqPrecision + (skills?.precision ?? 0) * 5
+  const overflowCrit = Math.max(0, rawHitRate - 90) * 0.5
+  let totalCritRate = 10 + (skills?.critRate ?? 0) * 5 + eqCritRate + overflowCrit
+  let totalCritDmg = (skills?.critDamage ?? 0) * 20 + eqCritDmg
+  const totalDodge = 5 + (skills?.dodge ?? 0) * 3 + eqDodge
+  const totalHitRate = Math.min(90, rawHitRate)
 
   // Ammo multiplier
   let damageMultiplier = 1.0
@@ -161,7 +166,7 @@ export async function calculateAttackDamage(playerId: string): Promise<{
   // Crit check
   const isCrit = Math.random() < (totalCritRate / 100)
   let finalMultiplier = damageMultiplier
-  if (isCrit) finalMultiplier *= (1.5 + (totalCritDmg / 100))
+  if (isCrit) finalMultiplier *= (1.5 + (totalCritDmg / 200))
 
   const rawDmg = didHit ? Math.floor(totalDmg * finalMultiplier) : Math.floor(totalDmg * finalMultiplier * 0.66)
   const finalDamage = Math.max(1, rawDmg)
