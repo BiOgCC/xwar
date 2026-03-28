@@ -3,7 +3,7 @@ import { eq, and, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { items } from '../db/schema.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
-import { rollLootBoxItem, rollMilitaryBoxItem, generateWelcomeKit } from '../services/inventory.service.js'
+import { rollLootBoxItem, rollMilitaryBoxItem, generateWelcomeKit, generateStats, WEAPON_SUBTYPES } from '../services/inventory.service.js'
 import { players } from '../db/schema.js'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -357,36 +357,28 @@ router.post('/craft', async (req, res) => {
       scrap: (player.scrap ?? 0) - cost,
     }).where(eq(players.id, playerId))
 
-    // Generate item with server-side RNG
-    const TIER_NUM: Record<string, number> = { t1: 1, t2: 2, t3: 3, t4: 4, t5: 5, t6: 6, t7: 7 }
-    const tierNum = TIER_NUM[tier] || 1
-    const baseDmg = slot === 'weapon' || category === 'weapon' ? Math.floor(20 * Math.pow(tierNum, 1.8) + Math.random() * 10 * tierNum) : 0
-    const baseArmor = category === 'armor' ? Math.floor(8 * Math.pow(tierNum, 1.6) + Math.random() * 5 * tierNum) : 0
-    const baseCritRate = Math.random() < 0.3 ? Math.floor(tierNum * 1.5 + Math.random() * tierNum) : 0
-    const baseCritDmg = Math.random() < 0.25 ? Math.floor(tierNum * 5 + Math.random() * tierNum * 3) : 0
-    const baseDodge = Math.random() < 0.2 ? Math.floor(tierNum * 0.8 + Math.random() * tierNum * 0.5) : 0
-    const basePrecision = Math.random() < 0.2 ? Math.floor(tierNum * 1 + Math.random() * tierNum) : 0
+    // Generate item using canonical stats from inventory.service.ts
+    const validTier = tier as 't1' | 't2' | 't3' | 't4' | 't5' | 't6' | 't7'
+    let subtype: string | undefined
+    if (slot === 'weapon' || category === 'weapon') {
+      const subtypes = WEAPON_SUBTYPES[validTier]
+      if (subtypes?.length) {
+        subtype = subtypes[Math.floor(Math.random() * subtypes.length)]
+      }
+    }
 
-    const WEAPON_SUBTYPES = ['assault_rifle', 'sniper', 'shotgun', 'smg', 'lmg', 'pistol', 'melee']
-    const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[Math.floor(Math.random() * WEAPON_SUBTYPES.length)] : null
+    const result = generateStats(category, slot, validTier, subtype as any)
 
     const itemId = uuidv4()
     const craftedItem = {
       id: itemId,
       ownerId: playerId,
-      name: `Crafted ${tier.toUpperCase()} ${slot}`,
+      name: result.name,
       slot,
       category,
       tier,
-      weaponSubtype: subtype,
-      stats: {
-        damage: baseDmg,
-        armor: baseArmor,
-        critRate: baseCritRate,
-        critDamage: baseCritDmg,
-        dodge: baseDodge,
-        precision: basePrecision,
-      },
+      weaponSubtype: result.weaponSubtype || null,
+      stats: result.stats,
       equipped: false,
       durability: '100',
       location: 'inventory',

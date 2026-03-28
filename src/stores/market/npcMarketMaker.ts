@@ -1,6 +1,12 @@
 // ══════════════════════════════════════════════════════════════════
 // MARKET MODULE — NPC Market Maker (seeds order book with liquidity)
 // ══════════════════════════════════════════════════════════════════
+//
+// ⚠️  DEPRECATED — CLIENT-SIDE NPC SEEDING
+// NPC liquidity is now seeded server-side in market.routes.ts
+// via POST /api/market/seed-npc and auto-seed on startup.
+// This module is retained for reference only.
+//
 
 import type { StoreApi } from 'zustand'
 import type { MarketState, MarketOrder, ResourceId } from './types'

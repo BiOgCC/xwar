@@ -1,6 +1,13 @@
 // ══════════════════════════════════════════════════════════════════
 // MARKET MODULE — Resource Order Book & Matching Engine
 // ══════════════════════════════════════════════════════════════════
+//
+// ⚠️  DEPRECATED — CLIENT-SIDE MATCHING ENGINE (DEAD CODE)
+// The actual store implementations in market/index.ts override
+// placeResourceOrder() and matchResourceOrders() to delegate to
+// the backend API (server/src/routes/market.routes.ts).
+// These functions are retained as architectural reference only.
+//
 
 import type { StoreApi } from 'zustand'
 import { usePlayerStore } from '../playerStore'

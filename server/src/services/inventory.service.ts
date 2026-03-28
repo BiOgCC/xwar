@@ -19,7 +19,7 @@ interface EquipStats {
 
 const ARMOR_SLOTS: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
 
-const WEAPON_SUBTYPES: Record<EquipTier, WeaponSubtype[]> = {
+export const WEAPON_SUBTYPES: Record<EquipTier, WeaponSubtype[]> = {
   t1: ['knife'], t2: ['gun'], t3: ['rifle'], t4: ['sniper'],
   t5: ['tank', 'rpg'], t6: ['jet', 'warship'], t7: ['submarine'],
 }
@@ -32,7 +32,7 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-function generateStats(
+export function generateStats(
   category: EquipCategory, slot: EquipSlot, tier: EquipTier, weaponSubtype?: WeaponSubtype
 ): { name: string; stats: EquipStats; weaponSubtype?: WeaponSubtype } {
   const tLevel = parseInt(tier[1], 10)

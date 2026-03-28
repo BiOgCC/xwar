@@ -23,7 +23,8 @@ import {
 import { mkTicker, mkId } from './helpers'
 
 // Slice functions
-import { placeResourceOrder, matchResourceOrders } from './resourceMarket'
+// NOTE: placeResourceOrder & matchResourceOrders from ./resourceMarket are DEPRECATED
+// (overridden below to use backend API). Import removed to avoid confusion.
 import { placeEquipmentSellOrder, buyEquipment, placeVaultEquipmentSellOrder, buyEquipmentToVault } from './equipmentMarket'
 import { placeDivisionSellOrder, placeVaultDivisionSellOrder, placeCountryDivisionSellOrder, buyDivision } from './divisionMarket'
 import { tickPrices } from './priceTicker'
@@ -215,7 +216,7 @@ export const useMarketStore = create<MarketState>((set, get) => {
         return { success: false, message: 'No matching sellers found at that price.' }
       }
     },
-    matchResourceOrders: (resourceId) => {}, // Deprecated locally
+    matchResourceOrders: (_resourceId) => {}, // DEPRECATED: matching is server-side via market.routes.ts
 
     // Equipment
     placeEquipmentSellOrder: async (equipItemId, price) => {

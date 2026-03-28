@@ -12,8 +12,8 @@ import { validate } from '../middleware/validate.js'
 
 const router = Router()
 
-// Market tax rate (goes to seller's country treasury)
-const MARKET_TAX_RATE = 0.05
+// Market tax rate (goes to seller's country treasury) — aligned with frontend TAX_RATE
+const MARKET_TAX_RATE = 0.01
 
 // ═══════════════════════════════════════════════
 //  POST /api/market/sell — List item or resource for sale
@@ -286,4 +286,115 @@ function getResourceColumn(itemType: string) {
   return map[itemType] || null
 }
 
+// ═══════════════════════════════════════════════
+//  NPC MARKET MAKER — Server-side liquidity seeding
+// ═══════════════════════════════════════════════
+
+/** Base prices for NPC orders (mirrors frontend RESOURCE_DEFS) */
+const NPC_RESOURCE_BASE_PRICES: Record<string, number> = {
+  oil: 0.16,
+  scrap: 0.22,
+  materialX: 1.62,
+  bitcoin: 85.00,
+  bread: 1.81,
+  sushi: 7.19,
+  wagyu: 9.50,
+  wheat: 0.08,
+  fish: 3.44,
+  steak: 3.50,
+}
+const NPC_SPREAD = 0.20  // ±20% from base price
+
+let npcSeeded = false
+
+async function seedNpcOrders(): Promise<{ seeded: number }> {
+  // Check if NPC orders already exist
+  const [existing] = await db.select({ count: sql<number>`count(*)` })
+    .from(marketOrders)
+    .where(and(
+      eq(marketOrders.source, 'npc'),
+      eq(marketOrders.status, 'open')
+    ))
+  if ((existing?.count ?? 0) > 0) {
+    npcSeeded = true
+    return { seeded: 0 }
+  }
+
+  const npcOrders: any[] = []
+  for (const [resourceId, basePrice] of Object.entries(NPC_RESOURCE_BASE_PRICES)) {
+    const buyPrice = +(basePrice * (1 - NPC_SPREAD)).toFixed(2)
+    const sellPrice = +(basePrice * (1 + NPC_SPREAD)).toFixed(2)
+    const buyQty = 500 + Math.floor(Math.random() * 500)
+    const sellQty = 500 + Math.floor(Math.random() * 500)
+
+    // NPC Buy order (bid)
+    npcOrders.push({
+      playerId: null,
+      type: 'buy',
+      itemType: 'resource',
+      resourceId,
+      amount: buyQty,
+      filledAmount: 0,
+      pricePerUnit: buyPrice.toString(),
+      totalPrice: (buyQty * buyPrice).toFixed(2),
+      source: 'npc',
+      countryCode: 'NPC',
+      status: 'open',
+    })
+
+    // NPC Sell order (ask)
+    npcOrders.push({
+      playerId: null,
+      type: 'sell',
+      itemType: 'resource',
+      resourceId,
+      amount: sellQty,
+      filledAmount: 0,
+      pricePerUnit: sellPrice.toString(),
+      totalPrice: (sellQty * sellPrice).toFixed(2),
+      source: 'npc',
+      countryCode: 'NPC',
+      status: 'open',
+    })
+  }
+
+  if (npcOrders.length > 0) {
+    await db.insert(marketOrders).values(npcOrders)
+  }
+
+  npcSeeded = true
+  console.log(`[MARKET] Seeded ${npcOrders.length} NPC orders for ${Object.keys(NPC_RESOURCE_BASE_PRICES).length} resources`)
+  return { seeded: npcOrders.length }
+}
+
+// Auto-seed on first listings request
+const originalListingsHandler = router.stack?.find((l: any) => l.route?.path === '/listings')
+if (!originalListingsHandler) {
+  // Add a middleware that auto-seeds NPC orders on first GET /listings
+  router.use('/listings', async (_req, _res, next) => {
+    if (!npcSeeded) {
+      try { await seedNpcOrders() } catch (e) { console.error('[MARKET] NPC auto-seed failed:', e) }
+    }
+    next()
+  })
+}
+
+// ═══════════════════════════════════════════════
+//  POST /api/market/seed-npc — Admin: force re-seed NPC orders
+// ═══════════════════════════════════════════════
+
+router.post('/seed-npc', requireAuth as any, async (req, res) => {
+  try {
+    // Clear existing NPC orders first
+    await db.delete(marketOrders).where(eq(marketOrders.source, 'npc'))
+    npcSeeded = false
+    const result = await seedNpcOrders()
+    res.json({ success: true, ...result, message: `Re-seeded ${result.seeded} NPC orders` })
+  } catch (err) {
+    console.error('[MARKET] NPC seed error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 export default router
+
