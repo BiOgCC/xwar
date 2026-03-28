@@ -330,6 +330,9 @@ export interface WorldState {
 
   // Catch-up: recalculate median from all player levels
   updateServerMedianLevel: (playerLevels: number[]) => void
+
+  // Live population sync from server
+  updateCountryPopulation: (countryCode: string, population: number) => void
 }
 
 export const useWorldStore = create<WorldState>((set, get) => ({
@@ -519,6 +522,12 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   ],
 
   getCountry: (code) => get().countries.find(c => c.code === code),
+
+  updateCountryPopulation: (countryCode, population) => set(s => ({
+    countries: s.countries.map(c =>
+      c.code === countryCode ? { ...c, population } : c
+    )
+  })),
 
   occupyCountry: (targetIso, conquerorIso, taxExempt) => set((state) => ({
     countries: state.countries.map(c => {

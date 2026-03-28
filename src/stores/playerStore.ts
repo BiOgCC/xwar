@@ -124,7 +124,6 @@ export interface PlayerState {
 
   // Actions
   setAvatar: (path: string) => void
-  attack: () => { damage: number, isCrit: boolean, isDodged: boolean }
   equipAmmo: (type: 'none' | 'green' | 'blue' | 'purple' | 'red') => void
   consumeFood: (type: 'bread' | 'sushi' | 'wagyu') => boolean
   consumeMagicTea: () => boolean
@@ -134,9 +133,6 @@ export interface PlayerState {
   earnMoney: (amount: number) => void
   gainXP: (amount: number) => void
   consumeBar: (bar: 'stamina' | 'hunger' | 'entrepreneurship' | 'work', amount: number) => void
-  doWork: () => void
-  doEntrepreneurship: () => void
-  produce: (industrialistLevel: number) => void
   addScrap: (amount: number) => void
   spendMoney: (amount: number) => boolean
   spendMaterialX: (amount: number) => boolean
@@ -349,6 +345,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     totalDmg = Math.floor(totalDmg * (1 + specBonus.damagePercent / 100))
     totalCritRate += specBonus.critRatePercent
 
+    // Military research bonuses (mil_3: armor, mil_6: dodge)
+    try {
+      const resStore = require('./researchStore').useResearchStore
+      const milRes = resStore.getState().getMilitaryBonuses(s.countryCode || 'US')
+      totalArmor = Math.floor(totalArmor * milRes.armorBonus)   // mil_3: 1.0 or 1.10
+      totalDodge = Math.floor(totalDodge * milRes.dodgeBonus)    // mil_6: 1.0 or 1.10
+      totalDmg = Math.floor(totalDmg * milRes.attackDamageBonus * milRes.allCombatBonus)  // mil_1+mil_7
+    } catch (_) {}
+
     // Hit Rate Check: base 50% + equipment + skills, soft-capped at 90%
     const rawHitRate = 50 + totalPrecision
     const totalHitRate = Math.min(90, rawHitRate)
@@ -479,6 +484,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     })
     // Persist attack to backend (fire-and-forget)
     import('../api/client').then(({ attackApi }) => attackApi().catch(() => {}))
+    // Research RP contribution — fight = +3 RP (fire-and-forget)
+    import('./researchStore').then(({ useResearchStore }) => { try { useResearchStore.getState().contributeRP(3, 'fight') } catch {} }).catch(() => {})
     return { damage: finalDamage, isCrit, isDodged }
   },
 
@@ -580,95 +587,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       [bar]: Math.max(0, s[bar] - amount),
     })),
 
-  doWork: () => {
-    set((s) => {
-      if (Math.floor(s.work) < 10) return {}
-      const productionLevel = useSkillsStore.getState().economic.production
-      const activeIdeology = useAllianceStore.getState().getPlayerAlliance()?.activeIdeology
-      const syndicateBonus = activeIdeology === 'syndicate' ? getIdeologyBonus(useAllianceStore.getState().getPlayerAlliance()) : 1
-      const fill = (20 + productionLevel * 2) * syndicateBonus
-      // Prospection: chance to find bonus scrap
-      const prospectionLevel = useSkillsStore.getState().economic.prospection
-      const prospectChance = prospectionLevel * 0.03  // 3% per level, up to 30%
-      const foundScrap = Math.random() < prospectChance
-      const bonusScrap = foundScrap ? (5 + prospectionLevel * 2) : 0
-      return {
-        work: Math.max(0, s.work - 10),
-        productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
-        scrap: s.scrap + bonusScrap,
-      }
-    })
-    useSpecializationStore.getState().recordWork()
-    useAllianceStore.getState().contributeIdeologyXP(1)
-    // Sync work action to backend (fire-and-forget)
-    import('../api/client').then(({ api }) => api.post('/player/work').catch(() => {}))
-  },
+  // NOTE: doWork, doEntrepreneurship, produce actions are handled by companyStore.
+  // See companyStore.doWork(), companyStore.doEnterprise(), companyStore.produceCompany().
+  // Combat is handled by battleStore.playerAttack().
 
-  doEntrepreneurship: () => {
-    set((s) => {
-      if (Math.floor(s.entrepreneurship) < 10) return {}
-      const productionLevel = useSkillsStore.getState().economic.production
-      const activeIdeology = useAllianceStore.getState().getPlayerAlliance()?.activeIdeology
-      const syndicateBonus = activeIdeology === 'syndicate' ? getIdeologyBonus(useAllianceStore.getState().getPlayerAlliance()) : 1
-      const fill = (25 + productionLevel * 2) * syndicateBonus
-      return {
-        entrepreneurship: Math.max(0, s.entrepreneurship - 10),
-        productionBar: Math.min(s.productionBarMax, s.productionBar + fill),
-      }
-    })
-    useSpecializationStore.getState().recordWork()
-    useAllianceStore.getState().contributeIdeologyXP(1)
-    // Persist to backend
-    import('../api/client').then(({ entrepreneurshipApi }) => { entrepreneurshipApi().catch(() => {}) })
-  },
-
-  produce: (industrialistLevel: number) => {
-    set((s) => {
-      if (s.productionBar < s.productionBarMax) return {}
-      const chance = industrialistLevel * 0.02
-      const foundBitcoin = Math.random() < chance
-      // Industrialist scrap: 1% per PP consumed per level → roll per level
-      const scrapChance = industrialistLevel * 0.01  // 1% per level, max 10%
-      const bonusScrap = Math.random() < scrapChance ? (100 + industrialistLevel * 50) : 0
-      const medianLevel = useWorldStore.getState().serverMedianLevel
-      const xpGain = applyCatchUpXP(30, s.level, medianLevel)
-      let newXP = s.experience + xpGain
-      let newLevel = s.level
-      let newSP = s.skillPoints
-      let nextXP = s.experienceToNext
-      while (newXP >= nextXP) {
-        newXP -= nextXP
-        newLevel++
-        newSP += 4
-        nextXP = xpForLevel(newLevel)
-      }
-      useSpecializationStore.getState().recordProduce()
-      useAllianceStore.getState().contributeIdeologyXP(1)
-      if (bonusScrap > 0 && _econFlowHook) _econFlowHook('produce_scrap', bonusScrap, 'created', 'scrap')
-      // War Cards: check items produced milestone
-      setTimeout(() => {
-        const ps = usePlayerStore.getState()
-        useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-          totalDamageDone: ps.damageDone,
-          totalMoney: ps.money,
-          totalItemsProduced: ps.itemsProduced + 1,
-          playerLevel: ps.level,
-        })
-      }, 0)
-      return {
-        productionBar: 0,
-        itemsProduced: s.itemsProduced + 1,
-        bitcoin: foundBitcoin ? s.bitcoin + 1 : s.bitcoin,
-        scrap: s.scrap + bonusScrap,
-        experience: newXP,
-        level: newLevel,
-        skillPoints: newSP,
-        experienceToNext: nextXP,
-      }
-    })
-    // Persist to backend
-    import('../api/client').then(({ produceApi }) => { produceApi().catch(() => {}) })
-  },
 
   addScrap: (amount) => {
     set((s) => ({ scrap: s.scrap + amount }))

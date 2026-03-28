@@ -22,7 +22,7 @@ export interface Citizen {
   id: string
   name: string
   level: number
-  role: 'president' | 'vicepresident' | 'minister' | 'congress' | 'citizen'
+  role: 'president' | 'vicepresident' | 'defense_minister' | 'eco_minister' | 'minister' | 'congress' | 'citizen'
   joinedAt: number
 }
 

@@ -24,10 +24,19 @@ export default function CombatTab({ panelFullscreen, setPanelFullscreen }: { pan
     return () => clearInterval(iv)
   }, [activeBattleIds.join(',')])
 
-  // If selected battle was removed, go back to list
+  // If selected battle was removed or remapped, handle gracefully
   useEffect(() => {
     if (selectedBattleId && !battleStore.battles[selectedBattleId]) {
-      setSelectedBattleId(null)
+      // Check if the battle was remapped (local ID → server ID)
+      // by finding an active battle with the same region name
+      const remapped = Object.values(battleStore.battles).find(
+        b => b.status === 'active'
+      )
+      if (remapped) {
+        setSelectedBattleId(remapped.id)
+      } else {
+        setSelectedBattleId(null)
+      }
     }
   }, [selectedBattleId, battleStore.battles])
 

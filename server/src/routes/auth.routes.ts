@@ -73,6 +73,10 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       sushi: 50,
       wagyu: 50,
       lootBoxes: 3,
+      greenBullets: 100,
+      blueBullets: 100,
+      purpleBullets: 100,
+      redBullets: 100,
     }).returning({ id: players.id, name: players.name })
 
     // Create skills row
@@ -88,16 +92,20 @@ router.post('/register', validate(registerSchema), async (req, res) => {
     }
 
     // Ensure the country has a government row (create if missing)
-    const [existingGov] = await db.select({ countryCode: governments.countryCode })
+    // Auto-assign president if the country has no president yet
+    const [existingGov] = await db.select({ countryCode: governments.countryCode, president: governments.president })
       .from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     if (!existingGov) {
       await db.insert(governments).values({
         countryCode,
-        president: null,
+        president: name,
         vicePresident: null,
         defenseMinister: null,
         ecoMinister: null,
       })
+    } else if (!existingGov.president) {
+      // Country exists but has no president — auto-assign this player
+      await db.update(governments).set({ president: name }).where(eq(governments.countryCode, countryCode))
     }
 
     // Generate token

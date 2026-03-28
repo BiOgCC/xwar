@@ -22,7 +22,7 @@ export interface AttackResult {
  * Handles: war declaration → army lookup → HOI battle or personal attack → UI feedback.
  */
 export function useAttack(mapRef: RefObject<GameMapHandle | null>) {
-  return useCallback((targetCountryName: string, mouseEvent?: React.MouseEvent): AttackResult => {
+  return useCallback(async (targetCountryName: string, mouseEvent?: React.MouseEvent): Promise<AttackResult> => {
     const defenderIso = COUNTRY_ISO[targetCountryName]
     if (!defenderIso) return { action: 'no_target', success: false }
 
@@ -79,7 +79,7 @@ export function useAttack(mapRef: RefObject<GameMapHandle | null>) {
 
     if (activeBattle) {
       // Route through battleStore.playerAttack (has rate limiting, side detection, damage cap)
-      const result = useBattleStore.getState().playerAttack(activeBattle.id)
+      const result = await useBattleStore.getState().playerAttack(activeBattle.id)
       if (mouseEvent) {
         ui.addFloatingText(result.message, mouseEvent.clientX, mouseEvent.clientY, result.isCrit ? '#f59e0b' : '#ef4444')
       }

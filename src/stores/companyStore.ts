@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
+import { useSpecializationStore } from './specializationStore'
 import { useWorldStore, getCountryResourceBonus, type DepositType } from './worldStore'
 import { useResearchStore } from './researchStore'
 import { api } from '../api/client'
@@ -436,6 +437,13 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     }))
 
     usePlayerStore.getState().gainXP(10)
+    // Specialization + Research hooks
+    try {
+      console.log('[HOOKS] doEnterprise: calling recordWork + contributeRP')
+      useSpecializationStore.getState().recordWork()
+      useResearchStore.getState().contributeRP(2, 'enterprise')
+      console.log('[HOOKS] doEnterprise: hooks OK, economicXP =', useSpecializationStore.getState().economicXP)
+    } catch (e) { console.error('[HOOKS] doEnterprise hook failed:', e) }
     const bonusMsg = triggerEconomicModifiers('enterprise')
     const doubleMsg = isDouble ? ' ⚡ DOUBLE PP!' : ''
 
@@ -460,6 +468,14 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     // Backend updated everything. Just fetch to re-sync!
     await usePlayerStore.getState().fetchPlayer()
     await state.fetchAll()
+
+    // Specialization + Research hooks
+    try {
+      console.log('[HOOKS] produceCompany: calling recordProduce + contributeRP')
+      useSpecializationStore.getState().recordProduce()
+      useResearchStore.getState().contributeRP(2, 'produce')
+      console.log('[HOOKS] produceCompany: hooks OK, economicXP =', useSpecializationStore.getState().economicXP)
+    } catch (e) { console.error('[HOOKS] produceCompany hook failed:', e) }
 
     const bonusMsg = triggerEconomicModifiers('produce')
     const finalMessage = (res.message || 'Produced goods!') + bonusMsg
@@ -520,6 +536,13 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     
     usePlayerStore.getState().earnMoney(boostedPay)
     player.gainXP(8)
+    // Specialization + Research hooks
+    try {
+      console.log('[HOOKS] doWork: calling recordWork + contributeRP')
+      useSpecializationStore.getState().recordWork()
+      useResearchStore.getState().contributeRP(2, 'work')
+      console.log('[HOOKS] doWork: hooks OK, economicXP =', useSpecializationStore.getState().economicXP)
+    } catch (e) { console.error('[HOOKS] doWork hook failed:', e) }
 
     if (employerCompany) {
       set(s => ({
@@ -570,7 +593,12 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const prospectionLevel = skills.economic.prospection || 0
 
     // Base chance from company level (2% per level) + prospection skill bonus (2% per level)
-    const chance = company.level * 0.02 + prospectionLevel * 0.02
+    let chance = company.level * 0.02 + prospectionLevel * 0.02
+    // Apply research eco_3 prospection bonus
+    try {
+      const ecoBonuses = useResearchStore.getState().getEconomyBonuses(player.countryCode || 'US')
+      chance *= ecoBonuses.prospectionBonus  // eco_3: 1.10 = +10%
+    } catch (_) {}
     const found = Math.random() < chance
 
     if (found) {
@@ -659,7 +687,13 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         // Apply Economic Theory research bonus to production
         const player = usePlayerStore.getState()
         const ecoBonuses = useResearchStore.getState().getEconomyBonuses(player.countryCode || 'US')
-        let pointsGenerated = effectiveLevel * (1 + bonus / 100) * ecoBonuses.productionBonus
+        let pointsGenerated = effectiveLevel * (1 + bonus / 100) * ecoBonuses.productionBonus * ecoBonuses.companyOutputBonus
+
+        // Apply specialization economic production bonus
+        try {
+          const specEco = useSpecializationStore.getState().getEconomicBonuses()
+          if (specEco.productionPercent > 0) pointsGenerated *= (1 + specEco.productionPercent / 100)
+        } catch (_) {}
 
         // ── Tactical Ops: Company Sabotage (-20% production) ──
         try {

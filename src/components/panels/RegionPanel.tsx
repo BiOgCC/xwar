@@ -243,7 +243,10 @@ export default function RegionPanel() {
                     color: '#f97316', borderColor: 'rgba(249,115,22,0.4)',
                     fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
                   }}
-                  onClick={() => setActivePanel('combat')}
+                  onClick={() => {
+                    useUIStore.getState().setWarDefaultTab('overview')
+                    setActivePanel('combat')
+                  }}
                 >
                   ⚔️ ATTACK REGION
                 </button>

@@ -219,6 +219,10 @@ export async function getSpecialization() {
   return api.get<{ success: boolean; specialization: any }>('/skills/specialization')
 }
 
+export async function grantSpecializationApi(specType: string, xp: number) {
+  return api.post<{ success: boolean; specType: string; xp: number; tier: number; message: string }>('/skills/specialization/grant', { specType, xp })
+}
+
 // ── World API ────────────────────────────────────────────────
 
 export async function getCountries() {
@@ -236,12 +240,15 @@ export async function getDeposits() {
 // ── Research API ─────────────────────────────────────────────
 
 export async function getResearch(countryCode: string) {
-  return api.get<{ success: boolean; research: { military: string[]; economy: string[] } }>(`/research/${countryCode}`)
+  return api.get<{ success: boolean; research: { military: string[]; economy: string[] }; activeResearch: any; nodes: any }>(`/research/${countryCode}`)
+}
+export async function selectResearchApi(countryCode: string, tree: 'military' | 'economy', nodeId: string) {
+  return api.post<{ success: boolean; message: string; activeResearch: any }>('/research/select', { countryCode, tree, nodeId })
+}
+export async function contributeRPApi(rp: number, source?: string) {
+  return api.post<{ success: boolean; completed?: boolean; rpCollected?: number; rpRequired?: number; progress?: number; message?: string }>('/research/contribute', { rp, source })
 }
 
-export async function unlockResearch(countryCode: string, tree: 'military' | 'economy', nodeId: string) {
-  return api.post('/research/unlock', { countryCode, tree, nodeId })
-}
 
 // ── Autodefense API ──────────────────────────────────────────
 
@@ -332,6 +339,17 @@ export async function muPlayerUnitApi() {
   return api.get<{ success: boolean; unit: any; membership: any }>('/mu/player-unit')
 }
 
+// ── Election API ─────────────────────────────────────────────
+export async function getElectionApi(countryCode: string) {
+  return api.get<{ success: boolean; election: any }>(`/gov/election/${countryCode}`)
+}
+export async function registerCandidateApi(countryCode: string) {
+  return api.post<{ success: boolean; message: string }>('/gov/register-candidate', { countryCode })
+}
+export async function voteElectionApi(countryCode: string, candidateId: string) {
+  return api.post<{ success: boolean; message: string }>('/gov/vote', { countryCode, candidateId })
+}
+
 // ── Player Actions API ───────────────────────────────────────
 // NOTE: eatFood(), equipAmmo() defined above are the canonical exports.
 // Use those instead of duplicated *Api variants.
@@ -417,15 +435,35 @@ export async function getBattle(battleId: string) {
 }
 
 export async function launchBattle(attackerCode: string, defenderCode: string, regionName: string, type?: string) {
-  return api.post('/battle/launch', { attackerCode, defenderCode, regionName, type: type || 'invasion' })
+  return api.post<{ success: boolean; message: string; battleId?: string }>('/battle/launch', { attackerCode, defenderCode, regionName, type: type || 'invasion' })
 }
 
-export async function battleAttack(battleId: string) {
-  return api.post(`/battle/${battleId}/attack`)
+export interface BattleAttackResult {
+  success: boolean
+  damage: number
+  isCrit: boolean
+  isMiss: boolean
+  isDodged: boolean
+  side: 'attacker' | 'defender'
+  message: string
+  staminaLeft: number
+  adrenaline: number
+}
+
+export async function battleAttack(battleId: string, side?: 'attacker' | 'defender') {
+  return api.post<BattleAttackResult>(`/battle/${battleId}/attack`, side ? { side } : undefined)
 }
 
 export async function battleDefend(battleId: string) {
   return api.post(`/battle/${battleId}/defend`)
+}
+
+export async function battleSurge(battleId: string) {
+  return api.post<{ success: boolean; message: string; adrenaline: number }>(`/battle/${battleId}/surge`)
+}
+
+export async function battleAdrenaline(battleId: string) {
+  return api.get<{ success: boolean; adrenaline: number; isSurging: boolean; isCrashed: boolean }>(`/battle/${battleId}/adrenaline`)
 }
 
 export async function battleDeploy(battleId: string, divisionIds: string[], side: 'attacker' | 'defender') {

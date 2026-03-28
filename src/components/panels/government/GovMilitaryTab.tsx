@@ -27,7 +27,7 @@ export default function GovMilitaryTab() {
   const citizens = gov?.citizens || []
   const isVPOrMinister = citizens.some((c: any) =>
     (c.id === playerName || c.name === playerName) &&
-    (c.role === 'vicepresident' || c.role === 'minister')
+    (c.role === 'vicepresident' || c.role === 'defense_minister' || c.role === 'eco_minister' || c.role === 'minister')
   )
   const isCitizenPresident = citizens.some((c: any) =>
     (c.id === playerName || c.name === playerName) && c.role === 'president'

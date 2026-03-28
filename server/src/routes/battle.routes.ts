@@ -91,6 +91,7 @@ router.post('/launch', requireAuth as any, validate(launchSchema), async (req, r
 
     const result = await battleService.launchBattle(attackerCode, defenderCode, regionName, type)
     if (!result.success) {
+      console.error('[Battle] Launch rejected:', result.message, { attackerCode, defenderCode, regionName, type })
       res.status(400).json({ error: result.message })
       return
     }
@@ -110,6 +111,7 @@ router.post('/:id/attack', requireAuth as any, async (req, res) => {
   try {
     const { playerId, playerName } = (req as AuthRequest).player!
     const battleId = req.params.id
+    const forceSide = req.body?.side as 'attacker' | 'defender' | undefined
 
     // Fetch player's country
     const [player] = await db.select({ countryCode: players.countryCode }).from(players).where(eq(players.id, playerId)).limit(1)
@@ -118,7 +120,7 @@ router.post('/:id/attack', requireAuth as any, async (req, res) => {
       return
     }
 
-    const result = await battleService.playerAttack(battleId, playerId, playerName, player.countryCode)
+    const result = await battleService.playerAttack(battleId, playerId, playerName, player.countryCode, forceSide)
     res.json({ success: result.damage > 0, ...result })
   } catch (err) {
     console.error('[Battle] Attack error:', err)
@@ -233,6 +235,45 @@ router.post('/:id/order', requireAuth as any, validate(orderSchema), async (req,
     res.json({ success: true, message: `Tactical order set to ${order.toUpperCase()}.` })
   } catch (err) {
     console.error('[Battle] Order error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
+//  POST /api/battle/:id/surge — Activate adrenaline surge
+// ═══════════════════════════════════════════════
+
+router.post('/:id/surge', requireAuth as any, async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const battleId = req.params.id
+
+    const [player] = await db.select({ countryCode: players.countryCode }).from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player?.countryCode) {
+      res.status(400).json({ error: 'Player has no country.' })
+      return
+    }
+
+    const result = battleService.activateSurge(battleId, playerId, player.countryCode)
+    res.json(result)
+  } catch (err) {
+    console.error('[Battle] Surge error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
+//  GET /api/battle/:id/adrenaline — Get player adrenaline state
+// ═══════════════════════════════════════════════
+
+router.get('/:id/adrenaline', requireAuth as any, async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const battleId = req.params.id
+    const state = battleService.getAdrenalineState(battleId, playerId)
+    res.json({ success: true, ...state })
+  } catch (err) {
+    console.error('[Battle] Adrenaline error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

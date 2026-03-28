@@ -213,22 +213,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
       setCountryAutoDefense(player, limit).catch(() => {})
     })
   },
-  governments: {
-    'US': mkGov('US', 'Commander_X', ['AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4', 'AI_Rep_5']),
-    'RU': mkGov('RU', 'AI_Commander_Putin', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'CN': mkGov('CN', 'AI_Commander_Xi', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'DE': mkGov('DE', 'AI_Commander_Scholz', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'BR': mkGov('BR', 'AI_Commander_Lula', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'IN': mkGov('IN', 'AI_Commander_Modi', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'NG': mkGov('NG', 'AI_Commander_Tinubu', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'JP': mkGov('JP', 'AI_Commander_Kishida', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'GB': mkGov('GB', 'AI_Commander_Sunak', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'TR': mkGov('TR', 'AI_Commander_Erdogan', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'CA': mkGov('CA', 'AI_Commander_Trudeau', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'MX': mkGov('MX', 'AI_Commander_Sheinbaum', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'CU': mkGov('CU', 'AI_Commander_DiazCanel', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-    'BS': mkGov('BS', 'AI_Commander_Davis', ['AI_Rep_1', 'AI_Rep_2', 'AI_Rep_3', 'AI_Rep_4']),
-  },
+  governments: {},
   laws: {},
   contributionMissions: {},
   playerDismissals: {},
@@ -253,16 +238,55 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     try {
       const res: any = await api.get(`/gov/country/${countryCode}`)
       if (res.government) {
-        const gov = res.government
+        const raw = res.government
         // Convert DB timestamps to ms for enrichment countdown
-        if (gov.enrichmentStartedAt) gov.enrichmentStartedAt = new Date(gov.enrichmentStartedAt).getTime()
-        if (gov.enrichmentCompletedAt) gov.enrichmentCompletedAt = new Date(gov.enrichmentCompletedAt).getTime()
+        if (raw.enrichmentStartedAt) raw.enrichmentStartedAt = new Date(raw.enrichmentStartedAt).getTime()
+        if (raw.enrichmentCompletedAt) raw.enrichmentCompletedAt = new Date(raw.enrichmentCompletedAt).getTime()
+
+        // Merge raw DB row with existing store state (or defaults) to satisfy Government type
+        const existing = get().governments[countryCode]
+        const gov: Government = {
+          countryId: countryCode,
+          president: raw.president ?? existing?.president ?? null,
+          vicePresident: raw.vicePresident ?? raw.vice_president ?? existing?.vicePresident ?? null,
+          defenseMinister: raw.defenseMinister ?? raw.defense_minister ?? existing?.defenseMinister ?? null,
+          ecoMinister: raw.ecoMinister ?? raw.eco_minister ?? existing?.ecoMinister ?? null,
+          congress: raw.congress ?? existing?.congress ?? [],
+          candidates: existing?.candidates ?? [],
+          taxRate: raw.taxRate ?? raw.tax_rate ?? existing?.taxRate ?? 10,
+          swornEnemy: raw.swornEnemy ?? raw.sworn_enemy ?? existing?.swornEnemy ?? null,
+          alliances: raw.alliances ?? existing?.alliances ?? [],
+          empireName: existing?.empireName ?? null,
+          ideology: existing?.ideology ?? null,
+          ideologyPoints: existing?.ideologyPoints ?? { ...DEFAULT_IDEOLOGY_POINTS },
+          nuclearAuthorized: raw.nuclearAuthorized ?? raw.nuclear_authorized ?? existing?.nuclearAuthorized ?? false,
+          enrichmentStartedAt: raw.enrichmentStartedAt ?? existing?.enrichmentStartedAt ?? null,
+          enrichmentCompletedAt: raw.enrichmentCompletedAt ?? existing?.enrichmentCompletedAt ?? null,
+          nukeReady: existing?.nukeReady ?? false,
+          citizens: existing?.citizens ?? [],
+          divisionShop: existing?.divisionShop ?? [],
+          militaryBudgetPercent: raw.militaryBudgetPercent ?? raw.military_budget_percent ?? existing?.militaryBudgetPercent ?? 5,
+          armedForces: existing?.armedForces ?? [],
+          lastFreeRecruitAt: existing?.lastFreeRecruitAt ?? 0,
+          equipmentVault: existing?.equipmentVault ?? [],
+          embargoes: raw.embargoes ?? existing?.embargoes ?? [],
+          conscriptionActive: raw.conscriptionActive ?? raw.conscription_active ?? existing?.conscriptionActive ?? false,
+          importTariff: raw.importTariff ?? raw.import_tariff ?? existing?.importTariff ?? 0,
+          minimumWage: raw.minimumWage ?? raw.minimum_wage ?? existing?.minimumWage ?? 0,
+          stateMilitaryUnits: existing?.stateMilitaryUnits ?? [],
+          citizenDividendPercent: raw.citizenDividendPercent ?? raw.citizen_dividend_percent ?? existing?.citizenDividendPercent ?? 0,
+          laws: raw.laws ?? existing?.laws ?? { proposals: [] },
+        }
+
         set(s => ({
           governments: {
             ...s.governments,
             [countryCode]: gov
           }
         }))
+
+        // Also fetch citizens so roles are in sync with the government data
+        get().fetchCitizens(countryCode)
       }
     } catch (err) {
       console.error('[Government] Fetch failed', err)
@@ -277,22 +301,41 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
         set(s => {
           const gov = s.governments[countryCode]
           if (!gov) return s
+
+          // Map citizens and also extract government roles from the response
+          const citizenList = res.citizens.map(c => ({
+            id: c.id,
+            name: c.name,
+            level: c.level,
+            role: (c.role || 'citizen') as Citizen['role'],
+            joinedAt: c.joinedAt,
+          }))
+
+          // Sync government fields from citizen roles (backend is source of truth)
+          const pres = citizenList.find(c => c.role === 'president')
+          const vp = citizenList.find(c => c.role === 'vicepresident')
+          const defMin = citizenList.find(c => c.role === 'defense_minister')
+          const ecoMin = citizenList.find(c => c.role === 'eco_minister')
+          const congressMembers = citizenList.filter(c => c.role === 'congress').map(c => c.name)
+
           return {
             governments: {
               ...s.governments,
               [countryCode]: {
                 ...gov,
-                citizens: res.citizens.map(c => ({
-                  id: c.id,
-                  name: c.name,
-                  level: c.level,
-                  role: (c.role as any) || 'citizen',
-                  joinedAt: c.joinedAt,
-                })),
+                citizens: citizenList,
+                // Sync from citizen roles → gov fields to keep them consistent
+                president: pres?.name ?? gov.president,
+                vicePresident: vp?.name ?? gov.vicePresident,
+                defenseMinister: defMin?.name ?? gov.defenseMinister,
+                ecoMinister: ecoMin?.name ?? gov.ecoMinister,
+                congress: congressMembers.length > 0 ? congressMembers : gov.congress,
               },
             },
           }
         })
+        // Sync live population count to worldStore
+        useWorldStore.getState().updateCountryPopulation(countryCode, res.citizens.length)
       }
     } catch (err) {
       console.error('[Government] Fetch citizens failed', err)
@@ -397,10 +440,37 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
           congress: newCongress.length > 0 ? newCongress : gov.congress,
           candidates: [],
         }
+
+        // Specialization: politician XP for election winner
+        try {
+          import('./specializationStore').then(({ useSpecializationStore }) => {
+            import('./playerStore').then(({ usePlayerStore }) => {
+              const player = usePlayerStore.getState()
+              if (player.name === newPresident) {
+                const totalVotes = result.rankings.reduce((s: number, c: any) => s + (c.weightedVotes || c.votes || 0), 0)
+                const winnerVotes = (result.rankings[0] as any)?.weightedVotes || (result.rankings[0] as any)?.votes || 0
+                const votePercent = totalVotes > 0 ? (winnerVotes / totalVotes) * 100 : 0
+                useSpecializationStore.getState().recordElectionWin(votePercent)
+              }
+            })
+          }).catch(() => {})
+        } catch (_) {}
       } else {
         // No winner — keep current president, reset candidates
         newGovs[countryId] = { ...gov, candidates: [] }
       }
+
+      // Specialization: holdOffice passive XP for current president
+      try {
+        import('./specializationStore').then(({ useSpecializationStore }) => {
+          import('./playerStore').then(({ usePlayerStore }) => {
+            const player = usePlayerStore.getState()
+            if (player.name === newGovs[countryId].president) {
+              useSpecializationStore.getState().recordHoldOffice()
+            }
+          })
+        }).catch(() => {})
+      } catch (_) {}
     })
     return {
       governments: newGovs,
@@ -438,6 +508,22 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
         else if (resource === 'bitcoin') player.spendBitcoin(amount)
         // Update country fund locally
         useWorldStore.getState().addToFund(countryId, resource as any, amount)
+        // Specialization hooks: economic + politician XP from donations
+        try {
+          const { useSpecializationStore } = await import('./specializationStore')
+          const spec = useSpecializationStore.getState()
+          if (resource === 'money') {
+            spec.recordDonate(amount)
+            spec.recordPoliticianDonate(amount)
+          } else {
+            // Non-money donations still grant some spec XP based on value estimate
+            spec.recordDonate(amount * 10)
+            spec.recordPoliticianDonate(amount * 10)
+          }
+          // RP contribution from donations
+          const { useResearchStore } = await import('./researchStore')
+          useResearchStore.getState().contributeRP(3, 'donation')
+        } catch (_) {}
         return true
       }
       return false

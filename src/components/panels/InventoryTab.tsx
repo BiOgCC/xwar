@@ -249,17 +249,18 @@ export default function InventoryTab() {
 
   const renderItemCard = (item: EquipItem) => {
     const tierColor = TIER_COLORS[item.tier as keyof typeof TIER_COLORS] || '#94a3b8'
-    const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || item.tier.toUpperCase()
+    const tierLabel = TIER_LABELS[item.tier as keyof typeof TIER_LABELS] || (item.tier || 'T?').toUpperCase()
     const imgUrl = getItemImagePath(item.tier, item.slot, item.category, item.weaponSubtype, item.superforged)
     const dur = Number(item.durability ?? 100)
     const durColor = dur < 30 ? '#ef4444' : dur < 60 ? '#f59e0b' : '#22d38a'
+    const s = item.stats || {} as EquipItem['stats']
     const statEntries: { label: string; val: string; color: string }[] = []
-    if (item.stats.damage) statEntries.push({ label: 'DMG', val: `${item.stats.damage}`, color: '#f87171' })
-    if (item.stats.critRate) statEntries.push({ label: 'CRIT', val: `${item.stats.critRate}%`, color: '#fb923c' })
-    if (item.stats.critDamage) statEntries.push({ label: 'C.DMG', val: `${item.stats.critDamage}%`, color: '#fb923c' })
-    if (item.stats.armor) statEntries.push({ label: 'ARM', val: `${item.stats.armor}%`, color: '#94a3b8' })
-    if (item.stats.dodge) statEntries.push({ label: 'EVA', val: `${item.stats.dodge}%`, color: '#34d399' })
-    if (item.stats.precision) statEntries.push({ label: 'ACC', val: `${item.stats.precision}%`, color: '#38bdf8' })
+    if (s.damage) statEntries.push({ label: 'DMG', val: `${s.damage}`, color: '#f87171' })
+    if (s.critRate) statEntries.push({ label: 'CRIT', val: `${s.critRate}%`, color: '#fb923c' })
+    if (s.critDamage) statEntries.push({ label: 'C.DMG', val: `${s.critDamage}%`, color: '#fb923c' })
+    if (s.armor) statEntries.push({ label: 'ARM', val: `${s.armor}%`, color: '#94a3b8' })
+    if (s.dodge) statEntries.push({ label: 'EVA', val: `${s.dodge}%`, color: '#34d399' })
+    if (s.precision) statEntries.push({ label: 'ACC', val: `${s.precision}%`, color: '#38bdf8' })
     return (
       <div key={item.id} className="ptab-gear-card" style={{
         borderColor: item.equipped ? 'rgba(132,204,22,0.4)' : `${tierColor}30`,
@@ -385,34 +386,37 @@ export default function InventoryTab() {
       {mode === 'craft' && <InventoryCraftModal onClose={() => setMode('normal')} />}
 
       {/* Item Interaction Modal */}
-      {selectedItem && (
-        <GameModal isOpen={true} onClose={() => setSelectedItem(null)} size="sm" glowColor={TIER_COLORS[selectedItem.tier]}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0 12px', marginBottom: '12px', background: `radial-gradient(ellipse at center, ${TIER_COLORS[selectedItem.tier]}10 0%, transparent 70%)` }}>
+      {selectedItem && (() => {
+        const selTier = TIER_COLORS[selectedItem.tier] || '#94a3b8'
+        const selStats = selectedItem.stats || {} as EquipItem['stats']
+        return (
+        <GameModal isOpen={true} onClose={() => setSelectedItem(null)} size="sm" glowColor={selTier}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0 12px', marginBottom: '12px', background: `radial-gradient(ellipse at center, ${selTier}10 0%, transparent 70%)` }}>
             {(() => {
               const imgUrl = getItemImagePath(selectedItem.tier, selectedItem.slot, selectedItem.category, selectedItem.weaponSubtype, selectedItem.superforged);
-              return imgUrl ? <img src={imgUrl} alt={selectedItem.name} style={{ width: '72px', height: '72px', objectFit: 'contain', filter: `drop-shadow(0 4px 16px ${TIER_COLORS[selectedItem.tier]}40)`, marginBottom: '8px' }} onError={e => { e.currentTarget.style.display = 'none' }} />
+              return imgUrl ? <img src={imgUrl} alt={selectedItem.name} style={{ width: '72px', height: '72px', objectFit: 'contain', filter: `drop-shadow(0 4px 16px ${selTier}40)`, marginBottom: '8px' }} onError={e => { e.currentTarget.style.display = 'none' }} />
                 : <div style={{ fontSize: '48px', marginBottom: '8px', opacity: 0.5 }}>{selectedItem.slot === 'helmet' ? '\u2302' : selectedItem.slot === 'chest' ? '\u2666' : '\u2694'}</div>;
             })()}
-            <div style={{ fontSize: '14px', fontWeight: 800, fontFamily: 'var(--font-display)', color: TIER_COLORS[selectedItem.tier], letterSpacing: '0.08em', textShadow: `0 0 12px ${TIER_COLORS[selectedItem.tier]}50` }}>{selectedItem.name}</div>
-            <div style={{ fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)', color: '#64748b', letterSpacing: '0.1em', marginTop: '2px' }}>{TIER_LABELS[selectedItem.tier]} {'\u2022'} {selectedItem.slot.toUpperCase()}</div>
+            <div style={{ fontSize: '14px', fontWeight: 800, fontFamily: 'var(--font-display)', color: selTier, letterSpacing: '0.08em', textShadow: `0 0 12px ${selTier}50` }}>{selectedItem.name}</div>
+            <div style={{ fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)', color: '#64748b', letterSpacing: '0.1em', marginTop: '2px' }}>{TIER_LABELS[selectedItem.tier] || selectedItem.tier} {'\u2022'} {(selectedItem.slot || 'ITEM').toUpperCase()}</div>
           </div>
           <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '10px 12px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.04)' }}>
             {[
-              selectedItem.stats.damage && { label: 'DAMAGE', val: `${selectedItem.stats.damage}`, color: '#f87171' },
-              selectedItem.stats.critRate && { label: 'CRIT RATE', val: `${selectedItem.stats.critRate}%`, color: '#fb923c' },
-              selectedItem.stats.critDamage && { label: 'CRIT DMG', val: `+${selectedItem.stats.critDamage}%`, color: '#fb923c' },
-              selectedItem.stats.armor && { label: 'ARMOR', val: `+${selectedItem.stats.armor}%`, color: '#94a3b8' },
-              selectedItem.stats.dodge && { label: 'EVASION', val: `+${selectedItem.stats.dodge}%`, color: '#34d399' },
-              selectedItem.stats.precision && { label: 'ACCURACY', val: `+${selectedItem.stats.precision}%`, color: '#38bdf8' },
-            ].filter(Boolean).map((s: any) => (
-              <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-                <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>{getStatIcon(s.label, s.color, 12)}{s.label}</span>
-                <span style={{ color: s.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{s.val}</span>
+              selStats.damage && { label: 'DAMAGE', val: `${selStats.damage}`, color: '#f87171' },
+              selStats.critRate && { label: 'CRIT RATE', val: `${selStats.critRate}%`, color: '#fb923c' },
+              selStats.critDamage && { label: 'CRIT DMG', val: `+${selStats.critDamage}%`, color: '#fb923c' },
+              selStats.armor && { label: 'ARMOR', val: `+${selStats.armor}%`, color: '#94a3b8' },
+              selStats.dodge && { label: 'EVASION', val: `+${selStats.dodge}%`, color: '#34d399' },
+              selStats.precision && { label: 'ACCURACY', val: `+${selStats.precision}%`, color: '#38bdf8' },
+            ].filter(Boolean).map((st: any) => (
+              <div key={st.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+                <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '4px' }}>{getStatIcon(st.label, st.color, 12)}{st.label}</span>
+                <span style={{ color: st.color, fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{st.val}</span>
               </div>
             ))}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '10px', fontFamily: 'var(--font-mono)', borderTop: '1px solid rgba(255,255,255,0.04)', marginTop: '4px', paddingTop: '6px' }}>
               <span style={{ color: '#475569', fontWeight: 500, letterSpacing: '0.06em' }}>DURABILITY</span>
-              <span style={{ color: (selectedItem.durability ?? 100) < 30 ? '#ef4444' : (selectedItem.durability ?? 100) < 60 ? '#f59e0b' : '#22d38a', fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{(selectedItem.durability ?? 100).toFixed(0)}%</span>
+              <span style={{ color: Number(selectedItem.durability ?? 100) < 30 ? '#ef4444' : Number(selectedItem.durability ?? 100) < 60 ? '#f59e0b' : '#22d38a', fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: '11px' }}>{Number(selectedItem.durability ?? 100).toFixed(0)}%</span>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -423,15 +427,15 @@ export default function InventoryTab() {
             }}>{selectedItem.equipped ? 'UNEQUIP' : 'EQUIP'}</button>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button style={{ flex: 1, padding: '8px', fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'rgba(59,130,246,0.12)', color: selectedItem.equipped ? '#334155' : '#3b82f6', border: `1px solid ${selectedItem.equipped ? '#1e293b' : 'rgba(59,130,246,0.3)'}`, borderRadius: '4px', cursor: selectedItem.equipped ? 'not-allowed' : 'pointer', opacity: selectedItem.equipped ? 0.4 : 1 }} disabled={selectedItem.equipped}
-                onClick={async () => { if (selectedItem.equipped) return; const r = await inventory.sellItem(selectedItem.id); if (r.success) { ui.addFloatingText(`SOLD +$${r.moneyGained.toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b'); setSelectedItem(null) } }}
-              >SELL ${TIER_SELL_PRICE[selectedItem.tier].toLocaleString()}</button>
+                onClick={async () => { if (selectedItem.equipped) return; const r = await inventory.sellItem(selectedItem.id); if (r.success) { ui.addFloatingText(`SOLD +$${(r.moneyGained ?? 0).toLocaleString()}`, window.innerWidth / 2, window.innerHeight / 2, '#f59e0b'); setSelectedItem(null) } }}
+              >SELL ${(TIER_SELL_PRICE[selectedItem.tier] ?? 0).toLocaleString()}</button>
               <button style={{ flex: 1, padding: '8px', fontSize: '9px', fontWeight: 700, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'rgba(245,158,11,0.1)', color: selectedItem.equipped ? '#334155' : '#f59e0b', border: `1px solid ${selectedItem.equipped ? '#1e293b' : 'rgba(245,158,11,0.3)'}`, borderRadius: '4px', cursor: selectedItem.equipped ? 'not-allowed' : 'pointer', opacity: selectedItem.equipped ? 0.4 : 1 }} disabled={selectedItem.equipped} onClick={handleDisarm}
-              >DISMANTLE (+{SCRAP_VALUES[selectedItem.tier]} SCRAP)</button>
+              >DISMANTLE (+{SCRAP_VALUES[selectedItem.tier] ?? 0} SCRAP)</button>
             </div>
             <button onClick={() => setSelectedItem(null)} style={{ width: '100%', padding: '6px', fontSize: '9px', fontWeight: 600, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', background: 'transparent', color: '#475569', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', cursor: 'pointer' }}>CLOSE</button>
           </div>
         </GameModal>
-      )}
+      )})()}
 
       {/* Loot Box Openers – triggered by box buttons in InventorySummary */}
       <LootBoxOpener isOpen={showLootBox} onClose={() => setShowLootBox(false)} onOpenBox={handleLootBoxOpen} boxType="civilian" />

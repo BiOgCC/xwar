@@ -28,75 +28,9 @@ export function initMockData() {
   })
 
   // ═══════════════════════════════════════════
-  //  3. BATTLES (3) with divisions on both sides
+  //  3. BATTLES — DISABLED: battles are now server-authoritative.
+  //     Real battles come from GET /battle/active during hydration.
   // ═══════════════════════════════════════════
-  if (Object.keys(bs.battles).length === 0) {
-    const now = Date.now()
-
-    // Create mock enemy divisions
-    const mockDivs: Record<string, any> = {}
-    const enemyDivIds: string[][] = [[], [], []]
-    const defenderCodes = ['RU', 'CN', 'MX']
-
-    defenderCodes.forEach((code, bi) => {
-      for (let i = 0; i < 3; i++) {
-        const id = `mock_def_${code}_${i}`
-        enemyDivIds[bi].push(id)
-        const divTypes: ('assault' | 'rpg' | 'tank')[] = ['assault', 'rpg', 'tank']
-        const divNames = ['1st Assault Div', '2nd RPG Div', '3rd Tank Div']
-        const divType = divTypes[i]
-        const { star: mStar, modifiers: mMods } = rollStarQuality()
-        mockDivs[id] = {
-          id, name: `${code} ${divNames[i]}`,
-          type: divType, category: divType === 'tank' ? 'land' : 'land',
-          countryCode: code, ownerId: `AI_${code}`,
-          status: 'in_combat', experience: 50,
-          manpower: 5000 + i * 2000, maxManpower: 8000,
-          equipment: [],
-          trainingProgress: 10,
-          killCount: 0, battlesSurvived: 0,
-          starQuality: mStar, statModifiers: mMods,
-        }
-      }
-    })
-
-    useArmyStore.setState(s => ({
-      divisions: { ...s.divisions, ...mockDivs }
-    }))
-
-    const battleConfigs = [
-      { id: 'b1', atkId: 'US', defId: 'RU', region: 'Eastern Europe Front', type: 'invasion' },
-      { id: 'b2', atkId: 'US', defId: 'CN', region: 'Pacific Theater', type: 'naval_strike' },
-      { id: 'b3', atkId: 'CA', defId: 'MX', region: 'Southern Border', type: 'assault' },
-    ]
-
-    const newBattles: Record<string, any> = {}
-    battleConfigs.forEach((cfg, idx) => {
-      const defDivs = enemyDivIds[idx]
-      newBattles[cfg.id] = {
-        id: cfg.id, type: cfg.type, attackerId: cfg.atkId, defenderId: cfg.defId,
-        regionName: cfg.region, startedAt: now,
-        ticksElapsed: 0, status: 'active',
-        attacker: {
-          countryCode: cfg.atkId, divisionIds: [], engagedDivisionIds: [],
-          damageDealt: 0, manpowerLost: 0,
-          divisionsDestroyed: 0, divisionsRetreated: 0,
-        },
-        defender: {
-          countryCode: cfg.defId, divisionIds: defDivs, engagedDivisionIds: defDivs,
-          damageDealt: 0, manpowerLost: 0,
-          divisionsDestroyed: 0, divisionsRetreated: 0,
-        },
-        attackerRoundsWon: 0, defenderRoundsWon: 0,
-        rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }],
-        currentTick: { attackerDamage: 0, defenderDamage: 0 },
-        combatLog: [],
-        attackerDamageDealers: {}, defenderDamageDealers: {}, damageFeed: [],
-      }
-    })
-
-    useBattleStore.setState(s => ({ battles: { ...s.battles, ...newBattles } }))
-  }
 
   // ═══════════════════════════════════════════
   //  4. COMPANIES (4) — player has a small economy

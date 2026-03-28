@@ -13,7 +13,7 @@ export const STALE_CLEANUP_AGE_MS = 2 * 60 * 60 * 1000  // filled/cancelled orde
 
 // ── Minimum Equipment Prices by Tier ──
 export const MIN_EQUIP_PRICE: Record<string, number> = {
-  t1: 100,  t2: 300,  t3: 1000,  t4: 4000,  t5: 15000,  t6: 60000,
+  t1: 100,  t2: 300,  t3: 1000,  t4: 4000,  t5: 15000,  t6: 60000,  t7: 200000,
 }
 
 // ── Resource Identifiers ──

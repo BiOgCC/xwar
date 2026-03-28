@@ -8,7 +8,7 @@ import { Shield, RefreshCw, Play, Zap, Database, Users, Swords, Globe,
   AlertTriangle, CheckCircle, LogOut, Activity, Newspaper, Anchor, Search,
   Settings, DollarSign, Package, BarChart3, Droplet, Wrench, Atom, Bitcoin,
   Wheat, Fish, Crosshair, CakeSlice, Beef, Medal, Leaf, CupSoda, UtensilsCrossed,
-  ShieldAlert, Dices, Ship } from 'lucide-react'
+  ShieldAlert, Dices, Ship, Ban, Flame, StopCircle } from 'lucide-react'
 import { LEY_LINE_DEFS } from '../data/leyLineRegistry'
 import type { LeyLineDef as RegistryLineDef } from '../data/leyLineRegistry'
 
@@ -87,7 +87,7 @@ function SC({ icon, label, value, color }: { icon:React.ReactNode; label:string;
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [authed, setAuthed]           = useState<boolean|null>(null)
-  const [tab, setTab]                  = useState<'overview'|'players'|'countries'|'leylines'|'pipelines'|'news'|'market'|'economy'|'map'>('overview')
+  const [tab, setTab]                  = useState<'overview'|'players'|'countries'|'leylines'|'pipelines'|'news'|'market'|'economy'|'map'|'battles'>('overview')
   const [stats, setStats]             = useState<Stats|null>(null)
   const [players, setPlayers]         = useState<Player[]>([])
   const [lines, setLines]             = useState<LeyLine[]>([])
@@ -120,6 +120,13 @@ export default function AdminPage() {
   const [randResult, setRandResult]   = useState<any>(null)
   const [previewBusy, setPreviewBusy] = useState(false)
   const [previewResult, setPreviewResult] = useState<any>(null)
+
+  // ── Battles / Wars state ──
+  const [adminBattles, setAdminBattles] = useState<any[]>([])
+  const [adminWars, setAdminWars]       = useState<any[]>([])
+  const [battlesLoading, setBattlesLoading] = useState(false)
+  const [seedForm, setSeedForm]         = useState({ attackerCode:'', defenderCode:'', regionName:'', createWar:true, maxRounds:3 })
+  const [stockForm, setStockForm]       = useState({ countryCode:'', price:'' })
 
   // ── Economy dashboard state ──
   const [econ, setEcon]                 = useState<any>(null)
@@ -197,10 +204,24 @@ export default function AdminPage() {
     setWdLoading(false)
   }, [])
 
+  const loadBattlesWars = useCallback(async () => {
+    setBattlesLoading(true)
+    try {
+      const [b, w] = await Promise.all([
+        api('/api/admin/battles'),
+        api('/api/admin/wars'),
+      ])
+      if (b.ok) setAdminBattles(b.result)
+      if (w.ok) setAdminWars(w.result)
+    } catch {}
+    setBattlesLoading(false)
+  }, [])
+
   useEffect(()=>{ load() },[load])
   useEffect(()=>{ if (tab==='players') loadPlayers() },[tab,loadPlayers])
   useEffect(()=>{ if (tab==='countries') loadCountries() },[tab,loadCountries])
   useEffect(()=>{ if (tab==='economy') { loadEcon(); loadWealthDist() } },[tab,loadEcon,loadWealthDist])
+  useEffect(()=>{ if (tab==='battles') loadBattlesWars() },[tab,loadBattlesWars])
 
   // ── Actions ──
   const runPipeline = async (pipeline: string, job?: string) => {
@@ -282,7 +303,7 @@ export default function AdminPage() {
 
   const disruptRoute = async () => {
     if (!routeId) { notify('Enter route ID','err'); return }
-    const d = await api('/api/admin/disrupt-route', { method:'POST', body:JSON.stringify({ routeId, minutes:routeMinutes }) })
+    const d = await api('/api/admin/disrupt-route', { method: 'POST', body: JSON.stringify({ routeId, minutes: routeMinutes }) })
     if (d.ok) notify(`Route ${routeId} disrupted for ${routeMinutes}m`)
     else notify(d.error??'Failed','err')
   }
@@ -290,7 +311,7 @@ export default function AdminPage() {
   const SPEC_ROLES = ['military', 'economic', 'mercenary', 'politician', 'influencer'] as const
   const ROLE_COLORS: Record<string, string> = {
     military: '#ef4444', economic: '#22c55e', mercenary: '#f59e0b',
-    politician: '#3b82f6', influencer: '#8b5cf6'
+    politician: '#3b82f6', influencer: '#8b5cf6', banned: '#71717a'
   }
   const togglePlayerRole = async (playerId: string, currentRole: string) => {
     const idx     = SPEC_ROLES.indexOf(currentRole as any)
@@ -299,6 +320,46 @@ export default function AdminPage() {
     const d = await api(`/api/admin/player/${playerId}/role`, { method:'POST', body:JSON.stringify({ role: newRole }) })
     if (d.ok) { notify(`${d.result.name} → ${newRole}`); loadPlayers() }
     else notify(d.error??'Role change failed','err')
+  }
+
+  const banPlayer = async (playerId: string, playerName: string, isBanned: boolean) => {
+    const action = isBanned ? 'unban' : 'ban'
+    if (!confirm(`${action.toUpperCase()} player '${playerName}'?`)) return
+    const d = await api(`/api/admin/player/${playerId}/ban`, { method:'POST', body:'{}' })
+    if (d.ok) { notify(`${d.result.name} ${d.result.action}`); loadPlayers() }
+    else notify(d.error??'Ban failed','err')
+  }
+
+  const seedBattle = async () => {
+    if (!seedForm.attackerCode || !seedForm.defenderCode) { notify('Enter attacker and defender codes','err'); return }
+    setBusy('seed')
+    try {
+      const d = await api('/api/admin/seed-battle', { method:'POST', body:JSON.stringify(seedForm) })
+      if (d.ok) notify(`✓ Battle seeded: ${d.result.attacker} vs ${d.result.defender}${d.result.warId ? ' (+ war)' : ''}`)
+      else notify(d.error??'Seed failed','err')
+    } catch { notify('Seed request failed','err') }
+    setBusy(null)
+  }
+
+  const endBattle = async (battleId: string) => {
+    if (!confirm('Force-finish this battle?')) return
+    const d = await api('/api/admin/end-battle', { method:'POST', body:JSON.stringify({ battleId }) })
+    if (d.ok) { notify('Battle finished'); loadBattlesWars() }
+    else notify(d.error??'Failed','err')
+  }
+
+  const endWar = async (warId: string) => {
+    if (!confirm('Force-finish this war?')) return
+    const d = await api('/api/admin/end-war', { method:'POST', body:JSON.stringify({ warId }) })
+    if (d.ok) { notify('War finished'); loadBattlesWars() }
+    else notify(d.error??'Failed','err')
+  }
+
+  const setStockPrice = async () => {
+    if (!stockForm.countryCode || !stockForm.price) { notify('Enter country code and price','err'); return }
+    const d = await api('/api/admin/set-stock-price', { method:'POST', body:JSON.stringify({ countryCode: stockForm.countryCode, price: Number(stockForm.price) }) })
+    if (d.ok) notify(`✓ ${d.result.countryCode} stock → $${d.result.newPrice}`)
+    else notify(d.error??'Failed','err')
   }
 
   const saveCountryField = async (code: string, field: string, value: string) => {
@@ -396,7 +457,7 @@ export default function AdminPage() {
           <span style={{ fontFamily:'Share Tech Mono,monospace', fontSize:14, fontWeight:700, letterSpacing:'0.08em' }}>XWAR <span style={{ color:'#8b5cf6' }}>ADMIN</span></span>
           <div style={{ width:1, height:20, background:'rgba(255,255,255,0.1)' }}/>
           {/* Tabs */}
-          {(['overview','players','countries','leylines','pipelines','news','market','economy','map'] as const).map(t => (
+          {(['overview','players','countries','battles','leylines','pipelines','news','market','economy','map'] as const).map(t => (
             <button key={t} onClick={()=>setTab(t)} style={{ background: tab===t?'rgba(139,92,246,0.15)':'transparent', border:'none', color: tab===t?'#8b5cf6':'#64748b', borderRadius:6, padding:'5px 12px', fontSize:11, fontWeight:700, cursor:'pointer', letterSpacing:'0.06em', textTransform:'uppercase' }}>
               {t}
             </button>
@@ -494,6 +555,38 @@ export default function AdminPage() {
                   <button onClick={disruptRoute} style={btn('#f97316')}><AlertTriangle size={13}/>Disrupt</button>
                 </div>
               </div>
+
+              {/* Seed Battle */}
+              <div style={S.card}>
+                <div style={S.sectionTitle}><Flame size={14} color="#ef4444"/> SEED BATTLE</div>
+                <p style={{ fontSize:12, color:'#64748b', marginBottom:12, lineHeight:1.7 }}>Create a battle (+ optional war) between two countries to generate initial engagement for testing.</p>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+                  <div><label style={S.label}>Attacker CC</label><input value={seedForm.attackerCode} onChange={e=>setSeedForm(f=>({...f,attackerCode:e.target.value.toUpperCase()}))} placeholder="US" style={S.input} maxLength={4}/></div>
+                  <div><label style={S.label}>Defender CC</label><input value={seedForm.defenderCode} onChange={e=>setSeedForm(f=>({...f,defenderCode:e.target.value.toUpperCase()}))} placeholder="RU" style={S.input} maxLength={4}/></div>
+                  <div><label style={S.label}>Region Name</label><input value={seedForm.regionName} onChange={e=>setSeedForm(f=>({...f,regionName:e.target.value}))} placeholder="Optional" style={S.input}/></div>
+                  <div><label style={S.label}>Max Rounds</label><input type="number" value={seedForm.maxRounds} onChange={e=>setSeedForm(f=>({...f,maxRounds:Number(e.target.value)}))} style={S.input} min={1} max={15}/></div>
+                </div>
+                <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#94a3b8', cursor:'pointer' }}>
+                    <input type="checkbox" checked={seedForm.createWar} onChange={e=>setSeedForm(f=>({...f,createWar:e.target.checked}))}/>
+                    Also create war
+                  </label>
+                  <button onClick={seedBattle} disabled={busy==='seed'} style={btn('#ef4444', busy==='seed')}>
+                    {busy==='seed'?<><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>⟳</span>Seeding…</>:<><Flame size={13}/>Seed Battle</>}
+                  </button>
+                </div>
+              </div>
+
+              {/* Set Stock Price */}
+              <div style={S.card}>
+                <div style={S.sectionTitle}><TrendingUp size={14} color="#22c55e"/> SET STOCK PRICE</div>
+                <p style={{ fontSize:12, color:'#64748b', marginBottom:12, lineHeight:1.7 }}>Override a country's stock price. Useful for testing stock exchange mechanics.</p>
+                <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+                  <div style={{ flex:1 }}><label style={S.label}>Country Code</label><input value={stockForm.countryCode} onChange={e=>setStockForm(f=>({...f,countryCode:e.target.value.toUpperCase()}))} placeholder="US" style={S.input} maxLength={4}/></div>
+                  <div style={{ flex:1 }}><label style={S.label}>New Price ($)</label><input type="number" value={stockForm.price} onChange={e=>setStockForm(f=>({...f,price:e.target.value}))} placeholder="150.00" style={S.input} step="0.01" min={0.01}/></div>
+                </div>
+                <button onClick={setStockPrice} style={btn('#22c55e')}><TrendingUp size={13}/>Set Price</button>
+              </div>
             </div>
           </div>
         )}
@@ -521,7 +614,8 @@ export default function AdminPage() {
                 <div style={{ padding:'0 8px', fontSize:11, color:'#22d38a', fontFamily:'monospace' }}>{p.money!=null?`$${Number(p.money).toLocaleString()}`:'—'}</div>
                 <div style={{ padding:'0 8px', display:'flex', alignItems:'center', gap:6 }}>
                   <span style={{ fontSize:10, padding:'2px 8px', borderRadius:10, background: `${ROLE_COLORS[p.role||'military']||'#64748b'}18`, color: ROLE_COLORS[p.role||'military']||'#64748b', border:`1px solid ${ROLE_COLORS[p.role||'military']||'#64748b'}33` }}>{p.role||'military'}</span>
-                  {p.id && <button onClick={()=>togglePlayerRole(p.id, p.role||'military')} title="Cycle specialization role" style={{ background:'transparent', border:'1px solid rgba(139,92,246,0.35)', borderRadius:4, color:'#8b5cf6', cursor:'pointer', padding:'2px 6px', fontSize:9, fontWeight:700 }}>⟳ Role</button>}
+                  {p.id && p.role !== 'banned' && <button onClick={()=>togglePlayerRole(p.id, p.role||'military')} title="Cycle specialization role" style={{ background:'transparent', border:'1px solid rgba(139,92,246,0.35)', borderRadius:4, color:'#8b5cf6', cursor:'pointer', padding:'2px 6px', fontSize:9, fontWeight:700 }}>⟳ Role</button>}
+                  {p.id && <button onClick={()=>banPlayer(p.id, p.name, p.role==='banned')} title={p.role==='banned'?'Unban player':'Ban player'} style={{ background: p.role==='banned'?'rgba(34,211,138,0.12)':'rgba(239,68,68,0.08)', border:`1px solid ${p.role==='banned'?'rgba(34,211,138,0.4)':'rgba(239,68,68,0.3)'}`, borderRadius:4, color: p.role==='banned'?'#22d38a':'#ef4444', cursor:'pointer', padding:'2px 6px', fontSize:9, fontWeight:700 }}>{p.role==='banned'?'Unban':'Ban'}</button>}
                 </div>
               </div>
             ))}
@@ -618,6 +712,121 @@ export default function AdminPage() {
                     </div>
                   )
                 })
+              }
+            </div>
+          </div>
+        )}
+
+        {/* ── BATTLES & WARS ── */}
+        {tab==='battles' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+              <div style={S.sectionTitle}><Swords size={14} color="#ef4444"/> BATTLES & WARS</div>
+              <button onClick={loadBattlesWars} disabled={battlesLoading} style={btn('#64748b', battlesLoading)}>
+                <RefreshCw size={12}/> {battlesLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+
+            {/* Seed Battle (also on overview, duplicated here for convenience) */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+              <div style={{ ...S.card, border:'1px solid rgba(239,68,68,0.18)' }}>
+                <div style={S.sectionTitle}><Flame size={14} color="#ef4444"/> SEED BATTLE</div>
+                <p style={{ fontSize:12, color:'#64748b', marginBottom:12, lineHeight:1.7 }}>Create a battle (+ optional war) between two countries for alpha testing.</p>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+                  <div><label style={S.label}>Attacker CC</label><input value={seedForm.attackerCode} onChange={e=>setSeedForm(f=>({...f,attackerCode:e.target.value.toUpperCase()}))} placeholder="US" style={S.input} maxLength={4}/></div>
+                  <div><label style={S.label}>Defender CC</label><input value={seedForm.defenderCode} onChange={e=>setSeedForm(f=>({...f,defenderCode:e.target.value.toUpperCase()}))} placeholder="RU" style={S.input} maxLength={4}/></div>
+                  <div><label style={S.label}>Region</label><input value={seedForm.regionName} onChange={e=>setSeedForm(f=>({...f,regionName:e.target.value}))} placeholder="Optional" style={S.input}/></div>
+                  <div><label style={S.label}>Max Rounds</label><input type="number" value={seedForm.maxRounds} onChange={e=>setSeedForm(f=>({...f,maxRounds:Number(e.target.value)}))} style={S.input} min={1} max={15}/></div>
+                </div>
+                <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#94a3b8', cursor:'pointer' }}>
+                    <input type="checkbox" checked={seedForm.createWar} onChange={e=>setSeedForm(f=>({...f,createWar:e.target.checked}))}/>
+                    Also create war
+                  </label>
+                  <button onClick={seedBattle} disabled={busy==='seed'} style={btn('#ef4444', busy==='seed')}>
+                    {busy==='seed'?<><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>⟳</span>Seeding…</>:<><Flame size={13}/>Seed Battle</>}
+                  </button>
+                </div>
+              </div>
+
+              {/* Set Stock Price */}
+              <div style={{ ...S.card, border:'1px solid rgba(34,211,138,0.18)' }}>
+                <div style={S.sectionTitle}><TrendingUp size={14} color="#22c55e"/> SET STOCK PRICE</div>
+                <p style={{ fontSize:12, color:'#64748b', marginBottom:12, lineHeight:1.7 }}>Override a country's stock price for testing.</p>
+                <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+                  <div style={{ flex:1 }}><label style={S.label}>Country Code</label><input value={stockForm.countryCode} onChange={e=>setStockForm(f=>({...f,countryCode:e.target.value.toUpperCase()}))} placeholder="US" style={S.input} maxLength={4}/></div>
+                  <div style={{ flex:1 }}><label style={S.label}>New Price ($)</label><input type="number" value={stockForm.price} onChange={e=>setStockForm(f=>({...f,price:e.target.value}))} placeholder="150.00" style={S.input} step="0.01" min={0.01}/></div>
+                </div>
+                <button onClick={setStockPrice} style={btn('#22c55e')}><TrendingUp size={13}/>Set Price</button>
+              </div>
+            </div>
+
+            {/* Active Battles Table */}
+            <div style={S.card}>
+              <div style={S.sectionTitle}><Swords size={14} color="#ef4444"/> ACTIVE BATTLES ({adminBattles.filter((b:any)=>b.status==='active').length})</div>
+              {adminBattles.length === 0
+                ? <div style={{ textAlign:'center', padding:40, color:'#475569' }}>No battles found. Use Seed Battle to create one.</div>
+                : <>
+                    <div style={{ display:'grid', gridTemplateColumns:'60px 60px 1fr 60px 100px 100px 80px 80px', gap:0, marginBottom:8 }}>
+                      {['ATK','DEF','Region','Round','ATK Dmg','DEF Dmg','Status','Action'].map(h=>(
+                        <div key={h} style={{ fontSize:9, color:'#475569', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', padding:'0 6px 6px' }}>{h}</div>
+                      ))}
+                    </div>
+                    {adminBattles.map((b:any) => (
+                      <div key={b.id} className="hrow" style={{ display:'grid', gridTemplateColumns:'60px 60px 1fr 60px 100px 100px 80px 80px', gap:0, padding:'7px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', alignItems:'center' }}>
+                        <div style={{ padding:'0 6px', fontSize:12, color:'#ef4444', fontWeight:700, fontFamily:'monospace' }}>{b.attacker_id}</div>
+                        <div style={{ padding:'0 6px', fontSize:12, color:'#60a5fa', fontWeight:700, fontFamily:'monospace' }}>{b.defender_id}</div>
+                        <div style={{ padding:'0 6px', fontSize:11, color:'#94a3b8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.region_name}</div>
+                        <div style={{ padding:'0 6px', fontSize:11, color:'#e2e8f0', fontFamily:'monospace' }}>{b.round}/{b.max_rounds}</div>
+                        <div style={{ padding:'0 6px', fontSize:11, color:'#ef4444', fontFamily:'monospace' }}>{Number(b.attacker_damage).toLocaleString()}</div>
+                        <div style={{ padding:'0 6px', fontSize:11, color:'#60a5fa', fontFamily:'monospace' }}>{Number(b.defender_damage).toLocaleString()}</div>
+                        <div style={{ padding:'0 6px' }}>
+                          <span style={{ fontSize:9, padding:'2px 8px', borderRadius:10, background: b.status==='active'?'rgba(34,211,138,0.12)':'rgba(100,116,139,0.12)', color: b.status==='active'?'#22d38a':'#64748b', fontWeight:700 }}>{b.status}</span>
+                        </div>
+                        <div style={{ padding:'0 6px' }}>
+                          {b.status==='active' && (
+                            <button onClick={()=>endBattle(b.id)} title="Force-finish this battle" style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#ef4444', cursor:'pointer', padding:'3px 8px', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
+                              <StopCircle size={11}/>End
+                            </button>
+                          )}
+                          {b.status!=='active' && b.winner && <span style={{ fontSize:10, color:'#f59e0b', fontWeight:700, fontFamily:'monospace' }}>🏆 {b.winner}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+              }
+            </div>
+
+            {/* Active Wars Table */}
+            <div style={S.card}>
+              <div style={S.sectionTitle}><Globe size={14} color="#f59e0b"/> ACTIVE WARS ({adminWars.filter((w:any)=>w.status==='active').length})</div>
+              {adminWars.length === 0
+                ? <div style={{ textAlign:'center', padding:30, color:'#475569' }}>No wars found.</div>
+                : <>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 70px 70px 80px 140px 80px', gap:0, marginBottom:8 }}>
+                      {['ID','Attacker','Defender','Status','Started','Action'].map(h=>(
+                        <div key={h} style={{ fontSize:9, color:'#475569', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', padding:'0 6px 6px' }}>{h}</div>
+                      ))}
+                    </div>
+                    {adminWars.map((w:any) => (
+                      <div key={w.id} className="hrow" style={{ display:'grid', gridTemplateColumns:'1fr 70px 70px 80px 140px 80px', gap:0, padding:'7px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', alignItems:'center' }}>
+                        <div style={{ padding:'0 6px', fontSize:10, color:'#64748b', fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{w.id?.slice(0,16)}…</div>
+                        <div style={{ padding:'0 6px', fontSize:12, color:'#ef4444', fontWeight:700, fontFamily:'monospace' }}>{w.attacker_code}</div>
+                        <div style={{ padding:'0 6px', fontSize:12, color:'#60a5fa', fontWeight:700, fontFamily:'monospace' }}>{w.defender_code}</div>
+                        <div style={{ padding:'0 6px' }}>
+                          <span style={{ fontSize:9, padding:'2px 8px', borderRadius:10, background: w.status==='active'?'rgba(34,211,138,0.12)':'rgba(100,116,139,0.12)', color: w.status==='active'?'#22d38a':'#64748b', fontWeight:700 }}>{w.status}</span>
+                        </div>
+                        <div style={{ padding:'0 6px', fontSize:10, color:'#475569' }}>{w.started_at ? new Date(w.started_at).toLocaleString() : '—'}</div>
+                        <div style={{ padding:'0 6px' }}>
+                          {w.status==='active' && (
+                            <button onClick={()=>endWar(w.id)} title="Force-finish this war" style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:4, color:'#f59e0b', cursor:'pointer', padding:'3px 8px', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
+                              <StopCircle size={11}/>End
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </>
               }
             </div>
           </div>

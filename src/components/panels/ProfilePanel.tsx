@@ -8,13 +8,14 @@ import { getCatchUpXPMultiplier } from '../../engine/catchup'
 import { computePPBreakdown, aggregateContributionsSinceJoin } from '../../engine/elections'
 import { usePlayerStore as usePlayerStoreBase } from '../../stores/playerStore'
 import ProfileTab from './ProfileTab'
+import SpecializationTab from './SpecializationTab'
 import InventoryTab from './InventoryTab'
 import SkillsTab from './SkillsTab'
 import CompaniesTab from './CompaniesTab'
 import AccountTab from './AccountTab'
 import SpriteAvatar from '../shared/SpriteAvatar'
 import {
-  User, Backpack, Star, Factory, Settings, Zap, Drumstick, BriefcaseBusiness, Hammer, Users
+  User, Backpack, Star, Factory, Settings, Zap, Drumstick, BriefcaseBusiness, Hammer, Users, Sparkles
 } from 'lucide-react'
 
 const TAB_ICON_PROPS = { color: '#22d38a', size: 18, strokeWidth: 2 }
@@ -22,6 +23,7 @@ const TAB_ICON_PROPS = { color: '#22d38a', size: 18, strokeWidth: 2 }
 function getTabIcon(id: string) {
   switch (id) {
     case 'profile': return <User {...TAB_ICON_PROPS} />
+    case 'specialization': return <Sparkles {...TAB_ICON_PROPS} />
     case 'inventory': return <Backpack {...TAB_ICON_PROPS} />
     case 'skills': return <Star {...TAB_ICON_PROPS} />
     case 'companies': return <Factory {...TAB_ICON_PROPS} />
@@ -30,11 +32,12 @@ function getTabIcon(id: string) {
   }
 }
 
-type SubTab = 'profile' | 'inventory' | 'skills' | 'companies' | 'account'
+type SubTab = 'profile' | 'specialization' | 'inventory' | 'skills' | 'companies' | 'account'
 
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'profile', label: 'Profile' },
+  { id: 'specialization', label: 'Spec' },
   { id: 'inventory', label: 'Inventory' },
   { id: 'skills', label: 'Skills' },
   { id: 'companies', label: 'Companies' },
@@ -255,6 +258,7 @@ export default function ProfilePanel() {
       {/* Tab Content */}
       <div className="profile-content">
         {activeTab === 'profile' && <ProfileTab />}
+        {activeTab === 'specialization' && <SpecializationTab />}
         {activeTab === 'inventory' && <InventoryTab />}
         {activeTab === 'skills' && <SkillsTab />}
         {activeTab === 'companies' && <CompaniesTab />}

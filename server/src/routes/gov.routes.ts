@@ -11,6 +11,12 @@ import { validate } from '../middleware/validate.js'
 
 const router = Router()
 
+/** Case-insensitive player name comparison (DB may store different casing) */
+function nameMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false
+  return a.toLowerCase() === b.toLowerCase()
+}
+
 // ═══════════════════════════════════════════════
 //  GET /api/gov/country/:code — Get government state
 // ═══════════════════════════════════════════════
@@ -49,15 +55,21 @@ router.get('/citizens/:code', async (req, res) => {
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, code)).limit(1)
     const congress: string[] = Array.isArray(gov?.congress) ? (gov.congress as string[]) : []
 
-    // Build citizen list with roles
+    // Build citizen list with roles (case-insensitive comparison to avoid casing mismatches)
     const citizens = citizenRows.map(p => {
       let role: string = 'citizen'
+      const pName = (p.name || '').toLowerCase()
       if (gov) {
-        if (gov.president === p.name) role = 'president'
-        else if (gov.vicePresident === p.name) role = 'vicepresident'
-        else if (gov.defenseMinister === p.name) role = 'defense_minister'
-        else if (gov.ecoMinister === p.name) role = 'eco_minister'
-        else if (congress.includes(p.name!)) role = 'congress'
+        const govPres = (gov.president || '').toLowerCase()
+        const govVP = (gov.vicePresident || '').toLowerCase()
+        const govDef = (gov.defenseMinister || '').toLowerCase()
+        const govEco = (gov.ecoMinister || '').toLowerCase()
+        const congressLower = congress.map(c => c.toLowerCase())
+        if (govPres && govPres === pName) role = 'president'
+        else if (govVP && govVP === pName) role = 'vicepresident'
+        else if (govDef && govDef === pName) role = 'defense_minister'
+        else if (govEco && govEco === pName) role = 'eco_minister'
+        else if (congressLower.includes(pName)) role = 'congress'
       }
       return {
         id: p.id,
@@ -97,7 +109,7 @@ router.post('/set-tax', requireAuth as any, validate(taxSchema), async (req, res
     // Verify caller is president
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can set tax rates.' }); return
     }
 
@@ -141,7 +153,7 @@ router.post('/build-infra', requireAuth as any, validate(infraSchema), async (re
     // Verify president
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can build infrastructure.' }); return
     }
 
@@ -189,7 +201,7 @@ router.post('/nationalize', requireAuth as any, validate(nationalizeSchema), asy
     // President check
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can nationalize.' }); return
     }
 
@@ -216,46 +228,87 @@ router.post('/nationalize', requireAuth as any, validate(nationalizeSchema), asy
 })
 
 // ═══════════════════════════════════════════════
-//  POST /api/gov/vote — Cast election vote
+//  ELECTIONS — Full PP-weighted election system
 // ═══════════════════════════════════════════════
 
-const voteSchema = z.object({
-  countryCode: z.string().min(2).max(4),
-  candidateName: z.string().min(1).max(32),
-})
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
-router.post('/vote', requireAuth as any, validate(voteSchema), async (req, res) => {
-  try {
-    const { playerId } = (req as AuthRequest).player!
-    const { countryCode, candidateName } = req.body
-
-    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!player || player.countryCode !== countryCode) {
-      res.status(400).json({ error: 'You can only vote in your own country.' }); return
+/** Ensure a country has an active election cycle; create one if missing */
+function ensureElectionCycle(elections: any): any {
+  if (!elections || !elections.cycleStart || elections.phase === 'resolved') {
+    const now = Date.now()
+    return {
+      cycleStart: now,
+      cycleEnd: now + THIRTY_DAYS_MS,
+      phase: 'active',
+      candidates: elections?.candidates || [],
+      votes: elections?.votes || [],
+      lastResult: elections?.lastResult || null,
     }
+  }
+  return elections
+}
 
-    // Store vote in elections jsonb
+/** Compute PP from player stats (server-side) */
+function computePPFromPlayer(player: any): number {
+  const damage = Math.sqrt(Math.max(0, player.damageDone ?? 0) / 2000)
+  const production = Math.sqrt(Math.max(0, player.itemsProduced ?? 0))
+  const donations = 0 // Would need donation tracking per-country; use 0 for now
+  return Math.max(1, damage + production + donations)
+}
+
+// ── GET /api/gov/election/:countryCode ── Get election state
+router.get('/election/:countryCode', async (req, res) => {
+  try {
+    const { countryCode } = req.params
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     if (!gov) { res.status(404).json({ error: 'No government found' }); return }
 
-    const elections = (gov.elections as any) || {}
-    const votes = elections.votes || {}
-    votes[player.name!] = candidateName
-    elections.votes = votes
+    let elections = ensureElectionCycle((gov.elections as any))
 
-    await db.update(governments).set({ elections }).where(eq(governments.countryCode, countryCode))
+    // Auto-resolve if cycle has ended
+    if (Date.now() >= elections.cycleEnd && elections.phase === 'active') {
+      // Don't resolve here; just report it's pending resolution
+      elections.phase = 'pending_resolution'
+    }
 
-    res.json({ success: true, message: `Voted for ${candidateName}.` })
+    // Persist initialized cycle if it was missing
+    if (!(gov.elections as any)?.cycleStart) {
+      await db.update(governments).set({ elections }).where(eq(governments.countryCode, countryCode))
+    }
+
+    // Build candidate summaries with vote counts
+    const candidateSummaries = (elections.candidates || []).map((c: any) => {
+      const candidateVotes = (elections.votes || []).filter((v: any) => v.candidateId === c.id)
+      return {
+        id: c.id,
+        name: c.name,
+        registeredAt: c.registeredAt,
+        totalWeightedVotes: candidateVotes.reduce((sum: number, v: any) => sum + (v.weight || 0), 0),
+        voterCount: candidateVotes.length,
+      }
+    })
+
+    res.json({
+      success: true,
+      election: {
+        phase: elections.phase,
+        cycleStart: elections.cycleStart,
+        cycleEnd: elections.cycleEnd,
+        candidates: candidateSummaries,
+        totalVotes: (elections.votes || []).length,
+        lastResult: elections.lastResult || null,
+        currentPresident: gov.president || null,
+        currentCongress: gov.congress || [],
+      },
+    })
   } catch (err) {
-    console.error('[GOV] Vote error:', err)
+    console.error('[GOV] Election get error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
 
-// ═══════════════════════════════════════════════
-//  POST /api/gov/register-candidate — Register for election
-// ═══════════════════════════════════════════════
-
+// ── POST /api/gov/register-candidate ── Register for election
 router.post('/register-candidate', requireAuth as any, async (req, res) => {
   try {
     const { playerId } = (req as AuthRequest).player!
@@ -269,14 +322,17 @@ router.post('/register-candidate', requireAuth as any, async (req, res) => {
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     if (!gov) { res.status(404).json({ error: 'No government found' }); return }
 
-    const elections = (gov.elections as any) || {}
-    const candidates = elections.candidates || []
+    let elections = ensureElectionCycle((gov.elections as any))
+    if (elections.phase !== 'active') {
+      res.status(400).json({ error: 'Election cycle is not active.' }); return
+    }
 
-    if (candidates.includes(player.name)) {
+    const candidates = elections.candidates || []
+    if (candidates.find((c: any) => c.id === player.name)) {
       res.status(400).json({ error: 'Already registered as candidate.' }); return
     }
 
-    candidates.push(player.name)
+    candidates.push({ id: player.name!, name: player.name!, registeredAt: Date.now() })
     elections.candidates = candidates
 
     await db.update(governments).set({ elections }).where(eq(governments.countryCode, countryCode))
@@ -284,6 +340,166 @@ router.post('/register-candidate', requireAuth as any, async (req, res) => {
     res.json({ success: true, message: `${player.name} registered as candidate!` })
   } catch (err) {
     console.error('[GOV] Register candidate error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/gov/vote — Cast PP-weighted election vote
+const voteSchema = z.object({
+  countryCode: z.string().min(2).max(4),
+  candidateId: z.string().min(1).max(64),
+})
+
+router.post('/vote', requireAuth as any, validate(voteSchema), async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { countryCode, candidateId } = req.body
+
+    const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player || player.countryCode !== countryCode) {
+      res.status(400).json({ error: 'You can only vote in your own country.' }); return
+    }
+
+    const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    if (!gov) { res.status(404).json({ error: 'No government found' }); return }
+
+    let elections = ensureElectionCycle((gov.elections as any))
+    if (elections.phase !== 'active') {
+      res.status(400).json({ error: 'Election cycle is not active for voting.' }); return
+    }
+
+    // Check candidate exists
+    const candidates = elections.candidates || []
+    if (!candidates.find((c: any) => c.id === candidateId)) {
+      res.status(400).json({ error: 'Candidate not found.' }); return
+    }
+
+    // Check not already voted
+    const votes = elections.votes || []
+    if (votes.find((v: any) => v.voterId === player.name)) {
+      res.status(400).json({ error: 'You have already voted this election cycle.' }); return
+    }
+
+    // Compute PP server-side
+    const pp = computePPFromPlayer(player)
+
+    votes.push({
+      voterId: player.name!,
+      voterName: player.name!,
+      candidateId,
+      weight: Math.round(pp * 100) / 100,
+      castAt: Date.now(),
+    })
+    elections.votes = votes
+
+    await db.update(governments).set({ elections }).where(eq(governments.countryCode, countryCode))
+
+    const candidate = candidates.find((c: any) => c.id === candidateId)
+    res.json({ success: true, message: `Voted for ${candidate?.name || candidateId}! (PP weight: ${pp.toFixed(1)})` })
+  } catch (err) {
+    console.error('[GOV] Vote error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/gov/resolve-election — Resolve election cycle (admin/cron)
+router.post('/resolve-election', async (req, res) => {
+  try {
+    const { countryCode } = req.body
+    if (!countryCode) { res.status(400).json({ error: 'countryCode required' }); return }
+
+    const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+    if (!gov) { res.status(404).json({ error: 'No government found' }); return }
+
+    const elections = (gov.elections as any) || {}
+    const candidates = elections.candidates || []
+    const votes = elections.votes || []
+
+    if (candidates.length === 0) {
+      // No candidates — keep current president, reset cycle
+      const now = Date.now()
+      const newElections = {
+        cycleStart: now, cycleEnd: now + THIRTY_DAYS_MS, phase: 'active',
+        candidates: [], votes: [],
+        lastResult: { winnerId: gov.president, winnerName: gov.president, congress: gov.congress || [], resolvedAt: now, rankings: [] },
+      }
+      await db.update(governments).set({ elections: newElections }).where(eq(governments.countryCode, countryCode))
+      res.json({ success: true, message: 'No candidates — president retained.', result: newElections.lastResult })
+      return
+    }
+
+    // Build weighted votes for the engine
+    const weightedVotes = votes.map((v: any) => ({
+      voterId: v.voterId,
+      candidateId: v.candidateId,
+      weight: v.weight || 1,
+    }))
+
+    // Build candidate name map
+    const candidateNames: Record<string, string> = {}
+    candidates.forEach((c: any) => { candidateNames[c.id] = c.name })
+
+    // Resolve using the engine logic (inline — same as src/engine/elections.ts)
+    const candidateMap = new Map<string, { id: string; name: string; totalWeightedVotes: number; voterIds: string[] }>()
+    for (const vote of weightedVotes) {
+      let c = candidateMap.get(vote.candidateId)
+      if (!c) {
+        c = { id: vote.candidateId, name: candidateNames[vote.candidateId] || vote.candidateId, totalWeightedVotes: 0, voterIds: [] }
+        candidateMap.set(vote.candidateId, c)
+      }
+      c.totalWeightedVotes += vote.weight
+      if (!c.voterIds.includes(vote.voterId)) c.voterIds.push(vote.voterId)
+    }
+
+    // Also include candidates with no votes
+    for (const c of candidates) {
+      if (!candidateMap.has(c.id)) {
+        candidateMap.set(c.id, { id: c.id, name: c.name, totalWeightedVotes: 0, voterIds: [] })
+      }
+    }
+
+    const allCandidates = Array.from(candidateMap.values())
+    const MIN_COALITION = 1 // Relaxed for small player counts
+    const qualified = allCandidates.filter(c => c.voterIds.length >= MIN_COALITION)
+    qualified.sort((a, b) => b.totalWeightedVotes - a.totalWeightedVotes || b.voterIds.length - a.voterIds.length)
+
+    const winner = qualified.length > 0 ? qualified[0] : null
+    // Congress = next 5 qualified candidates
+    const congressMembers = qualified.slice(1, 6).map(c => c.name)
+
+    const rankings = allCandidates.sort((a, b) => b.totalWeightedVotes - a.totalWeightedVotes).map(c => ({
+      id: c.id, name: c.name, totalWeightedVotes: c.totalWeightedVotes, voterCount: c.voterIds.length,
+    }))
+
+    const now = Date.now()
+    const lastResult = {
+      winnerId: winner?.id || null,
+      winnerName: winner?.name || null,
+      congress: congressMembers,
+      resolvedAt: now,
+      rankings,
+    }
+
+    const newElections = {
+      cycleStart: now, cycleEnd: now + THIRTY_DAYS_MS, phase: 'active' as const,
+      candidates: [], votes: [],
+      lastResult,
+    }
+
+    // Update president + congress in the government row
+    const updates: any = { elections: newElections }
+    if (winner) {
+      updates.president = winner.name
+    }
+    updates.congress = congressMembers
+
+    await db.update(governments).set(updates).where(eq(governments.countryCode, countryCode))
+
+    console.log(`[ELECTION] ${countryCode}: ${winner ? `${winner.name} elected president` : 'no winner'}. Congress: [${congressMembers.join(', ')}]`)
+
+    res.json({ success: true, message: winner ? `${winner.name} elected president!` : 'No qualified winner.', result: lastResult })
+  } catch (err) {
+    console.error('[GOV] Resolve election error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })
@@ -318,7 +534,7 @@ router.post('/propose-law', requireAuth as any, validate(proposeSchema), async (
 
     // Must be president or congress member
     const congress = (gov.congress as string[]) || []
-    const isPresident = gov.president === player.name
+    const isPresident = nameMatch(gov.president, player.name)
     const isCongress = congress.includes(player.name!)
     if (!isPresident && !isCongress) {
       res.status(403).json({ error: 'Only president or congress members can propose laws.' }); return
@@ -379,7 +595,7 @@ router.post('/vote-law', requireAuth as any, validate(voteLawSchema), async (req
     if (!gov || !player) { res.status(404).json({ error: 'Not found' }); return }
 
     const congress = (gov.congress as string[]) || []
-    const isPresident = gov.president === player.name
+    const isPresident = nameMatch(gov.president, player.name)
     const isCongress = congress.includes(player.name!)
     if (!isPresident && !isCongress) {
       res.status(403).json({ error: 'Only president or congress members can vote on laws.' }); return
@@ -632,7 +848,7 @@ router.post('/set-enemy', requireAuth as any, validate(enemySchema), async (req,
 
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can declare sworn enemies.' }); return
     }
 
@@ -667,7 +883,7 @@ router.post('/start-enrichment', requireAuth as any, validate(enrichmentSchema),
 
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can start enrichment.' }); return
     }
 
@@ -741,7 +957,7 @@ router.post('/nuke', requireAuth as any, validate(nukeSchema), async (req, res) 
 
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can launch nuclear strikes.' }); return
     }
 
@@ -788,7 +1004,7 @@ router.post('/authorize-nuke', requireAuth as any, async (req, res) => {
     if (!gov || !player) { res.status(404).json({ error: 'Not found' }); return }
 
     const congress = (gov.congress as string[]) || []
-    if (!congress.includes(player.name!) && gov.president !== player.name) {
+    if (!congress.includes(player.name!) && !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only congress or president can authorize.' }); return
     }
 
@@ -817,7 +1033,7 @@ router.patch('/autodefense', requireAuth as any, validate(autodefenseSchema), as
 
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can set autodefense.' }); return
     }
 
@@ -847,7 +1063,7 @@ router.post('/force-vault/transfer', requireAuth as any, validate(forceVaultTran
 
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can manage the force vault.' }); return
     }
 
@@ -899,7 +1115,7 @@ router.post('/force-vault/spend', requireAuth as any, validate(forceVaultSpendSc
 
     // President or congress can spend
     const congress = (gov.congress as string[]) || []
-    if (gov.president !== player.name && !congress.includes(player.name!)) {
+    if (!nameMatch(gov.president, player.name) && !congress.includes(player.name!)) {
       res.status(403).json({ error: 'Only president or congress can spend from force vault.' }); return
     }
 
@@ -942,7 +1158,7 @@ router.post('/set-citizen-dividend', requireAuth as any, validate(dividendSchema
     // Verify president
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can set citizen dividend.' }); return
     }
 
@@ -978,7 +1194,7 @@ router.post('/appoint', requireAuth as any, validate(appointSchema), async (req,
 
     const [gov] = await db.select().from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!gov || !player || gov.president !== player.name) {
+    if (!gov || !player || !nameMatch(gov.president, player.name)) {
       res.status(403).json({ error: 'Only the president can appoint government positions.' }); return
     }
 

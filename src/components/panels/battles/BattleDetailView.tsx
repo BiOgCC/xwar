@@ -114,9 +114,9 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
   const tickDefDmg = battle.currentTick?.defenderDamage || 0
 
   // Hit handler
-  const handleHit = (side: 'attacker' | 'defender', sideKey: 'atk' | 'def', sideClr: string) => {
-    const r = battleStore.playerAttack(battleId, side)
-    if (r.message.includes('Too fast') || r.message.includes('Not enough stamina') || r.message.includes('Not enough oil') || r.message.includes('ammo') || r.message.includes('Out of')) {
+  const handleHit = async (side: 'attacker' | 'defender', sideKey: 'atk' | 'def', sideClr: string) => {
+    const r = await battleStore.playerAttack(battleId, side)
+    if (r.message.includes('Too fast') || r.message.includes('Not enough stamina') || r.message.includes('Not enough oil') || r.message.includes('ammo') || r.message.includes('Out of') || r.message.includes('Server error')) {
       ui.addFloatingText(r.message, window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
       return
     }

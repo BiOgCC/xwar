@@ -279,7 +279,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
     const setVis = (layers: string[], visible: boolean) => {
       const val = visible ? 'visible' : 'none'
       layers.forEach(id => {
-        try { m.setLayoutProperty(id, 'visibility', val) } catch {}
+        if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', val)
       })
     }
 

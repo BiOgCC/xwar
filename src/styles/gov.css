@@ -25,6 +25,7 @@
 
 .gov-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: transparent;
@@ -32,13 +33,13 @@
 }
 
 .gov-tab {
-  flex: 1;
+  flex: 0 0 20%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  padding: 8px 2px 6px;
+  padding: 6px 2px 5px;
   background: none;
   border: none;
   color: #3e4a5c;

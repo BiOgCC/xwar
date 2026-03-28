@@ -15,7 +15,7 @@ import { eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   players, playerSkills, items, divisions as divisionsTable,
-  battles as battlesTable, countries,
+  battles as battlesTable, countries, muMembers,
 } from '../db/schema.js'
 
 // ═══════════════════════════════════════════════
@@ -186,6 +186,34 @@ interface DivisionSnapshot {
 const playerCooldowns = new Map<string, number>()
 const PLAYER_ACTION_COOLDOWN_MS = 150
 
+// ── Adrenaline state (in-memory, per-battle per-player) ──
+interface AdrenalineState {
+  value: number        // 0-100
+  peakAt: number       // timestamp when hit 100 (0 = not peaked)
+  crashUntil: number   // timestamp crash debuff expires
+  surgeUntil: number   // timestamp surge buff expires
+  surgeOrder: TacticalOrder // order active when surge was triggered
+}
+
+// Key: `${battleId}::${playerId}`
+const adrenalineStates = new Map<string, AdrenalineState>()
+
+function getAdrenaline(battleId: string, playerId: string): AdrenalineState {
+  const key = `${battleId}::${playerId}`
+  let state = adrenalineStates.get(key)
+  if (!state) {
+    state = { value: 0, peakAt: 0, crashUntil: 0, surgeUntil: 0, surgeOrder: 'none' }
+    adrenalineStates.set(key, state)
+  }
+  return state
+}
+
+function cleanupAdrenaline(battleId: string): void {
+  for (const key of adrenalineStates.keys()) {
+    if (key.startsWith(`${battleId}::`)) adrenalineStates.delete(key)
+  }
+}
+
 // ═══════════════════════════════════════════════
 //  BATTLE SERVICE CLASS
 // ═══════════════════════════════════════════════
@@ -193,6 +221,7 @@ const PLAYER_ACTION_COOLDOWN_MS = 150
 class BattleService {
   private battles = new Map<string, Battle>()
   private divisionCache = new Map<string, DivisionSnapshot>()
+  private weaponPresence = new Map<string, Record<'attacker' | 'defender', Record<string, { players: Record<string, { hitCount: number; totalDamage: number }>; expiryTick: number }>>>()
   private io: SocketServer | null = null
 
   /** Attach Socket.IO server */
@@ -232,45 +261,15 @@ class BattleService {
     const id = `srv_battle_${Date.now()}_${attackerCode}_${defenderCode}`
     const now = Date.now()
 
-    // Load attacker divisions
-    const atkDivRows = await db.select().from(divisionsTable)
-      .where(eq(divisionsTable.countryCode, attackerCode))
-    const atkReadyDivs = atkDivRows.filter(d => d.status === 'ready')
-
-    if (atkReadyDivs.length === 0) {
-      return { success: false, message: 'No ready divisions to attack with.' }
-    }
-
-    // Load defender divisions (auto-defense: all ready divisions)
-    const defDivRows = await db.select().from(divisionsTable)
-      .where(eq(divisionsTable.countryCode, defenderCode))
-    const defReadyDivs = defDivRows.filter(d => d.status === 'ready')
-
-    const atkDivIds = atkReadyDivs.map(d => d.id)
-    const defDivIds = defReadyDivs.map(d => d.id)
-
-    // Cache division snapshots
-    for (const d of [...atkReadyDivs, ...defReadyDivs]) {
-      this.cacheDivision(d)
-    }
-
-    // Mark divisions as in_combat in DB
-    if (atkDivIds.length > 0) {
-      await db.update(divisionsTable).set({ status: 'in_combat' }).where(inArray(divisionsTable.id, atkDivIds))
-    }
-    if (defDivIds.length > 0) {
-      await db.update(divisionsTable).set({ status: 'in_combat' }).where(inArray(divisionsTable.id, defDivIds))
-    }
-
     const battle: Battle = {
       id, type, attackerId: attackerCode, defenderId: defenderCode,
       regionName, startedAt: now, ticksElapsed: 0, status: 'active',
       attacker: {
-        countryCode: attackerCode, divisionIds: atkDivIds, engagedDivisionIds: atkDivIds,
+        countryCode: attackerCode, divisionIds: [], engagedDivisionIds: [],
         damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
       },
       defender: {
-        countryCode: defenderCode, divisionIds: defDivIds, engagedDivisionIds: defDivIds,
+        countryCode: defenderCode, divisionIds: [], engagedDivisionIds: [],
         damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
       },
       attackerRoundsWon: 0, defenderRoundsWon: 0,
@@ -278,7 +277,7 @@ class BattleService {
       currentTick: { attackerDamage: 0, defenderDamage: 0 },
       combatLog: [{
         tick: 0, timestamp: now, type: 'phase_change', side: 'attacker',
-        message: `⚔️ Battle for ${regionName} begins! ${atkDivIds.length} vs ${defDivIds.length} divisions.`,
+        message: `⚔️ Battle for ${regionName} begins!`,
       }],
       attackerDamageDealers: {}, defenderDamageDealers: {},
       damageFeed: [], divisionCooldowns: {},
@@ -288,19 +287,13 @@ class BattleService {
 
     this.battles.set(id, battle)
 
-    // Also persist to DB
-    await db.insert(battlesTable).values({
-      id, attackerId: attackerCode, defenderId: defenderCode,
-      regionName, status: 'active',
-    })
-
     // Broadcast battle start
     this.emit(id, 'battle:start', {
       battleId: id, attackerId: attackerCode, defenderId: defenderCode,
-      regionName, atkDivCount: atkDivIds.length, defDivCount: defDivIds.length,
+      regionName, atkDivCount: 0, defDivCount: 0,
     })
 
-    logger.info(`[Battle] Launched: ${attackerCode} → ${defenderCode} (${regionName}), ${atkDivIds.length} vs ${defDivIds.length} divs`)
+    logger.info(`[Battle] Launched: ${attackerCode} → ${defenderCode} (${regionName})`)
     return { success: true, message: `Battle for ${regionName} has begun!`, battleId: id }
   }
 
@@ -319,32 +312,42 @@ class BattleService {
 
   async playerAttack(
     battleId: string, playerId: string, playerName: string, countryCode: string,
-  ): Promise<{ damage: number; isCrit: boolean; message: string }> {
+    forceSide?: 'attacker' | 'defender',
+  ): Promise<{ damage: number; isCrit: boolean; isMiss: boolean; isDodged: boolean; side: 'attacker' | 'defender'; message: string; staminaLeft: number; adrenaline: number }> {
+    const FAIL = (msg: string) => ({ damage: 0, isCrit: false, isMiss: false, isDodged: false, side: 'attacker' as const, message: msg, staminaLeft: -1, adrenaline: 0 })
+
     // Rate limit
     const now = Date.now()
     const lastAction = playerCooldowns.get(playerId) ?? 0
     if (now - lastAction < PLAYER_ACTION_COOLDOWN_MS) {
-      return { damage: 0, isCrit: false, message: 'Too fast! Wait a moment.' }
+      return FAIL('Too fast! Wait a moment.')
     }
     playerCooldowns.set(playerId, now)
 
     const battle = this.battles.get(battleId)
     if (!battle || battle.status !== 'active') {
-      return { damage: 0, isCrit: false, message: 'No active battle.' }
+      return FAIL('No active battle.')
     }
 
-    // Auto-detect side from country
+    // Determine side — use forceSide if provided, otherwise auto-detect from country
     let side: 'attacker' | 'defender'
-    if (countryCode === battle.attackerId) side = 'attacker'
-    else if (countryCode === battle.defenderId) side = 'defender'
-    else return { damage: 0, isCrit: false, message: 'Your country is not in this battle.' }
+    if (forceSide) {
+      side = forceSide
+    } else if (countryCode === battle.attackerId) {
+      side = 'attacker'
+    } else if (countryCode === battle.defenderId) {
+      side = 'defender'
+    } else {
+      // Foreign player without explicit side — default to attacker
+      side = 'attacker'
+    }
 
     // Fetch player + skills + equipped items from DB
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!player) return { damage: 0, isCrit: false, message: 'Player not found.' }
+    if (!player) return FAIL('Player not found.')
 
     const staminaVal = Number(player.stamina ?? 0)
-    if (staminaVal < 5) return { damage: 0, isCrit: false, message: 'Not enough stamina (5 required).' }
+    if (staminaVal < 5) return FAIL('Not enough stamina (5 required).')
 
     const [skills] = await db.select().from(playerSkills).where(eq(playerSkills.playerId, playerId)).limit(1)
 
@@ -362,10 +365,25 @@ class BattleService {
       eqPrecision += st.precision || 0
     }
 
-    // Ammo multiplier
+    // Ammo check: non-knife weapons require ammo
+    const weaponItem = equippedItems.find((i: any) => {
+      const slot = (i as any).slot || ''
+      return slot === 'weapon'
+    })
+    const weaponSubtype = weaponItem ? ((weaponItem as any).weaponSubtype || (weaponItem.stats as any)?.weaponSubtype || 'knife') : 'knife'
+
+    const equippedAmmo = player.equippedAmmo || 'none'
     let ammoMult = 1.0
     let ammoCritBonus = 0
-    const equippedAmmo = player.equippedAmmo || 'none'
+
+    if (weaponSubtype !== 'knife') {
+      if (equippedAmmo === 'none') return FAIL('No ammo equipped! Equip ammo to fire.')
+      const ammoField = `${equippedAmmo}Bullets` as keyof typeof player
+      const ammoCount = Number((player as any)[ammoField] ?? 0)
+      if (ammoCount <= 0) return FAIL(`Out of ${equippedAmmo} ammo!`)
+    }
+
+    // Apply ammo multiplier + consume
     if (equippedAmmo !== 'none') {
       const ammoField = `${equippedAmmo}Bullets` as keyof typeof player
       const ammoCount = Number((player as any)[ammoField] ?? 0)
@@ -390,38 +408,326 @@ class BattleService {
     // Tactical order effects
     const orderFx = TACTICAL_ORDERS[side === 'attacker' ? battle.attackerOrder : battle.defenderOrder].effects
 
-    const isCrit = Math.random() * 100 < (critRate + orderFx.critBonus)
-    let damage = Math.floor(baseDmg * ammoMult)
-    if (isCrit) damage = Math.floor(damage * critMultiplier * orderFx.critDmgMult)
-    damage = Math.round(damage * orderFx.atkMult)
+    // Armor-based stamina cost reduction (mirrors client)
+    const armorBlock = eqArmor + (skills?.armor ?? 0) * 5
+    const armorMit = armorBlock / (armorBlock + 100)
+    const staCost = Math.max(1, Math.ceil(5 * (1 - armorMit)))
+
+    if (staminaVal < staCost) return FAIL(`Not enough stamina (${staCost} required).`)
+
+    // ── Dodge check: 8-13% base chance, free hit (no stamina cost) ──
+    const baseDodgeChance = 8 + Math.random() * 5
+    const dodgeChance = baseDodgeChance * orderFx.dodgeMult
+    const isDodged = Math.random() * 100 < dodgeChance
+
+    // Deduct stamina (skip on dodge — free hit)
+    const newStamina = isDodged ? staminaVal : Math.max(0, staminaVal - staCost)
+    await db.update(players).set({
+      stamina: String(newStamina),
+    }).where(eq(players.id, playerId))
+
+    // ── Miss check: glancing blow (50% base damage) ──
+    const effectiveHitRate = Math.min(100, rawHitRate + (orderFx.hitBonus * 100))
+    const missRoll = Math.random() * 100
+    const isMiss = !isDodged && missRoll >= effectiveHitRate
+
+    // ── Compute damage (miss = 50% glancing, full hit = 93-108% range) ──
+    let damage: number
+    let isCrit = false
+
+    // Magic Tea buff/debuff detection (needed for crit bonus)
+    const magicTeaBuffActive = player.magicTeaBuffUntil && new Date(player.magicTeaBuffUntil).getTime() > now
+    const magicTeaDebuffActive = !magicTeaBuffActive && player.magicTeaDebuffUntil && new Date(player.magicTeaDebuffUntil).getTime() > now
+    const magicTeaCritBonus = magicTeaBuffActive ? 10 : 0
+
+    if (isMiss) {
+      // Glancing blow: 50% base damage, no crit
+      damage = Math.max(1, Math.floor(baseDmg * ammoMult * orderFx.atkMult * 0.50 * (0.7 + Math.random() * 0.3)))
+    } else {
+      // Full hit: 93-108% range
+      const baseRoll = 0.93 + Math.random() * 0.15
+      damage = Math.floor(baseDmg * baseRoll * ammoMult * orderFx.atkMult)
+
+      // Crit check (includes Magic Tea +10% bonus)
+      isCrit = Math.random() * 100 < (critRate + magicTeaCritBonus + orderFx.critBonus)
+      if (isCrit) {
+        damage = Math.floor(damage * critMultiplier * orderFx.critDmgMult)
+        damage = Math.max(damage, baseDmg)
+      }
+    }
 
     // Cap damage
     damage = Math.min(damage, MAX_DAMAGE_PER_CALL)
 
-    // Apply infra bonus
+    // ── Buff multipliers (applied to both miss and full hit) ──
+    let buffMsg = ''
+
+    // Magic Tea: +80% buff / -90% debuff
+    if (magicTeaBuffActive) {
+      damage = Math.floor(damage * 1.80)
+      buffMsg += ' 🍵 TEA BUFF!'
+    } else if (magicTeaDebuffActive) {
+      damage = Math.floor(damage * 0.10)
+      buffMsg += ' 🍵 TEA HANGOVER!'
+    }
+
+    // MU Bonus: +5% base + 1%/member (capped at +20%)
+    try {
+      const muMembership = await db.select({ unitId: muMembers.unitId })
+        .from(muMembers).where(eq(muMembers.playerId, playerName)).limit(1)
+      if (muMembership.length > 0) {
+        const memberCount = await db.select({ count: sql<number>`count(*)::int` })
+          .from(muMembers).where(eq(muMembers.unitId, muMembership[0].unitId))
+        const members = memberCount[0]?.count || 0
+        const muBonus = Math.min(1.20, 1.05 + members * 0.01)
+        if (muBonus > 1.0) {
+          damage = Math.floor(damage * muBonus)
+          buffMsg += ` 🏴 MU +${Math.round((muBonus - 1) * 100)}%`
+        }
+      }
+    } catch (e) { /* MU query failed, skip bonus */ }
+
+    // Infrastructure Weapon Bonus: +20% for jet/warship/submarine
+    if (weaponSubtype === 'jet' || weaponSubtype === 'warship' || weaponSubtype === 'submarine') {
+      try {
+        const [playerCountryRow] = await db.select({
+          airportLevel: countries.airportLevel,
+          portLevel: countries.portLevel,
+        }).from(countries).where(eq(countries.code, countryCode)).limit(1)
+
+        const hasAirport = weaponSubtype === 'jet' && playerCountryRow?.airportLevel && playerCountryRow.airportLevel > 0
+        const hasPort = (weaponSubtype === 'warship' || weaponSubtype === 'submarine') && playerCountryRow?.portLevel && playerCountryRow.portLevel > 0
+
+        if (hasAirport || hasPort) {
+          damage = Math.floor(damage * 1.20)
+          const icon = weaponSubtype === 'jet' ? '✈️' : '🚢'
+          buffMsg += ` ${icon} INFRA +20%`
+        }
+      } catch (e) { /* infra query failed, skip bonus */ }
+    }
+
+    // Weapon Counter-Buff
+    const counterBattle = this.weaponPresence.get(battleId)
+    if (counterBattle && weaponSubtype && weaponSubtype !== 'knife') {
+      const enemySide = side === 'attacker' ? 'defender' : 'attacker'
+      const enemyPresence = counterBattle[enemySide] || {}
+      const counterTable: Record<string, { counter: string; perPlayer: number }> = {
+        rifle: { counter: 'shotgun', perPlayer: 0.05 },
+        shotgun: { counter: 'sniper_rifle', perPlayer: 0.05 },
+        sniper_rifle: { counter: 'rifle', perPlayer: 0.05 },
+        tank: { counter: 'rpg', perPlayer: 0.08 },
+        rpg: { counter: 'jet', perPlayer: 0.08 },
+        jet: { counter: 'warship', perPlayer: 0.08 },
+        warship: { counter: 'submarine', perPlayer: 0.08 },
+        submarine: { counter: 'tank', perPlayer: 0.08 },
+      }
+      for (const [enemyWeapon, entry] of Object.entries(enemyPresence)) {
+        if (!entry || entry.expiryTick <= (battle.ticksElapsed || 0)) continue
+        const rule = counterTable[enemyWeapon]
+        if (!rule || rule.counter !== weaponSubtype) continue
+        const qualifiedCount = Object.values(entry.players)
+          .filter(p => p.hitCount >= 3 && p.totalDamage >= 500).length
+        if (qualifiedCount <= 0) continue
+        const mult = 1 + rule.perPlayer * qualifiedCount
+        damage = Math.floor(damage * mult)
+        buffMsg += ` 🎯 COUNTER +${Math.round((mult - 1) * 100)}%`
+        break
+      }
+    }
+
+    // Record weapon presence for counter-buff tracking
+    this.recordWeaponPresence(battleId, side, weaponSubtype, playerName, damage)
+
+    // Military base infra bonus
     const [sideCountry] = await db.select().from(countries)
       .where(eq(countries.code, side === 'attacker' ? battle.attackerId : battle.defenderId)).limit(1)
     if (sideCountry?.militaryBaseLevel && sideCountry.militaryBaseLevel > 0) {
       damage = Math.round(damage * (1 + 0.05 + Math.random() * 0.15))
     }
 
-    // Deduct stamina
-    await db.update(players).set({
-      stamina: String(Math.max(0, staminaVal - 5)),
-    }).where(eq(players.id, playerId))
+    // Ensure minimum 1 damage
+    damage = Math.max(1, damage)
+
+    // ── Adrenaline: build + surge/crash multipliers ──
+    const adrState = getAdrenaline(battleId, playerId)
+    const now2 = Date.now()
+
+    // Build adrenaline (+5 per attack, both miss and hit)
+    adrState.value = Math.min(100, adrState.value + 5)
+    if (adrState.value >= 100 && !adrState.peakAt) adrState.peakAt = now2
+
+    // Crash detection: at 100 for 20+ seconds → crash
+    if (adrState.value >= 100 && adrState.peakAt && now2 - adrState.peakAt > 20000) {
+      adrState.value = 0
+      adrState.peakAt = 0
+      adrState.crashUntil = now2 + 8000
+    }
+
+    // Apply surge multiplier (if active)
+    let surgeMsg = ''
+    const isSurging = adrState.surgeUntil > now2
+    if (isSurging) {
+      let surgeMult = 1.40
+      if (adrState.surgeOrder === 'charge') surgeMult = 1.60
+      else if (adrState.surgeOrder === 'precision') surgeMult = 1.40
+      else if (adrState.surgeOrder === 'blitz') surgeMult = 1.30
+      damage = Math.floor(damage * surgeMult)
+      surgeMsg = ' ⚡ SURGE!'
+
+      // Precision + Surge: force crit if not already
+      if (adrState.surgeOrder === 'precision' && !isCrit) {
+        damage = Math.floor(damage * critMultiplier)
+        damage = Math.max(damage, baseDmg)
+      }
+    }
+
+    // Apply crash debuff (-20%)
+    const isCrashed = adrState.crashUntil > now2
+    if (isCrashed) {
+      damage = Math.floor(damage * 0.80)
+      surgeMsg = ' 💥 CRASHED!'
+    }
+
+    // Re-ensure minimum after mults
+    damage = Math.max(1, damage)
 
     // Record damage
-    this.addDamage(battleId, side, damage, isCrit, false, playerName)
+    this.addDamage(battleId, side, damage, isCrit, isDodged, playerName)
+
+    // ── Phase 5: Server-side rewards & side effects ──
+    let dropMsg = ''
+
+    // Loot drops: 7% base chance
+    const dropRoll = Math.random() * 100
+    if (dropRoll < 7) {
+      const lootRoll = Math.random()
+      if (lootRoll < 0.01) {
+        await db.execute(sql`UPDATE players SET bitcoin = bitcoin + 1 WHERE id = ${playerId}`)
+        dropMsg += ' [₿+1]'
+      } else if (lootRoll < 0.34) {
+        await db.execute(sql`UPDATE players SET military_boxes = military_boxes + 1 WHERE id = ${playerId}`)
+        dropMsg += ' [🧰+1]'
+      } else {
+        await db.execute(sql`UPDATE players SET loot_boxes = loot_boxes + 1 WHERE id = ${playerId}`)
+        dropMsg += ' [📦+1]'
+      }
+    }
+
+    // Badge of Honor: 5% chance per hit
+    if (Math.random() * 100 < 5) {
+      await db.execute(sql`UPDATE players SET badges_of_honor = badges_of_honor + 1 WHERE id = ${playerId}`)
+      dropMsg += ' [🎖️+1]'
+    }
+
+    // Durability: -1 on all equipped items
+    try {
+      await db.execute(sql`UPDATE items SET durability = GREATEST(0, CAST(durability AS numeric) - 1) WHERE owner_id = ${playerId} AND equipped = true`)
+    } catch (e) { /* durability update failed, non-critical */ }
+
+    // XP: +25
+    try {
+      await db.execute(sql`UPDATE players SET experience = experience + 25 WHERE id = ${playerId}`)
+    } catch (e) { /* xp update failed */ }
+
+    // Specialization: +3 military XP
+    try {
+      await db.execute(sql`INSERT INTO player_specialization (player_id, military_xp) VALUES (${playerId}, 3) ON CONFLICT (player_id) DO UPDATE SET military_xp = player_specialization.military_xp + 3`)
+    } catch (e) { /* spec update failed */ }
+
+    // Damage tracking
+    try {
+      await db.execute(sql`UPDATE players SET damage_done = COALESCE(damage_done, 0) + ${damage} WHERE id = ${playerId}`)
+    } catch (e) { /* damage tracking failed */ }
 
     // Broadcast hit event
     this.emit(battleId, 'battle:playerHit', {
-      battleId, side, playerName, damage, isCrit,
+      battleId, side, playerName, damage, isCrit, isMiss, isDodged,
     })
 
+    const message = (isMiss
+      ? `💨 Glancing blow! ${damage} damage.`
+      : isDodged
+        ? `🎯 FREE HIT! ${damage} damage (no stamina cost)!`
+        : isCrit
+          ? `💥 CRITICAL HIT! ${damage} damage dealt!`
+          : `⚔️ ${damage} damage dealt.`) + surgeMsg + buffMsg + dropMsg
+
+    return { damage, isCrit, isMiss, isDodged, side, message, staminaLeft: newStamina, adrenaline: adrState.value }
+  }
+
+  // ── Weapon presence tracking for counter-buff system ──
+
+  private recordWeaponPresence(battleId: string, side: 'attacker' | 'defender', weaponSubtype: string, playerName: string, damage: number): void {
+    if (!weaponSubtype || weaponSubtype === 'knife') return
+    const battle = this.battles.get(battleId)
+    if (!battle) return
+
+    let presence = this.weaponPresence.get(battleId)
+    if (!presence) {
+      presence = { attacker: {}, defender: {} }
+      this.weaponPresence.set(battleId, presence)
+    }
+
+    const sidePresence = presence[side]
+    if (!sidePresence[weaponSubtype]) {
+      sidePresence[weaponSubtype] = { players: {}, expiryTick: 0 }
+    }
+    const entry = sidePresence[weaponSubtype]
+    if (!entry.players[playerName]) {
+      entry.players[playerName] = { hitCount: 0, totalDamage: 0 }
+    }
+    entry.players[playerName].hitCount += 1
+    entry.players[playerName].totalDamage += damage
+    entry.expiryTick = (battle.ticksElapsed || 0) + 30  // 30 ticks expiry
+  }
+
+  private cleanupWeaponPresence(battleId: string): void {
+    this.weaponPresence.delete(battleId)
+  }
+
+  // ── Activate adrenaline surge (player-initiated) ──
+
+  activateSurge(
+    battleId: string, playerId: string, countryCode: string,
+  ): { success: boolean; message: string; adrenaline: number } {
+    const battle = this.battles.get(battleId)
+    if (!battle || battle.status !== 'active') {
+      return { success: false, message: 'No active battle.', adrenaline: 0 }
+    }
+
+    const adrState = getAdrenaline(battleId, playerId)
+    if (adrState.value < 80) {
+      return { success: false, message: `Need 80+ adrenaline (current: ${adrState.value}).`, adrenaline: adrState.value }
+    }
+
+    // Determine side + order
+    let side: 'attacker' | 'defender'
+    if (countryCode === battle.attackerId) side = 'attacker'
+    else if (countryCode === battle.defenderId) side = 'defender'
+    else return { success: false, message: 'Not in this battle.', adrenaline: adrState.value }
+
+    const order = side === 'attacker' ? battle.attackerOrder : battle.defenderOrder
+    const duration = order === 'blitz' ? 5000 : 10000
+
+    // Consume adrenaline, activate surge
+    adrState.value = 0
+    adrState.peakAt = 0
+    adrState.surgeUntil = Date.now() + duration
+    adrState.surgeOrder = order
+
+    logger.info(`[Battle] ${playerId} activated surge (order: ${order}, duration: ${duration}ms)`)
+    return { success: true, message: `⚡ SURGE ACTIVATED! (${duration / 1000}s)`, adrenaline: 0 }
+  }
+
+  // ── Get player adrenaline state ──
+
+  getAdrenalineState(battleId: string, playerId: string): { adrenaline: number; isSurging: boolean; isCrashed: boolean } {
+    const state = getAdrenaline(battleId, playerId)
+    const now = Date.now()
     return {
-      damage,
-      isCrit,
-      message: isCrit ? `💥 CRITICAL HIT! ${damage} damage dealt!` : `⚔️ ${damage} damage dealt.`,
+      adrenaline: state.value,
+      isSurging: state.surgeUntil > now,
+      isCrashed: state.crashUntil > now,
     }
   }
 
@@ -872,6 +1178,11 @@ class BattleService {
   // ── Finalize a completed battle ──
 
   private async finalizeBattle(battle: Battle): Promise<void> {
+    // Clean up adrenaline state for this battle
+    cleanupAdrenaline(battle.id)
+    // Clean up weapon presence tracking
+    this.cleanupWeaponPresence(battle.id)
+
     // Set all in_combat divisions to recovering
     const allDivIds = [...battle.attacker.divisionIds, ...battle.defender.divisionIds]
     if (allDivIds.length > 0) {

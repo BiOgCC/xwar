@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { players, playerSkills, playerSpecialization, items, governments } from '../db/schema.js'
+import { players, playerSkills, playerSpecialization, items, governments, countries } from '../db/schema.js'
 import { v4 as uuidv4 } from 'uuid'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { calculateAttackDamage, grantXP, spendMoney, earnMoney, consumeBar } from '../services/player.service.js'
@@ -22,6 +22,14 @@ router.get('/', async (req, res) => {
       return
     }
 
+    // Resolve human-readable country name from countries table
+    let countryName: string | null = null
+    if (player.countryCode) {
+      const [c] = await db.select({ name: countries.name })
+        .from(countries).where(eq(countries.code, player.countryCode)).limit(1)
+      countryName = c?.name ?? null
+    }
+
     const [skills] = await db.select().from(playerSkills).where(eq(playerSkills.playerId, playerId)).limit(1)
     const [spec] = await db.select().from(playerSpecialization).where(eq(playerSpecialization.playerId, playerId)).limit(1)
 
@@ -30,6 +38,7 @@ router.get('/', async (req, res) => {
 
     res.json({
       ...playerData,
+      country: countryName,
       skills: skills || {},
       specialization: spec || {},
     })

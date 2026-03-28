@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { useWorldStore } from '../../stores/worldStore'
@@ -10,15 +10,16 @@ import GovRegionTab from './government/GovRegionTab'
 import GovLeyLinesTab from './government/GovLeyLinesTab'
 import GovResearchTab from './government/GovResearchTab'
 import GovLawsTab from './government/GovLawsTab'
+import GovElectionTab from './government/GovElectionTab'
 import GovMilitaryTab from './government/GovMilitaryTab'
 import CountryFlag from '../shared/CountryFlag'
 import '../../styles/gov.css'
 
 import {
-  Home, BarChart2, Wallet, Users, MapPin, Zap, Microscope, Scroll, Landmark, Shield, Users2
+  Home, BarChart2, Wallet, Users, MapPin, Zap, Microscope, Scroll, Landmark, Shield, Users2, Vote
 } from 'lucide-react'
 
-type GovTab = 'home' | 'people' | 'account' | 'citizenship' | 'regions' | 'leylines' | 'research' | 'laws' | 'military'
+type GovTab = 'home' | 'people' | 'account' | 'citizenship' | 'regions' | 'leylines' | 'research' | 'laws' | 'military' | 'election'
 
 const TABS: { id: GovTab; label: string; icon: React.ReactNode }[] = [
   { id: 'home', label: 'Home', icon: <Home size={18} strokeWidth={2} /> },
@@ -29,6 +30,7 @@ const TABS: { id: GovTab; label: string; icon: React.ReactNode }[] = [
   { id: 'military', label: 'Military', icon: <Shield size={18} strokeWidth={2} /> },
   { id: 'regions', label: 'Regions', icon: <MapPin size={18} strokeWidth={2} /> },
   { id: 'citizenship', label: 'Citizens', icon: <Users size={18} strokeWidth={2} /> },
+  { id: 'election', label: 'Election', icon: <Vote size={18} strokeWidth={2} /> },
   { id: 'leylines', label: 'Ley Lines', icon: <Zap size={18} strokeWidth={2} /> },
   { id: 'research', label: 'Research', icon: <Microscope size={18} strokeWidth={2} /> },
 ]
@@ -43,7 +45,12 @@ export default function GovernmentPanel() {
   const gov = govStore.governments[iso]
   const country = world.getCountry(iso)
 
-  if (!gov) return <div className="gov-panel"><div className="gov-empty">Government data unavailable for {iso}.</div></div>
+  // Hydrate government + citizens from backend on mount / country change
+  useEffect(() => {
+    govStore.fetchGovernment(iso)
+  }, [iso])
+
+  if (!gov) return <div className="gov-panel"><div className="gov-empty">Loading government data for {iso}…</div></div>
 
   return (
     <div className="gov-panel">
@@ -55,6 +62,11 @@ export default function GovernmentPanel() {
             <Landmark size={12} /> Country
           </div>
           <div className="gov-hero__name">{country?.name || iso}</div>
+          {gov?.president && (
+            <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              👑 {gov.president}
+            </div>
+          )}
         </div>
       </div>
 
@@ -84,6 +96,7 @@ export default function GovernmentPanel() {
         {tab === 'research' && <GovResearchTab />}
         {tab === 'laws' && <GovLawsTab />}
         {tab === 'military' && <GovMilitaryTab />}
+        {tab === 'election' && <GovElectionTab />}
       </div>
     </div>
   )

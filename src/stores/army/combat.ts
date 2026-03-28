@@ -90,9 +90,7 @@ export function createCombatSlice(
       if (div.status !== 'destroyed') return { success: false, message: 'Division is not destroyed.' }
 
       const template = DIVISION_TEMPLATES[div.type]
-      // Apply Economic Theory research bonus to revive cost
-      const ecoBonuses = useResearchStore.getState().getEconomyBonuses(div.countryCode || 'US')
-      const reviveCost = Math.floor(template.recruitCost.money * 0.5 * ecoBonuses.reviveCostMult) // 50% of recruit cost × research
+      const reviveCost = Math.floor(template.recruitCost.money * 0.5) // 50% of recruit cost
 
       const player = usePlayerStore.getState()
       if (player.money < reviveCost) return { success: false, message: `Need $${reviveCost.toLocaleString()} to revive. You have $${player.money.toLocaleString()}.` }
@@ -204,9 +202,7 @@ export function createCombatSlice(
 
       const template = DIVISION_TEMPLATES[div.type]
       const missingPct = (div.maxManpower - div.manpower) / div.maxManpower
-      // Apply Economic Theory research bonus to reinforce money cost
-      const rEcoBonuses = useResearchStore.getState().getEconomyBonuses(div.countryCode || 'US')
-      const reinforceCostMoney = Math.ceil(template.recruitCost.money * missingPct * rEcoBonuses.recruitCostMult)
+      const reinforceCostMoney = Math.ceil(template.recruitCost.money * missingPct)
       const reinforceCostOil = Math.ceil(template.recruitCost.oil * missingPct)
 
       const player = usePlayerStore.getState()

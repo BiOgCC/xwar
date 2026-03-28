@@ -406,10 +406,22 @@ export const useTacticalOpsStore = create<TacticalOpsState>((set, get) => ({
     const key = `${countryCode}_${opId}`
     const state = get()
 
+    // Ensure a full FundingState exists before marking as launched —
+    // when the president bypasses funding via treasury, no entry exists yet.
+    const existing = state.funding[key] ?? {
+      opId: opId as CountryOpId,
+      countryCode,
+      totalPoints: opDef.fundingRequired,
+      required: opDef.fundingRequired,
+      contributors: [],
+      status: 'funding' as const,
+      createdAt: Date.now(),
+    }
+
     set({
       funding: {
         ...state.funding,
-        [key]: { ...state.funding[key], status: 'launched' },
+        [key]: { ...existing, status: 'launched' },
       },
     })
 

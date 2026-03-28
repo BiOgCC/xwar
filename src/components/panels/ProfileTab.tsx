@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import type { EquipSlot } from '../../stores/inventoryStore'
-import ProfileSpecBars from './profile/ProfileSpecBars'
 import ProfileStatsGrid from './profile/ProfileStatsGrid'
 import ProfileGearSection from './profile/ProfileGearSection'
 import ProfileResources from './profile/ProfileResources'
@@ -20,7 +19,6 @@ export default function ProfileTab() {
 
   return (
     <div className="ptab">
-      <ProfileSpecBars />
       <ProfileStatsGrid />
       <ProfileGearSection
         onPickSlot={setPickerSlot}

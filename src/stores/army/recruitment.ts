@@ -23,10 +23,8 @@ export function createRecruitmentSlice(
       const player = usePlayerStore.getState()
       const baseCost = template.recruitCost
 
-      // Apply Economic Theory research bonus to recruit money cost
-      const ecoBonuses = useResearchStore.getState().getEconomyBonuses(player.countryCode || 'US')
       const cost = {
-        money: Math.floor(baseCost.money * ecoBonuses.recruitCostMult),
+        money: baseCost.money,
         oil: baseCost.oil,
         materialX: baseCost.materialX,
         scrap: baseCost.scrap,
@@ -85,12 +83,7 @@ export function createRecruitmentSlice(
       const id = `div_${++divCounter}_${Date.now()}`
       const { star, modifiers } = rollStarQuality()
 
-      // Apply Military Doctrine research bonus to training time
       let trainingMs = template.trainingTime * 15_000
-      try {
-        const milBonus = useResearchStore.getState().getMilitaryBonuses(player.countryCode || 'US')
-        trainingMs = Math.floor(trainingMs * milBonus.trainingTimeMult)
-      } catch { /* researchStore not ready */ }
 
       const division: Division = {
         id,
@@ -140,6 +133,15 @@ export function createRecruitmentSlice(
         const template = DIVISION_TEMPLATES[div.type]
         const newProgress = div.trainingProgress + 1
         const isComplete = newProgress >= template.trainingTime
+
+        // Specialization hook: military XP on training complete
+        if (isComplete) {
+          try {
+            import('../specializationStore').then(({ useSpecializationStore }) => {
+              useSpecializationStore.getState().recordTrainDivision()
+            }).catch(() => {})
+          } catch (_) {}
+        }
 
         return {
           divisions: {

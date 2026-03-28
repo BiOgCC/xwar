@@ -200,6 +200,16 @@ export function initSocketHooks() {
     targetRegion: string; type: string
   }) => {
     console.log(`[WS] ⚔️ Battle started: ${data.attackerCode} → ${data.defenderCode} in ${data.targetRegion}`)
+    // Fetch full battle from server and inject into store
+    import('./client').then(({ getBattle }) => {
+      getBattle(data.battleId).then((res: any) => {
+        if (res?.battle) {
+          useBattleStore.setState((s) => ({
+            battles: { ...s.battles, [data.battleId]: res.battle }
+          }))
+        }
+      }).catch(() => {})
+    })
   })
 
   socketManager.on('route:disrupted', (data: {

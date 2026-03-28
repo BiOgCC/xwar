@@ -3,10 +3,10 @@
  * Mirrors the logic from src/stores/inventoryStore.ts
  */
 
-type EquipTier = 't1' | 't2' | 't3' | 't4' | 't5' | 't6'
+type EquipTier = 't1' | 't2' | 't3' | 't4' | 't5' | 't6' | 't7'
 type EquipSlot = 'helmet' | 'chest' | 'legs' | 'gloves' | 'boots' | 'weapon' | 'vehicle'
 type EquipCategory = 'armor' | 'weapon' | 'vehicle'
-type WeaponSubtype = 'knife' | 'gun' | 'rifle' | 'sniper' | 'tank' | 'rpg' | 'jet' | 'warship'
+type WeaponSubtype = 'knife' | 'gun' | 'rifle' | 'sniper' | 'tank' | 'rpg' | 'jet' | 'warship' | 'submarine'
 
 interface EquipStats {
   damage?: number
@@ -21,11 +21,11 @@ const ARMOR_SLOTS: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
 
 const WEAPON_SUBTYPES: Record<EquipTier, WeaponSubtype[]> = {
   t1: ['knife'], t2: ['gun'], t3: ['rifle'], t4: ['sniper'],
-  t5: ['tank', 'rpg'], t6: ['jet', 'warship'],
+  t5: ['tank', 'rpg'], t6: ['jet', 'warship'], t7: ['submarine'],
 }
 
 const TIER_LABELS: Record<EquipTier, string> = {
-  t1: 'Common', t2: 'Uncommon', t3: 'Rare', t4: 'Epic', t5: 'Legendary', t6: 'Mythic',
+  t1: 'Common', t2: 'Uncommon', t3: 'Rare', t4: 'Epic', t5: 'Legendary', t6: 'Mythic', t7: 'Exotic',
 }
 
 function randomInt(min: number, max: number) {
@@ -42,6 +42,8 @@ function generateStats(
       return { name: 'RPG', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) }, weaponSubtype: 'rpg' }
     if (tier === 't6' && weaponSubtype === 'warship')
       return { name: 'Warship', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) }, weaponSubtype: 'warship' }
+    if (tier === 't7' && weaponSubtype === 'submarine')
+      return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(18, 25) }, weaponSubtype: 'submarine' }
 
     switch (tier) {
       case 't1': return { name: 'Knife', stats: { damage: randomInt(20, 49), critRate: 5 }, weaponSubtype: 'knife' }
@@ -50,8 +52,14 @@ function generateStats(
       case 't4': return { name: 'Sniper', stats: { damage: randomInt(121, 150), critRate: randomInt(16, 20) }, weaponSubtype: 'sniper' }
       case 't5': return { name: 'Tank', stats: { damage: randomInt(151, 199), critRate: randomInt(21, 30) }, weaponSubtype: 'tank' }
       case 't6': return { name: 'Jet', stats: { damage: randomInt(200, 300), critRate: randomInt(31, 49) }, weaponSubtype: 'jet' }
+      case 't7': return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(18, 25) }, weaponSubtype: 'submarine' }
     }
   } else if (category === 'vehicle') {
+    if (tier === 't7') {
+      return { name: 'T7 Submarine', stats: { damage: randomInt(400, 550), critRate: randomInt(20, 28) } }
+    } else if (tier === 't6') {
+      return { name: 'T6 Warship', stats: { damage: randomInt(301, 400), critRate: randomInt(16, 22) } }
+    }
     return { name: `T${tLevel} Vehicle`, stats: { damage: randomInt(10 * tLevel, 20 * tLevel) } }
   } else {
     const namePrefix = TIER_LABELS[tier]
@@ -70,7 +78,7 @@ export function rollItemOfTier(tier: EquipTier, ownerId: string) {
   let category: EquipCategory = Math.random() < 0.66 ? 'armor' : 'weapon'
   let slot: EquipSlot = 'weapon'
 
-  if (tier === 't6' && Math.random() < 0.20) {
+  if ((tier === 't6' || tier === 't7') && Math.random() < 0.20) {
     category = 'vehicle'; slot = 'vehicle'
   } else if (category === 'armor') {
     slot = ARMOR_SLOTS[Math.floor(Math.random() * ARMOR_SLOTS.length)]
@@ -98,11 +106,12 @@ export function rollItemOfTier(tier: EquipTier, ownerId: string) {
   }
 }
 
-/** Roll a loot box item (civilian: T1 50%, T2 39%, T3 7%, T4 3%, T5 0.85%, T6 0.15%) */
+/** Roll a loot box item (civilian: T1 50%, T2 39%, T3 7%, T4 3%, T5 0.85%, T6 0.10%, T7 0.05%) */
 export function rollLootBoxItem(ownerId: string) {
   const rT = Math.random() * 100
   let tier: EquipTier = 't1'
-  if (rT < 0.15) tier = 't6'
+  if (rT < 0.05) tier = 't7'
+  else if (rT < 0.15) tier = 't6'
   else if (rT < 1.00) tier = 't5'
   else if (rT < 4.00) tier = 't4'
   else if (rT < 11.00) tier = 't3'
@@ -110,11 +119,12 @@ export function rollLootBoxItem(ownerId: string) {
   return rollItemOfTier(tier, ownerId)
 }
 
-/** Roll a military box item (T3: 30%, T4: 25%, T5: 18%, T6: 7%) */
+/** Roll a military box item (T7: 2%, T6: 5%, T5: 18%, T4: 25%, T3: 30%, T2: 15%, T1: 5%) */
 export function rollMilitaryBoxItem(ownerId: string) {
   const rT = Math.random() * 100
   let tier: EquipTier = 't3'
-  if (rT < 7.00) tier = 't6'
+  if (rT < 2.00) tier = 't7'
+  else if (rT < 7.00) tier = 't6'
   else if (rT < 25.00) tier = 't5'
   else if (rT < 50.00) tier = 't4'
   else if (rT < 80.00) tier = 't3'
@@ -123,11 +133,11 @@ export function rollMilitaryBoxItem(ownerId: string) {
   return rollItemOfTier(tier, ownerId)
 }
 
-/** Generate starter kit for new player (T1-T6 equipment, T3 equipped) */
+/** Generate starter kit for new player (T1-T7 equipment, T3 equipped) */
 export function generateStarterKit(ownerId: string) {
   const kit: ReturnType<typeof rollItemOfTier>[] = []
   const armorSlots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
-  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
+  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6', 't7']
 
   tiers.forEach(tier => {
     // All armor slots
@@ -172,7 +182,7 @@ export function generateStarterKit(ownerId: string) {
 export function generateWelcomeKit(ownerId: string) {
   const kit: ReturnType<typeof rollItemOfTier>[] = []
   const armorSlots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots']
-  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
+  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6', 't7']
 
   tiers.forEach(tier => {
     armorSlots.forEach(slot => {

@@ -78,6 +78,12 @@ export async function hydrateGameState(): Promise<boolean> {
           ...state.player.skills,
         }))
       }
+
+      // Hydrate specialization
+      if (state.player.specialization) {
+        const { useSpecializationStore } = await import('../stores/specializationStore')
+        useSpecializationStore.getState().hydrateFromServer(state.player.specialization)
+      }
     }
 
     // Hydrate battles
@@ -291,6 +297,28 @@ export async function hydrateGameState(): Promise<boolean> {
         })),
       })
     }
+
+    // Hydrate active battles from server
+    try {
+      const battleData = await api.get<{ success: boolean; battles: any[] }>('/battle/active')
+      if (battleData.success && battleData.battles.length > 0) {
+        const { useBattleStore } = await import('../stores/battleStore')
+        const battles: Record<string, any> = {}
+        for (const b of battleData.battles) {
+          // Fetch full battle state for each active battle
+          try {
+            const full = await api.get<{ success: boolean; battle: any }>(`/battle/${b.id}`)
+            if (full.success && full.battle) {
+              battles[full.battle.id] = full.battle
+            }
+          } catch { /* skip individual battle fetch failures */ }
+        }
+        if (Object.keys(battles).length > 0) {
+          useBattleStore.setState(s => ({ battles: { ...s.battles, ...battles } }))
+          console.log(`[HYDRATE] ⚔️ Loaded ${Object.keys(battles).length} active battles`)
+        }
+      }
+    } catch { /* battles endpoint may not exist yet in some builds */ }
 
     console.log('[HYDRATE] ✅ Game state synced from server')
     return true

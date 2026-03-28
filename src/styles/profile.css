@@ -3489,3 +3489,298 @@
     grid-template-columns: repeat(6, 1fr);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   SPECIALIZATION TAB
+   ═══════════════════════════════════════════════════════════════ */
+.spec-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: spec-tab-in 250ms ease;
+}
+
+@keyframes spec-tab-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Daily XP Summary ─── */
+.spec-tab__daily {
+  background: rgba(10, 14, 23, 0.7);
+  border: 1px solid rgba(34, 211, 138, 0.15);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.spec-tab__daily-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.spec-tab__daily-icon {
+  display: flex;
+  line-height: 1;
+}
+
+.spec-tab__daily-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 800;
+  color: #22d38a;
+  letter-spacing: 0.1em;
+  flex: 1;
+}
+
+.spec-tab__daily-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 7px;
+  color: #64748b;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.spec-tab__daily-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.spec-tab__daily-track {
+  position: relative;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.spec-tab__daily-segment {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  transition: width 600ms ease;
+  opacity: 0.85;
+}
+
+.spec-tab__daily-segment:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.spec-tab__daily-segment:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.spec-tab__daily-nums {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-family: var(--font-display);
+  font-size: 10px;
+}
+
+.spec-tab__daily-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.spec-tab__daily-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  font-size: 7px;
+  font-family: var(--font-display);
+}
+
+.spec-tab__daily-chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.spec-tab__daily-chip-label {
+  color: #64748b;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.spec-tab__daily-chip-val {
+  font-weight: 800;
+  font-size: 8px;
+}
+
+/* ─── RP Production Card ─── */
+.spec-tab__rp-card {
+  background: rgba(10, 14, 23, 0.7);
+  border: 1px solid rgba(167, 139, 250, 0.15);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.spec-tab__rp-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #a78bfa, #7c3aed);
+  opacity: 0.6;
+}
+
+.spec-tab__rp-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.spec-tab__rp-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 800;
+  color: #a78bfa;
+  letter-spacing: 0.1em;
+}
+
+.spec-tab__rp-desc {
+  font-size: 9px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.spec-tab__rp-formula {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 8px;
+  color: #64748b;
+  padding: 5px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.spec-tab__rp-today {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9px;
+  color: #94a3b8;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.spec-tab__rp-today-val {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 900;
+  color: #a78bfa;
+  text-shadow: 0 0 10px rgba(167, 139, 250, 0.4);
+}
+
+/* ─── How to Earn Actions ─── */
+.spec-tab__actions {
+  background: rgba(10, 14, 23, 0.7);
+  border: 1px solid rgba(34, 211, 138, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spec-tab__actions-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 800;
+  color: #22d38a;
+  letter-spacing: 0.1em;
+}
+
+.spec-tab__actions-note {
+  font-size: 8px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.spec-tab__action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.spec-tab__action-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.spec-tab__action-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.spec-tab__action-row {
+  display: grid;
+  grid-template-columns: 1fr 56px 50px;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  transition: background 120ms ease;
+}
+
+.spec-tab__action-row:last-child {
+  border-bottom: none;
+}
+
+.spec-tab__action-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.spec-tab__action-name {
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+.spec-tab__action-xp {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-align: right;
+}
+
+.spec-tab__action-cap {
+  color: #475569;
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-align: right;
+  letter-spacing: 0.04em;
+}
+

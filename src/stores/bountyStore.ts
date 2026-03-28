@@ -83,6 +83,15 @@ export const useBountyStore = create<BountyState>((set, get) => ({
       const player = usePlayerStore.getState()
       player.earnMoney(res.reward)
 
+      // Specialization hook: mercenary XP from bounty claim
+      try {
+        const { useSpecializationStore } = await import('./specializationStore')
+        useSpecializationStore.getState().recordBountyClaim()
+        // RP contribution from bounty claims
+        const { useResearchStore } = await import('./researchStore')
+        useResearchStore.getState().contributeRP(3, 'bounty')
+      } catch (_) {}
+
       // Move into claimed history locally
       const state = get()
       const bounty = state.bounties.find(b => b.id === bountyId)

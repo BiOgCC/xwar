@@ -52,7 +52,7 @@ export function getItemImagePath(tier: EquipTier, slot: EquipSlot, category: Equ
   // Weapon subtypes with their own icons
   if (category === 'weapon' && weaponSubtype === 'rpg') return `/assets/items/${prefix}t5_weapon_rpg.png`
   if (category === 'weapon' && weaponSubtype === 'warship') return `/assets/items/${prefix}t6_weapon_warship.png`
-  if (weaponSubtype === 'submarine') return `/assets/items/${prefix ? '' : ''}t6_weapon_warship.png`
+  if (weaponSubtype === 'submarine') return `/assets/items/${prefix}t7_weapon_submarine.png`
 
   if (tier === 't6') {
     if (category === 'vehicle') return `/assets/items/${prefix}t6_weapon_warship.png`
@@ -60,7 +60,9 @@ export function getItemImagePath(tier: EquipTier, slot: EquipSlot, category: Equ
   }
   
   if (tier === 't7') {
-    return '/assets/items/t6_weapon_warship.png' // Fallback for T7 (no reinforced variant)
+    if (category === 'vehicle') return `/assets/items/${prefix}t7_weapon_submarine.png`
+    // Armor slots have their own T7 images
+    return `/assets/items/${prefix}t7_${slot}.png`
   }
   
   return `/assets/items/${prefix}${tier}_${slot}.png`

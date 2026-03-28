@@ -33,6 +33,7 @@ import {
   players, battles, wars, tradeRouteState, newsEvents,
   leyLineDefs, regionOwnership, countries, armies,
   companies, items, marketOrders, tradeHistory, casinoResults,
+  countryStocks,
 } from '../db/schema.js'
 import { validate } from '../middleware/validate.js'
 import { runFastCombatPipeline } from '../services/tick/fast-combat.pipeline.js'
@@ -1049,6 +1050,195 @@ router.post('/player/:id/role', validate(z.object({
 
     await db.update(players).set({ role }).where(eq(players.id, id))
     ok(res, { playerId: id, name: player.name, previousRole: player.role, newRole: role })
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PLAYER BAN — toggle ban status via role column
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── POST /api/admin/player/:id/ban ───────────────────────────────────────────
+// Toggle ban: if currently banned → restore to military; else → set to banned
+router.post('/player/:id/ban', async (req, res) => {
+  try {
+    const { id } = req.params
+    const [player] = await db.select({ id: players.id, name: players.name, role: players.role })
+      .from(players).where(eq(players.id, id)).limit(1)
+    if (!player) { res.status(404).json({ error: 'Player not found', code: 'NOT_FOUND' }); return }
+
+    const wasBanned = player.role === 'banned'
+    const newRole = wasBanned ? 'military' : 'banned'
+    await db.update(players).set({ role: newRole }).where(eq(players.id, id))
+    ok(res, { playerId: id, name: player.name, action: wasBanned ? 'unbanned' : 'banned', newRole })
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BATTLE / WAR CONTROL — list, seed, force-finish
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/admin/battles ───────────────────────────────────────────────────
+router.get('/battles', async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, attacker_id, defender_id, region_name, status,
+             round, max_rounds, attacker_damage, defender_damage,
+             attacker_rounds_won, defender_rounds_won,
+             started_at, finished_at, winner
+      FROM battles
+      ORDER BY
+        CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+        started_at DESC
+      LIMIT 50
+    `) as Record<string, unknown>[]
+    ok(res, rows)
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ── GET /api/admin/wars ─────────────────────────────────────────────────────
+router.get('/wars', async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, attacker_code, defender_code, status, started_at
+      FROM wars
+      ORDER BY
+        CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+        started_at DESC
+      LIMIT 30
+    `) as Record<string, unknown>[]
+    ok(res, rows)
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ── POST /api/admin/seed-battle ─────────────────────────────────────────────
+// Creates a battle row (and optionally a war) between two countries.
+// This is the admin tool to generate initial engagement for alpha testing.
+router.post('/seed-battle', validate(z.object({
+  attackerCode: z.string().min(2).max(4),
+  defenderCode: z.string().min(2).max(4),
+  regionName:   z.string().max(64).optional(),
+  maxRounds:    z.number().int().min(1).max(15).optional(),
+  createWar:    z.boolean().optional().default(false),
+})), async (req, res) => {
+  try {
+    const { attackerCode, defenderCode, regionName, maxRounds = 3, createWar } = req.body
+    const ac = attackerCode.toUpperCase()
+    const dc = defenderCode.toUpperCase()
+
+    // Verify both countries exist
+    const [a] = await db.select({ code: countries.code }).from(countries).where(eq(countries.code, ac)).limit(1)
+    const [d] = await db.select({ code: countries.code }).from(countries).where(eq(countries.code, dc)).limit(1)
+    if (!a) { res.status(404).json({ error: `Attacker country '${ac}' not found`, code: 'NOT_FOUND' }); return }
+    if (!d) { res.status(404).json({ error: `Defender country '${dc}' not found`, code: 'NOT_FOUND' }); return }
+
+    let warId: string | null = null
+
+    // Optionally create a war
+    if (createWar) {
+      const warRows = await db.insert(wars).values({
+        attackerCode: ac,
+        defenderCode: dc,
+        status: 'active',
+      }).returning({ id: wars.id })
+      warId = warRows[0]?.id ?? null
+    }
+
+    // Create the battle
+    const battleRows = await db.insert(battles).values({
+      attackerId: ac,
+      defenderId: dc,
+      regionName: regionName || `${ac}-${dc} Alpha Battle`,
+      status: 'active',
+      round: 1,
+      maxRounds,
+      attackerDamage: 0,
+      defenderDamage: 0,
+      attackerRoundsWon: 0,
+      defenderRoundsWon: 0,
+    }).returning({ id: battles.id })
+
+    ok(res, {
+      battleId: battleRows[0]?.id,
+      warId,
+      attacker: ac,
+      defender: dc,
+      regionName: regionName || `${ac}-${dc} Alpha Battle`,
+      maxRounds,
+    })
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ── POST /api/admin/end-battle ──────────────────────────────────────────────
+// Force-finish an active battle
+router.post('/end-battle', validate(z.object({
+  battleId: z.string().uuid(),
+  winner:   z.string().min(2).max(4).optional(),
+})), async (req, res) => {
+  try {
+    const { battleId, winner } = req.body
+    await db.update(battles).set({
+      status: 'finished',
+      finishedAt: new Date(),
+      ...(winner ? { winner: winner.toUpperCase() } : {}),
+    }).where(eq(battles.id, battleId))
+    ok(res, { battleId, status: 'finished', winner: winner?.toUpperCase() ?? null })
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ── POST /api/admin/end-war ─────────────────────────────────────────────────
+// Force-finish an active war
+router.post('/end-war', validate(z.object({
+  warId: z.string().uuid(),
+})), async (req, res) => {
+  try {
+    const { warId } = req.body
+    await db.update(wars).set({ status: 'finished' }).where(eq(wars.id, warId))
+    ok(res, { warId, status: 'finished' })
+  } catch (err) {
+    res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ECONOMY LEVERS — stock price manipulation
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── POST /api/admin/set-stock-price ──────────────────────────────────────────
+// Override a country's stock price directly
+router.post('/set-stock-price', validate(z.object({
+  countryCode: z.string().min(2).max(4),
+  price:       z.number().min(0.01).max(999999),
+})), async (req, res) => {
+  try {
+    const cc = req.body.countryCode.toUpperCase()
+    const price = req.body.price.toFixed(2)
+
+    // Upsert into country_stocks
+    await db.insert(countryStocks).values({
+      countryCode: cc,
+      price,
+      openPrice: price,
+      high: price,
+      low: price,
+      volume: 0,
+    }).onConflictDoUpdate({
+      target: countryStocks.countryCode,
+      set: { price, high: sql`GREATEST(high, ${price}::numeric)`, low: sql`LEAST(low, ${price}::numeric)` },
+    })
+
+    ok(res, { countryCode: cc, newPrice: price })
   } catch (err) {
     res.status(500).json({ error: String(err), code: 'INTERNAL' })
   }

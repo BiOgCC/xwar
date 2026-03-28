@@ -128,6 +128,9 @@ export interface SpecializationState {
   recordReferral: () => number
   recordBloodPactLevelUp: () => number
 
+  // ── Hydration ──
+  hydrateFromServer: (data: any) => void
+
   // ── Getters ──
   getMilitaryTier: () => TierInfo
   getEconomicTier: () => TierInfo
@@ -244,6 +247,14 @@ function handleDamageAccum(
   return { updates: { ...updates, [accumKey]: remainder, [countKey]: count + 1 }, gained }
 }
 
+// ── API sync helper (fire-and-forget) ──
+function syncToServer(specType: SpecCategory, gained: number) {
+  if (gained <= 0) return
+  import('../api/client').then(({ grantSpecializationApi }) => {
+    grantSpecializationApi(specType, Math.round(gained)).catch(() => {})
+  }).catch(() => {})
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 export const useSpecializationStore = create<SpecializationState>((set, get) => ({
   militaryXP: 0, economicXP: 0, politicianXP: 0, mercenaryXP: 0, influencerXP: 0,
@@ -266,6 +277,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = r.gained
       return r.updates
     })
+    syncToServer('military', gained)
     return gained
   },
   recordRoundWin: () => {
@@ -277,6 +289,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyRoundWinCount: c + 1 }
     })
+    syncToServer('military', gained)
     return gained
   },
   recordTrainDivision: () => {
@@ -288,19 +301,23 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyTrainCount: c + 1 }
     })
+    syncToServer('military', gained)
     return gained
   },
 
   // ═══ ECONOMIC ═══
   recordWork: () => {
     let gained = 0
+    console.log('[SPEC] recordWork() called')
     set((s) => {
       const reset = ensureToday(s); const m = { ...s, ...reset }
       const c = m.dailyWorkCount
       const { updates, gained: g } = addSpecXP(m, 'economic', 2, c, ACTION_CAPS.work)
       gained = g
+      console.log('[SPEC] recordWork gained:', g, 'daily work count:', c, 'economicXP after:', (m.economicXP || 0) + g)
       return { ...updates, dailyWorkCount: c + 1 }
     })
+    syncToServer('economic', gained)
     return gained
   },
   recordProduce: () => {
@@ -312,6 +329,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyProduceCount: c + 1 }
     })
+    syncToServer('economic', gained)
     return gained
   },
   recordDonate: (amount) => {
@@ -325,8 +343,10 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       const { updates: u1, gained: g1 } = addSpecXP(m, 'economic', units * 10, 0, 999)
       // Politician XP (on top of economic update)
       const merged2 = { ...m, ...u1 } as SpecializationState
-      const { updates: u2 } = addSpecXP(merged2, 'politician', units * 10, 0, 999)
+      const { updates: u2, gained: g2 } = addSpecXP(merged2, 'politician', units * 10, 0, 999)
       gained = g1
+      syncToServer('economic', g1)
+      syncToServer('politician', g2)
       return { ...u1, ...u2, dailyDonateCount: m.dailyDonateCount + 1 }
     })
     return gained
@@ -342,8 +362,10 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       const { updates: u1, gained: g1 } = addSpecXP(m, 'military', units * 10, 0, 999)
       // Politician XP (on top of military update)
       const merged2 = { ...m, ...u1 } as SpecializationState
-      const { updates: u2 } = addSpecXP(merged2, 'politician', units * 10, 0, 999)
+      const { updates: u2, gained: g2 } = addSpecXP(merged2, 'politician', units * 10, 0, 999)
       gained = g1
+      syncToServer('military', g1)
+      syncToServer('politician', g2)
       return { ...u1, ...u2, dailyDonateCount: m.dailyDonateCount + 1 }
     })
     return gained
@@ -357,6 +379,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = r.gained
       return r.updates
     })
+    syncToServer('politician', gained)
     return gained
   },
   recordPoliticianDonate: (amount) => {
@@ -370,6 +393,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyPolDonateCount: m.dailyPolDonateCount + 1 }
     })
+    syncToServer('politician', gained)
     return gained
   },
   recordElectionWin: (votePercent) => {
@@ -382,6 +406,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyElectionCount: m.dailyElectionCount + 1 }
     })
+    syncToServer('politician', gained)
     return gained
   },
   recordHoldOffice: () => {
@@ -393,6 +418,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyHoldOfficeCount: m.dailyHoldOfficeCount + 1 }
     })
+    syncToServer('politician', gained)
     return gained
   },
 
@@ -404,6 +430,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = r.gained
       return r.updates
     })
+    syncToServer('mercenary', gained)
     return gained
   },
   recordAbroadRoundWin: () => {
@@ -415,6 +442,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyAbroadWinCount: c + 1 }
     })
+    syncToServer('mercenary', gained)
     return gained
   },
   recordBountyClaim: () => {
@@ -426,6 +454,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyBountyCount: m.dailyBountyCount + 1 }
     })
+    syncToServer('mercenary', gained)
     return gained
   },
   recordAbroadKill: () => {
@@ -437,6 +466,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyAbroadKillCount: c + 1 }
     })
+    syncToServer('mercenary', gained)
     return gained
   },
 
@@ -450,6 +480,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyWallPostCount: c + 1 }
     })
+    syncToServer('influencer', gained)
     return gained
   },
   recordMenteeProgress: () => {
@@ -461,6 +492,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyMenteeProgressCount: c + 1 }
     })
+    syncToServer('influencer', gained)
     return gained
   },
   recordArticlePublish: () => {
@@ -472,6 +504,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyArticlePublishCount: c + 1 }
     })
+    syncToServer('influencer', gained)
     return gained
   },
   recordReferral: () => {
@@ -483,6 +516,7 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyReferralCount: m.dailyReferralCount + 1 }
     })
+    syncToServer('influencer', gained)
     return gained
   },
   recordBloodPactLevelUp: () => {
@@ -494,7 +528,20 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
       gained = g
       return { ...updates, dailyBloodPactLvlCount: c + 1 }
     })
+    syncToServer('influencer', gained)
     return gained
+  },
+
+  // ═══ HYDRATION ═══
+  hydrateFromServer: (data: any) => {
+    if (!data) return
+    set({
+      militaryXP: data.militaryXp ?? data.military_xp ?? 0,
+      economicXP: data.economicXp ?? data.economic_xp ?? 0,
+      politicianXP: data.politicianXp ?? data.politician_xp ?? 0,
+      mercenaryXP: data.mercenaryXp ?? data.mercenary_xp ?? 0,
+      influencerXP: data.influencerXp ?? data.influencer_xp ?? 0,
+    })
   },
 
   // ═══ GETTERS ═══
@@ -519,7 +566,6 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
   },
   getPoliticianBonuses: () => {
     const t = getTierInfo(get().politicianXP, POL_TIER_LABELS).tier
-    // T1: +1% dmg/prod, T2: +1% all 3, T3: +2% all 4, T4: +2% all 5, T5: +3% all 5
     if (t <= 0) return { countryDamage: 0, countryProduction: 0, countryProspection: 0, countryIndustrialist: 0, countryDodge: 0 }
     if (t === 1) return { countryDamage: 1, countryProduction: 1, countryProspection: 0, countryIndustrialist: 0, countryDodge: 0 }
     if (t === 2) return { countryDamage: 1, countryProduction: 1, countryProspection: 1, countryIndustrialist: 0, countryDodge: 0 }
@@ -529,7 +575,6 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
   },
   getMercenaryBonuses: () => {
     const t = getTierInfo(get().mercenaryXP, MER_TIER_LABELS).tier
-    // T1: +3%, T2: +6%, T3: +9% +2% loot, T4: +12%, T5: +15% +3% loot
     return {
       abroadDamagePercent: t * 3,
       lootChancePercent: t >= 5 ? 3 : t >= 3 ? 2 : 0,
@@ -537,7 +582,6 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
   },
   getInfluencerBonuses: () => {
     const t = getTierInfo(get().influencerXP, INF_TIER_LABELS).tier
-    // T1: +1 friend, T2: -5% gift tax, T3: +1 mentee, T4: -10% tax +5% pact XP, T5: +2 mentee -15% tax +10% pact XP
     return {
       extraFriendSlots: t >= 1 ? t : 0,
       giftingTaxReduction: t >= 5 ? 15 : t >= 4 ? 10 : t >= 2 ? 5 : 0,

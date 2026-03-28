@@ -135,71 +135,116 @@ export async function expireBounties() {
 
 /**
  * Tally elections — runs every 6 hours.
- * Counts votes from elections jsonb, installs winner as president,
- * clears election data, and inserts a news event.
+ * Checks each country's election cycle. If cycleEnd has passed,
+ * resolves the election using PP-weighted votes, installs president + congress,
+ * creates news events, and starts a new 30-day cycle.
  */
 export async function tallyElections() {
-  // Fetch all governments with active elections
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
+  const now = Date.now()
+
   const govs = await db.execute(sql`
-    SELECT country_code, elections, congress
+    SELECT country_code, president, congress, elections
     FROM governments
-    WHERE jsonb_typeof(elections->'votes') = 'object'
-      AND jsonb_array_length(COALESCE(elections->'candidates', '[]'::jsonb)) > 0
   `)
 
   const rows = (govs as any).rows || (govs as any[])
   if (!rows || rows.length === 0) return
 
+  let resolved = 0
+
   for (const gov of rows) {
     const elections = gov.elections || {}
-    const votes: Record<string, string> = elections.votes || {}
-    const candidates: string[] = elections.candidates || []
 
-    if (candidates.length === 0) continue
+    // Skip if no active cycle or cycle hasn't ended
+    if (!elections.cycleEnd || now < elections.cycleEnd) continue
+    if (elections.phase === 'resolved') continue
 
-    // Tally: count how many votes each candidate received
-    const tally: Record<string, number> = {}
-    for (const candidate of candidates) tally[candidate] = 0
-    for (const voterChoice of Object.values(votes)) {
-      if (tally[voterChoice] !== undefined) tally[voterChoice]++
+    const candidates = elections.candidates || []
+    const votes = elections.votes || []
+
+    // If no candidates, keep current president and reset cycle
+    if (candidates.length === 0) {
+      const newElections = {
+        cycleStart: now, cycleEnd: now + THIRTY_DAYS_MS, phase: 'active',
+        candidates: [], votes: [],
+        lastResult: { winnerId: gov.president, winnerName: gov.president, congress: gov.congress || [], resolvedAt: now, rankings: [] },
+      }
+      await db.execute(sql`
+        UPDATE governments SET elections = ${JSON.stringify(newElections)}::jsonb
+        WHERE country_code = ${gov.country_code}
+      `)
+      continue
     }
 
-    // Find winner (most votes, ties go to first alphabetically)
-    let winner = candidates[0]
-    let maxVotes = 0
-    for (const [name, count] of Object.entries(tally)) {
-      if (count > maxVotes || (count === maxVotes && name < winner)) {
-        winner = name
-        maxVotes = count
+    // Tally weighted votes per candidate
+    const candidateMap = new Map<string, { id: string; name: string; totalWeightedVotes: number; voterIds: string[] }>()
+    for (const c of candidates) {
+      candidateMap.set(c.id || c, { id: c.id || c, name: c.name || c, totalWeightedVotes: 0, voterIds: [] })
+    }
+    for (const v of votes) {
+      const c = candidateMap.get(v.candidateId)
+      if (c) {
+        c.totalWeightedVotes += v.weight || 1
+        if (!c.voterIds.includes(v.voterId)) c.voterIds.push(v.voterId)
       }
     }
 
-    // Install president + clear elections
+    const allCandidates = Array.from(candidateMap.values())
+    allCandidates.sort((a, b) => b.totalWeightedVotes - a.totalWeightedVotes || b.voterIds.length - a.voterIds.length)
+
+    const winner = allCandidates.length > 0 ? allCandidates[0] : null
+    const congressMembers = allCandidates.slice(1, 6).map(c => c.name)
+
+    const rankings = allCandidates.map(c => ({
+      id: c.id, name: c.name, totalWeightedVotes: c.totalWeightedVotes, voterCount: c.voterIds.length,
+    }))
+
+    const lastResult = {
+      winnerId: winner?.id || null, winnerName: winner?.name || null,
+      congress: congressMembers, resolvedAt: now, rankings,
+    }
+
+    const newElections = {
+      cycleStart: now, cycleEnd: now + THIRTY_DAYS_MS, phase: 'active',
+      candidates: [], votes: [], lastResult,
+    }
+
+    // Update president, congress, and election state
+    const newPresident = winner?.name || gov.president
     await db.execute(sql`
       UPDATE governments SET
-        president = ${winner},
-        elections = '{}'::jsonb
+        president = ${newPresident},
+        congress = ${JSON.stringify(congressMembers)}::jsonb,
+        elections = ${JSON.stringify(newElections)}::jsonb
       WHERE country_code = ${gov.country_code}
     `)
 
-    // News event
+    // Insert news event
     await db.execute(sql`
       INSERT INTO news_events (type, headline, country_code, data)
       VALUES (
         'election_result',
-        ${`🗳️ ${winner} elected president of ${gov.country_code} with ${maxVotes} votes!`},
+        ${`🗳️ ${newPresident} elected president of ${gov.country_code}! Congress: ${congressMembers.join(', ') || 'none'}`},
         ${gov.country_code},
-        ${JSON.stringify({ winner, tally, totalVotes: Object.keys(votes).length })}::jsonb
+        ${JSON.stringify({ winner: newPresident, congress: congressMembers, rankings, totalVotes: votes.length })}::jsonb
       )
     `)
 
     // Socket.IO broadcast
     const emit = await getEmitter()
-    if (emit) emit('election:result', { winner, countryCode: gov.country_code, tally }, `country:${gov.country_code}`)
-    if (emit) emit('news', { type: 'election_result', headline: `🗳️ ${winner} elected president of ${gov.country_code}!`, countryCode: gov.country_code })
+    if (emit) {
+      emit('election:result', { winner: newPresident, congress: congressMembers, countryCode: gov.country_code, rankings }, `country:${gov.country_code}`)
+      emit('news', { type: 'election_result', headline: `🗳️ ${newPresident} elected president of ${gov.country_code}!`, countryCode: gov.country_code })
+    }
+
+    resolved++
+    logger.info(`[ELECTION] ${gov.country_code}: ${newPresident} elected president. Congress: [${congressMembers.join(', ')}]`)
   }
 
-  logger.info(`[DAILY] Election tally complete. Processed ${rows.length} countries.`)
+  if (resolved > 0) {
+    logger.info(`[DAILY] Election tally complete. Resolved ${resolved} countries.`)
+  }
 }
 
 /**
