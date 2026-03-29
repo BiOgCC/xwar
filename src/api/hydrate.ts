@@ -86,10 +86,62 @@ export async function hydrateGameState(): Promise<boolean> {
       }
     }
 
-    // Hydrate battles
+    // Hydrate battles — normalize server objects to include all client-required fields
     if (state.battles && Object.keys(state.battles).length > 0) {
       const { useBattleStore } = await import('../stores/battleStore')
-      useBattleStore.setState({ battles: state.battles })
+      const normalized: Record<string, any> = {}
+      for (const [id, b] of Object.entries(state.battles as Record<string, any>)) {
+        normalized[id] = {
+          id: b.id ?? id,
+          type: b.type ?? 'invasion',
+          attackerId: b.attackerId ?? b.attacker_id ?? '',
+          defenderId: b.defenderId ?? b.defender_id ?? '',
+          regionName: b.regionName ?? b.region_name ?? '',
+          startedAt: b.startedAt ?? (b.started_at ? new Date(b.started_at).getTime() : Date.now()),
+          ticksElapsed: b.ticksElapsed ?? 0,
+          status: b.status ?? 'active',
+          attacker: b.attacker ?? {
+            countryCode: b.attackerId ?? b.attacker_id ?? '',
+            divisionIds: [], engagedDivisionIds: [],
+            damageDealt: b.attackerDamage ?? 0,
+            manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
+          },
+          defender: b.defender ?? {
+            countryCode: b.defenderId ?? b.defender_id ?? '',
+            divisionIds: [], engagedDivisionIds: [],
+            damageDealt: b.defenderDamage ?? 0,
+            manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
+          },
+          attackerRoundsWon: b.attackerRoundsWon ?? 0,
+          defenderRoundsWon: b.defenderRoundsWon ?? 0,
+          rounds: b.rounds?.length ? b.rounds : [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: b.startedAt ?? Date.now() }],
+          currentTick: b.currentTick ?? { attackerDamage: 0, defenderDamage: 0 },
+          combatLog: b.combatLog ?? [],
+          attackerDamageDealers: b.attackerDamageDealers ?? {},
+          defenderDamageDealers: b.defenderDamageDealers ?? {},
+          damageFeed: b.damageFeed ?? [],
+          divisionCooldowns: b.divisionCooldowns ?? {},
+          attackerOrder: b.attackerOrder ?? 'none',
+          defenderOrder: b.defenderOrder ?? 'none',
+          orderMessage: b.orderMessage ?? '',
+          motd: b.motd ?? '',
+          playerBattleStats: b.playerBattleStats ?? {},
+          // Bridge persisted adrenaline state to client-side playerAdrenaline map
+          playerAdrenaline: b.adrenalineState
+            ? Object.fromEntries(
+                Object.entries(b.adrenalineState as Record<string, any>).map(([k, v]) => [k, v?.value ?? 0])
+              )
+            : (b.playerAdrenaline ?? {}),
+          playerSurge: b.playerSurge ?? {},
+          playerCrash: b.playerCrash ?? {},
+          playerAdrenalinePeakAt: b.playerAdrenalinePeakAt ?? {},
+          vengeanceBuff: b.vengeanceBuff ?? { attacker: -1, defender: -1 },
+          mercenaryContracts: b.mercenaryContracts ?? [],
+          weaponPresence: b.weaponPresence ?? { attacker: {}, defender: {} },
+        }
+      }
+      useBattleStore.setState(s => ({ battles: { ...s.battles, ...normalized } }))
+      console.log(`[HYDRATE] ⚔️ Loaded ${Object.keys(normalized).length} active battle(s) from game state`)
     }
 
     // Hydrate world/countries
@@ -298,27 +350,27 @@ export async function hydrateGameState(): Promise<boolean> {
       })
     }
 
-    // Hydrate active battles from server
-    try {
-      const battleData = await api.get<{ success: boolean; battles: any[] }>('/battle/active')
-      if (battleData.success && battleData.battles.length > 0) {
-        const { useBattleStore } = await import('../stores/battleStore')
-        const battles: Record<string, any> = {}
-        for (const b of battleData.battles) {
-          // Fetch full battle state for each active battle
-          try {
-            const full = await api.get<{ success: boolean; battle: any }>(`/battle/${b.id}`)
-            if (full.success && full.battle) {
-              battles[full.battle.id] = full.battle
-            }
-          } catch { /* skip individual battle fetch failures */ }
-        }
-        if (Object.keys(battles).length > 0) {
-          useBattleStore.setState(s => ({ battles: { ...s.battles, ...battles } }))
-          console.log(`[HYDRATE] ⚔️ Loaded ${Object.keys(battles).length} active battles`)
-        }
-      }
-    } catch { /* battles endpoint may not exist yet in some builds */ }
+    // Note: Battles are already populated above from state.battles.
+    // The socket-hooks boot hydration (initSocketHooks) also fetches /battle/active
+    // as a secondary safety net, so no duplicate fetch needed here.
+
+    // Hydrate occupation map — restore conquered territories into regionStore
+    if (state.occupationMap && Object.keys(state.occupationMap).length > 0) {
+      const { useRegionStore } = await import('../stores/regionStore')
+      const occupationMap = state.occupationMap as Record<string, string> // { regionName: controllerCode }
+      useRegionStore.setState(s => ({
+        ...s,
+        regions: s.regions.map(r => {
+          const controller = occupationMap[r.name]
+          if (controller && controller !== r.countryCode) {
+            // This region is currently occupied by another country
+            return { ...r, controlledBy: controller }
+          }
+          return r
+        }),
+      }))
+      console.log(`[HYDRATE] 🗺️ Restored ${Object.keys(occupationMap).length} occupied region(s) from server`)
+    }
 
     console.log('[HYDRATE] ✅ Game state synced from server')
     return true

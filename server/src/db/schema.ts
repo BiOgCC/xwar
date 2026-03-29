@@ -28,6 +28,9 @@ export const countries = pgTable('countries', {
   autoDefenseLimit:  integer('auto_defense_limit').default(-1),
   conqueredResources: jsonb('conquered_resources').default([]),
   activeDepositBonus: jsonb('active_deposit_bonus'),
+  // Tracks which foreign regions this country currently occupies
+  // Format: { [regionName]: originalOwnerCode }  e.g. { "Florida": "US" }
+  occupiedRegions:   jsonb('occupied_regions').default({}),
 })
 
 // ═══════════════════════════════════════════════
@@ -302,6 +305,7 @@ export const battles = pgTable('battles', {
   attackerId:     varchar('attacker_id', { length: 4 }).references(() => countries.code),
   defenderId:     varchar('defender_id', { length: 4 }).references(() => countries.code),
   regionName:     varchar('region_name', { length: 64 }),
+  type:           varchar('type', { length: 16 }).default('invasion'),
   status:         varchar('status', { length: 16 }).default('active'),
   round:          integer('round').default(1),
   maxRounds:      integer('max_rounds').default(3),
@@ -313,6 +317,17 @@ export const battles = pgTable('battles', {
   finishedAt:     timestamp('finished_at'),
   winner:         varchar('winner', { length: 4 }),
   battleLog:      jsonb('battle_log').default([]),
+  // ─── Full state persistence (added for full server-authoritative battle remake) ───
+  rounds:              jsonb('rounds').default([]),              // BattleRound[] — all round state
+  combatLog:           jsonb('combat_log').default([]),          // CombatLogEntry[] — last 100
+  attackerDamageDealers: jsonb('attacker_damage_dealers').default({}), // { playerName: totalDmg }
+  defenderDamageDealers: jsonb('defender_damage_dealers').default({}),
+  engagedDivisions:    jsonb('engaged_divisions').default({ attacker: [], defender: [] }), // { attacker: string[], defender: string[] }
+  attackerOrder:       varchar('attacker_order', { length: 16 }).default('none'),
+  defenderOrder:       varchar('defender_order', { length: 16 }).default('none'),
+  adrenalineState:     jsonb('adrenaline_state').default({}),  // { [playerId]: AdrenalineState }
+  playerBattleStats:   jsonb('player_battle_stats').default({}), // { [playerId]: { critsLanded, hitsTaken, totalDamage } }
+  divisionHealthState: jsonb('division_health_state').default({}), // { [divisionId]: { health, maxHealth, manpower } }
 }, (table) => ({
   attackerIdx: index('idx_battles_attacker').on(table.attackerId),
   defenderIdx: index('idx_battles_defender').on(table.defenderId),

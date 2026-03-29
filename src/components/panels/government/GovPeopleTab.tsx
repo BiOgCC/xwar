@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useGovernmentStore } from '../../../stores/governmentStore'
 import { usePlayerStore } from '../../../stores/playerStore'
 import { Crown, UserPlus, ShieldCheck, TrendingUp, Users, ChevronDown, X, Plus, Check } from 'lucide-react'
@@ -153,7 +153,19 @@ export default function GovPeopleTab() {
   const [congressSearch, setCongressSearch] = useState('')
   const [congressMsg, setCongressMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(false)
 
+  // Fetch government + citizens on mount
+  useEffect(() => {
+    setFetching(true)
+    govStore.fetchGovernment(iso)
+      .then(() => govStore.fetchCitizens(iso))
+      .finally(() => setFetching(false))
+  }, [iso])
+
+  if (fetching && !gov) return (
+    <div className="gov-empty">Loading government data...</div>
+  )
   if (!gov) return (
     <div className="gov-empty">Government data unavailable.</div>
   )

@@ -279,6 +279,23 @@ router.get('/election/:countryCode', async (req, res) => {
       }
     })
 
+    // Resolve president UUID → name
+    let presidentName: string | null = null
+    if (gov.president) {
+      const [presRow] = await db.select({ name: players.name }).from(players).where(eq(players.id, gov.president)).limit(1)
+      presidentName = presRow?.name ?? gov.president
+    }
+
+    // Resolve congress UUIDs → names
+    const congressIds: string[] = Array.isArray(gov.congress) ? (gov.congress as string[]) : []
+    let congressNames: string[] = []
+    if (congressIds.length > 0) {
+      const congressRows = await db.select({ id: players.id, name: players.name }).from(players).where(sql`${players.id} = ANY(${sql.raw(`ARRAY[${congressIds.map(id => `'${id}'`).join(',')}]::uuid[]`)})`)
+      const nameMap: Record<string, string> = {}
+      for (const r of congressRows) { if (r.name) nameMap[r.id] = r.name }
+      congressNames = congressIds.map(id => nameMap[id] || id)
+    }
+
     res.json({
       success: true,
       election: {
@@ -288,8 +305,8 @@ router.get('/election/:countryCode', async (req, res) => {
         candidates: candidateSummaries,
         totalVotes: (elections.votes || []).length,
         lastResult: elections.lastResult || null,
-        currentPresident: gov.president || null,
-        currentCongress: gov.congress || [],
+        currentPresident: presidentName,
+        currentCongress: congressNames,
       },
     })
   } catch (err) {

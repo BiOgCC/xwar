@@ -1218,11 +1218,21 @@
   box-shadow: 0 0 8px rgba(59,130,246,0.2);
 }
 .mkt-strip__icon {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 4px;
+  overflow: hidden;
+}
+/* The 3D assets use mix-blend-mode:screen in the img tag,
+   but we give them a neutral dark bg so they pop */
+.mkt-strip__icon img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px currentColor);
 }
 .mkt-strip__price {
   font-size: 8px;
@@ -1253,6 +1263,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.mkt-detail-header__left img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(255,255,255,0.15));
 }
 .mkt-detail-header__name {
   font-size: 13px;

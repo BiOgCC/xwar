@@ -8,25 +8,31 @@ import { Shield, RefreshCw, Play, Zap, Database, Users, Swords, Globe,
   AlertTriangle, CheckCircle, LogOut, Activity, Newspaper, Anchor, Search,
   Settings, DollarSign, Package, BarChart3, Droplet, Wrench, Atom, Bitcoin,
   Wheat, Fish, Crosshair, CakeSlice, Beef, Medal, Leaf, CupSoda, UtensilsCrossed,
-  ShieldAlert, Dices, Ship, Ban, Flame, StopCircle } from 'lucide-react'
+  ShieldAlert, Dices, Ship, Ban, Flame, StopCircle, Lock, Unlock } from 'lucide-react'
 import { LEY_LINE_DEFS } from '../data/leyLineRegistry'
 import type { LeyLineDef as RegistryLineDef } from '../data/leyLineRegistry'
 
-// ── API ───────────────────────────────────────────────────────────────────────
+// ── API ─────────────────────────────────────────────────────────────────────
 const B = import.meta.env.VITE_API_URL || ''
+const ADMIN_PW = 'svt123!@'
 async function api(path: string, opts?: RequestInit) {
   const token = localStorage.getItem('xwar_token') || ''
+  const isUnlocked = sessionStorage.getItem('xwar_admin_unlocked') === '1'
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 10_000) // 10s timeout
+  const timer = setTimeout(() => controller.abort(), 10_000)
   try {
     const res = await fetch(`${B}${path}`, {
       ...opts,
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...opts?.headers },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(isUnlocked ? { 'x-admin-password': ADMIN_PW } : {}),
+        ...opts?.headers,
+      },
     })
     clearTimeout(timer)
     if (res.status === 401 || res.status === 403) throw new Error('UNAUTHORIZED')
-    // Safe JSON parse — some 5xx responses return HTML
     const text = await res.text()
     try { return JSON.parse(text) } catch { return { ok: false, error: `Server error ${res.status}` } }
   } catch (e: any) {
@@ -88,6 +94,10 @@ function SC({ icon, label, value, color }: { icon:React.ReactNode; label:string;
 export default function AdminPage() {
   const [authed, setAuthed]           = useState<boolean|null>(null)
   const [tab, setTab]                  = useState<'overview'|'players'|'countries'|'leylines'|'pipelines'|'news'|'market'|'economy'|'map'|'battles'>('overview')
+  // ── Password gate state ──
+  const [pwInput, setPwInput]         = useState('')
+  const [pwError, setPwError]         = useState(false)
+  const [adminUnlocked, setAdminUnlocked] = useState(() => sessionStorage.getItem('xwar_admin_unlocked') === '1')
   const [stats, setStats]             = useState<Stats|null>(null)
   const [players, setPlayers]         = useState<Player[]>([])
   const [lines, setLines]             = useState<LeyLine[]>([])
@@ -127,6 +137,7 @@ export default function AdminPage() {
   const [battlesLoading, setBattlesLoading] = useState(false)
   const [seedForm, setSeedForm]         = useState({ attackerCode:'', defenderCode:'', regionName:'', createWar:true, maxRounds:3 })
   const [stockForm, setStockForm]       = useState({ countryCode:'', price:'' })
+  const [battleWinners, setBattleWinners] = useState<Record<string,'attacker'|'defender'>>({}) // per-battle winner
 
   // ── Economy dashboard state ──
   const [econ, setEcon]                 = useState<any>(null)
@@ -341,10 +352,12 @@ export default function AdminPage() {
     setBusy(null)
   }
 
-  const endBattle = async (battleId: string) => {
-    if (!confirm('Force-finish this battle?')) return
-    const d = await api('/api/admin/end-battle', { method:'POST', body:JSON.stringify({ battleId }) })
-    if (d.ok) { notify('Battle finished'); loadBattlesWars() }
+  const endBattle = async (battleId: string, attackerId: string, defenderId: string) => {
+    const winner = battleWinners[battleId] ?? 'attacker'
+    const winnerCode = winner === 'attacker' ? attackerId : defenderId
+    if (!confirm(`Force-end battle? Winner declared: ${winnerCode}`)) return
+    const d = await api('/api/admin/end-battle', { method:'POST', body:JSON.stringify({ battleId, winner }) })
+    if (d.ok) { notify(`✓ Battle ended — Winner: ${d.result.winner ?? winnerCode}`); loadBattlesWars() }
     else notify(d.error??'Failed','err')
   }
 
@@ -403,14 +416,61 @@ export default function AdminPage() {
       <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
     </div>
   )
-  if (authed===false) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#070d16', flexDirection:'column', gap:14 }}>
-      <Shield size={52} color="#ef4444"/>
-      <div style={{ color:'#ef4444', fontSize:20, fontWeight:800, fontFamily:'Share Tech Mono,monospace' }}>ACCESS DENIED</div>
-      <div style={{ color:'#475569', fontSize:12 }}>No admin token found in localStorage.</div>
-      <a href="/" style={{ color:'#3b82f6', fontSize:12, marginTop:8, textDecoration:'none' }}>← Back to Game</a>
-    </div>
-  )
+  if (authed===false) {
+    const handlePwSubmit = () => {
+      if (pwInput === ADMIN_PW) {
+        sessionStorage.setItem('xwar_admin_unlocked', '1')
+        setAdminUnlocked(true)
+        setPwError(false)
+        load()
+      } else {
+        setPwError(true)
+        setTimeout(() => setPwError(false), 1500)
+      }
+    }
+    if (!adminUnlocked) return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#070d16', flexDirection:'column', gap:0 }}>
+        <style>{`
+          @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+          @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+          @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,0.4)}50%{box-shadow:0 0 0 12px rgba(139,92,246,0)}}
+          *{box-sizing:border-box}
+        `}</style>
+        <div style={{ position:'fixed', top:'30%', left:'50%', transform:'translate(-50%,-50%)', width:400, height:400, background:'radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 70%)', pointerEvents:'none' }}/>
+        <div style={{ background:'rgba(7,13,22,0.95)', border:'1px solid rgba(139,92,246,0.3)', borderRadius:20, padding:'44px 40px', display:'flex', flexDirection:'column', alignItems:'center', gap:20, minWidth:340, boxShadow:'0 0 60px rgba(139,92,246,0.12)', backdropFilter:'blur(20px)' }}>
+          <div style={{ width:64, height:64, borderRadius:'50%', background:'rgba(139,92,246,0.1)', border:'1px solid rgba(139,92,246,0.35)', display:'flex', alignItems:'center', justifyContent:'center', animation:'pulse 2s ease infinite' }}>
+            <Lock size={28} color="#8b5cf6" />
+          </div>
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:18, fontWeight:800, color:'#e2e8f0', letterSpacing:'0.12em', fontFamily:'Share Tech Mono,monospace', marginBottom:6 }}>ADMIN ACCESS</div>
+            <div style={{ fontSize:12, color:'#475569', lineHeight:1.6 }}>Enter the admin password to access<br/>the XWAR control center</div>
+          </div>
+          <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:6 }}>
+            <input
+              type="password" value={pwInput} onChange={e => setPwInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handlePwSubmit()}
+              placeholder="Admin password" autoFocus
+              style={{ width:'100%', padding:'12px 16px', fontSize:15, background: pwError?'rgba(239,68,68,0.08)':'rgba(255,255,255,0.05)', border:`1px solid ${pwError?'#ef4444':'rgba(139,92,246,0.4)'}`, borderRadius:10, color:'#e2e8f0', outline:'none', fontFamily:'Share Tech Mono,monospace', letterSpacing:'0.15em', animation: pwError?'shake 0.35s ease':'none' }}
+            />
+            {pwError && <div style={{ fontSize:11, color:'#ef4444', fontWeight:600, display:'flex', alignItems:'center', gap:5 }}><AlertTriangle size={11}/> Incorrect password</div>}
+          </div>
+          <button onClick={handlePwSubmit} style={{ width:'100%', padding:'12px 0', background:'linear-gradient(135deg, rgba(139,92,246,0.25) 0%, rgba(99,102,241,0.2) 100%)', border:'1px solid rgba(139,92,246,0.5)', borderRadius:10, color:'#a78bfa', fontWeight:700, fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontFamily:'Share Tech Mono,monospace' }}>
+            <Unlock size={15}/> UNLOCK ADMIN
+          </button>
+        </div>
+      </div>
+    )
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#070d16', flexDirection:'column', gap:14 }}>
+        <Shield size={52} color="#ef4444"/>
+        <div style={{ color:'#ef4444', fontSize:20, fontWeight:800, fontFamily:'Share Tech Mono,monospace' }}>AUTH FAILED</div>
+        <div style={{ color:'#475569', fontSize:12 }}>Server rejected request. Make sure the server is running.</div>
+        <button onClick={load} style={{ background:'rgba(59,130,246,0.12)', border:'1px solid rgba(59,130,246,0.4)', borderRadius:7, color:'#3b82f6', padding:'7px 14px', cursor:'pointer', fontSize:12, marginTop:8, display:'flex', alignItems:'center', gap:6 }}><RefreshCw size={13}/> Retry</button>
+        <a href="/" style={{ color:'#3b82f6', fontSize:12, marginTop:4, textDecoration:'none' }}>← Back to Game</a>
+        <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+      </div>
+    )
+  }
 
   // Merge DB lines (land) with client-side sea line defs
   const seaLineDefs: LeyLine[] = LEY_LINE_DEFS.filter(d => d.lineType === 'sea').map(d => ({
@@ -761,19 +821,19 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Active Battles Table */}
+            {/* Battles Table */}
             <div style={S.card}>
-              <div style={S.sectionTitle}><Swords size={14} color="#ef4444"/> ACTIVE BATTLES ({adminBattles.filter((b:any)=>b.status==='active').length})</div>
+              <div style={S.sectionTitle}><Swords size={14} color="#ef4444"/> ALL BATTLES ({adminBattles.length})</div>
               {adminBattles.length === 0
                 ? <div style={{ textAlign:'center', padding:40, color:'#475569' }}>No battles found. Use Seed Battle to create one.</div>
                 : <>
-                    <div style={{ display:'grid', gridTemplateColumns:'60px 60px 1fr 60px 100px 100px 80px 80px', gap:0, marginBottom:8 }}>
+                    <div style={{ display:'grid', gridTemplateColumns:'60px 60px 1fr 60px 100px 100px 80px 1fr', gap:0, marginBottom:8 }}>
                       {['ATK','DEF','Region','Round','ATK Dmg','DEF Dmg','Status','Action'].map(h=>(
                         <div key={h} style={{ fontSize:9, color:'#475569', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', padding:'0 6px 6px' }}>{h}</div>
                       ))}
                     </div>
                     {adminBattles.map((b:any) => (
-                      <div key={b.id} className="hrow" style={{ display:'grid', gridTemplateColumns:'60px 60px 1fr 60px 100px 100px 80px 80px', gap:0, padding:'7px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', alignItems:'center' }}>
+                      <div key={b.id} className="hrow" style={{ display:'grid', gridTemplateColumns:'60px 60px 1fr 60px 100px 100px 80px 1fr', gap:0, padding:'7px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', alignItems:'center' }}>
                         <div style={{ padding:'0 6px', fontSize:12, color:'#ef4444', fontWeight:700, fontFamily:'monospace' }}>{b.attacker_id}</div>
                         <div style={{ padding:'0 6px', fontSize:12, color:'#60a5fa', fontWeight:700, fontFamily:'monospace' }}>{b.defender_id}</div>
                         <div style={{ padding:'0 6px', fontSize:11, color:'#94a3b8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.region_name}</div>
@@ -783,11 +843,21 @@ export default function AdminPage() {
                         <div style={{ padding:'0 6px' }}>
                           <span style={{ fontSize:9, padding:'2px 8px', borderRadius:10, background: b.status==='active'?'rgba(34,211,138,0.12)':'rgba(100,116,139,0.12)', color: b.status==='active'?'#22d38a':'#64748b', fontWeight:700 }}>{b.status}</span>
                         </div>
-                        <div style={{ padding:'0 6px' }}>
+                        <div style={{ padding:'0 6px', display:'flex', gap:5, alignItems:'center' }}>
                           {b.status==='active' && (
-                            <button onClick={()=>endBattle(b.id)} title="Force-finish this battle" style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#ef4444', cursor:'pointer', padding:'3px 8px', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
-                              <StopCircle size={11}/>End
-                            </button>
+                            <>
+                              <select
+                                value={battleWinners[b.id] ?? 'attacker'}
+                                onChange={e => setBattleWinners(s => ({...s,[b.id]:e.target.value as any}))}
+                                style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:4, color: battleWinners[b.id]==='defender'?'#60a5fa':'#ef4444', fontSize:9, padding:'2px 5px', cursor:'pointer' }}
+                              >
+                                <option value="attacker">⚔️ {b.attacker_id}</option>
+                                <option value="defender">🛡️ {b.defender_id}</option>
+                              </select>
+                              <button onClick={() => endBattle(b.id, b.attacker_id, b.defender_id)} style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#ef4444', cursor:'pointer', padding:'3px 8px', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
+                                <StopCircle size={11}/>End
+                              </button>
+                            </>
                           )}
                           {b.status!=='active' && b.winner && <span style={{ fontSize:10, color:'#f59e0b', fontWeight:700, fontFamily:'monospace' }}>🏆 {b.winner}</span>}
                         </div>

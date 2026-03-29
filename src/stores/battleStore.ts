@@ -139,7 +139,7 @@ export interface BattleState {
   processPlayerCombatTick: () => void   // ground points from manual attacks (runs without divisions)
 
   playerAttack: (battleId: string, side?: 'attacker' | 'defender') => Promise<{ damage: number; isCrit: boolean; isMiss?: boolean; isDodged?: boolean; message: string }>
-  playerDefend: (battleId: string, side?: 'attacker' | 'defender') => { blocked: number; message: string }
+  playerDefend: (battleId: string, side?: 'attacker' | 'defender') => Promise<{ blocked: number; message: string }>
   deployDivisionsToBattle: (battleId: string, divisionIds: string[], side: 'attacker' | 'defender') => { success: boolean; message: string }
   removeDivisionsFromBattle: (battleId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
   recallDivisionFromBattle: (battleId: string, divisionId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
@@ -522,22 +522,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
     const newFeed = [{ playerName, side, amount: finalAmount, isCrit, isDodged, time: now }, ...damageFeed].slice(0, 20)
 
-    // --- 5% of manual damage hurts opposing divisions (x0.05 splash) ---
-    const splashDmg = Math.floor(finalAmount * 0.05)
-    if (splashDmg > 0) {
-      const armyStore = useArmyStore.getState()
-      const oppositeDivIds = side === 'attacker'
-        ? battle.defender.engagedDivisionIds
-        : battle.attacker.engagedDivisionIds
-      const aliveDivs = oppositeDivIds.filter(id => {
-        const d = armyStore.divisions[id]
-        return d && d.status !== 'destroyed' && d.status !== 'recovering'
-      })
-      if (aliveDivs.length > 0) {
-        const perDiv = Math.max(1, Math.floor(splashDmg / aliveDivs.length))
-        aliveDivs.forEach(id => armyStore.applyBattleDamage(id, perDiv, 0))
-      }
-    }
+    // NOTE: Splash damage (5% of manual damage hurts opposing divisions) is handled
+    // server-side in battle.service.ts playerAttack(). Removed client-side duplicate.
 
     // --- Quick Battle: award ground points + check victory on every player hit ---
     const updatedBattle = {
@@ -1683,7 +1669,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     })
   },
 
-  playerDefend: (battleId, _forceSide) => {
+  playerDefend: async (battleId, _forceSide) => {
     if (!rateLimiter.check('playerDefend')) return { blocked: 0, message: 'Too fast! Wait a moment.' }
     const state = get()
     const battle = state.battles[battleId]
@@ -1692,111 +1678,59 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const player = usePlayerStore.getState()
     if (player.stamina < 3) return { blocked: 0, message: 'Not enough stamina (3 required).' }
 
-    // ── #1 FIX: Auto-detect side from player's country ──
-    const playerCountry = player.countryCode || 'US'
-    let isAttacker: boolean
-    if (playerCountry === battle.attackerId) {
-      isAttacker = true
-    } else if (playerCountry === battle.defenderId) {
-      isAttacker = false
-    } else {
-      // Foreigner logic
-      const world = useWorldStore.getState()
-      const atWarWithAttacker = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === battle.attackerId) || (w.attacker === battle.attackerId && w.defender === playerCountry)))
-      const atWarWithDefender = world.wars.some(w => w.status === 'active' && ((w.attacker === playerCountry && w.defender === battle.defenderId) || (w.attacker === battle.defenderId && w.defender === playerCountry)))
-
-      if (atWarWithDefender && !atWarWithAttacker) {
-        isAttacker = true
-        const distance = getCountryDistance(playerCountry, battle.defenderId)
-        const oilCost = Math.max(1, Math.floor(getAttackOilCost(distance) / 100))
-        if (player.oil < oilCost) return { blocked: 0, message: `Not enough oil (${oilCost} required for distance).` }
-        player.spendOil(oilCost)
-      } else if (atWarWithAttacker && !atWarWithDefender) {
-        isAttacker = false
-        const distance = getCountryDistance(playerCountry, battle.attackerId)
-        const oilCost = Math.max(1, Math.floor(getAttackOilCost(distance) / 100))
-        if (player.oil < oilCost) return { blocked: 0, message: `Not enough oil (${oilCost} required for distance).` }
-        player.spendOil(oilCost)
-      } else if (atWarWithAttacker && atWarWithDefender) {
-        return { blocked: 0, message: 'You are at war with both sides! Cannot join.' }
-      } else {
-        return { blocked: 0, message: 'Your country is not in this battle nor at war with either side.' }
-      }
-    }
-
-    player.consumeBar('stamina', 3)
-
-    const cs = getPlayerCombatStats()
-    const isCrit = Math.random() * 100 < cs.critRate
-    let blocked = isCrit ? Math.floor(cs.attackDamage * cs.critMultiplier) : cs.attackDamage
-
-    // Revolt Homeland Bonus: +30% player damage for citizens of the occupied land
-    if (battle.type === 'revolt' && battle.regionId && isAttacker) {
-      const bonus = useRegionStore.getState().getHomelandBonus(battle.regionId)
-      blocked = Math.floor(blocked * bonus.playerDmgMult)
-    }
-
-    const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
-
-    // ── #4 FIX: Hero buff only for YOUR side in YOUR battle ──
-    usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
-
-    // Degrade equipped items durability
-    useInventoryStore.getState().degradeEquippedItems(1)
-
-    // ── Hit Loot Drops (7% base + Mercenary Bonus) ──
-    let dropMsg = ''
+    // ── Server-authoritative: send defend request and await result ──
     try {
-      const merB = useSpecializationStore.getState().getMercenaryBonuses()
-      const dropChance = 7 + (merB?.lootChancePercent || 0)
-      if (Math.random() * 100 < dropChance) {
-        const roll = Math.random()
-        if (roll < 0.01) {
-          usePlayerStore.getState().addResource('bitcoin', 1, 'battle_loot_drop')
-          dropMsg = ' [₿+1]'
-        } else if (roll < 0.34) {
-          usePlayerStore.getState().addResource('militaryBoxes', 1, 'battle_loot_drop')
-          dropMsg = ' [🧰+1]'
-        } else {
-          usePlayerStore.getState().addResource('lootBoxes', 1, 'battle_loot_drop')
-          dropMsg = ' [📦+1]'
-        }
+      const { battleDefend } = await import('../api/client')
+      const result: any = await battleDefend(battleId)
+
+      if (!result?.blocked || result.blocked <= 0) {
+        return { blocked: 0, message: result?.message || 'Defend failed.' }
       }
-    } catch (e) { console.warn('[Hit Loot] Error', e) }
 
-    // ── 5% chance to drop a Badge of Honor per hit (plus Military bonus) ──
-    const milB = useSpecializationStore.getState().getMilitaryBonuses()
-    const bohDropChance = 5 + (milB?.bohDropPercent || 0)
-    if (Math.random() * 100 < bohDropChance) {
-      usePlayerStore.getState().addResource('badgesOfHonor', 1, 'battle_hit_drop')
-      dropMsg += ' [🎖️+1]'
-    }
+      const { blocked, message } = result
 
-    set(s => ({
-      battles: {
-        ...s.battles,
-        [battleId]: {
-          ...battle,
-          currentTick: {
-            ...battle.currentTick,
-            [enemySide]: Math.max(0, battle.currentTick[enemySide] - blocked),
+      // Sync stamina from server if provided
+      if (typeof result.staminaLeft === 'number' && result.staminaLeft >= 0) {
+        usePlayerStore.setState({ stamina: result.staminaLeft })
+      } else {
+        // Optimistic: subtract 3 stamina locally
+        usePlayerStore.setState({ stamina: Math.max(0, player.stamina - 3) })
+      }
+
+      // Determine side for local UI update
+      const playerCountry = player.countryCode || 'US'
+      const isAttacker = playerCountry === battle.attackerId
+      const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
+      const side: 'attacker' | 'defender' = isAttacker ? 'attacker' : 'defender'
+
+      // Update local battle state: reduce enemy tick damage + add to damageFeed
+      set(s => ({
+        battles: {
+          ...s.battles,
+          [battleId]: {
+            ...battle,
+            currentTick: {
+              ...battle.currentTick,
+              [enemySide]: Math.max(0, battle.currentTick[enemySide] - blocked),
+            },
+            damageFeed: [{
+              playerName: `${player.name} 🛡️`,
+              side,
+              amount: blocked, isCrit: false, isDodged: false, time: Date.now(),
+            }, ...battle.damageFeed].slice(0, 20),
           },
-          damageFeed: [{
-            playerName: `${player.name} 🛡️`,
-            side: (isAttacker ? 'attacker' : 'defender') as 'attacker' | 'defender',
-            amount: blocked, isCrit, isDodged: false, time: Date.now(),
-          }, ...battle.damageFeed].slice(0, 20),
         },
-      },
-    }))
+      }))
 
-    // Persist to backend (fire-and-forget)
-    import('../api/client').then(({ battleDefend }) => battleDefend(battleId).catch(() => {}))
-    // RP contribution from defending
-    try { useResearchStore.getState().contributeRP(2, 'defend') } catch (_) {}
-    return {
-      blocked,
-      message: (isCrit ? `💥 CRITICAL BLOCK! ${blocked} incoming damage blocked!` : `🛡️ Blocked ${blocked} incoming damage!`) + dropMsg,
+      // Hero buff (UI-only)
+      usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
+      // RP contribution from defending
+      try { useResearchStore.getState().contributeRP(2, 'defend') } catch (_) {}
+
+      return { blocked, message }
+    } catch (err) {
+      console.error('[Battle] Server defend failed:', err)
+      return { blocked: 0, message: 'Server error. Try again.' }
     }
   },
 

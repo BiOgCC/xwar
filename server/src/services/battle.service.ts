@@ -170,6 +170,10 @@ interface Battle {
   motd: string
   /** Per-player combat stats for war card evaluation (keyed by playerId) */
   playerBattleStats: Record<string, PlayerBattleStats>
+  /** Adrenaline state per player — DB-persisted */
+  adrenalineState: Record<string, AdrenalineState>
+  /** Division health snapshots — { [divisionId]: { health, maxHealth, manpower } } */
+  divisionHealthState: Record<string, { health: number; maxHealth: number; manpower: number }>
 }
 
 // In-memory division snapshot for combat performance (avoids DB reads per tick per div)
@@ -196,7 +200,7 @@ interface DivisionSnapshot {
 const playerCooldowns = new Map<string, number>()
 const PLAYER_ACTION_COOLDOWN_MS = 150
 
-// ── Adrenaline state (in-memory, per-battle per-player) ──
+// ── Adrenaline state — now stored inside each Battle object (DB-persisted) ──
 interface AdrenalineState {
   value: number        // 0-100
   peakAt: number       // timestamp when hit 100 (0 = not peaked)
@@ -205,23 +209,14 @@ interface AdrenalineState {
   surgeOrder: TacticalOrder // order active when surge was triggered
 }
 
-// Key: `${battleId}::${playerId}`
-const adrenalineStates = new Map<string, AdrenalineState>()
-
-function getAdrenaline(battleId: string, playerId: string): AdrenalineState {
-  const key = `${battleId}::${playerId}`
-  let state = adrenalineStates.get(key)
-  if (!state) {
-    state = { value: 0, peakAt: 0, crashUntil: 0, surgeUntil: 0, surgeOrder: 'none' }
-    adrenalineStates.set(key, state)
+// Get adrenaline state from battle object (DB-persisted)
+function getAdrenaline(battle: Battle, playerId: string): AdrenalineState {
+  const states = (battle as any).adrenalineState as Record<string, AdrenalineState> ?? {}
+  if (!states[playerId]) {
+    states[playerId] = { value: 0, peakAt: 0, crashUntil: 0, surgeUntil: 0, surgeOrder: 'none' }
+    ;(battle as any).adrenalineState = states
   }
-  return state
-}
-
-function cleanupAdrenaline(battleId: string): void {
-  for (const key of adrenalineStates.keys()) {
-    if (key.startsWith(`${battleId}::`)) adrenalineStates.delete(key)
-  }
+  return states[playerId]
 }
 
 // ═══════════════════════════════════════════════
@@ -253,6 +248,33 @@ class BattleService {
     return this.battles.get(id)
   }
 
+  // ── Admin: Force-end a battle with declared winner ──
+
+  async adminForceEnd(battleId: string, winner: 'attacker' | 'defender'): Promise<void> {
+    const battle = this.battles.get(battleId)
+    if (!battle || battle.status !== 'active') throw new Error('Battle not active')
+
+    battle.status = winner === 'attacker' ? 'attacker_won' : 'defender_won'
+    // Bump rounds to satisfy finalizeBattle
+    const now = Date.now()
+    const activeRound = battle.rounds[battle.rounds.length - 1]
+    if (activeRound) {
+      activeRound.endedAt = now
+      activeRound.status = battle.status as any
+    }
+    if (winner === 'attacker') battle.attackerRoundsWon = 3
+    else battle.defenderRoundsWon = 3
+
+    battle.combatLog.push({
+      tick: battle.ticksElapsed, timestamp: now, type: 'phase_change',
+      side: winner,
+      message: `🛑 ADMIN: Battle force-ended. ${winner === 'attacker' ? battle.attackerId : battle.defenderId} declared winner.`,
+    })
+
+    await this.finalizeBattle(battle)
+    logger.info(`[Battle] Admin force-ended ${battleId} — winner: ${winner}`)
+  }
+
   // ── Battle creation ──
 
   async launchBattle(
@@ -261,14 +283,28 @@ class BattleService {
     regionName: string,
     type: BattleType = 'invasion',
   ): Promise<{ success: boolean; message: string; battleId?: string }> {
-    // Check for existing active battle in same region
+    // Check for existing active battle in same region (memory + DB)
     for (const b of this.battles.values()) {
       if (b.regionName === regionName && b.status === 'active') {
         return { success: false, message: 'Battle already active in this region.' }
       }
     }
+    // Also check DB for any persisted active battles in this region
+    const existingInDB = await db.execute(sql`
+      SELECT id FROM battles WHERE region_name = ${regionName} AND status = 'active' LIMIT 1
+    `)
+    if ((existingInDB as any[]).length > 0) {
+      const existingId = (existingInDB as any[])[0].id as string
+      // Restore it into memory if not already there
+      if (!this.battles.has(existingId)) {
+        await this.restoreFromDB()
+      }
+      return { success: false, message: 'Battle already active in this region.' }
+    }
 
-    const id = `srv_battle_${Date.now()}_${attackerCode}_${defenderCode}`
+    // Generate a proper UUID so it matches battlesTable.id (UUID primary key)
+    const idResult = await db.execute(sql`SELECT gen_random_uuid() AS id`)
+    const id = (idResult as any[])[0].id as string
     const now = Date.now()
 
     const battle: Battle = {
@@ -294,17 +330,36 @@ class BattleService {
       attackerOrder: 'none', defenderOrder: 'none',
       orderMessage: '', motd: '',
       playerBattleStats: {},
+      adrenalineState: {},
+      divisionHealthState: {},
     }
+
+    // ── Persist to DB immediately so it survives refreshes ──
+    await db.insert(battlesTable).values({
+      id,
+      attackerId: attackerCode,
+      defenderId: defenderCode,
+      regionName,
+      status: 'active',
+      round: 1,
+      maxRounds: 3,
+      attackerDamage: 0,
+      defenderDamage: 0,
+      attackerRoundsWon: 0,
+      defenderRoundsWon: 0,
+      startedAt: new Date(now),
+      battleLog: [],
+    }).onConflictDoNothing()
 
     this.battles.set(id, battle)
 
-    // Broadcast battle start
-    this.emit(id, 'battle:start', {
-      battleId: id, attackerId: attackerCode, defenderId: defenderCode,
-      regionName, atkDivCount: 0, defDivCount: 0,
+    // Broadcast battle start (matches client socket-hooks.ts 'battle:started' listener)
+    this.emit(id, 'battle:started', {
+      battleId: id, attackerCode, defenderCode,
+      targetRegion: regionName, type,
     })
 
-    logger.info(`[Battle] Launched: ${attackerCode} → ${defenderCode} (${regionName})`)
+    logger.info(`[Battle] Launched & persisted: ${attackerCode} → ${defenderCode} (${regionName}) id=${id}`)
     return { success: true, message: `Battle for ${regionName} has begun!`, battleId: id }
   }
 
@@ -560,7 +615,7 @@ class BattleService {
     damage = Math.max(1, damage)
 
     // ── Adrenaline: build + surge/crash multipliers ──
-    const adrState = getAdrenaline(battleId, playerId)
+    const adrState = getAdrenaline(battle, playerId)
     const now2 = Date.now()
 
     // Build adrenaline (+5 per attack, both miss and hit)
@@ -736,7 +791,7 @@ class BattleService {
       return { success: false, message: 'No active battle.', adrenaline: 0 }
     }
 
-    const adrState = getAdrenaline(battleId, playerId)
+    const adrState = getAdrenaline(battle, playerId)
     if (adrState.value < 80) {
       return { success: false, message: `Need 80+ adrenaline (current: ${adrState.value}).`, adrenaline: adrState.value }
     }
@@ -756,6 +811,9 @@ class BattleService {
     adrState.surgeUntil = Date.now() + duration
     adrState.surgeOrder = order
 
+    // Persist surge to DB immediately
+    this.persistBattle(battle).catch(() => {})
+
     logger.info(`[Battle] ${playerId} activated surge (order: ${order}, duration: ${duration}ms)`)
     return { success: true, message: `⚡ SURGE ACTIVATED! (${duration / 1000}s)`, adrenaline: 0 }
   }
@@ -763,7 +821,9 @@ class BattleService {
   // ── Get player adrenaline state ──
 
   getAdrenalineState(battleId: string, playerId: string): { adrenaline: number; isSurging: boolean; isCrashed: boolean } {
-    const state = getAdrenaline(battleId, playerId)
+    const battle = this.battles.get(battleId)
+    if (!battle) return { adrenaline: 0, isSurging: false, isCrashed: false }
+    const state = getAdrenaline(battle, playerId)
     const now = Date.now()
     return {
       adrenaline: state.value,
@@ -776,40 +836,46 @@ class BattleService {
 
   async playerDefend(
     battleId: string, playerId: string, playerName: string, countryCode: string,
-  ): Promise<{ blocked: number; message: string }> {
+  ): Promise<{ blocked: number; message: string; staminaLeft: number }> {
     const now = Date.now()
     const lastAction = playerCooldowns.get(playerId) ?? 0
     if (now - lastAction < PLAYER_ACTION_COOLDOWN_MS) {
-      return { blocked: 0, message: 'Too fast! Wait a moment.' }
+      return { blocked: 0, message: 'Too fast! Wait a moment.', staminaLeft: -1 }
     }
     playerCooldowns.set(playerId, now)
 
     const battle = this.battles.get(battleId)
     if (!battle || battle.status !== 'active') {
-      return { blocked: 0, message: 'No active battle.' }
+      return { blocked: 0, message: 'No active battle.', staminaLeft: -1 }
     }
 
     let isAttacker: boolean
     if (countryCode === battle.attackerId) isAttacker = true
     else if (countryCode === battle.defenderId) isAttacker = false
-    else return { blocked: 0, message: 'Your country is not in this battle.' }
+    else return { blocked: 0, message: 'Your country is not in this battle.', staminaLeft: -1 }
 
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
-    if (!player) return { blocked: 0, message: 'Player not found.' }
+    if (!player) return { blocked: 0, message: 'Player not found.', staminaLeft: -1 }
 
     const staminaVal = Number(player.stamina ?? 0)
-    if (staminaVal < 3) return { blocked: 0, message: 'Not enough stamina (3 required).' }
+    if (staminaVal < 3) return { blocked: 0, message: 'Not enough stamina (3 required).', staminaLeft: staminaVal }
 
     const [skills] = await db.select().from(playerSkills).where(eq(playerSkills.playerId, playerId)).limit(1)
 
     const armorBlock = (skills?.armor ?? 0) * 5
     const dodgeChance = 5 + (skills?.dodge ?? 0) * 5
-    const blocked = armorBlock + Math.floor(dodgeChance * 0.5)
+    const blocked = Math.max(1, armorBlock + Math.floor(dodgeChance * 0.5))
 
     // Deduct stamina
+    const newStamina = Math.max(0, staminaVal - 3)
     await db.update(players).set({
-      stamina: String(Math.max(0, staminaVal - 3)),
+      stamina: String(newStamina),
     }).where(eq(players.id, playerId))
+
+    // XP for defending
+    try {
+      await db.execute(sql`UPDATE players SET experience = experience + 10 WHERE id = ${playerId}`)
+    } catch (e) { /* non-critical */ }
 
     // Reduce enemy tick damage
     const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
@@ -817,7 +883,7 @@ class BattleService {
 
     this.emit(battleId, 'battle:playerDefend', { battleId, playerName, blocked, side: isAttacker ? 'attacker' : 'defender' })
 
-    return { blocked, message: `🛡️ Blocked ${blocked} incoming damage!` }
+    return { blocked, message: `🛡️ Blocked ${blocked} incoming damage!`, staminaLeft: newStamina }
   }
 
   // ── Deploy divisions ──
@@ -920,6 +986,8 @@ class BattleService {
     for (const battle of activeBattles) {
       try {
         await this.processSingleBattleTick(battle)
+        // ── Persist full state to DB every tick ──
+        await this.persistBattle(battle)
       } catch (e) {
         logger.error(e, `[Battle] Error processing tick for ${battle.id}:`)
       }
@@ -929,6 +997,41 @@ class BattleService {
     if (elapsed > 5000) {
       logger.warn(`[Battle] Combat tick took ${elapsed}ms for ${activeBattles.length} battles — consider optimization`)
     }
+  }
+
+  /** Persist ALL battle state to DB — called every tick and after player actions */
+  async persistBattle(battle: Battle): Promise<void> {
+    // Build division health snapshot from cache
+    const divHealthState: Record<string, { health: number; maxHealth: number; manpower: number }> = {}
+    const allDivIds = [...battle.attacker.divisionIds, ...battle.defender.divisionIds]
+    for (const id of allDivIds) {
+      const d = this.divisionCache.get(id)
+      if (d) divHealthState[id] = { health: d.health, maxHealth: d.maxHealth, manpower: d.manpower }
+    }
+    battle.divisionHealthState = divHealthState
+
+    await db.update(battlesTable).set({
+      status: battle.status,
+      round: battle.rounds.length,
+      attackerDamage: battle.attacker.damageDealt,
+      defenderDamage: battle.defender.damageDealt,
+      attackerRoundsWon: battle.attackerRoundsWon,
+      defenderRoundsWon: battle.defenderRoundsWon,
+      // Full JSONB state
+      rounds: battle.rounds as any,
+      combatLog: battle.combatLog.slice(-100) as any,
+      attackerDamageDealers: battle.attackerDamageDealers as any,
+      defenderDamageDealers: battle.defenderDamageDealers as any,
+      engagedDivisions: {
+        attacker: battle.attacker.engagedDivisionIds,
+        defender: battle.defender.engagedDivisionIds,
+      } as any,
+      attackerOrder: battle.attackerOrder,
+      defenderOrder: battle.defenderOrder,
+      adrenalineState: (battle as any).adrenalineState ?? {},
+      playerBattleStats: battle.playerBattleStats as any,
+      divisionHealthState: divHealthState as any,
+    }).where(eq(battlesTable.id, battle.id))
   }
 
   private async processSingleBattleTick(battle: Battle): Promise<void> {
@@ -1194,33 +1297,51 @@ class BattleService {
       }
     }
 
-    // ── Broadcast tick state ──
-    this.emit(battle.id, 'battle:tick', {
-      battleId: battle.id,
-      tickNumber: tick,
-      attackerDamage: atkTotalDmg,
-      defenderDamage: defTotalDmg,
-      attackerCrits: atkCrits,
-      defenderCrits: defCrits,
-      rounds: battle.rounds,
-      attackerRoundsWon: battle.attackerRoundsWon,
-      defenderRoundsWon: battle.defenderRoundsWon,
-      status: battle.status,
-      attackerEngaged: battle.attacker.engagedDivisionIds.length,
-      defenderEngaged: battle.defender.engagedDivisionIds.length,
-    })
-
     // Trim combat log
     if (battle.combatLog.length > 100) {
       battle.combatLog = battle.combatLog.slice(-100)
     }
+
+    // ── Build division health snapshots for client ──
+    const divisionSnapshots: Record<string, { id: string; name: string; health: number; maxHealth: number; manpower: number; status: string; side: 'attacker' | 'defender' }> = {}
+    for (const id of battle.attacker.engagedDivisionIds) {
+      const d = this.divisionCache.get(id)
+      if (d) divisionSnapshots[id] = { id, name: d.name, health: d.health, maxHealth: d.maxHealth, manpower: d.manpower, status: d.status, side: 'attacker' }
+    }
+    for (const id of battle.defender.engagedDivisionIds) {
+      const d = this.divisionCache.get(id)
+      if (d) divisionSnapshots[id] = { id, name: d.name, health: d.health, maxHealth: d.maxHealth, manpower: d.manpower, status: d.status, side: 'defender' }
+    }
+
+    // ── Emit full battle:state (replaces battle:tick — client gets authoritative full object) ──
+    this.emit(battle.id, 'battle:state', {
+      id: battle.id,
+      type: battle.type,
+      attackerId: battle.attackerId,
+      defenderId: battle.defenderId,
+      regionName: battle.regionName,
+      startedAt: battle.startedAt,
+      ticksElapsed: tick,
+      status: battle.status,
+      attacker: battle.attacker,
+      defender: battle.defender,
+      attackerRoundsWon: battle.attackerRoundsWon,
+      defenderRoundsWon: battle.defenderRoundsWon,
+      rounds: battle.rounds,
+      currentTick: { attackerDamage: atkTotalDmg, defenderDamage: defTotalDmg },
+      attackerOrder: battle.attackerOrder,
+      defenderOrder: battle.defenderOrder,
+      combatLog: battle.combatLog,
+      attackerDamageDealers: battle.attackerDamageDealers,
+      defenderDamageDealers: battle.defenderDamageDealers,
+      damageFeed: battle.damageFeed,
+      divisionSnapshots,
+    })
   }
 
   // ── Finalize a completed battle ──
 
   private async finalizeBattle(battle: Battle): Promise<void> {
-    // Clean up adrenaline state for this battle
-    cleanupAdrenaline(battle.id)
     // Clean up weapon presence tracking
     this.cleanupWeaponPresence(battle.id)
 
@@ -1238,17 +1359,152 @@ class BattleService {
       }
     }
 
-    // Persist battle result to DB
+    // Persist full final state to DB
+    await this.persistBattle(battle)
     await db.update(battlesTable).set({
-      status: battle.status,
-      attackerDamage: battle.attacker.damageDealt,
-      defenderDamage: battle.defender.damageDealt,
-      attackerRoundsWon: battle.attackerRoundsWon,
-      defenderRoundsWon: battle.defenderRoundsWon,
       winner: battle.status === 'attacker_won' ? battle.attackerId : battle.defenderId,
       finishedAt: new Date(),
-      battleLog: battle.combatLog,
+      battleLog: battle.combatLog as any,
     }).where(eq(battlesTable.id, battle.id))
+
+    // ── TERRITORY CAPTURE: Attacker Won ──
+    if (battle.status === 'attacker_won') {
+      const conquerorCode  = battle.attackerId   // e.g. "CU"
+      const originalOwner  = battle.defenderId   // e.g. "US"
+      const regionName     = battle.regionName   // e.g. "Florida"
+
+      try {
+        // 1. Add to conqueror's occupied_regions
+        await db.execute(sql`
+          UPDATE countries
+          SET occupied_regions = occupied_regions || jsonb_build_object(${regionName}::text, ${originalOwner}::text)
+          WHERE code = ${conquerorCode}
+        `)
+
+        // 2. Remove from original owner's occupied_regions (in case it was re-taken)
+        await db.execute(sql`
+          UPDATE countries
+          SET occupied_regions = occupied_regions - ${regionName}::text
+          WHERE code = ${originalOwner}
+        `)
+
+        // 3. Award conqueror's national fund — territory capture bonus
+        const captureBonus = {
+          money: 5000,
+          oil:   50,
+          scrap: 30,
+        }
+        await db.execute(sql`
+          UPDATE countries
+          SET fund = jsonb_set(
+            jsonb_set(
+              jsonb_set(
+                COALESCE(fund, '{}'::jsonb),
+                '{money}', (COALESCE((fund->>'money')::numeric, 0) + ${captureBonus.money})::text::jsonb
+              ),
+              '{oil}', (COALESCE((fund->>'oil')::numeric, 0) + ${captureBonus.oil})::text::jsonb
+            ),
+            '{scrap}', (COALESCE((fund->>'scraps')::numeric, 0) + ${captureBonus.scrap})::text::jsonb
+          )
+          WHERE code = ${conquerorCode}
+        `)
+
+        // 4. Award all participating attacker players — victory bonuses
+        const attackerPlayers = Object.keys(battle.attackerDamageDealers)
+        for (const playerName of attackerPlayers) {
+          try {
+            await db.execute(sql`
+              UPDATE players
+              SET
+                money = money + 500,
+                experience = experience + 150,
+                badges_of_honor = badges_of_honor + 2
+              WHERE name = ${playerName}
+            `)
+          } catch (e) { logger.warn(`[Battle] Failed to award attacker player ${playerName}`) }
+        }
+
+        // 5. Award defending players — consolation bonuses for participation
+        const defenderPlayers = Object.keys(battle.defenderDamageDealers)
+        for (const playerName of defenderPlayers) {
+          try {
+            await db.execute(sql`
+              UPDATE players
+              SET
+                money = money + 100,
+                experience = experience + 50
+              WHERE name = ${playerName}
+            `)
+          } catch (e) { logger.warn(`[Battle] Failed to award defender player ${playerName}`) }
+        }
+
+        // 6. Update countries.regions count
+        await db.execute(sql`
+          UPDATE countries SET regions = regions + 1 WHERE code = ${conquerorCode}
+        `)
+        await db.execute(sql`
+          UPDATE countries SET regions = GREATEST(0, regions - 1) WHERE code = ${originalOwner}
+        `)
+
+        logger.info(`[Battle] Territory captured: ${conquerorCode} ← ${regionName} (was ${originalOwner}). Fund +$${captureBonus.money} +${captureBonus.oil} oil. ${attackerPlayers.length} attackers awarded.`)
+
+        // 7. Broadcast occupation update to all clients via socket
+        this.emit(battle.id, 'battle:occupationUpdate', {
+          regionName,
+          newController: conquerorCode,
+          prevController: originalOwner,
+          captureBonus,
+          attackerCount: attackerPlayers.length,
+        })
+
+      } catch (e) {
+        logger.error(e, `[Battle] Territory transfer failed for ${battle.id}`)
+      }
+    }
+
+    // ── DEFENSE HELD: Remove any existing foreign occupation of this region ──
+    if (battle.status === 'defender_won') {
+      // If a foreign country had previously occupied this region and was attacking to keep it,
+      // the defender liberated it — remove the occupation record
+      try {
+        await db.execute(sql`
+          UPDATE countries
+          SET occupied_regions = occupied_regions - ${battle.regionName}::text
+          WHERE code != ${battle.defenderId}
+            AND occupied_regions ? ${battle.regionName}
+        `)
+
+        // Award defending players — full defense victory bonuses
+        const defenderPlayers = Object.keys(battle.defenderDamageDealers)
+        for (const playerName of defenderPlayers) {
+          try {
+            await db.execute(sql`
+              UPDATE players
+              SET
+                money = money + 300,
+                experience = experience + 100,
+                badges_of_honor = badges_of_honor + 1
+              WHERE name = ${playerName}
+            `)
+          } catch (e) { logger.warn(`[Battle] Failed to award defense victory to ${playerName}`) }
+        }
+
+        // Award attacker players consolation
+        const attackerPlayers = Object.keys(battle.attackerDamageDealers)
+        for (const playerName of attackerPlayers) {
+          try {
+            await db.execute(sql`
+              UPDATE players SET money = money + 50, experience = experience + 25 WHERE name = ${playerName}
+            `)
+          } catch (e) {}
+        }
+
+        logger.info(`[Battle] Defense held: ${battle.defenderId} defended ${battle.regionName}. ${defenderPlayers.length} defenders awarded.`)
+
+      } catch (e) {
+        logger.error(e, '[Battle] Defense cleanup failed')
+      }
+    }
 
     // Broadcast battle end
     this.emit(battle.id, 'battle:end', {
@@ -1354,6 +1610,129 @@ class BattleService {
   private emit(battleId: string, event: string, data: any): void {
     if (this.io) {
       this.io.to(`battle:${battleId}`).emit(event, data)
+    }
+  }
+
+  /**
+   * Restore active battles from DB into memory.
+   * Call on server boot so battles survive restarts + refreshes.
+   */
+  /**
+   * Restore ALL active battles from DB into memory — call on server boot.
+   * Now restores full JSONB state: rounds, combatLog, damageDealers, adrenaline, orders, divisionHealth.
+   */
+  async restoreFromDB(): Promise<void> {
+    try {
+      // Run additive migration for new columns (safe — IF NOT EXISTS)
+      await db.execute(sql`
+        ALTER TABLE battles
+          ADD COLUMN IF NOT EXISTS type varchar(16) DEFAULT 'invasion',
+          ADD COLUMN IF NOT EXISTS rounds jsonb DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS combat_log jsonb DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS attacker_damage_dealers jsonb DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS defender_damage_dealers jsonb DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS engaged_divisions jsonb DEFAULT '{"attacker":[],"defender":[]}',
+          ADD COLUMN IF NOT EXISTS attacker_order varchar(16) DEFAULT 'none',
+          ADD COLUMN IF NOT EXISTS defender_order varchar(16) DEFAULT 'none',
+          ADD COLUMN IF NOT EXISTS adrenaline_state jsonb DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS player_battle_stats jsonb DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS division_health_state jsonb DEFAULT '{}'
+      `)
+    } catch (e) {
+      logger.warn({ err: e }, '[Battle] Schema migration warning (safe to ignore if columns exist)')
+    }
+
+    try {
+      const rows = await db.execute(sql`
+        SELECT id, attacker_id, defender_id, region_name, type, status,
+               attacker_rounds_won, defender_rounds_won,
+               attacker_damage, defender_damage, started_at,
+               rounds, combat_log,
+               attacker_damage_dealers, defender_damage_dealers,
+               engaged_divisions, attacker_order, defender_order,
+               adrenaline_state, player_battle_stats, division_health_state
+        FROM battles WHERE status = 'active'
+      `)
+
+      let restored = 0
+      for (const row of rows as any[]) {
+        if (this.battles.has(row.id)) continue
+
+        const now = Date.now()
+        const engaged = (row.engaged_divisions as any) ?? { attacker: [], defender: [] }
+        const atkEngaged: string[] = engaged.attacker ?? []
+        const defEngaged: string[] = engaged.defender ?? []
+
+        // Restore division health snapshots into cache
+        const divHealth = (row.division_health_state as Record<string, any>) ?? {}
+        for (const [divId, snap] of Object.entries(divHealth)) {
+          if (!this.divisionCache.has(divId)) {
+            // Re-fetch from DB and cache
+            const divRows = await db.select().from(divisionsTable).where(eq(divisionsTable.id, divId)).limit(1)
+            if (divRows[0]) this.cacheDivision(divRows[0])
+          }
+          // Apply persisted health override
+          const cached = this.divisionCache.get(divId)
+          if (cached && snap) {
+            cached.health = (snap as any).health ?? cached.health
+            cached.manpower = (snap as any).manpower ?? cached.manpower
+          }
+        }
+
+        const restoredRounds = Array.isArray(row.rounds) && row.rounds.length > 0
+          ? row.rounds
+          : [{ attackerPoints: 0, defenderPoints: 0, attackerDmgTotal: 0, defenderDmgTotal: 0, status: 'active', startedAt: now }]
+
+        const battle: Battle = {
+          id: row.id,
+          type: (row.type as BattleType) ?? 'invasion',
+          attackerId: row.attacker_id,
+          defenderId: row.defender_id,
+          regionName: row.region_name,
+          startedAt: new Date(row.started_at).getTime(),
+          ticksElapsed: 0,
+          status: 'active',
+          attacker: {
+            countryCode: row.attacker_id,
+            divisionIds: atkEngaged,
+            engagedDivisionIds: atkEngaged,
+            damageDealt: Number(row.attacker_damage ?? 0),
+            manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
+          },
+          defender: {
+            countryCode: row.defender_id,
+            divisionIds: defEngaged,
+            engagedDivisionIds: defEngaged,
+            damageDealt: Number(row.defender_damage ?? 0),
+            manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
+          },
+          attackerRoundsWon: row.attacker_rounds_won ?? 0,
+          defenderRoundsWon: row.defender_rounds_won ?? 0,
+          rounds: restoredRounds,
+          currentTick: { attackerDamage: 0, defenderDamage: 0 },
+          combatLog: Array.isArray(row.combat_log) && row.combat_log.length > 0
+            ? row.combat_log
+            : [{ tick: 0, timestamp: now, type: 'phase_change', side: 'attacker', message: `🔄 Battle for ${row.region_name} restored.` }],
+          attackerDamageDealers: (row.attacker_damage_dealers as Record<string,number>) ?? {},
+          defenderDamageDealers: (row.defender_damage_dealers as Record<string,number>) ?? {},
+          damageFeed: [], divisionCooldowns: {},
+          attackerOrder: (row.attacker_order as TacticalOrder) ?? 'none',
+          defenderOrder: (row.defender_order as TacticalOrder) ?? 'none',
+          orderMessage: '', motd: '',
+          playerBattleStats: (row.player_battle_stats as any) ?? {},
+          adrenalineState: (row.adrenaline_state as any) ?? {},
+          divisionHealthState: (row.division_health_state as any) ?? {},
+        }
+
+        this.battles.set(row.id, battle)
+        restored++
+      }
+
+      if (restored > 0) {
+        logger.info(`[Battle] Restored ${restored} active battle(s) from DB with full state`)
+      }
+    } catch (err) {
+      logger.error(err, '[Battle] Failed to restore battles from DB')
     }
   }
 }

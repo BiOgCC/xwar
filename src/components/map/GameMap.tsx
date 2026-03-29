@@ -94,6 +94,31 @@ const COUNTRY_ISO: Record<string, string> = {
 const ISO3_TO_NAME: Record<string, string> = {}
 Object.entries(COUNTRY_ISO).forEach(([name, iso3]) => { ISO3_TO_NAME[iso3] = name })
 
+// Direct ISO2 → GeoJSON adm0_a3 (ISO3) — used for player glow (no worldStore dependency)
+const ISO2_TO_ISO3: Record<string, string> = {
+  US:'USA', RU:'RUS', CN:'CHN', DE:'DEU', BR:'BRA', IN:'IND', NG:'NGA', JP:'JPN',
+  GB:'GBR', TR:'TUR', CA:'CAN', MX:'MEX', CU:'CUB', BS:'BHS',
+  FR:'FRA', ES:'ESP', IT:'ITA', PL:'POL', UA:'UKR', RO:'ROU', NL:'NLD', BE:'BEL',
+  SE:'SWE', NO:'NOR', FI:'FIN', DK:'DNK', AT:'AUT', CH:'CHE', CZ:'CZE', PT:'PRT',
+  GR:'GRC', HU:'HUN', IE:'IRL', IS:'ISL', RS:'SRB', BY:'BLR', BG:'BGR', SK:'SVK',
+  HR:'HRV', LT:'LTU', LV:'LVA', EE:'EST', SI:'SVN', BA:'BIH', AL:'ALB',
+  MK:'MKD', ME:'MNE', MD:'MDA',
+  AR:'ARG', CO:'COL', VE:'VEN', PE:'PER', CL:'CHL', EC:'ECU', BO:'BOL', PY:'PRY',
+  UY:'URY', GY:'GUY', SR:'SUR',
+  GT:'GTM', HN:'HND', SV:'SLV', NI:'NIC', CR:'CRI', PA:'PAN', DO:'DOM', HT:'HTI', JM:'JAM',
+  KR:'KOR', KP:'PRK', TW:'TWN', TH:'THA', VN:'VNM', PH:'PHL', MY:'MYS', ID:'IDN',
+  MM:'MMR', BD:'BGD', PK:'PAK', AF:'AFG', IQ:'IRQ', IR:'IRN', SA:'SAU', AE:'ARE',
+  IL:'ISR', SY:'SYR', JO:'JOR', LB:'LBN', YE:'YEM', OM:'OMN', KW:'KWT', QA:'QAT',
+  GE:'GEO', AM:'ARM', AZ:'AZE', KZ:'KAZ', UZ:'UZB', TM:'TKM', KG:'KGZ', TJ:'TJK',
+  MN:'MNG', NP:'NPL', LK:'LKA', KH:'KHM', LA:'LAO',
+  ZA:'ZAF', EG:'EGY', KE:'KEN', ET:'ETH', TZ:'TZA', GH:'GHA', CI:'CIV', CM:'CMR',
+  AO:'AGO', MZ:'MOZ', MG:'MDG', MA:'MAR', DZ:'DZA', TN:'TUN', LY:'LBY', SD:'SDN',
+  SS:'SSD', UG:'UGA', SN:'SEN', ML:'MLI', BF:'BFA', NE:'NER', TD:'TCD', CD:'COD',
+  CG:'COG', CF:'CAF', GA:'GAB', GQ:'GNQ', MW:'MWI', ZM:'ZMB', ZW:'ZWE',
+  BW:'BWA', NA:'NAM', SO:'SOM', ER:'ERI', MR:'MRT',
+  AU:'AUS', NZ:'NZL', PG:'PNG', GL:'GRL',
+}
+
 // ── Hoisted utility (no re-creation on every map load) ──
 const hslToHex = (h: number, s: number, l: number): string => {
   s /= 100; l /= 100
@@ -113,13 +138,58 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
-
-  // ── Live ley line defs from DB ──
-  const liveDefs = useLeyLineStore(s => s.defs)
-  const fetchDefs = useLeyLineStore(s => s.fetchDefs)
-  const leyLineSourcesBooted = useRef(false)
-  // Fetch defs once on mount
-  useEffect(() => { fetchDefs() }, [fetchDefs])
+
+
+  // ── Live ley line defs from DB ──
+
+  const liveDefs = useLeyLineStore(s => s.defs)
+
+  const fetchDefs = useLeyLineStore(s => s.fetchDefs)
+
+  const leyLineSourcesBooted = useRef(false)
+  // -- Fetch active battles on map load so they're visible after refresh --
+  useEffect(() => {
+    import('../../api/client').then(({ getActiveBattles }) => {
+      getActiveBattles().then((res: any) => {
+        if (!res?.battles?.length) return
+        import('../../stores/battleStore').then(({ useBattleStore }) => {
+          const existing = useBattleStore.getState().battles
+          const toAdd: Record<string, any> = {}
+          for (const b of res.battles) {
+            if (existing[b.id]) continue
+            toAdd[b.id] = {
+              id: b.id, type: b.type ?? 'invasion',
+              attackerId: b.attackerId, defenderId: b.defenderId,
+              regionName: b.regionName, startedAt: b.startedAt,
+              ticksElapsed: b.ticksElapsed ?? 0, status: b.status,
+              attacker: { countryCode: b.attackerId, divisionIds: [], engagedDivisionIds: [], damageDealt: b.attackerDamage ?? 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+              defender: { countryCode: b.defenderId, divisionIds: [], engagedDivisionIds: [], damageDealt: b.defenderDamage ?? 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+              attackerRoundsWon: b.attackerRoundsWon ?? 0, defenderRoundsWon: b.defenderRoundsWon ?? 0,
+              rounds: b.rounds?.length ? b.rounds : [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: b.startedAt }],
+              currentTick: { attackerDamage: 0, defenderDamage: 0 },
+              combatLog: [], attackerDamageDealers: {}, defenderDamageDealers: {},
+              damageFeed: [], divisionCooldowns: {},
+              attackerOrder: 'none', defenderOrder: 'none',
+              orderMessage: '', motd: '', playerBattleStats: {},
+              playerAdrenaline: {}, playerSurge: {}, playerCrash: {}, playerAdrenalinePeakAt: {},
+              vengeanceBuff: { attacker: -1, defender: -1 },
+              mercenaryContracts: [], weaponPresence: { attacker: {}, defender: {} },
+            }
+          }
+          if (Object.keys(toAdd).length > 0) {
+            useBattleStore.setState((s: any) => ({ battles: { ...toAdd, ...s.battles } }))
+            console.log('[GameMap] Loaded ' + Object.keys(toAdd).length + ' active battle(s) from API')
+          }
+        })
+      }).catch(() => {})
+    })
+  }, []) // run once on map mount
+
+
+  // Fetch defs once on mount
+
+  useEffect(() => { fetchDefs() }, [fetchDefs])
+
 
   // Store callbacks in refs so marker event listeners always have the latest version
   const onRegionClickRef = useRef(onRegionClick)
@@ -147,117 +217,228 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
       }
     }
   }, [])
-
-  // ── Reactive ley line rendering: boots on first defs + mapLoaded ──
-  useEffect(() => {
-    const m = map.current
-    if (!m || !mapLoaded || liveDefs.length === 0) return
-
-    const bzArc = (p1: number[], p2: number[], steps = 24): number[][] => {
-      const mLng = (p1[0]+p2[0])/2, mLat = (p1[1]+p2[1])/2
-      const dist = Math.sqrt((p2[0]-p1[0])**2+(p2[1]-p1[1])**2)
-      const ctrl = [mLng, mLat + dist*0.18]
-      const pts: number[][] = []
-      for (let i = 0; i <= steps; i++) {
-        const t = i/steps
-        pts.push([(1-t)**2*p1[0]+2*(1-t)*t*ctrl[0]+t**2*p2[0], (1-t)**2*p1[1]+2*(1-t)*t*ctrl[1]+t**2*p2[1]])
-      }
-      return pts
-    }
-    const buildPaths = (): GeoJSON.FeatureCollection => {
-      const regs = useRegionStore.getState().regions
-      const lsAll = useLeyLineStore.getState().getAllLineStatus()
-      const features: GeoJSON.Feature[] = []
-      liveDefs.forEach((line: LeyLineDef) => {
-        const meta = ARCHETYPE_META[line.archetype]
-        const coords: number[][] = []; let prev: number[] | null = null
-        line.blocks.forEach((bid: string) => {
-          const r = regs.find(x => x.id === bid)
-          if (r?.position && r.position.length >= 2) {
-            if (prev) { const c = bzArc(prev, r.position); c.shift(); coords.push(...c) } else coords.push([...r.position])
-            prev = r.position
-          }
-        })
-        if (coords.length < 2) return
-        const st = lsAll.find((s: any) => s.def.id === line.id)
-        features.push({ type: 'Feature', properties: { id: line.id, name: line.name, archetype: line.archetype, color: meta.color, active: st?.active ?? false, completion: st?.completion ?? 0 }, geometry: { type: 'LineString', coordinates: coords } })
-      })
-      return { type: 'FeatureCollection', features }
-    }
-    const buildNodes = (): GeoJSON.FeatureCollection => {
-      const regs = useRegionStore.getState().regions
-      const pISO = usePlayerStore.getState().countryCode ?? ''
-      const pa = useAllianceStore.getState().getPlayerAlliance?.()
-      const pAId: string | null = pa?.id ?? null
-      const als: any[] = (useAllianceStore.getState() as any).alliances ?? []
-      const lsAll = useLeyLineStore.getState().getAllLineStatus()
-      const features: GeoJSON.Feature[] = []
-      liveDefs.forEach((line: LeyLineDef) => {
-        const meta = ARCHETYPE_META[line.archetype]
-        const st = lsAll.find((s: any) => s.def.id === line.id)
-        const active = st?.active ?? false
-        const missingCount = line.blocks.filter((bid: string) => {
-          const o = regs.find(x => x.id === bid)?.controlledBy ?? null
-          if (!o) return true; if (o === pISO) return false
-          if (pAId) { const a = als.find(x => x.id === pAId); if (a?.members?.some((mb: any) => mb.countryCode === o)) return false }
-          return true
-        }).length
-        line.blocks.forEach((bid: string) => {
-          const r = regs.find(x => x.id === bid)
-          if (!r?.position || r.position.length < 2) return
-          const own = r.controlledBy ?? null
-          const ownerState: NodeOwnershipState = !own ? 'unowned' : own === pISO ? 'self' : 'neutral'
-          const isMissing = ownerState !== 'self'
-          const isCrit = !active && isMissing && missingCount === 1
-          features.push({ type: 'Feature', properties: { regionId: bid, regionName: r.name, lineId: line.id, lineName: line.name, archetype: line.archetype, archetypeColor: meta.color, archetypeLabel: meta.label, ownershipState: ownerState, ownerCountry: own, isLineActive: active, isLineCritical: isCrit } satisfies Record<string, unknown>, geometry: { type: 'Point', coordinates: r.position } })
-        })
-      })
-      return { type: 'FeatureCollection', features }
-    }
-
-    if (leyLineSourcesBooted.current) {
-      ;(m.getSource('xwar-leyline-nodes') as maplibregl.GeoJSONSource | undefined)?.setData(buildNodes())
-      ;(m.getSource('xwar-leylines') as maplibregl.GeoJSONSource | undefined)?.setData(buildPaths())
-    } else {
-      leyLineSourcesBooted.current = true
-      try {
-        m.addSource('xwar-leylines', { type: 'geojson', data: buildPaths() })
-        m.addSource('xwar-leyline-nodes', { type: 'geojson', data: buildNodes() })
-        m.addLayer({ id: 'xwar-leyline-glow',       type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],10,6],  'line-opacity': ['case',['==',['get','active'],true],0.25,0.08], 'line-blur': 8 } as any })
-        m.addLayer({ id: 'xwar-leyline-glow-inner', type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],5,3],   'line-opacity': ['case',['==',['get','active'],true],0.45,0.20],'line-blur': 2 } as any })
-        m.addLayer({ id: 'xwar-leyline-core',       type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],2.2,1.5],'line-opacity': ['case',['==',['get','active'],true],0.90,0.40],'line-dasharray':[5,3] } as any })
-        m.addLayer({ id: 'xwar-leyline-spine',      type: 'line',   source: 'xwar-leylines',      filter: ['==',['get','active'],true], paint: { 'line-color': '#ffffff', 'line-width': 0.8, 'line-opacity': 0.85 } as any })
-        m.addLayer({ id: 'xwar-leyline-nodes',      type: 'circle', source: 'xwar-leyline-nodes', minzoom: 2.5, paint: {
-          'circle-radius':       ['case',['boolean',['get','isLineCritical'],false],10,['boolean',['get','isLineActive'],false],8,6] as any,
-          'circle-color':        ['match',['get','ownershipState'],'self',OWNERSHIP_COLORS.self,'ally',OWNERSHIP_COLORS.ally,'enemy',OWNERSHIP_COLORS.enemy,'neutral',OWNERSHIP_COLORS.neutral,OWNERSHIP_COLORS.unowned] as any,
-          'circle-stroke-color': ['case',['boolean',['get','isLineActive'],false],'#ffffff',['boolean',['get','isLineCritical'],false],'#fbbf24','rgba(0,0,0,0)'] as any,
-          'circle-stroke-width': ['case',['boolean',['get','isLineActive'],false],3,['boolean',['get','isLineCritical'],false],2,0] as any,
-          'circle-opacity':      ['match',['get','ownershipState'],'unowned',0.5,1.0] as any,
-        } })
-        m.addLayer({ id: 'xwar-leyline-labels', type: 'symbol', source: 'xwar-leylines', minzoom: 3,
-          layout: { 'text-field':['get','name'],'text-font':['Open Sans Bold','Arial Unicode MS Bold'],'text-size':11,'symbol-placement':'line-center','text-allow-overlap':false },
-          paint: { 'text-color':['get','color'],'text-halo-color':'rgba(0,0,0,0.9)','text-halo-width':1.5 } as any })
-        const llPop = new maplibregl.Popup({ closeButton:false, closeOnClick:false, className:'xwar-leynode-popup', offset:10 })
-        m.on('mouseenter', 'xwar-leyline-nodes', (e: any) => {
-          m.getCanvas().style.cursor = 'crosshair'
-          if (!e.features?.length) return
-          const p = e.features[0].properties as Record<string,unknown>
-          const sc = OWNERSHIP_COLORS[(p.ownershipState as NodeOwnershipState) ?? 'unowned']
-          llPop.setLngLat(e.features[0].geometry.coordinates as [number,number])
-            .setHTML(`<div style="font-family:monospace;min-width:160px"><b style="color:#e2e8f0">${p.regionName??p.regionId}</b><br/><span style="font-size:9px;color:#94a3b8">Ley: <b style="color:${p.archetypeColor}">${p.lineName}</b></span><br/><span style="font-size:8px;padding:2px 6px;background:${sc}22;color:${sc};border-radius:3px">${String(p.ownershipState).toUpperCase()}</span>${p.isLineCritical?'<br/><span style="color:#fbbf24;font-size:9px">⚡ Capture to complete</span>':''}</div>`)
-            .addTo(m)
-        })
-        m.on('mouseleave','xwar-leyline-nodes', () => { m.getCanvas().style.cursor=''; llPop.remove() })
-        const unsubLL = useRegionStore.subscribe(() => {
-          const ns = m.getSource('xwar-leyline-nodes') as maplibregl.GeoJSONSource|undefined
-          const ps = m.getSource('xwar-leylines') as maplibregl.GeoJSONSource|undefined
-          if (ns && ps) { ns.setData(buildNodes()); ps.setData(buildPaths()) }
-        })
-        m.once('remove', () => { unsubLL(); llPop.remove() })
-      } catch(err) { console.warn('[GameMap] ley line init:', err) }
-    }
-  }, [liveDefs, mapLoaded])
-
+
+
+  // ── Reactive ley line rendering: boots on first defs + mapLoaded ──
+
+  useEffect(() => {
+
+    const m = map.current
+
+    if (!m || !mapLoaded || liveDefs.length === 0) return
+
+
+
+    const bzArc = (p1: number[], p2: number[], steps = 24): number[][] => {
+
+      const mLng = (p1[0]+p2[0])/2, mLat = (p1[1]+p2[1])/2
+
+      const dist = Math.sqrt((p2[0]-p1[0])**2+(p2[1]-p1[1])**2)
+
+      const ctrl = [mLng, mLat + dist*0.18]
+
+      const pts: number[][] = []
+
+      for (let i = 0; i <= steps; i++) {
+
+        const t = i/steps
+
+        pts.push([(1-t)**2*p1[0]+2*(1-t)*t*ctrl[0]+t**2*p2[0], (1-t)**2*p1[1]+2*(1-t)*t*ctrl[1]+t**2*p2[1]])
+
+      }
+
+      return pts
+
+    }
+
+    const buildPaths = (): GeoJSON.FeatureCollection => {
+
+      const regs = useRegionStore.getState().regions
+
+      const lsAll = useLeyLineStore.getState().getAllLineStatus()
+
+      const features: GeoJSON.Feature[] = []
+
+      liveDefs.forEach((line: LeyLineDef) => {
+
+        const meta = ARCHETYPE_META[line.archetype]
+
+        const coords: number[][] = []; let prev: number[] | null = null
+
+        line.blocks.forEach((bid: string) => {
+
+          const r = regs.find(x => x.id === bid)
+
+          if (r?.position && r.position.length >= 2) {
+
+            if (prev) { const c = bzArc(prev, r.position); c.shift(); coords.push(...c) } else coords.push([...r.position])
+
+            prev = r.position
+
+          }
+
+        })
+
+        if (coords.length < 2) return
+
+        const st = lsAll.find((s: any) => s.def.id === line.id)
+
+        features.push({ type: 'Feature', properties: { id: line.id, name: line.name, archetype: line.archetype, color: meta.color, active: st?.active ?? false, completion: st?.completion ?? 0 }, geometry: { type: 'LineString', coordinates: coords } })
+
+      })
+
+      return { type: 'FeatureCollection', features }
+
+    }
+
+    const buildNodes = (): GeoJSON.FeatureCollection => {
+
+      const regs = useRegionStore.getState().regions
+
+      const pISO = usePlayerStore.getState().countryCode ?? ''
+
+      const pa = useAllianceStore.getState().getPlayerAlliance?.()
+
+      const pAId: string | null = pa?.id ?? null
+
+      const als: any[] = (useAllianceStore.getState() as any).alliances ?? []
+
+      const lsAll = useLeyLineStore.getState().getAllLineStatus()
+
+      const features: GeoJSON.Feature[] = []
+
+      liveDefs.forEach((line: LeyLineDef) => {
+
+        const meta = ARCHETYPE_META[line.archetype]
+
+        const st = lsAll.find((s: any) => s.def.id === line.id)
+
+        const active = st?.active ?? false
+
+        const missingCount = line.blocks.filter((bid: string) => {
+
+          const o = regs.find(x => x.id === bid)?.controlledBy ?? null
+
+          if (!o) return true; if (o === pISO) return false
+
+          if (pAId) { const a = als.find(x => x.id === pAId); if (a?.members?.some((mb: any) => mb.countryCode === o)) return false }
+
+          return true
+
+        }).length
+
+        line.blocks.forEach((bid: string) => {
+
+          const r = regs.find(x => x.id === bid)
+
+          if (!r?.position || r.position.length < 2) return
+
+          const own = r.controlledBy ?? null
+
+          const ownerState: NodeOwnershipState = !own ? 'unowned' : own === pISO ? 'self' : 'neutral'
+
+          const isMissing = ownerState !== 'self'
+
+          const isCrit = !active && isMissing && missingCount === 1
+
+          features.push({ type: 'Feature', properties: { regionId: bid, regionName: r.name, lineId: line.id, lineName: line.name, archetype: line.archetype, archetypeColor: meta.color, archetypeLabel: meta.label, ownershipState: ownerState, ownerCountry: own, isLineActive: active, isLineCritical: isCrit } satisfies Record<string, unknown>, geometry: { type: 'Point', coordinates: r.position } })
+
+        })
+
+      })
+
+      return { type: 'FeatureCollection', features }
+
+    }
+
+
+
+    if (leyLineSourcesBooted.current) {
+
+      ;(m.getSource('xwar-leyline-nodes') as maplibregl.GeoJSONSource | undefined)?.setData(buildNodes())
+
+      ;(m.getSource('xwar-leylines') as maplibregl.GeoJSONSource | undefined)?.setData(buildPaths())
+
+    } else {
+
+      leyLineSourcesBooted.current = true
+
+      try {
+
+        m.addSource('xwar-leylines', { type: 'geojson', data: buildPaths() })
+
+        m.addSource('xwar-leyline-nodes', { type: 'geojson', data: buildNodes() })
+
+        m.addLayer({ id: 'xwar-leyline-glow',       type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],10,6],  'line-opacity': ['case',['==',['get','active'],true],0.25,0.08], 'line-blur': 8 } as any })
+
+        m.addLayer({ id: 'xwar-leyline-glow-inner', type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],5,3],   'line-opacity': ['case',['==',['get','active'],true],0.45,0.20],'line-blur': 2 } as any })
+
+        m.addLayer({ id: 'xwar-leyline-core',       type: 'line',   source: 'xwar-leylines',      paint: { 'line-color': ['get','color'], 'line-width': ['case',['==',['get','active'],true],2.2,1.5],'line-opacity': ['case',['==',['get','active'],true],0.90,0.40],'line-dasharray':[5,3] } as any })
+
+        m.addLayer({ id: 'xwar-leyline-spine',      type: 'line',   source: 'xwar-leylines',      filter: ['==',['get','active'],true], paint: { 'line-color': '#ffffff', 'line-width': 0.8, 'line-opacity': 0.85 } as any })
+
+        m.addLayer({ id: 'xwar-leyline-nodes',      type: 'circle', source: 'xwar-leyline-nodes', minzoom: 2.5, paint: {
+
+          'circle-radius':       ['case',['boolean',['get','isLineCritical'],false],10,['boolean',['get','isLineActive'],false],8,6] as any,
+
+          'circle-color':        ['match',['get','ownershipState'],'self',OWNERSHIP_COLORS.self,'ally',OWNERSHIP_COLORS.ally,'enemy',OWNERSHIP_COLORS.enemy,'neutral',OWNERSHIP_COLORS.neutral,OWNERSHIP_COLORS.unowned] as any,
+
+          'circle-stroke-color': ['case',['boolean',['get','isLineActive'],false],'#ffffff',['boolean',['get','isLineCritical'],false],'#fbbf24','rgba(0,0,0,0)'] as any,
+
+          'circle-stroke-width': ['case',['boolean',['get','isLineActive'],false],3,['boolean',['get','isLineCritical'],false],2,0] as any,
+
+          'circle-opacity':      ['match',['get','ownershipState'],'unowned',0.5,1.0] as any,
+
+        } })
+
+        m.addLayer({ id: 'xwar-leyline-labels', type: 'symbol', source: 'xwar-leylines', minzoom: 3,
+
+          layout: { 'text-field':['get','name'],'text-font':['Open Sans Bold','Arial Unicode MS Bold'],'text-size':11,'symbol-placement':'line-center','text-allow-overlap':false },
+
+          paint: { 'text-color':['get','color'],'text-halo-color':'rgba(0,0,0,0.9)','text-halo-width':1.5 } as any })
+
+        const llPop = new maplibregl.Popup({ closeButton:false, closeOnClick:false, className:'xwar-leynode-popup', offset:10 })
+
+        m.on('mouseenter', 'xwar-leyline-nodes', (e: any) => {
+
+          m.getCanvas().style.cursor = 'crosshair'
+
+          if (!e.features?.length) return
+
+          const p = e.features[0].properties as Record<string,unknown>
+
+          const sc = OWNERSHIP_COLORS[(p.ownershipState as NodeOwnershipState) ?? 'unowned']
+
+          llPop.setLngLat(e.features[0].geometry.coordinates as [number,number])
+
+            .setHTML(`<div style="font-family:monospace;min-width:160px"><b style="color:#e2e8f0">${p.regionName??p.regionId}</b><br/><span style="font-size:9px;color:#94a3b8">Ley: <b style="color:${p.archetypeColor}">${p.lineName}</b></span><br/><span style="font-size:8px;padding:2px 6px;background:${sc}22;color:${sc};border-radius:3px">${String(p.ownershipState).toUpperCase()}</span>${p.isLineCritical?'<br/><span style="color:#fbbf24;font-size:9px">⚡ Capture to complete</span>':''}</div>`)
+
+            .addTo(m)
+
+        })
+
+        m.on('mouseleave','xwar-leyline-nodes', () => { m.getCanvas().style.cursor=''; llPop.remove() })
+
+        const unsubLL = useRegionStore.subscribe(() => {
+
+          const ns = m.getSource('xwar-leyline-nodes') as maplibregl.GeoJSONSource|undefined
+
+          const ps = m.getSource('xwar-leylines') as maplibregl.GeoJSONSource|undefined
+
+          if (ns && ps) { ns.setData(buildNodes()); ps.setData(buildPaths()) }
+
+        })
+
+        m.once('remove', () => { unsubLL(); llPop.remove() })
+
+      } catch(err) { console.warn('[GameMap] ley line init:', err) }
+
+    }
+
+  }, [liveDefs, mapLoaded])
+
+
+
 
   // Expose map controls to parent via ref
   // ── Reactive map layer visibility toggles (Ley Lines / Sea Lines) ──
@@ -299,7 +480,178 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
     return () => unsub()
   }, [mapLoaded])
 
-  // Expose map controls to parent via ref
+  // ── Animated pulsing glow on player country ──
+  useEffect(() => {
+    if (!mapLoaded) return
+
+    let rafId = 0
+    let running = true
+
+    // Use direct ISO2→ISO3 map — no worldStore dependency
+    const resolveISO3 = (): string | null => {
+      const iso2 = usePlayerStore.getState().countryCode
+      if (!iso2) return null
+      return ISO2_TO_ISO3[iso2.toUpperCase()] ?? null
+    }
+
+    // Apply filter to all three glow layers
+    const applyFilter = (iso3: string) => {
+      const m = map.current
+      if (!m) return
+      const f: any = ['==', ['get', 'adm0_a3'], iso3]
+      ;['xwar-player-glow', 'xwar-player-glow-outer', 'xwar-player-tint'].forEach(id => {
+        try { if (m.getLayer(id)) m.setFilter(id, f) } catch (_) {}
+      })
+    }
+
+    // Pulse animation: sine-wave breathing on the glow layers
+    const animate = (ts: number) => {
+      if (!running) return
+      const m = map.current
+      if (m) {
+        const t = (ts / 2000) * Math.PI * 2
+        const border = 0.55 + 0.35 * Math.sin(t)      // 0.20 → 0.90
+        const halo   = 0.06 + 0.12 * Math.sin(t)      // 0.06 → 0.18
+        const fill   = 0.08 + 0.08 * Math.sin(t)      // 0.08 → 0.16
+        try {
+          if (m.getLayer('xwar-player-glow'))       m.setPaintProperty('xwar-player-glow',       'line-opacity', border)
+          if (m.getLayer('xwar-player-glow-outer')) m.setPaintProperty('xwar-player-glow-outer', 'line-opacity', halo)
+          if (m.getLayer('xwar-player-tint'))       m.setPaintProperty('xwar-player-tint',       'fill-opacity', fill)
+        } catch (_) {}
+      }
+      rafId = requestAnimationFrame(animate)
+    }
+
+    // Apply immediately on mount, then watch for countryCode changes
+    const iso3 = resolveISO3()
+    if (iso3) applyFilter(iso3)
+
+    const unsub = usePlayerStore.subscribe(() => {
+      const i = resolveISO3()
+      if (i) applyFilter(i)
+    })
+
+    rafId = requestAnimationFrame(animate)
+
+    return () => {
+      running = false
+      cancelAnimationFrame(rafId)
+      unsub()
+    }
+  }, [mapLoaded])
+
+  // ── Reactive Occupation Coloring ──
+  // When a country conquers a foreign region, recolor that region with the conqueror's color
+  useEffect(() => {
+    if (!mapLoaded) return
+    const m = map.current
+    if (!m) return
+
+    // Build the occupation fill expression from current region state
+    const buildOccupationPaint = () => {
+      const regions = useRegionStore.getState().regions
+      const countriesList = countriesRef.current
+
+      // Only regions that are occupied (controlledBy !== countryCode and not ocean)
+      const occupied = regions.filter(r => !r.isOcean && r.controlledBy && r.controlledBy !== r.countryCode)
+
+      if (occupied.length === 0) {
+        // No occupations — hide layer with empty match
+        return { fillColor: 'rgba(0,0,0,0)' as any, fillOpacity: 0, names: [] as string[] }
+      }
+
+      // Build MapLibre match: ['match', ['get', 'name'], regionName, color, ..., 'rgba(0,0,0,0)']
+      const matchExpr: any[] = ['match', ['get', 'name']]
+      const occupiedNames: string[] = []
+
+      for (const r of occupied) {
+        const conqueror = countriesList.find(c => c.code === r.controlledBy)
+        const color = conqueror?.color ?? '#ef4444'
+        matchExpr.push(r.name, color)
+        occupiedNames.push(r.name)
+      }
+      matchExpr.push('rgba(0,0,0,0)') // fallback
+
+      return { fillColor: matchExpr, fillOpacity: 0.55, names: occupiedNames }
+    }
+
+    // Add the occupation overlay layers (added on top of base fill)
+    const initLayers = () => {
+      if (!m.getSource('xwar-states')) return
+
+      // --- Fill layer: conqueror's color tint ---
+      if (!m.getLayer('xwar-occupation-fill')) {
+        m.addLayer({
+          id: 'xwar-occupation-fill',
+          type: 'fill',
+          source: 'xwar-states',
+          filter: ['==', ['get', 'name'], '__NONE__'],
+          paint: { 'fill-color': 'rgba(0,0,0,0)', 'fill-opacity': 0 },
+        }, 'xwar-state-border') // insert under borders
+      }
+
+      // --- Border ring: bright conqueror color outline ---
+      if (!m.getLayer('xwar-occupation-border')) {
+        m.addLayer({
+          id: 'xwar-occupation-border',
+          type: 'line',
+          source: 'xwar-states',
+          filter: ['==', ['get', 'name'], '__NONE__'],
+          paint: {
+            'line-color': ['match', ['get', 'name'], '__NONE__', '#fff', '#fff'],
+            'line-width': 2.5,
+            'line-opacity': 0.8,
+            'line-dasharray': [3, 2], // dashed border = occupied look
+          },
+        })
+      }
+    }
+
+    // Apply the current occupation state to layers
+    const applyOccupation = () => {
+      if (!m.getLayer('xwar-occupation-fill')) return
+      const { fillColor, fillOpacity, names } = buildOccupationPaint()
+
+      const nameFilter: any = names.length > 0
+        ? ['in', ['get', 'name'], ['literal', names]]
+        : ['==', ['get', 'name'], '__NONE__']
+
+      m.setFilter('xwar-occupation-fill', nameFilter)
+      m.setPaintProperty('xwar-occupation-fill', 'fill-color', fillColor)
+      m.setPaintProperty('xwar-occupation-fill', 'fill-opacity', fillOpacity)
+
+      // Also update border: build match with conqueror colors
+      if (m.getLayer('xwar-occupation-border')) {
+        m.setFilter('xwar-occupation-border', nameFilter)
+        // Build line-color match for the border (same colors, full opacity)
+        const regions = useRegionStore.getState().regions
+        const occupied = regions.filter(r => !r.isOcean && r.controlledBy && r.controlledBy !== r.countryCode)
+        if (occupied.length > 0) {
+          const borderMatch: any[] = ['match', ['get', 'name']]
+          for (const r of occupied) {
+            const conqueror = countriesRef.current.find(c => c.code === r.controlledBy)
+            borderMatch.push(r.name, conqueror?.color ?? '#ef4444')
+          }
+          borderMatch.push('#ffffff')
+          m.setPaintProperty('xwar-occupation-border', 'line-color', borderMatch)
+        }
+      }
+    }
+
+    // Wait for source to be ready, then init layers
+    if (m.getSource('xwar-states')) {
+      initLayers()
+      applyOccupation()
+    } else {
+      m.once('sourcedata', () => { initLayers(); applyOccupation() })
+    }
+
+    // React to any regionStore changes (battle wins, captures, liberations)
+    const unsub = useRegionStore.subscribe(() => applyOccupation())
+
+    return () => unsub()
+  }, [mapLoaded])
+
   useImperativeHandle(ref, () => ({
     zoomIn: () => {
       map.current?.zoomIn({ duration: 300 })
@@ -440,16 +792,18 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           })
 
           // ── PRE-CALCULATE WAR AND PLAYER STATES FOR MARKERS ──
-          const playerCountry = countries.find(c => c.controller === 'Player Alliance')
-          const playerISO = playerCountry ? COUNTRY_ISO[playerCountry.name] : null
+          // Use direct ISO2→ISO3 map (no worldStore country name dependency)
+          const playerISO2 = usePlayerStore.getState().countryCode
+          const playerISO = playerISO2 ? (ISO2_TO_ISO3[playerISO2.toUpperCase()] ?? null) : null
+          const playerCountry = countries.find(c => c.code === playerISO2)
           const playerEmpire = playerCountry?.empire
 
           const wars = useWorldStore.getState().wars
           const enemyISOs = new Set<string>()
           wars.forEach(w => {
             if (w.status !== 'active') return
-            if (w.attacker === (playerCountry?.code || 'US')) enemyISOs.add(w.defender)
-            if (w.defender === (playerCountry?.code || 'US')) enemyISOs.add(w.attacker)
+            if (w.attacker === (playerISO2 || 'US')) enemyISOs.add(w.defender)
+            if (w.defender === (playerISO2 || 'US')) enemyISOs.add(w.attacker)
           })
 
           // ── HTML MARKERS FOR COUNTRIES (flag-icons + Text + Assets) ──
@@ -641,40 +995,49 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           const playerOceans = allRegions.filter(r => r.isOcean && r.controlledBy === playerISO).map(r => r.name)
           const allyOceans = allRegions.filter(r => r.isOcean && allyISOs.includes(r.controlledBy)).map(r => r.name)
 
-          // Player territory — bright green glow
-          if (playerISO) {
-            m.addLayer({
-              id: 'xwar-player-glow',
-              type: 'line',
-              source: 'xwar-states',
-              filter: [
-                'any',
-                ['==', ['get', 'adm0_a3'], playerISO],
-                ['in', ['get', 'name'], ['literal', playerOceans]]
-              ],
-              paint: {
-                'line-color': '#22d38a',
-                'line-width': 3,
-                'line-opacity': 0.6,
-                'line-blur': 4,
-              },
-            })
-            // Player territory bright tint overlay
-            m.addLayer({
-              id: 'xwar-player-tint',
-              type: 'fill',
-              source: 'xwar-states',
-              filter: [
-                'any',
-                ['==', ['get', 'adm0_a3'], playerISO],
-                ['in', ['get', 'name'], ['literal', playerOceans]]
-              ],
-              paint: {
-                'fill-color': '#22d38a',
-                'fill-opacity': 0.08,
-              },
-            })
-          }
+          // Player territory — vivid pulsing green glow
+          // Always add these layers (even with empty filter) so the RAF animation can always find them
+          const playerFilter: any = playerISO
+            ? ['any', ['==', ['get', 'adm0_a3'], playerISO], ['in', ['get', 'name'], ['literal', playerOceans]]]
+            : ['==', ['get', 'adm0_a3'], '__NONE__']
+
+          // Layer 1: Wide soft outer halo (large blur)
+          m.addLayer({
+            id: 'xwar-player-glow-outer',
+            type: 'line',
+            source: 'xwar-states',
+            filter: playerFilter,
+            paint: {
+              'line-color': '#22d38a',
+              'line-width': 22,
+              'line-opacity': 0.12,
+              'line-blur': 14,
+            },
+          })
+          // Layer 2: Sharp bright inner border
+          m.addLayer({
+            id: 'xwar-player-glow',
+            type: 'line',
+            source: 'xwar-states',
+            filter: playerFilter,
+            paint: {
+              'line-color': '#4fffb8',
+              'line-width': 3,
+              'line-opacity': 0.9,
+              'line-blur': 0.5,
+            },
+          })
+          // Layer 3: Country fill tint
+          m.addLayer({
+            id: 'xwar-player-tint',
+            type: 'fill',
+            source: 'xwar-states',
+            filter: playerFilter,
+            paint: {
+              'fill-color': '#22d38a',
+              'fill-opacity': 0.14,
+            },
+          })
 
           // Ally territories — subtle blue glow
           if (allyISOs.length > 0) {
@@ -697,12 +1060,7 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           }
 
           // ── 9. ACTIVE WAR — ENEMY TERRITORY INDICATORS ──
-          // Convert 2-letter codes to 3-letter ISOs for GeoJSON matching
-          const ISO2_TO_ISO3: Record<string, string> = {}
-          countries.forEach(c => {
-            const iso3 = COUNTRY_ISO[c.name]
-            if (iso3) ISO2_TO_ISO3[c.code] = iso3
-          })
+          // Use module-level ISO2_TO_ISO3 (already populated)
           const enemyISO3s = [...enemyISOs].map(iso2 => ISO2_TO_ISO3[iso2]).filter(Boolean)
 
           if (enemyISO3s.length > 0) {
@@ -2033,3 +2391,4 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
 GameMap.displayName = 'GameMap'
 export default GameMap
+

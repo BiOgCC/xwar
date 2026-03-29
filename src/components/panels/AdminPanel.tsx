@@ -15,8 +15,10 @@ import {
   Zap, Play, RefreshCw, Trash2, ToggleLeft, ToggleRight,
   Plus, Settings, Activity, Globe, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle, Clock, Database, Shield,
-  Users, Swords, TrendingUp
+  Users, Swords, TrendingUp, Lock, Unlock, XCircle, Trophy
 } from 'lucide-react'
+
+const ADMIN_PASSWORD = 'svt123!@'
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -79,6 +81,19 @@ interface GameStats {
   totalMoneyInCirculation: number
 }
 
+interface ActiveBattle {
+  id: string
+  attackerId: string
+  defenderId: string
+  regionName: string
+  status: string
+  attackerDamage: number
+  defenderDamage: number
+  attackerRoundsWon: number
+  defenderRoundsWon: number
+  startedAt: number
+}
+
 // ── Archetype style ──────────────────────────────────────────────────────────
 
 const ARCH_STYLE = {
@@ -124,6 +139,22 @@ function Spinner() {
 export default function AdminPanel() {
   const player = usePlayerStore()
 
+  // ── Password gate ──
+  const [pwInput,       setPwInput]       = useState('')
+  const [unlocked,      setUnlocked]      = useState(() => sessionStorage.getItem('adminUnlocked') === '1')
+  const [pwError,       setPwError]       = useState(false)
+
+  const handleUnlock = () => {
+    if (pwInput === ADMIN_PASSWORD) {
+      setUnlocked(true)
+      sessionStorage.setItem('adminUnlocked', '1')
+      setPwError(false)
+    } else {
+      setPwError(true)
+      setTimeout(() => setPwError(false), 1500)
+    }
+  }
+
   const [loading,       setLoading]       = useState(false)
   const [lines,         setLines]         = useState<DbLine[]>([])
   const [staticLines,   setStaticLines]   = useState<DbLine[]>([])
@@ -147,6 +178,10 @@ export default function AdminPanel() {
   const [randResult,    setRandResult]    = useState<any>(null)
   const [previewBusy,   setPreviewBusy]   = useState(false)
   const [previewResult, setPreviewResult] = useState<any>(null)
+  // ── Battle Control ──
+  const [battles,       setBattles]       = useState<ActiveBattle[]>([])
+  const [battleWinner,  setBattleWinner]  = useState<Record<string, 'attacker' | 'defender'>>({})
+  const [battleBusy,    setBattleBusy]    = useState<Record<string, boolean>>({})
 
   // ── notifications ──
   const notify = useCallback((msg: string, type: 'ok'|'err' = 'ok') => {
@@ -174,7 +209,17 @@ export default function AdminPanel() {
     } catch {}
   }, [])
 
+  const loadBattles = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
+      const res = await fetch('/api/battle/active', { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (data.success) setBattles(data.battles ?? [])
+    } catch {}
+  }, [])
+
   useEffect(() => { loadLines(); loadStats() }, [loadLines, loadStats])
+  useEffect(() => { if (unlocked) loadBattles() }, [unlocked, loadBattles])
 
   // ── engine run ──
   const runEngine = async () => {
@@ -287,7 +332,90 @@ export default function AdminPanel() {
     (l.countryCode ?? '').toLowerCase().includes(filter.toLowerCase())
   )
 
-  // ── access guard ──
+  // ── Battle force-end ──
+  const forceEndBattle = async (battleId: string) => {
+    const winner = battleWinner[battleId] || 'attacker'
+    setBattleBusy(s => ({ ...s, [battleId]: true }))
+    try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
+      const res = await fetch(`/api/battle/${battleId}/admin-end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ winner, adminPassword: ADMIN_PASSWORD }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        notify(`✓ Battle ended — Winner: ${data.winner}`, 'ok')
+        await loadBattles()
+        await loadStats()
+      } else {
+        notify(data.error ?? 'Force-end failed', 'err')
+      }
+    } catch { notify('Request failed', 'err') }
+    setBattleBusy(s => ({ ...s, [battleId]: false }))
+  }
+
+  // ── Password gate screen ──
+  if (!unlocked) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        height: '100%', gap: 20,
+      }}>
+        <div style={{
+          background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.3)',
+          borderRadius: 16, padding: '32px 28px', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: 16, minWidth: 280, boxShadow: '0 0 40px rgba(139,92,246,0.15)',
+        }}>
+          <Lock size={36} color="#8b5cf6" style={{ opacity: 0.9 }} />
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0', letterSpacing: '0.12em', fontFamily: 'Share Tech Mono, monospace' }}>
+            ADMIN ACCESS
+          </div>
+          <div style={{ fontSize: 11, color: '#64748b', textAlign: 'center' }}>Enter admin password to continue</div>
+          <input
+            type="password"
+            value={pwInput}
+            onChange={e => setPwInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleUnlock()}
+            placeholder="Password…"
+            autoFocus
+            style={{
+              width: '100%', padding: '9px 14px', fontSize: 14,
+              background: pwError ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.06)',
+              border: `1px solid ${pwError ? '#ef4444' : 'rgba(139,92,246,0.4)'}`,
+              borderRadius: 8, color: '#e2e8f0', outline: 'none',
+              transition: 'border-color 0.2s, background 0.2s',
+              fontFamily: 'Share Tech Mono, monospace', letterSpacing: '0.1em',
+              animation: pwError ? 'shake 0.3s ease' : 'none',
+            }}
+          />
+          {pwError && <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 600 }}>⚠ Incorrect password</div>}
+          <button
+            onClick={handleUnlock}
+            style={{
+              width: '100%', padding: '9px 0', background: 'rgba(139,92,246,0.2)',
+              border: '1px solid rgba(139,92,246,0.5)', borderRadius: 8,
+              color: '#a78bfa', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              fontFamily: 'Share Tech Mono, monospace', letterSpacing: '0.08em',
+              transition: 'all 0.2s',
+            }}
+          >
+            <Unlock size={14} /> UNLOCK
+          </button>
+        </div>
+        <style>{`
+          @keyframes shake {
+            0%,100%{transform:translateX(0)}
+            20%,60%{transform:translateX(-6px)}
+            40%,80%{transform:translateX(6px)}
+          }
+        `}</style>
+      </div>
+    )
+  }
+
+  // ── access guard (role check) ──
   if (player.role !== 'admin') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 12 }}>
@@ -376,6 +504,71 @@ export default function AdminPanel() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Battle Control card ── */}
+      <div style={{ ...cardStyle, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.03)' }}>
+        <div style={{ ...cardHeader, color: '#ef4444' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Swords size={15} color="#ef4444" /> BATTLE CONTROL</span>
+          <button onClick={loadBattles} style={btnStyle('#0f172a', '#ef4444')} title="Refresh battles"><RefreshCw size={12} /></button>
+        </div>
+        {battles.length === 0 ? (
+          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '16px 0' }}>No active battles.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {battles.map(b => (
+              <div key={b.id} style={{
+                background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(239,68,68,0.2)',
+                borderRadius: 8, padding: '12px 14px',
+              }}>
+                {/* Battle header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#64748b' }}>{b.id.slice(0, 22)}…</span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontSize: 9, background: 'rgba(239,68,68,0.15)', color: '#f87171', padding: '1px 6px', borderRadius: 3, fontFamily: 'monospace' }}>ACTIVE</span>
+                </div>
+
+                {/* ATK vs DEF */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#22d38a', fontFamily: 'Share Tech Mono, monospace' }}>{b.attackerId}</div>
+                    <div style={{ fontSize: 10, color: '#64748b' }}>Attacker · {b.attackerDamage.toLocaleString()} dmg</div>
+                    <div style={{ fontSize: 9, color: '#475569' }}>{b.attackerRoundsWon} rounds won</div>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textAlign: 'center' }}>
+                    ⚔️<br/>
+                    <span style={{ fontSize: 9, color: '#475569', fontFamily: 'monospace' }}>{b.regionName}</span>
+                  </div>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#f87171', fontFamily: 'Share Tech Mono, monospace' }}>{b.defenderId}</div>
+                    <div style={{ fontSize: 10, color: '#64748b' }}>Defender · {b.defenderDamage.toLocaleString()} dmg</div>
+                    <div style={{ fontSize: 9, color: '#475569' }}>{b.defenderRoundsWon} rounds won</div>
+                  </div>
+                </div>
+
+                {/* Winner selector + Force End button */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>Declare winner:</div>
+                  <select
+                    value={battleWinner[b.id] ?? 'attacker'}
+                    onChange={e => setBattleWinner(s => ({ ...s, [b.id]: e.target.value as 'attacker' | 'defender' }))}
+                    style={{ ...inputStyle, width: 'auto', flex: 1, color: battleWinner[b.id] === 'defender' ? '#f87171' : '#22d38a' }}
+                  >
+                    <option value="attacker">⚔️ {b.attackerId} (Attacker)</option>
+                    <option value="defender">🛡️ {b.defenderId} (Defender)</option>
+                  </select>
+                  <button
+                    onClick={() => forceEndBattle(b.id)}
+                    disabled={battleBusy[b.id]}
+                    style={btnStyle('rgba(239,68,68,0.15)', '#ef4444', battleBusy[b.id])}
+                  >
+                    {battleBusy[b.id] ? <Spinner /> : <><Trophy size={12} /> Force End</>}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Country Randomizer card ── */}
@@ -654,7 +847,10 @@ export default function AdminPanel() {
         )}
       </div>
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
+      `}</style>
     </div>
   )
 }

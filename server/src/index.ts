@@ -101,6 +101,11 @@ if (runApi) {
   app.use('/api/mu', muRoutes)
   app.use('/api/prestige', prestigeRoutes)
 
+  // ── Restore persisted battles into memory on boot ──
+  import('./services/battle.service.js').then(({ battleService }) => {
+    battleService.restoreFromDB().catch(err => logger.error(err, '[Boot] Failed to restore battles'))
+  })
+
   // ── Global error handler (must be AFTER routes) ──
   app.use(errorHandler)
 }

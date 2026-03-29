@@ -237,61 +237,77 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
   fetchGovernment: async (countryCode) => {
     try {
       const res: any = await api.get(`/gov/country/${countryCode}`)
-      if (res.government) {
-        const raw = res.government
-        // Convert DB timestamps to ms for enrichment countdown
-        if (raw.enrichmentStartedAt) raw.enrichmentStartedAt = new Date(raw.enrichmentStartedAt).getTime()
-        if (raw.enrichmentCompletedAt) raw.enrichmentCompletedAt = new Date(raw.enrichmentCompletedAt).getTime()
+      const existing = get().governments[countryCode]
 
-        // Merge raw DB row with existing store state (or defaults) to satisfy Government type
-        const existing = get().governments[countryCode]
-        const gov: Government = {
-          countryId: countryCode,
-          president: raw.president ?? existing?.president ?? null,
-          vicePresident: raw.vicePresident ?? raw.vice_president ?? existing?.vicePresident ?? null,
-          defenseMinister: raw.defenseMinister ?? raw.defense_minister ?? existing?.defenseMinister ?? null,
-          ecoMinister: raw.ecoMinister ?? raw.eco_minister ?? existing?.ecoMinister ?? null,
-          congress: raw.congress ?? existing?.congress ?? [],
-          candidates: existing?.candidates ?? [],
-          taxRate: raw.taxRate ?? raw.tax_rate ?? existing?.taxRate ?? 10,
-          swornEnemy: raw.swornEnemy ?? raw.sworn_enemy ?? existing?.swornEnemy ?? null,
-          alliances: raw.alliances ?? existing?.alliances ?? [],
-          empireName: existing?.empireName ?? null,
-          ideology: existing?.ideology ?? null,
-          ideologyPoints: existing?.ideologyPoints ?? { ...DEFAULT_IDEOLOGY_POINTS },
-          nuclearAuthorized: raw.nuclearAuthorized ?? raw.nuclear_authorized ?? existing?.nuclearAuthorized ?? false,
-          enrichmentStartedAt: raw.enrichmentStartedAt ?? existing?.enrichmentStartedAt ?? null,
-          enrichmentCompletedAt: raw.enrichmentCompletedAt ?? existing?.enrichmentCompletedAt ?? null,
-          nukeReady: existing?.nukeReady ?? false,
-          citizens: existing?.citizens ?? [],
-          divisionShop: existing?.divisionShop ?? [],
-          militaryBudgetPercent: raw.militaryBudgetPercent ?? raw.military_budget_percent ?? existing?.militaryBudgetPercent ?? 5,
-          armedForces: existing?.armedForces ?? [],
-          lastFreeRecruitAt: existing?.lastFreeRecruitAt ?? 0,
-          equipmentVault: existing?.equipmentVault ?? [],
-          embargoes: raw.embargoes ?? existing?.embargoes ?? [],
-          conscriptionActive: raw.conscriptionActive ?? raw.conscription_active ?? existing?.conscriptionActive ?? false,
-          importTariff: raw.importTariff ?? raw.import_tariff ?? existing?.importTariff ?? 0,
-          minimumWage: raw.minimumWage ?? raw.minimum_wage ?? existing?.minimumWage ?? 0,
-          stateMilitaryUnits: existing?.stateMilitaryUnits ?? [],
-          citizenDividendPercent: raw.citizenDividendPercent ?? raw.citizen_dividend_percent ?? existing?.citizenDividendPercent ?? 0,
-          laws: raw.laws ?? existing?.laws ?? { proposals: [] },
+      // Build government object — fallback to empty defaults if no DB row yet
+      const raw = res.government ?? {}
+      if (raw.enrichmentStartedAt) raw.enrichmentStartedAt = new Date(raw.enrichmentStartedAt).getTime()
+      if (raw.enrichmentCompletedAt) raw.enrichmentCompletedAt = new Date(raw.enrichmentCompletedAt).getTime()
+
+      const gov: Government = {
+        countryId: countryCode,
+        president: raw.president ?? existing?.president ?? null,
+        vicePresident: raw.vicePresident ?? raw.vice_president ?? existing?.vicePresident ?? null,
+        defenseMinister: raw.defenseMinister ?? raw.defense_minister ?? existing?.defenseMinister ?? null,
+        ecoMinister: raw.ecoMinister ?? raw.eco_minister ?? existing?.ecoMinister ?? null,
+        congress: raw.congress ?? existing?.congress ?? [],
+        candidates: existing?.candidates ?? [],
+        taxRate: raw.taxRate ?? raw.tax_rate ?? existing?.taxRate ?? 10,
+        swornEnemy: raw.swornEnemy ?? raw.sworn_enemy ?? existing?.swornEnemy ?? null,
+        alliances: raw.alliances ?? existing?.alliances ?? [],
+        empireName: existing?.empireName ?? null,
+        ideology: existing?.ideology ?? null,
+        ideologyPoints: existing?.ideologyPoints ?? { ...DEFAULT_IDEOLOGY_POINTS },
+        nuclearAuthorized: raw.nuclearAuthorized ?? raw.nuclear_authorized ?? existing?.nuclearAuthorized ?? false,
+        enrichmentStartedAt: raw.enrichmentStartedAt ?? existing?.enrichmentStartedAt ?? null,
+        enrichmentCompletedAt: raw.enrichmentCompletedAt ?? existing?.enrichmentCompletedAt ?? null,
+        nukeReady: existing?.nukeReady ?? false,
+        citizens: existing?.citizens ?? [],
+        divisionShop: existing?.divisionShop ?? [],
+        militaryBudgetPercent: raw.militaryBudgetPercent ?? raw.military_budget_percent ?? existing?.militaryBudgetPercent ?? 5,
+        armedForces: existing?.armedForces ?? [],
+        lastFreeRecruitAt: existing?.lastFreeRecruitAt ?? 0,
+        equipmentVault: existing?.equipmentVault ?? [],
+        embargoes: raw.embargoes ?? existing?.embargoes ?? [],
+        conscriptionActive: raw.conscriptionActive ?? raw.conscription_active ?? existing?.conscriptionActive ?? false,
+        importTariff: raw.importTariff ?? raw.import_tariff ?? existing?.importTariff ?? 0,
+        minimumWage: raw.minimumWage ?? raw.minimum_wage ?? existing?.minimumWage ?? 0,
+        stateMilitaryUnits: existing?.stateMilitaryUnits ?? [],
+        citizenDividendPercent: raw.citizenDividendPercent ?? raw.citizen_dividend_percent ?? existing?.citizenDividendPercent ?? 0,
+        laws: raw.laws ?? existing?.laws ?? { proposals: [] },
+      }
+
+      set(s => ({
+        governments: {
+          ...s.governments,
+          [countryCode]: gov
         }
-
+      }))
+    } catch (err) {
+      console.error('[Government] Fetch failed', err)
+      // Even on error — seed an empty placeholder so the panel can render
+      if (!get().governments[countryCode]) {
         set(s => ({
           governments: {
             ...s.governments,
-            [countryCode]: gov
+            [countryCode]: {
+              countryId: countryCode, president: null, vicePresident: null,
+              defenseMinister: null, ecoMinister: null, congress: [],
+              candidates: [], taxRate: 10, swornEnemy: null, alliances: [],
+              empireName: null, ideology: null, ideologyPoints: { ...DEFAULT_IDEOLOGY_POINTS },
+              nuclearAuthorized: false, enrichmentStartedAt: null, enrichmentCompletedAt: null,
+              nukeReady: false, citizens: [], divisionShop: [], militaryBudgetPercent: 5,
+              armedForces: [], lastFreeRecruitAt: 0, equipmentVault: [],
+              embargoes: [], conscriptionActive: false, importTariff: 0,
+              minimumWage: 0, stateMilitaryUnits: [], citizenDividendPercent: 0,
+              laws: { proposals: [] },
+            }
           }
         }))
-
-        // Also fetch citizens so roles are in sync with the government data
-        get().fetchCitizens(countryCode)
       }
-    } catch (err) {
-      console.error('[Government] Fetch failed', err)
     }
   },
+
 
   fetchCitizens: async (countryCode) => {
     try {
@@ -303,7 +319,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
           if (!gov) return s
 
           // Map citizens and also extract government roles from the response
-          const citizenList = res.citizens.map(c => ({
+          const citizenList = (res.citizens || []).map(c => ({
             id: c.id,
             name: c.name,
             level: c.level,

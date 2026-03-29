@@ -122,6 +122,9 @@ export interface PlayerState {
   casinoSpins: number
   itemsDestroyed: number
 
+  // One-time welcome kit
+  welcomeKitClaimed: boolean
+
   // Actions
   setAvatar: (path: string) => void
   equipAmmo: (type: 'none' | 'green' | 'blue' | 'purple' | 'red') => void
@@ -244,6 +247,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   heroBuffTicksLeft: 0,
   heroBuffBattleId: null,
   avatar: '/assets/avatars/avatar_male.png',
+  welcomeKitClaimed: false,
 
   setAvatar: (path) => {
     set({ avatar: path })
@@ -779,6 +783,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         countrySwitches: res.countrySwitches ?? res.country_switches ?? 0,
         casinoSpins: res.casinoSpins ?? res.casino_spins ?? 0,
         itemsDestroyed: res.itemsDestroyed ?? res.items_destroyed ?? 0,
+
+        // Welcome kit claimed flag
+        welcomeKitClaimed: res.welcomeKitClaimed ?? res.welcome_kit_claimed ?? false,
       }
 
       set(patch)

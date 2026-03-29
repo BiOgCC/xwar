@@ -52,10 +52,48 @@ router.get('/state', requireAuth as any, async (req, res) => {
       logger.info(`[GAME] Auto-seated ${player.name} (${player.id}) as president of ${playerCountry}`)
     }
 
-    // ── Active Battles (in-memory from battleService) ──
+    // ── Active Battles (in-memory from battleService, plus any DB-only ones) ──
     const activeBattles = battleService.getActiveBattles()
     const battlesMap: Record<string, any> = {}
     for (const b of activeBattles) { battlesMap[b.id] = b }
+
+    // Also check DB for battles not yet loaded into memory (e.g., after server restart)
+    try {
+      const { sql: sqlTag } = await import('drizzle-orm')
+      const dbActiveBattles = await db.execute(sqlTag`
+        SELECT id, attacker_id, defender_id, region_name, status,
+               attacker_rounds_won, defender_rounds_won,
+               attacker_damage, defender_damage, created_at
+        FROM battles WHERE status = 'active'
+      `)
+      for (const r of dbActiveBattles as any[]) {
+        if (!battlesMap[r.id]) {
+          // Build a minimal battle shell for the client
+          battlesMap[r.id] = {
+            id: r.id, type: 'invasion',
+            attackerId: r.attacker_id, defenderId: r.defender_id,
+            regionName: r.region_name, status: r.status,
+            ticksElapsed: 0,
+            startedAt: new Date(r.created_at).getTime(),
+            attacker: { countryCode: r.attacker_id, divisionIds: [], engagedDivisionIds: [], damageDealt: Number(r.attacker_damage ?? 0), manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+            defender: { countryCode: r.defender_id, divisionIds: [], engagedDivisionIds: [], damageDealt: Number(r.defender_damage ?? 0), manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+            attackerRoundsWon: r.attacker_rounds_won ?? 0, defenderRoundsWon: r.defender_rounds_won ?? 0,
+            rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: new Date(r.created_at).getTime() }],
+            currentTick: { attackerDamage: 0, defenderDamage: 0 },
+            combatLog: [], attackerDamageDealers: {}, defenderDamageDealers: {},
+            damageFeed: [], divisionCooldowns: {},
+            attackerOrder: 'none', defenderOrder: 'none',
+            orderMessage: '', motd: '',
+          }
+        }
+      }
+      // Trigger memory restore if any DB-only battles found
+      const memIds = new Set(activeBattles.map(b => b.id))
+      const hasDbOnly = (dbActiveBattles as any[]).some(r => !memIds.has(r.id))
+      if (hasDbOnly) {
+        battleService.restoreFromDB().catch(() => {})
+      }
+    } catch (e) { /* DB query failed, use in-memory only */ }
 
     // ── Market ──
     const openOrders = await db.select().from(marketOrders).where(eq(marketOrders.status, 'open'))
@@ -105,6 +143,18 @@ router.get('/state', requireAuth as any, async (req, res) => {
     // ── News ──
     const news = await db.select().from(newsEvents).limit(20)
 
+    // ── Occupation map: build { [regionName]: controllerCode } from all countries ──
+    // This allows the frontend regionStore to restore controlledBy on login
+    const occupationMap: Record<string, string> = {}
+    for (const c of allCountries) {
+      const occ = (c as any).occupiedRegions as Record<string, string> | null
+      if (occ && typeof occ === 'object') {
+        for (const [regionName, _originalOwner] of Object.entries(occ)) {
+          occupationMap[regionName] = c.code  // regionName → current controller (the conqueror)
+        }
+      }
+    }
+
     // ── Assemble Response ──
     res.json({
       player: {
@@ -133,6 +183,7 @@ router.get('/state', requireAuth as any, async (req, res) => {
       daily: daily ?? null,
       tradeRoutes,
       news,
+      occupationMap,  // { [regionName]: controllerCode } — used to restore controlledBy on login
     })
   } catch (err) {
     logger.error(err, '[GAME] State hydration error')

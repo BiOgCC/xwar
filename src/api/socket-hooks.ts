@@ -31,65 +31,106 @@ export function initSocketHooks() {
     }
   })
 
+  // ── Boot: battles are hydrated via /game/state in hydrate.ts — no separate fetch here ──
+
+
   // ═══════════════════════════════════════════════
   //  BATTLE EVENTS → battleStore
   // ═══════════════════════════════════════════════
 
-  socketManager.on('battle:tick', (data: {
-    battleId: string
-    tickNumber: number
-    attackerDamage: number
-    defenderDamage: number
-    attackerCrits: number
-    defenderCrits: number
-    rounds: any[]
-    attackerRoundsWon: number
-    defenderRoundsWon: number
-    status: string
-    attackerEngaged: number
-    defenderEngaged: number
-  }) => {
-    // Update the battle in the store with server-authoritative tick data
-    const store = useBattleStore.getState()
-    const battle = store.battles[data.battleId]
-    if (!battle) return
-
-    useBattleStore.setState((s) => ({
-      battles: {
-        ...s.battles,
-        [data.battleId]: {
-          ...s.battles[data.battleId],
-          ticksElapsed: data.tickNumber,
-          currentTick: {
-            attackerDamage: data.attackerDamage,
-            defenderDamage: data.defenderDamage,
-          },
-          rounds: data.rounds,
-          attackerRoundsWon: data.attackerRoundsWon,
-          defenderRoundsWon: data.defenderRoundsWon,
-          status: data.status as any,
+  /**
+   * battle:state — Full authoritative battle pushed every tick.
+   * Client sets the battle directly — no diffing needed.
+   */
+  socketManager.on('battle:state', (data: any) => {
+    if (!data?.id) return
+    useBattleStore.setState((s) => {
+      const existing: any = s.battles[data.id] ?? {}
+      // Build merged battle: defaults < existing < server data < bridged adrenaline
+      const merged: any = Object.assign(
+        {},
+        // Client-only defaults (not sent by server)
+        {
+          damageFeed: [],
+          divisionCooldowns: {},
+          orderMessage: '',
+          motd: '',
+          playerAdrenaline: {},
+          playerSurge: {},
+          playerCrash: {},
+          playerAdrenalinePeakAt: {},
+          vengeanceBuff: { attacker: -1, defender: -1 },
+          mercenaryContracts: [],
+          weaponPresence: { attacker: {}, defender: {} },
         },
-      },
-    }))
+        // Merge existing (keeps damageFeed etc between ticks)
+        existing,
+        // Server data wins for all shared fields
+        data,
+        // Bridge adrenalineState → client playerAdrenaline map (always last)
+        {
+          playerAdrenaline: data.adrenalineState
+            ? Object.fromEntries(Object.entries(data.adrenalineState).map(([k, v]: any) => [k, v?.value ?? 0]))
+            : (existing.playerAdrenaline ?? {}),
+        }
+      )
+      return { battles: { ...s.battles, [data.id]: merged } }
+    })
+  })
+
+  socketManager.on('battle:tick', (data: {
+    battleId: string; tickNumber: number
+    attackerDamage: number; defenderDamage: number
+    rounds: any[]; attackerRoundsWon: number; defenderRoundsWon: number; status: string
+    attackerDamageTotal?: number; defenderDamageTotal?: number
+  }) => {
+    // Only used as fallback if server doesn't emit battle:state yet
+    useBattleStore.setState((s) => {
+      const b = s.battles[data.battleId]
+      if (!b) return s
+      return {
+        battles: {
+          ...s.battles,
+          [data.battleId]: {
+            ...b,
+            ticksElapsed: data.tickNumber,
+            currentTick: { attackerDamage: data.attackerDamage, defenderDamage: data.defenderDamage },
+            rounds: data.rounds,
+            attackerRoundsWon: data.attackerRoundsWon,
+            defenderRoundsWon: data.defenderRoundsWon,
+            status: data.status as any,
+            attacker: { ...b.attacker, damageDealt: data.attackerDamageTotal ?? b.attacker.damageDealt },
+            defender: { ...b.defender, damageDealt: data.defenderDamageTotal ?? b.defender.damageDealt },
+          },
+        },
+      }
+    })
   })
 
   socketManager.on('battle:playerHit', (data: {
-    battleId: string; side: string; playerName: string; damage: number; isCrit: boolean
+    battleId: string; side: string; playerName: string; damage: number; isCrit: boolean; isMiss?: boolean; isDodged?: boolean
   }) => {
-    const store = useBattleStore.getState()
-    const battle = store.battles[data.battleId]
-    if (!battle) return
-
-    // Append to damage feed
     useBattleStore.setState((s) => {
       const b = s.battles[data.battleId]
       if (!b) return s
       const newFeed = [
-        { playerName: data.playerName, side: data.side as any, amount: data.damage, isCrit: data.isCrit, isDodged: false, time: Date.now() },
+        { playerName: data.playerName, side: data.side as any, amount: data.damage, isCrit: data.isCrit, isDodged: data.isDodged ?? false, time: Date.now() },
         ...(b.damageFeed || []),
       ].slice(0, 20)
+      const side = data.side as 'attacker' | 'defender'
+      const dealerKey = side === 'attacker' ? 'attackerDamageDealers' : 'defenderDamageDealers'
       return {
-        battles: { ...s.battles, [data.battleId]: { ...b, damageFeed: newFeed } },
+        battles: {
+          ...s.battles,
+          [data.battleId]: {
+            ...b,
+            damageFeed: newFeed,
+            [dealerKey]: {
+              ...b[dealerKey],
+              [data.playerName]: ((b[dealerKey] || {})[data.playerName] || 0) + data.damage,
+            },
+          },
+        },
       }
     })
   })
@@ -197,19 +238,33 @@ export function initSocketHooks() {
 
   socketManager.on('battle:started', (data: {
     battleId: string; attackerCode: string; defenderCode: string
-    targetRegion: string; type: string
+    targetRegion: string; type: string; battle?: any
   }) => {
     console.log(`[WS] ⚔️ Battle started: ${data.attackerCode} → ${data.defenderCode} in ${data.targetRegion}`)
-    // Fetch full battle from server and inject into store
-    import('./client').then(({ getBattle }) => {
-      getBattle(data.battleId).then((res: any) => {
-        if (res?.battle) {
-          useBattleStore.setState((s) => ({
-            battles: { ...s.battles, [data.battleId]: res.battle }
-          }))
-        }
-      }).catch(() => {})
-    })
+    const now = Date.now()
+    const b = data.battle
+    const shell: any = {
+      id: data.battleId,
+      type: b?.type ?? data.type ?? 'invasion',
+      attackerId: b?.attackerId ?? data.attackerCode,
+      defenderId: b?.defenderId ?? data.defenderCode,
+      regionName: b?.regionName ?? data.targetRegion,
+      startedAt: b?.startedAt ?? now,
+      ticksElapsed: 0, status: 'active',
+      attacker: b?.attacker ?? { countryCode: data.attackerCode, divisionIds: [], engagedDivisionIds: [], damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+      defender: b?.defender ?? { countryCode: data.defenderCode, divisionIds: [], engagedDivisionIds: [], damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+      attackerRoundsWon: 0, defenderRoundsWon: 0,
+      rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }],
+      currentTick: { attackerDamage: 0, defenderDamage: 0 },
+      combatLog: b?.combatLog ?? [], attackerDamageDealers: {}, defenderDamageDealers: {},
+      damageFeed: [], divisionCooldowns: {},
+      attackerOrder: 'none', defenderOrder: 'none',
+      orderMessage: '', motd: '',
+      playerAdrenaline: {}, playerSurge: {}, playerCrash: {}, playerAdrenalinePeakAt: {},
+      vengeanceBuff: { attacker: -1, defender: -1 },
+      mercenaryContracts: [], weaponPresence: { attacker: {}, defender: {} },
+    }
+    useBattleStore.setState((s) => ({ battles: { ...s.battles, [data.battleId]: shell } }))
   })
 
   socketManager.on('route:disrupted', (data: {

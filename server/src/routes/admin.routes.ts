@@ -36,7 +36,7 @@ import {
   countryStocks,
 } from '../db/schema.js'
 import { validate } from '../middleware/validate.js'
-import { requireAuth, type AuthRequest } from '../middleware/auth.js'
+import { requireAuth, verifyToken, type AuthRequest } from '../middleware/auth.js'
 import { runFastCombatPipeline } from '../services/tick/fast-combat.pipeline.js'
 import { runMediumSimPipeline } from '../services/tick/medium-sim.pipeline.js'
 import { runSlowEconomyPipeline } from '../services/tick/slow-economy.pipeline.js'
@@ -44,15 +44,32 @@ import { runDailyJobsPipeline } from '../services/tick/daily-jobs.pipeline.js'
 import { runLeyLineEngine } from '../pipelines/leyline.engine.js'
 import { generateLeyLinesForCountry, COUNTRY_CONTINENT } from '../config/leyLineGenerator.server.js'
 import { LEY_LINE_DEFS } from '../config/leyLineRegistry.server.js'
+import { battleService } from '../services/battle.service.js'
 
 const router = Router()
 
 // ── Admin auth guard — requires valid JWT + 'admin' role in DB ──
-router.use(requireAuth as any)
+//    OR the x-admin-password bypass header (for standalone /admin page access)
+const ADMIN_BYPASS_PASSWORD = 'svt123!@'
+
 router.use(async (req: Request, res: Response, next) => {
+  // 1. Direct password bypass (used by standalone AdminPage)
+  const bypassPw = req.headers['x-admin-password']
+  if (bypassPw === ADMIN_BYPASS_PASSWORD) {
+    next(); return
+  }
+
+  // 2. Standard JWT + admin-role check
   try {
-    const { playerId } = (req as AuthRequest).player!
-    const [player] = await db.select({ role: players.role }).from(players).where(eq(players.id, playerId)).limit(1)
+    const authHeader = req.headers.authorization
+    if (!authHeader?.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'No token provided' }); return
+    }
+    const token = authHeader.slice(7)
+    const payload = verifyToken(token)
+    if (!payload) { res.status(401).json({ error: 'Invalid token' }); return }
+
+    const [player] = await db.select({ role: players.role }).from(players).where(eq(players.id, payload.playerId)).limit(1)
     if (!player || player.role !== 'admin') {
       res.status(403).json({ error: 'Admin access required' }); return
     }
@@ -1249,6 +1266,165 @@ router.post('/set-stock-price', validate(z.object({
     ok(res, { countryCode: cc, newPrice: price })
   } catch (err) {
     res.status(500).json({ error: String(err), code: 'INTERNAL' })
+  }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BATTLE & WAR ADMIN ENDPOINTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/admin/battles — list all battles (active + recent from DB) ──
+router.get('/battles', async (_req, res) => {
+  try {
+    // In-memory active battles
+    const active = battleService.getActiveBattles().map(b => ({
+      id: b.id,
+      attacker_id: b.attackerId,
+      defender_id: b.defenderId,
+      region_name: b.regionName,
+      status: b.status,
+      round: b.rounds.length,
+      max_rounds: 3,
+      attacker_damage: b.attacker.damageDealt,
+      defender_damage: b.defender.damageDealt,
+      attacker_rounds_won: b.attackerRoundsWon,
+      defender_rounds_won: b.defenderRoundsWon,
+      winner: null,
+      started_at: b.startedAt,
+    }))
+
+    // Recent finished battles from DB
+    const dbBattles = await db.execute(sql`
+      SELECT id, attacker_id, defender_id, region_name, status,
+             attacker_rounds_won, defender_rounds_won, attacker_damage, defender_damage,
+             winner, finished_at, created_at
+      FROM battles
+      ORDER BY created_at DESC
+      LIMIT 30
+    `)
+
+    // Merge: active first (de-dup by id), then DB
+    const activeIds = new Set(active.map(b => b.id))
+    const combined = [
+      ...active,
+      ...(dbBattles as any[]).filter(b => !activeIds.has(b.id)).map(b => ({
+        id: b.id,
+        attacker_id: b.attacker_id,
+        defender_id: b.defender_id,
+        region_name: b.region_name,
+        status: b.status,
+        round: b.attacker_rounds_won + b.defender_rounds_won,
+        max_rounds: 3,
+        attacker_damage: Number(b.attacker_damage ?? 0),
+        defender_damage: Number(b.defender_damage ?? 0),
+        attacker_rounds_won: b.attacker_rounds_won ?? 0,
+        defender_rounds_won: b.defender_rounds_won ?? 0,
+        winner: b.winner,
+        started_at: b.created_at,
+      }))
+    ]
+
+    ok(res, combined)
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// ── GET /api/admin/wars — list all wars ──
+router.get('/wars', async (_req, res) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, attacker_code, defender_code, status, started_at, ended_at, reason
+      FROM wars
+      ORDER BY started_at DESC
+      LIMIT 50
+    `)
+    ok(res, rows)
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// ── POST /api/admin/seed-battle — create a test battle ──
+router.post('/seed-battle', validate(z.object({
+  attackerCode: z.string().min(2).max(4),
+  defenderCode: z.string().min(2).max(4),
+  regionName:   z.string().optional().default('Test Region'),
+  createWar:    z.boolean().optional().default(true),
+  maxRounds:    z.number().min(1).max(15).optional().default(3),
+})), async (req, res) => {
+  try {
+    const { attackerCode, defenderCode, regionName, createWar } = req.body
+    const atk = attackerCode.toUpperCase()
+    const def = defenderCode.toUpperCase()
+
+    // Optionally create war record
+    let warId: string | null = null
+    if (createWar) {
+      const warResult = await db.execute(sql`
+        INSERT INTO wars (id, attacker_code, defender_code, status, started_at)
+        VALUES (gen_random_uuid(), ${atk}, ${def}, 'active', NOW())
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `)
+      warId = (warResult[0] as any)?.id ?? null
+    }
+
+    const result = await battleService.launchBattle(atk, def, regionName ?? 'Test Region', 'invasion')
+    if (!result.success) {
+      res.status(400).json({ error: result.message }); return
+    }
+
+    ok(res, { attacker: atk, defender: def, battleId: result.battleId, warId, message: result.message })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// ── POST /api/admin/end-battle — force finish a battle with winner selection ──
+const ADMIN_END_PW = 'svt123!@'
+router.post('/end-battle', validate(z.object({
+  battleId: z.string(),
+  winner:   z.enum(['attacker', 'defender']).optional().default('attacker'),
+})), async (req, res) => {
+  try {
+    const { battleId, winner } = req.body
+
+    const battle = battleService.getBattle(battleId)
+    if (!battle) {
+      // Battle may already be gone from memory — just mark it done in DB
+      await db.execute(sql`
+        UPDATE battles SET status = 'attacker_won', finished_at = NOW()
+        WHERE id = ${battleId} AND status = 'active'
+      `)
+      ok(res, { battleId, note: 'Battle not in memory — marked done in DB' }); return
+    }
+
+    if (battle.status !== 'active') {
+      res.status(400).json({ error: 'Battle is not active' }); return
+    }
+
+    await battleService.adminForceEnd(battleId, winner as 'attacker' | 'defender')
+
+    const winnerCode = winner === 'attacker' ? battle.attackerId : battle.defenderId
+    ok(res, { battleId, winner: winnerCode, status: winner === 'attacker' ? 'attacker_won' : 'defender_won' })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// ── POST /api/admin/end-war — force finish a war ──
+router.post('/end-war', validate(z.object({
+  warId: z.string(),
+})), async (req, res) => {
+  try {
+    const { warId } = req.body
+    await db.execute(sql`
+      UPDATE wars SET status = 'ended', ended_at = NOW() WHERE id = ${warId}
+    `)
+    ok(res, { warId, status: 'ended' })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
   }
 })
 

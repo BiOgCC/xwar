@@ -39,7 +39,7 @@ export default function GovernmentPanel() {
   const player = usePlayerStore()
   const govStore = useGovernmentStore()
   const world = useWorldStore()
-  const [tab, setTab] = useState<GovTab>('home')
+  const [loading, setLoading] = useState(true)
 
   const iso = player.countryCode || 'US'
   const gov = govStore.governments[iso]
@@ -47,10 +47,29 @@ export default function GovernmentPanel() {
 
   // Hydrate government + citizens from backend on mount / country change
   useEffect(() => {
+    setLoading(true)
     govStore.fetchGovernment(iso)
+      .then(() => govStore.fetchCitizens(iso))
+      .finally(() => setLoading(false))
   }, [iso])
 
-  if (!gov) return <div className="gov-panel"><div className="gov-empty">Loading government data for {iso}…</div></div>
+  const [tab, setTab] = useState<GovTab>('home')
+
+  // Show spinner only while the first fetch is in flight AND we have no data yet
+  if (loading && !gov) return (
+    <div className="gov-panel">
+      <div className="gov-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '40px 0' }}>
+        <div style={{ fontSize: 24, animation: 'pulse 1.5s infinite' }}>🏛️</div>
+        <div style={{ fontSize: 12, color: '#64748b' }}>Loading {iso} government…</div>
+      </div>
+    </div>
+  )
+
+  // Resolve president UUID to a name via citizens list
+  const presidentId = gov?.president
+  const presidentName = presidentId
+    ? (gov?.citizens?.find((c: { id: string; name: string }) => c.id === presidentId)?.name ?? presidentId)
+    : null
 
   return (
     <div className="gov-panel">
@@ -62,9 +81,9 @@ export default function GovernmentPanel() {
             <Landmark size={12} /> Country
           </div>
           <div className="gov-hero__name">{country?.name || iso}</div>
-          {gov?.president && (
+          {presidentName && (
             <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              👑 {gov.president}
+              👑 {presidentName}
             </div>
           )}
         </div>

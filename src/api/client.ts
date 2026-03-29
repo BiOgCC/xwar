@@ -197,8 +197,17 @@ export async function sellItem(itemId: string) {
   return api.post(`/inventory/sell/${itemId}`)
 }
 
+export interface ClaimWelcomeKitResponse {
+  success: boolean
+  itemCount: number
+  items: unknown[]
+  xpGranted: number
+  resourceGrants: Record<string, number>
+  error?: string
+}
+
 export async function claimWelcomeKit() {
-  return api.post('/inventory/claim-welcome-kit')
+  return api.post<ClaimWelcomeKitResponse>('/inventory/claim-welcome-kit')
 }
 
 export async function craftItem(tier: string, slot: string, category: string) {
