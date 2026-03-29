@@ -105,24 +105,13 @@ export interface Article {
   votes: number
 }
 
-// ── Seed Data ──────────────────────────────────────────────────────────────
+// ── Seed Data (no NPCs — real players only) ──────────────────────────────
 
-const SEED_FRIENDS: Friend[] = [
-  { name: 'AI_Commander_Sunak', countryCode: 'GB', addedAt: Date.now() - 86400000 * 10 },
-  { name: 'AI_Commander_Scholz', countryCode: 'DE', addedAt: Date.now() - 86400000 * 7 },
-  { name: 'AI_Commander_Modi', countryCode: 'IN', addedAt: Date.now() - 86400000 * 3 },
-]
+const SEED_FRIENDS: Friend[] = []
 
-const SEED_WALL: WallMessage[] = [
-  { id: 'wall_1', authorName: 'AI_Commander_Sunak', authorCountry: 'GB', targetName: 'Commander_X', message: 'Great fighting together in the last war! 🎖️', timestamp: Date.now() - 3600000 * 5 },
-  { id: 'wall_2', authorName: 'AI_Commander_Scholz', authorCountry: 'DE', targetName: 'Commander_X', message: 'Welcome to the alliance, Commander!', timestamp: Date.now() - 3600000 * 12 },
-]
+const SEED_WALL: WallMessage[] = []
 
-const SEED_ARTICLES: Article[] = [
-  { id: 'art_1', authorName: 'AI_Commander_Putin', authorCountry: 'RU', title: 'The Eastern Bloc Rises', content: 'Our alliance grows stronger every day. New trade agreements have been signed with BRICS nations, and our military production exceeds all expectations. The West should take note.', publishedAt: Date.now() - 7200000, votes: 12 },
-  { id: 'art_2', authorName: 'AI_Commander_Sunak', authorCountry: 'GB', title: 'NATO Trade Routes Secured', content: 'After months of diplomatic effort, all NATO trade routes are now fully operational. Market prices stabilized and our alliance treasury grows. A victory for free commerce.', publishedAt: Date.now() - 14400000, votes: 8 },
-  { id: 'art_3', authorName: 'AI_Commander_Modi', authorCountry: 'IN', title: 'BRICS: A Third Way Forward', content: 'Neither East nor West — BRICS forges its own path. Our economic model prioritizes sustainable growth and mutual cooperation. Join us in building a new world order.', publishedAt: Date.now() - 28800000, votes: 15 },
-]
+const SEED_ARTICLES: Article[] = []
 
 // ── Store ──────────────────────────────────────────────────────────────────
 

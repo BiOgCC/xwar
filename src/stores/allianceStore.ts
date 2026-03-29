@@ -89,70 +89,8 @@ const MAX_ALLIANCE_SIZE = 5
 const MIN_CONTRIBUTION = 10_000
 const WAR_VOTE_DURATION = 3600000 // 1 hour
 
-// Seed alliances for NPC flavor
-const SEED_ALLIANCES: Alliance[] = [
-  {
-    id: 'alliance_nato',
-    name: 'NATO Coalition',
-    tag: 'NATO',
-    leader: 'Commander_X',
-    members: [
-      { name: 'Commander_X', countryCode: 'US', role: 'leader', joinedAt: Date.now() - 86400000 * 30, contributed: 5_000_000 },
-      { name: 'AI_Commander_Sunak', countryCode: 'GB', role: 'officer', joinedAt: Date.now() - 86400000 * 25, contributed: 3_000_000 },
-      { name: 'AI_Commander_Scholz', countryCode: 'DE', role: 'member', joinedAt: Date.now() - 86400000 * 20, contributed: 2_500_000 },
-    ],
-    treasury: 10_500_000,
-    createdAt: Date.now() - 86400000 * 30,
-    wars: [],
-    maxMembers: MAX_ALLIANCE_SIZE,
-    wins: 3,
-    losses: 1,
-    activeIdeology: 'sentinel',
-    ideologyVotes: { 'Commander_X': 'sentinel' },
-    ideologyXP: { sentinel: 350, vanguard: 50 },
-    lastIdeologyResetAt: 0,
-  },
-  {
-    id: 'alliance_eastern',
-    name: 'Eastern Bloc',
-    tag: 'EAST',
-    leader: 'AI_Commander_Putin',
-    members: [
-      { name: 'AI_Commander_Putin', countryCode: 'RU', role: 'leader', joinedAt: Date.now() - 86400000 * 28, contributed: 4_000_000 },
-      { name: 'AI_Commander_Xi', countryCode: 'CN', role: 'officer', joinedAt: Date.now() - 86400000 * 26, contributed: 6_000_000 },
-    ],
-    treasury: 10_000_000,
-    createdAt: Date.now() - 86400000 * 28,
-    wars: [],
-    maxMembers: MAX_ALLIANCE_SIZE,
-    wins: 2,
-    losses: 2,
-    activeIdeology: 'vanguard',
-    ideologyVotes: { 'AI_Commander_Putin': 'vanguard' },
-    ideologyXP: { vanguard: 600 },
-    lastIdeologyResetAt: 0,
-  },
-  {
-    id: 'alliance_brics',
-    name: 'BRICS Pact',
-    tag: 'BRICS',
-    leader: 'AI_Commander_Modi',
-    members: [
-      { name: 'AI_Commander_Modi', countryCode: 'IN', role: 'leader', joinedAt: Date.now() - 86400000 * 15, contributed: 2_000_000 },
-      { name: 'AI_Commander_Lula', countryCode: 'BR', role: 'member', joinedAt: Date.now() - 86400000 * 12, contributed: 1_500_000 },
-    ],
-    treasury: 3_500_000,
-    createdAt: Date.now() - 86400000 * 15,
-    wars: [],
-    maxMembers: MAX_ALLIANCE_SIZE,
-    wins: 1,
-    losses: 0,
-    activeIdeology: 'syndicate',
-    ideologyVotes: { 'AI_Commander_Modi': 'syndicate' },
-    ideologyXP: { syndicate: 200 },
-    lastIdeologyResetAt: 0,
-  },
-]
+// No NPC seed alliances — alliances are player-created only
+const SEED_ALLIANCES: Alliance[] = []
 
 export interface AllianceFundProposal {
   id: string
@@ -200,8 +138,8 @@ export interface AllianceState {
 
 export const useAllianceStore = create<AllianceState>((set, get) => ({
   alliances: SEED_ALLIANCES,
-  // Player starts in NATO (same as Commander_X)
-  playerAllianceId: 'alliance_nato',
+  // Player starts with no alliance — must create or join one
+  playerAllianceId: null,
   lastTreatySnapshotAt: Date.now(),
   fundProposals: [],
   ideologyResetProposals: [],
