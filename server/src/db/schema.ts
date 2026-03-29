@@ -305,6 +305,7 @@ export const battles = pgTable('battles', {
   attackerId:     varchar('attacker_id', { length: 4 }).references(() => countries.code),
   defenderId:     varchar('defender_id', { length: 4 }).references(() => countries.code),
   regionName:     varchar('region_name', { length: 64 }),
+  regionId:       varchar('region_id', { length: 16 }),  // e.g. 'US-FL' — for region_ownership sync
   type:           varchar('type', { length: 16 }).default('invasion'),
   status:         varchar('status', { length: 16 }).default('active'),
   round:          integer('round').default(1),
@@ -328,6 +329,8 @@ export const battles = pgTable('battles', {
   adrenalineState:     jsonb('adrenaline_state').default({}),  // { [playerId]: AdrenalineState }
   playerBattleStats:   jsonb('player_battle_stats').default({}), // { [playerId]: { critsLanded, hitsTaken, totalDamage } }
   divisionHealthState: jsonb('division_health_state').default({}), // { [divisionId]: { health, maxHealth, manpower } }
+  attackerRegionId:    varchar('attacker_region_id', { length: 16 }),     // Region the attacker launched from
+  battleOrders:        jsonb('battle_orders').default([]),                // BattleOrder[] — active battle orders
 }, (table) => ({
   attackerIdx: index('idx_battles_attacker').on(table.attackerId),
   defenderIdx: index('idx_battles_defender').on(table.defenderId),
@@ -868,6 +871,7 @@ export const militaryUnits = pgTable('military_units', {
   lastBudgetPayout:   bigint('last_budget_payout', { mode: 'number' }).default(0),
   isStateOwned:       boolean('is_state_owned').default(false),
   governmentCountryCode: varchar('government_country_code', { length: 4 }),
+  hqLevel:            integer('hq_level').notNull().default(0),
   createdAt:      timestamp('created_at').defaultNow(),
 }, (table) => ({
   countryIdx: index('idx_mu_country').on(table.countryCode),

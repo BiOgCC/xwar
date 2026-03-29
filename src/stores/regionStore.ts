@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
-import { useArmyStore, DIVISION_TEMPLATES } from './army'
-import type { Division } from './army/types'
 import { usePlayerStore } from './playerStore'
+import { useArmyStore, type Division } from './army'
 import { getCountryName } from '../data/countries'
 import { getAirportReachableRegions, getPortReachableRegions } from '../utils/geography'
 
@@ -15,7 +14,6 @@ export interface Region {
   controlledBy: string
   captureProgress: number
   attackedBy: string | null
-  assignedArmyId: string | null
   position: [number, number]
   adjacent: string[]
   defense: number
@@ -313,7 +311,7 @@ function computeRegions(): Region[] {
     return {
       id: def.id, name: def.name, countryCode: def.countryCode,
       controlledBy: def.countryCode, captureProgress: 0,
-      attackedBy: null, assignedArmyId: null,
+      attackedBy: null,
       position: [lng, lat] as [number, number],
       adjacent: def.adjacent, defense: def.defense,
       isOcean: def.isOcean,
@@ -499,69 +497,29 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     return false
   },
 
-  attackRegion: (regionId, attackerIso, armyId) => set(s => ({
-    regions: s.regions.map(r => r.id === regionId ? { ...r, attackedBy: attackerIso, assignedArmyId: armyId || null, isBlockaded: r.isOcean ? true : r.isBlockaded } : r)
+  attackRegion: (regionId, attackerIso) => set(s => ({
+    regions: s.regions.map(r => r.id === regionId ? { ...r, attackedBy: attackerIso, isBlockaded: r.isOcean ? true : r.isBlockaded } : r)
   })),
 
   stopAttack: (regionId) => set(s => ({
-    regions: s.regions.map(r => r.id === regionId ? { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null, isBlockaded: r.isOcean ? false : r.isBlockaded } : r)
+    regions: s.regions.map(r => r.id === regionId ? { ...r, attackedBy: null, captureProgress: 0, isBlockaded: r.isOcean ? false : r.isBlockaded } : r)
   })),
 
   tickCapture: () => {
-    const armyState = useArmyStore.getState()
     const { regions } = get()
     const updated = regions.map(r => {
       if (!r.attackedBy || r.controlledBy === r.attackedBy) return r
-      let totalAtk = 0, totalMp = 0, divIds: string[] = []
-      if (r.assignedArmyId) {
-        const army = armyState.armies[r.assignedArmyId]
-        if (army) {
-          const hasNaval = army.divisionIds.some(id => armyState.divisions[id]?.category === 'naval')
-          if (r.isOcean && !hasNaval) {
-             // Ocean blocks require naval divisions to capture
-             return { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null }
-          }
-          if (!r.isOcean && hasNaval) {
-             // Naval fleets cannot directly capture land without marines/infantry!
-             // For now, if an army is PURELY naval, it can't capture land.
-             const hasLand = army.divisionIds.some(id => armyState.divisions[id]?.category !== 'naval')
-             if (!hasLand) {
-                return { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null }
-             }
-          }
-
-          divIds = army.divisionIds
-          divIds.forEach(id => {
-            const d = armyState.divisions[id]
-            if (d && d.manpower > 0 && d.status !== 'destroyed') {
-              const tmpl = DIVISION_TEMPLATES[d.type]
-              totalAtk += Math.floor(tmpl.atkDmgMult * 100); totalMp += d.manpower
-            }
-          })
-        }
-      }
-      if (totalMp <= 0) return { ...r, attackedBy: null, captureProgress: 0, assignedArmyId: null, isBlockaded: r.isOcean ? false : r.isBlockaded }
-      const rate = Math.max(2, Math.min(20, (totalAtk / Math.max(1, r.defense * 10)) * 8))
+      // Flat capture rate — PvP damage from battles drives the strategic layer
+      const rate = Math.max(2, Math.min(10, 5))
       const prog = Math.min(100, r.captureProgress + rate)
-      const dmg = Math.max(50, r.defense * 15)
-      divIds.forEach(id => {
-        const d = armyState.divisions[id]
-        if (d && d.manpower > 0 && d.status !== 'destroyed') {
-          const share = dmg / Math.max(1, divIds.length)
-          useArmyStore.setState(s => ({ divisions: { ...s.divisions, [id]: {
-            ...s.divisions[id], manpower: Math.max(0, d.manpower - share),
-            status: d.manpower - share <= 0 ? 'destroyed' : 'in_combat',
-          }}}))
-        }
-      })
-      if (prog >= 100) return { ...r, controlledBy: r.attackedBy, captureProgress: 0, attackedBy: null, assignedArmyId: null, isBlockaded: false }
+      if (prog >= 100) return { ...r, controlledBy: r.attackedBy, captureProgress: 0, attackedBy: null, isBlockaded: false }
       return { ...r, captureProgress: prog }
     })
     set({ regions: updated })
   },
 
   resetCountryRegions: (cc) => set(s => ({
-    regions: s.regions.map(r => r.countryCode === cc ? { ...r, controlledBy: cc, captureProgress: 0, attackedBy: null, assignedArmyId: null, isBlockaded: false } : r)
+    regions: s.regions.map(r => r.countryCode === cc ? { ...r, controlledBy: cc, captureProgress: 0, attackedBy: null, isBlockaded: false } : r)
   })),
 
   updateBoundsFromGeoJSON: (geojson: any, isoKey = 'ISO3166-1-Alpha-3') => {
@@ -779,7 +737,7 @@ export const useRegionStore = create<RegionState>((set, get) => ({
 
         generatedRegionObjs.push({
           id, name: stateName, countryCode: cc, controlledBy, captureProgress: 0,
-          attackedBy: null, assignedArmyId: null, position: [cLng, cLat], adjacent: [], defense,
+          attackedBy: null, position: [cLng, cLat], adjacent: [], defense,
           isOcean: false, fishingBonus: 0, oilYield: 0, tradeRouteValue: 0, isBlockaded: false,
           debris: (cc === 'MX' || cc === 'CU') ? { scrap: 500000, materialX: 100000, militaryBoxes: 500 } : { scrap: 0, materialX: 0, militaryBoxes: 0 }, scavengeCount: 0,
           revoltPressure: 0, revoltCooldownUntil: 0, noDefenderTicks: 0,

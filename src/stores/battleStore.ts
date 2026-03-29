@@ -11,7 +11,6 @@ import { useAllianceStore, getIdeologyBonus } from './allianceStore'
 import { usePlayerStore } from './playerStore'
 import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
-import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, rollDebris, type Division } from './army'
 import { useSpecializationStore } from './specializationStore'
 import { getCountryName, getCountryFlag, getCountryFlagUrl } from '../data/countries'
 import { useRegionStore } from './regionStore'
@@ -90,7 +89,8 @@ function getPointIncrement(totalGroundPoints: number): number {
 function createEmptyBattleSide(countryCode: string): BattleSide {
   return {
     countryCode,
-    divisionIds: [], engagedDivisionIds: [],
+    divisionIds: [],
+    engagedDivisionIds: [],
     damageDealt: 0, manpowerLost: 0,
     divisionsDestroyed: 0, divisionsRetreated: 0,
   }
@@ -111,7 +111,6 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     combatLog: [],
     attackerDamageDealers: {}, defenderDamageDealers: {},
     damageFeed: [],
-    divisionCooldowns: {},
     attackerOrder: 'none' as TacticalOrder,
     defenderOrder: 'none' as TacticalOrder,
     orderMessage: '',
@@ -120,8 +119,9 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     playerSurge: {},
     playerCrash: {},
     playerAdrenalinePeakAt: {},
-    vengeanceBuff: { attacker: -1, defender: -1 },
     mercenaryContracts: [],
+    divisionCooldowns: {},
+    vengeanceBuff: { attacker: 0, defender: 0 },
     weaponPresence: { attacker: {}, defender: {} },
   }
 }
@@ -134,15 +134,10 @@ export interface BattleState {
   launchAttack: (attackerId: string, defenderId: string, regionName: string, type?: BattleType, regionId?: string) => void
   addDamage: (battleId: string, side: 'attacker' | 'defender', amount: number, isCrit: boolean, isDodged: boolean, playerName: string) => void
 
-  launchHOIBattle: (attackerArmyId: string, defenderCountryCode: string, type?: BattleType) => { success: boolean; message: string; battleId?: string }
-  processHOICombatTick: () => void
-  processPlayerCombatTick: () => void   // ground points from manual attacks (runs without divisions)
+  processPlayerCombatTick: () => void   // ground points from manual attacks
 
   playerAttack: (battleId: string, side?: 'attacker' | 'defender') => Promise<{ damage: number; isCrit: boolean; isMiss?: boolean; isDodged?: boolean; message: string }>
   playerDefend: (battleId: string, side?: 'attacker' | 'defender') => Promise<{ blocked: number; message: string }>
-  deployDivisionsToBattle: (battleId: string, divisionIds: string[], side: 'attacker' | 'defender') => { success: boolean; message: string }
-  removeDivisionsFromBattle: (battleId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
-  recallDivisionFromBattle: (battleId: string, divisionId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
 
   // Adrenaline system
   activateSurge: (battleId: string) => Promise<void>
@@ -323,12 +318,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
   // ====== BATTLE LAUNCH (server-authoritative) ======
   launchAttack: async (attackerId, defenderId, regionName, type = 'invasion', regionId?) => {
-    // Check for existing active battle in this region
+    // Check for existing active battle in this region (local store)
     const existing = Object.values(get().battles).find(b => b.regionName === regionName && b.status === 'active')
     if (existing) return
 
+    const { launchBattle, getBattle, getActiveBattles } = await import('../api/client')
+
     try {
-      const { launchBattle, getBattle } = await import('../api/client')
       const res: any = await launchBattle(attackerId, defenderId, regionName, type)
 
       if (!res?.success || !res?.battleId) {
@@ -338,137 +334,40 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
       // Server created the battle — now fetch full state and inject into store
       const serverId = res.battleId
+      // Join battle socket room so we receive battle:state tick updates
+      import('../api/socket').then(({ socketManager }) => socketManager.joinBattle(serverId))
       try {
         const full = await getBattle(serverId)
         if (full?.success && full?.battle) {
           set((state) => ({ battles: { ...state.battles, [serverId]: full.battle } }))
           return
         }
-      } catch { /* getBattle failed — create a local shell instead */ }
+      } catch { /* getBattle failed — create a local shell with the server's UUID */ }
 
-      // Fallback: create local battle with server's ID
+      // Fallback: create local battle shell with the server's UUID (not a fake ID)
       const battle = mkBattle(serverId, attackerId, defenderId, regionName, type, regionId)
       set((state) => ({ battles: { ...state.battles, [serverId]: battle } }))
     } catch (err: any) {
-      console.warn('[Battle] Server launch error:', err?.message || err)
-      // Fallback: create local-only battle so UI still shows something
-      const localId = `battle_${Date.now()}_${regionName.replace(/\s+/g, '_')}`
-      const battle = mkBattle(localId, attackerId, defenderId, regionName, type, regionId)
-      set((state) => ({ battles: { ...state.battles, [localId]: battle } }))
+      // Server returned an error (e.g. 400 "Battle already active in this region")
+      // Instead of creating a fake local battle, fetch the real active battles from the server
+      console.warn('[Battle] Server launch error:', err?.message || err, '— syncing active battles from server...')
+      try {
+        const activeRes: any = await getActiveBattles()
+        if (activeRes?.success && Array.isArray(activeRes.battles) && activeRes.battles.length > 0) {
+          const newBattles: Record<string, any> = {}
+          for (const b of activeRes.battles) {
+            if (b?.id) newBattles[b.id] = b
+          }
+          set((state) => ({ battles: { ...state.battles, ...newBattles } }))
+          console.log(`[Battle] Synced ${Object.keys(newBattles).length} active battle(s) from server`)
+        }
+      } catch (syncErr) {
+        console.error('[Battle] Failed to sync active battles:', syncErr)
+      }
     }
   },
 
   // ====== BATTLE LAUNCH ======
-  launchHOIBattle: (attackerArmyId, defenderCountryCode, type = 'invasion') => {
-    const armyStore = useArmyStore.getState()
-    const attackerArmy = armyStore.armies[attackerArmyId]
-    if (!attackerArmy) return { success: false, message: 'Army not found.' }
-
-    const attackerDivs = attackerArmy.divisionIds
-      .map((id: string) => armyStore.divisions[id])
-      .filter((d: Division | undefined): d is Division => !!d && d.status === 'ready')
-
-    if (attackerDivs.length === 0) return { success: false, message: 'No ready divisions in this army.' }
-
-    const world = useWorldStore.getState()
-    if (!world.canAttack(attackerArmy.countryCode, defenderCountryCode)) {
-      return { success: false, message: 'Cannot attack: no adjacency or not at war.' }
-    }
-
-    const dist = getCountryDistance(attackerArmy.countryCode, defenderCountryCode)
-    const cost = getAttackOilCost(dist)
-    if (attackerArmy.vault.oil < cost) {
-      return { success: false, message: `Not enough oil in Army Vault. Needs ${cost}🛢️.` }
-    }
-
-    // Auto-defense: fetch all ready divisions for the defending country (across all armies + unassigned)
-    const allDefenderDivs = (Object.values(armyStore.divisions) as Division[])
-      .filter((d: Division) => d.countryCode === defenderCountryCode && d.status === 'ready')
-    const defenderDivIds = allDefenderDivs.map((d: Division) => d.id)
-
-    const id = `hoi_battle_${Date.now()}`
-    const now = Date.now()
-    const targetName = getCountryName(defenderCountryCode)
-    const atkDivIds = attackerDivs.map((d: Division) => d.id)
-
-    const battle: Battle = {
-      id, type, attackerId: attackerArmy.countryCode, defenderId: defenderCountryCode,
-      regionName: targetName, startedAt: now,
-      ticksElapsed: 0, status: 'active',
-
-      attacker: {
-        countryCode: attackerArmy.countryCode,
-        divisionIds: atkDivIds,
-        engagedDivisionIds: atkDivIds,
-        damageDealt: 0, manpowerLost: 0,
-        divisionsDestroyed: 0, divisionsRetreated: 0,
-      },
-      defender: {
-        countryCode: defenderCountryCode,
-        divisionIds: defenderDivIds,
-        engagedDivisionIds: defenderDivIds,
-        damageDealt: 0, manpowerLost: 0,
-        divisionsDestroyed: 0, divisionsRetreated: 0,
-      },
-
-      attackerRoundsWon: 0, defenderRoundsWon: 0,
-      rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }],
-      currentTick: { attackerDamage: 0, defenderDamage: 0 },
-      combatLog: [{
-        tick: 0, timestamp: now, type: 'phase_change', side: 'attacker',
-        message: `⚔️ Battle for ${targetName} begins! ${attackerDivs.length} vs ${defenderDivIds.length} divisions.`,
-      }],
-      attackerDamageDealers: {}, defenderDamageDealers: {},
-      damageFeed: [],
-      divisionCooldowns: {},
-      attackerOrder: 'none' as TacticalOrder,
-      defenderOrder: 'none' as TacticalOrder,
-      orderMessage: '',
-      motd: '',
-      playerAdrenaline: {},
-      playerSurge: {},
-      playerCrash: {},
-      playerAdrenalinePeakAt: {},
-      vengeanceBuff: { attacker: -1, defender: -1 },
-      mercenaryContracts: [],
-      weaponPresence: { attacker: {}, defender: {} },
-    }
-
-    // Mark divisions as in_combat
-    attackerDivs.forEach((d: Division) => {
-      useArmyStore.setState((s: any) => ({
-        divisions: { ...s.divisions, [d.id]: { ...s.divisions[d.id], status: 'in_combat' } }
-      }))
-    })
-    defenderDivIds.forEach(divId => {
-      const div = armyStore.divisions[divId]
-      if (div) {
-        useArmyStore.setState((s: any) => ({
-          divisions: { ...s.divisions, [divId]: { ...s.divisions[divId], status: 'in_combat' } }
-        }))
-      }
-    })
-
-    // Deduct oil cost
-    useArmyStore.setState((s: any) => {
-      const armyToUpdate = s.armies[attackerArmyId]
-      if (!armyToUpdate) return s
-      return {
-        armies: {
-          ...s.armies,
-          [attackerArmyId]: {
-            ...armyToUpdate,
-            vault: { ...armyToUpdate.vault, oil: armyToUpdate.vault.oil - cost }
-          }
-        }
-      }
-    })
-
-    set(state => ({ battles: { ...state.battles, [id]: battle } }))
-
-    return { success: true, message: `Battle for ${targetName} has begun!`, battleId: id }
-  },
-
   // ====== ADD DAMAGE ======
   addDamage: (battleId, side, amount, isCrit, isDodged, playerName) => set((state) => {
     const battle = state.battles[battleId]
@@ -487,30 +386,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
     if (finalAmount <= 0 || !Number.isFinite(finalAmount)) return state
 
-    // Apply battle order buff
-    // Apply tactical order buff for the side
-    const sideOrder = side === 'attacker' ? battle.attackerOrder : battle.defenderOrder
-    const orderFx = TACTICAL_ORDERS[sideOrder || 'none'].effects
-    finalAmount = Math.round(finalAmount * orderFx.atkMult)
-
-    // ── #8 FIX: Symmetric infra bonus — both sides get military base bonus ──
-    const world = useWorldStore.getState()
-    const sideCountryCode = side === 'attacker' ? battle.attackerId : battle.defenderId
-    const sideCountry = world.countries.find(c => c.code === sideCountryCode)
-    if (sideCountry && sideCountry.militaryBaseLevel > 0) {
-      finalAmount = Math.round(finalAmount * (1 + 0.05 + Math.random() * 0.15))
-    }
-
-    // ── Tactical Ops: Air Strike (+30%) / Naval Strike (+25%) damage bonus ──
-    try {
-      const { useTacticalOpsStore } = require('./tacticalOpsStore')
-      const enemyCode = side === 'attacker' ? battle.defenderId : battle.attackerId
-      const enemyEffects = useTacticalOpsStore.getState().getActiveEffectsForCountry(enemyCode)
-      const hasAirStrike = enemyEffects.some((e: any) => e.effectType === 'air_strike')
-      const hasNavalStrike = enemyEffects.some((e: any) => e.effectType === 'naval_strike')
-      if (hasAirStrike) finalAmount = Math.round(finalAmount * 1.30)
-      if (hasNavalStrike) finalAmount = Math.round(finalAmount * 1.25)
-    } catch (_) { /* tacticalOpsStore not available */ }
+    // NOTE: All damage multipliers (tactical orders, military base, tactical ops, ammo,
+    // MU bonus, counter-buff, adrenaline, etc.) are applied server-side in
+    // battle.service.ts playerAttack(). The `amount` parameter is already
+    // the final authoritative damage value. Do NOT re-apply multipliers here.
 
     const newAttackerDealers = { ...attackerDamageDealers }
     const newDefenderDealers = { ...defenderDamageDealers }
@@ -619,7 +498,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   }),
 
   // ====== COMBAT TICK PROCESSOR (uses player stats × division multipliers) ======
-  // ══ PLAYER COMBAT TICK: awards ground points from manual attacks (independent of ENABLE_DIVISIONS) ══
+  // ══ PLAYER COMBAT TICK: Ground-point logic for quick_battle (client-side PvP). ══
+  // ══ For regular battles (invasion, occupation, etc.), the server handles ground ══
+  // ══ points authoritatively via processCombatTick → battle:state socket push.    ══
   processPlayerCombatTick: () => {
     const state = get()
     const now = Date.now()
@@ -635,13 +516,25 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // Only process if there's actual player damage this tick
       if (atkPlayerDmg <= 0 && defPlayerDmg <= 0) return
 
+      // ── For regular battles: server handles ground points authoritatively ──
+      // We only reset currentTick damage counters; ground points come from battle:state socket events.
+      const isQB = battle.type === 'quick_battle'
+      if (!isQB) {
+        hasChanges = true
+        newBattles[battle.id] = {
+          ...battle,
+          currentTick: { attackerDamage: 0, defenderDamage: 0 },
+        }
+        return
+      }
+
+      // ── Quick-battle: client-side ground points (lobby PvP, not server-ticked) ──
       hasChanges = true
       const tick = (battle.ticksElapsed || 0) + 1
       const activeRoundIndex = battle.rounds.length - 1
       const activeRound = { ...battle.rounds[activeRoundIndex] }
-      const isQB = battle.type === 'quick_battle'
-      const maxP = isQB ? QB_POINTS_TO_WIN_ROUND : POINTS_TO_WIN_ROUND
-      const maxRounds = isQB ? QB_ROUNDS_TO_WIN_BATTLE : ROUNDS_TO_WIN_BATTLE
+      const maxP = QB_POINTS_TO_WIN_ROUND
+      const maxRounds = QB_ROUNDS_TO_WIN_BATTLE
       const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
       const pointIncrement = getPointIncrement(totalGroundPoints)
 
@@ -679,8 +572,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
         if (atkRoundsWon >= maxRounds) {
           newStatus = 'attacker_won'
-          if (battle.type === 'invasion') useWorldStore.getState().occupyCountry(battle.defenderId, battle.attackerId, false)
-          if (battle.type === 'revolt' && battle.regionId) useRegionStore.getState().liberateRegion(battle.regionId)
+          // Territory transfer is handled server-side via finalizeBattle() → battle:occupationUpdate socket event
           newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}!` })
         } else if (defRoundsWon >= maxRounds) {
           newStatus = 'defender_won'
@@ -705,784 +597,6 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     })
 
     if (hasChanges) set({ battles: newBattles })
-  },
-
-  // ══ HOI COMBAT TICK (division combat — only runs with ENABLE_DIVISIONS) ══
-  processHOICombatTick: () => {
-    const state = get()
-    const armyStore = useArmyStore.getState()
-    const now = Date.now()
-    const playerStats = getBaseSkillStats()  // Base + skills only for division combat
-    const playerName = usePlayerStore.getState().name || 'Commander'
-
-    const newBattles = { ...state.battles }
-    let hasChanges = false
-
-    // Decrement HERO buff timer each combat tick
-    const heroTicks = usePlayerStore.getState().heroBuffTicksLeft
-    if (heroTicks > 0) {
-      const newTicks = heroTicks - 1
-      usePlayerStore.setState({ heroBuffTicksLeft: newTicks, ...(newTicks === 0 ? { heroBuffBattleId: null } : {}) })
-    }
-
-    Object.values(newBattles).forEach(battle => {
-      if (battle.status !== 'active') return
-      // Quick battles are pure PvP — skip division combat entirely
-      if (battle.type === 'quick_battle') return
-
-      hasChanges = true
-      const tick = battle.ticksElapsed + 1
-      const newCombatLog = [...battle.combatLog]
-
-      // --- Snapshot engaged divisions BEFORE auto-deploy (anti-exploit) ---
-      // Divisions deployed mid-tick won't fire until the next tick
-      const snapshotAtkDivIds = [...battle.attacker.engagedDivisionIds]
-      const snapshotDefDivIds = [...battle.defender.engagedDivisionIds]
-
-      // --- Auto-deploy: if a side has no engaged divisions, auto-deploy available ones ---
-      const autoDeploySide = (side: 'attacker' | 'defender') => {
-        const sideData = side === 'attacker' ? battle.attacker : battle.defender
-        if (sideData.engagedDivisionIds.length > 0) return  // already has engaged divisions
-
-        // ── #10 FIX: Cross-validate country code matches battle side ──
-        const expectedCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
-        if (sideData.countryCode !== expectedCountry) return
-        const govStore = useGovernmentStore.getState()
-        const gov = govStore.governments[expectedCountry]
-        const armedForceIds = (side === 'defender' && gov?.armedForces) ? gov.armedForces : []
-        const countryAutoDefLimit = govStore.autoDefenseLimit  // -1 = all, 0 = off, N = cap
-
-        // Collect eligible divisions by source
-        let eligible: string[] = []
-
-        if (side === 'attacker') {
-          // Attackers: deploy all ready divisions for the country
-          eligible = (Object.values(armyStore.divisions) as Division[])
-            .filter((d: Division) => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0)
-            .map((d: Division) => d.id)
-        } else {
-          // Defenders: respect autodefense limits
-
-          // 1) Armed Forces ALWAYS deploy (not subject to country limit)
-          const afEligible = (Object.values(armyStore.divisions) as Division[])
-            .filter((d: Division) => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
-              && armedForceIds.includes(d.id))
-            .map((d: Division) => d.id)
-
-          // 2) Per-army autodefense: collect divisions from armies with autoDefenseLimit != 0
-          const armyEligible: string[] = []
-          ;(Object.values(armyStore.armies) as any[]).forEach((army: any) => {
-            if (army.countryCode !== expectedCountry) return
-            if (army.autoDefenseLimit === 0) return  // this army has autodefense OFF
-            const armyReadyDivs = army.divisionIds.filter((did: string) => {
-              const d = armyStore.divisions[did]
-              return d && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
-                && !armedForceIds.includes(did)  // don't double-count armed forces
-            })
-            if (army.autoDefenseLimit === -1) {
-              armyEligible.push(...armyReadyDivs)
-            } else {
-              armyEligible.push(...armyReadyDivs.slice(0, army.autoDefenseLimit))
-            }
-          })
-
-          // 3) Country-level unassigned divisions (not in any army) — only if country limit allows
-          const unassignedEligible = countryAutoDefLimit !== 0
-            ? (Object.values(armyStore.divisions) as Division[])
-                .filter((d: Division) => d.countryCode === expectedCountry && (d.status === 'ready' || d.status === 'in_combat') && d.health > 0
-                  && !armedForceIds.includes(d.id)
-                  && (d.stance === 'first_line_defense' || d.stance === 'unassigned')
-                  && !(Object.values(armyStore.armies) as any[]).some((a: any) => a.divisionIds.includes(d.id)))
-                .map((d: Division) => d.id)
-            : []
-
-          // Combine: armed forces + army contributions + unassigned
-          eligible = [...afEligible]
-          const nonAf = [...armyEligible, ...unassignedEligible]
-
-          // Apply country-level limit to non-armed-force divisions
-          if (countryAutoDefLimit === 0) {
-            // Only armed forces deploy
-          } else if (countryAutoDefLimit === -1) {
-            eligible.push(...nonAf)
-          } else {
-            eligible.push(...nonAf.slice(0, countryAutoDefLimit))
-          }
-        }
-
-        if (eligible.length === 0) return
-        const ids = eligible
-        // Mark as in_combat with deployedAtTick for recall cooldown
-        const currentTick = battle.ticksElapsed || 0
-        ids.forEach(id => {
-          useArmyStore.setState((s: any) => ({
-            divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat', deployedAtTick: currentTick } }
-          }))
-        })
-        sideData.divisionIds = [...new Set([...sideData.divisionIds, ...ids])]
-        sideData.engagedDivisionIds = [...new Set([...sideData.engagedDivisionIds, ...ids])]
-        const afCount = ids.filter(id => armedForceIds.includes(id)).length
-        const playerCount = ids.length - afCount
-        const parts: string[] = []
-        if (playerCount > 0) parts.push(`${playerCount} ${side} division(s)`)
-        if (afCount > 0) parts.push(`${afCount} Armed Forces reserve(s)`)
-        newCombatLog.push({
-          tick, timestamp: now, type: 'reinforcement' as const, side,
-          message: `🚀 ${parts.join(' + ')} auto-deployed!`,
-        })
-      }
-      autoDeploySide('attacker')
-      autoDeploySide('defender')
-
-      // --- Get alive divisions from SNAPSHOT (prevents deploy-last-second exploit) ---
-      const atkDivIds = snapshotAtkDivIds.filter(id => {
-        const d = armyStore.divisions[id]
-        return d && d.status !== 'destroyed' && d.status !== 'recovering'
-      })
-      const defDivIds = snapshotDefDivIds.filter(id => {
-        const d = armyStore.divisions[id]
-        return d && d.status !== 'destroyed' && d.status !== 'recovering'
-      })
-
-      // --- Compute Army Composition Aura for both sides ---
-      const findArmyForDiv = (divId: string) => {
-        return (Object.values(armyStore.armies) as any[]).find((a: any) => a.divisionIds.includes(divId))
-      }
-      const atkArmy = atkDivIds.length > 0 ? findArmyForDiv(atkDivIds[0]) : null
-      const defArmy = defDivIds.length > 0 ? findArmyForDiv(defDivIds[0]) : null
-      const atkAura = atkArmy ? armyStore.getCompositionAura(atkArmy.id) : { critDmgPct: 0, dodgePct: 0, attackPct: 0, precisionPct: 0 }
-      const defAura = defArmy ? armyStore.getCompositionAura(defArmy.id) : { critDmgPct: 0, dodgePct: 0, attackPct: 0, precisionPct: 0 }
-
-      // --- Random ±10% deviation for combat variability ---
-      const deviate = (v: number) => v * (0.9 + Math.random() * 0.2)
-
-      // --- Military Doctrine research bonuses (fetched once per tick) ---
-      const atkMilBonus = useResearchStore.getState().getMilitaryBonuses(battle.attackerId)
-      const defMilBonus = useResearchStore.getState().getMilitaryBonuses(battle.defenderId)
-
-      // --- Ley Line corridor bonuses (fetched once per tick) ---
-      const atkLeyLine = computeLeyLineCombatMods(battle.attackerId)
-      const defLeyLine = computeLeyLineCombatMods(battle.defenderId)
-
-      // --- Revolt Homeland Bonus (attacker = revolting native country) ---
-      let revoltAtkMult = 1
-      let revoltDodgeMult = 1
-      if (battle.type === 'revolt' && battle.regionId) {
-        const bonus = useRegionStore.getState().getHomelandBonus(battle.regionId)
-        revoltAtkMult = bonus.atkMult      // up to 1.20
-        revoltDodgeMult = bonus.dodgeMult   // up to 1.15
-      }
-
-      // --- ATTACKER DAMAGE (player stats × division template multipliers) ---
-      // Attack speed accumulator: add 1.0 per tick, fire when accum >= attackSpeed
-      const cooldowns = { ...(battle.divisionCooldowns || {}) }
-      let atkTotalDmg = 0
-      let atkCrits = 0
-      let atkMisses = 0
-      // Per-division event tracking for real-time log
-      const divEvents: { divName: string; side: 'atk' | 'def'; event: 'miss' | 'crit' | 'dodge'; dmg?: number }[] = []
-      atkDivIds.forEach(divId => {
-        const div = armyStore.divisions[divId]
-        if (!div) return
-        const template = DIVISION_TEMPLATES[div.type as keyof typeof DIVISION_TEMPLATES]
-        if (!template) { console.warn('[Combat] Unknown division type:', div.type, 'for div', divId); return }
-
-        // Tactical order effects for attacker
-        const atkOrd = TACTICAL_ORDERS[battle.attackerOrder || 'none'].effects
-        // Apply star quality modifiers to template stats
-        const sm = div.statModifiers || { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0, attackSpeed: 0 }
-        const tAtkDmg = template.atkDmgMult * (1 + sm.atkDmgMult)
-        const tHitRate = template.hitRate * (1 + sm.hitRate)
-        const tCritRate = template.critRateMult * (1 + sm.critRateMult)
-        const tCritDmg = template.critDmgMult * (1 + sm.critDmgMult)
-        const tAtkSpeed = (template.attackSpeed || 1.0) * (1 + sm.attackSpeed)
-        // Equipment bonuses for this division
-        const eq = getDivisionEquipBonus(div)
-        // Accumulate time — fire as many times as attackSpeed allows (order speedMult)
-        const as = (tAtkSpeed - eq.bonusSpeed) * atkOrd.speedMult
-        cooldowns[divId] = (cooldowns[divId] || 0) + 1.0
-
-        // 🔥 DESPERATION: +25% ATK, +15% crit when HP < 30%
-        const atkStrength = div.health / div.maxHealth
-        const atkDesperate = atkStrength > 0 && atkStrength < 0.30
-        // ⚡ VENGEANCE: +20% ATK, +10% hit for 3 ticks after ally dies
-        const atkVengeanceActive = (battle.vengeanceBuff?.attacker ?? -1) >= tick
-
-        while (cooldowns[divId] >= as) {
-          cooldowns[divId] -= as
-          const atkDivLevel = Math.floor((div.experience || 0) / 10)
-          // Hit check (order hitBonus + aura precisionPct + equip hitRate + research hitRate + vengeance applied)
-          const atkVengeanceHitBonus = atkVengeanceActive ? 0.10 : 0
-          if (Math.random() > Math.min(0.95, tHitRate + atkDivLevel * 0.01 + atkOrd.hitBonus + atkAura.precisionPct / 100 + eq.bonusHitRate + atkMilBonus.hitRateBonus + atkVengeanceHitBonus)) {
-            atkMisses++
-            divEvents.push({ divName: div.name, side: 'atk', event: 'miss' })
-            continue
-          }
-          // Base damage: player attack + manpower×3 + equipAtk, scaled by division's attack mult
-          let dmg = Math.floor((playerStats.attackDamage + div.manpower * 3 + eq.bonusAtk) * (tAtkDmg + atkDivLevel * 0.01))
-          // Apply aura attack bonus
-          dmg = Math.floor(dmg * (1 + atkAura.attackPct / 100))
-          // Apply HERO buff (+10%) if division owner has active buff on THIS battle
-          const ps = usePlayerStore.getState()
-          const atkOwnerBuff = div.ownerId === ps.name && ps.heroBuffTicksLeft > 0 && ps.heroBuffBattleId === battle.id
-          if (atkOwnerBuff) dmg = Math.floor(dmg * 1.10)
-          // Crit check — Desperation boosts crit rate by 15%
-          let effectiveCritRate = deviate((playerStats.critRate + atkOrd.critBonus + eq.bonusCritRate) * (tCritRate + atkDivLevel * 0.01))
-          if (atkDesperate) effectiveCritRate *= 1.15
-          if (Math.random() * 100 < effectiveCritRate) {
-            // Apply aura crit damage bonus + equip crit dmg
-            const effectiveCritMult = playerStats.critMultiplier * (tCritDmg + atkDivLevel * 0.01) * (1 + atkAura.critDmgPct / 100) * atkMilBonus.critDmgBonus + eq.bonusCritDmg / 100
-            dmg = Math.floor(dmg * effectiveCritMult)
-            atkCrits++
-            divEvents.push({ divName: div.name, side: 'atk', event: 'crit', dmg })
-          }
-          dmg = Math.floor(dmg * atkStrength)
-          dmg = Math.floor(dmg * atkOrd.atkMult)
-          // 🔥 DESPERATION: +25% ATK boost
-          if (atkDesperate) dmg = Math.floor(dmg * 1.25)
-          // ⚡ VENGEANCE: +20% ATK boost
-          if (atkVengeanceActive) dmg = Math.floor(dmg * 1.20)
-          // Apply Alliance Vanguard Bonus (dynamic, scales with level)
-          const atkAllianceState = useAllianceStore.getState()
-          const atkAlliance = atkAllianceState.alliances.find(a => a.members.some(m => m.name === battle.attackerId))
-          const allianceAtkMult = atkAlliance?.activeIdeology === 'vanguard' ? getIdeologyBonus(atkAlliance) : 1
-
-          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus + revolt bonus + Ley Line
-          dmg = Math.floor(deviate(dmg) * atkMilBonus.attackDamageBonus * atkMilBonus.allCombatBonus * revoltAtkMult * allianceAtkMult * atkLeyLine.damageMult)
-          atkTotalDmg += Math.max(1, dmg)
-        }
-      })
-
-      // --- Experience gain: +0.5 per tick for engaged attacker divisions ---
-      atkDivIds.forEach(divId => {
-        const d = armyStore.divisions[divId]
-        if (d && d.experience < 100) {
-          useArmyStore.setState((s: any) => ({
-            divisions: { ...s.divisions, [divId]: { ...s.divisions[divId], experience: Math.min(100, d.experience + 0.5) } }
-          }))
-        }
-      })
-
-      // --- DEFENDER DAMAGE (symmetric: same formula with attack speed accumulator) ---
-      let defTotalDmg = 0
-      let defCrits = 0
-      let defMisses = 0
-      defDivIds.forEach(divId => {
-        const d = armyStore.divisions[divId]
-        if (!d) return
-        const template = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
-        if (!template) { console.warn('[Combat] Unknown defender div type:', d.type, 'for div', divId); return }
-
-        // Tactical order effects for defender
-        const defOrd = TACTICAL_ORDERS[battle.defenderOrder || 'none'].effects
-        // Apply star quality modifiers to template stats
-        const dsm = d.statModifiers || { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0, attackSpeed: 0 }
-        const dAtkDmg = template.atkDmgMult * (1 + dsm.atkDmgMult)
-        const dHitRate = template.hitRate * (1 + dsm.hitRate)
-        const dCritRate = template.critRateMult * (1 + dsm.critRateMult)
-        const dCritDmg = template.critDmgMult * (1 + dsm.critDmgMult)
-        const dAtkSpeed = (template.attackSpeed || 1.0) * (1 + dsm.attackSpeed)
-        // Equipment bonuses for defender division
-        const deq = getDivisionEquipBonus(d)
-        const defAS = (dAtkSpeed - deq.bonusSpeed) * defOrd.speedMult
-        cooldowns[divId] = (cooldowns[divId] || 0) + 1.0
-
-        // 🔥 DESPERATION: +25% ATK, +15% crit when HP < 30%
-        const defStrength = d.health / d.maxHealth
-        const defDesperate = defStrength > 0 && defStrength < 0.30
-        // ⚡ VENGEANCE: +20% ATK, +10% hit for 3 ticks after ally dies
-        const defVengeanceActive = (battle.vengeanceBuff?.defender ?? -1) >= tick
-
-        while (cooldowns[divId] >= defAS) {
-          cooldowns[divId] -= defAS
-          const defDivLevel = Math.floor((d.experience || 0) / 10)
-          // Hit check (order hitBonus + aura precisionPct + equip hitRate + research hitRate + vengeance applied)
-          const defVengeanceHitBonus = defVengeanceActive ? 0.10 : 0
-          if (Math.random() > Math.min(0.95, dHitRate + defDivLevel * 0.01 + defOrd.hitBonus + defAura.precisionPct / 100 + deq.bonusHitRate + defMilBonus.hitRateBonus + defVengeanceHitBonus)) {
-            defMisses++
-            divEvents.push({ divName: d.name, side: 'def', event: 'miss' })
-            continue
-          }
-          // Base damage: player attack + manpower×3 + equipAtk, scaled by division's attack mult
-          let dmg = Math.floor((playerStats.attackDamage + d.manpower * 3 + deq.bonusAtk) * (dAtkDmg + defDivLevel * 0.01))
-          // Apply aura attack bonus
-          dmg = Math.floor(dmg * (1 + defAura.attackPct / 100))
-          // Apply HERO buff (+10%) if division owner has active buff on THIS battle
-          const dps = usePlayerStore.getState()
-          const defOwnerBuff = d.ownerId === dps.name && dps.heroBuffTicksLeft > 0 && dps.heroBuffBattleId === battle.id
-          if (defOwnerBuff) dmg = Math.floor(dmg * 1.10)
-          // Crit check — Desperation boosts crit rate by 15%
-          let effectiveCritRate = deviate((playerStats.critRate + defOrd.critBonus + deq.bonusCritRate) * (dCritRate + defDivLevel * 0.01))
-          if (defDesperate) effectiveCritRate *= 1.15
-          if (Math.random() * 100 < effectiveCritRate) {
-            // Apply aura crit damage bonus + equip crit dmg
-            const effectiveCritMult = playerStats.critMultiplier * (dCritDmg + defDivLevel * 0.01) * (1 + defAura.critDmgPct / 100) * defMilBonus.critDmgBonus + deq.bonusCritDmg / 100
-            dmg = Math.floor(dmg * effectiveCritMult)
-            defCrits++
-            divEvents.push({ divName: d.name, side: 'def', event: 'crit', dmg })
-          }
-          dmg = Math.floor(dmg * defStrength)
-          dmg = Math.floor(dmg * defOrd.atkMult)
-          // 🔥 DESPERATION: +25% ATK boost
-          if (defDesperate) dmg = Math.floor(dmg * 1.25)
-          // ⚡ VENGEANCE: +20% ATK boost
-          if (defVengeanceActive) dmg = Math.floor(dmg * 1.20)
-          // Apply Alliance Sentinel Bonus (dynamic, scales with level)
-          const defAllianceState = useAllianceStore.getState()
-          const defAlliance = defAllianceState.alliances.find(a => a.members.some(m => m.name === battle.defenderId))
-          const allianceDefMult = defAlliance?.activeIdeology === 'sentinel' ? getIdeologyBonus(defAlliance) : 1
-
-          // Apply ±10% deviation to final damage, then apply Military Doctrine research bonus + Ley Line
-          dmg = Math.floor(deviate(dmg) * defMilBonus.attackDamageBonus * defMilBonus.allCombatBonus * allianceDefMult * defLeyLine.damageMult)
-          defTotalDmg += Math.max(1, dmg)
-        }
-      })
-
-      // --- Pre-compute per-division defensive hits (for staggered real-time application) ---
-      // Collect hits with side info so damage bar can animate per-hit
-      const hitSchedule: { divId: string; divName: string; damage: number; equipDmg: number; side: 'atk' | 'def'; displayDmg: number; isCrit: boolean }[] = []
-      const manpowerDmgToDefender = Math.floor(atkTotalDmg * 0.80)
-      const manpowerDmgToAttacker = Math.floor(defTotalDmg * 0.80)
-
-      // Attacker hits defender divisions
-      let defHitCount = 0
-      if (defDivIds.length > 0 && manpowerDmgToDefender > 0) {
-        const basePerDiv = Math.max(1, Math.floor(manpowerDmgToDefender / defDivIds.length))
-        defDivIds.forEach(id => {
-          const d = armyStore.divisions[id]
-          if (!d) return
-          const tmpl = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
-          if (!tmpl) return
-          const defOrderFx = TACTICAL_ORDERS[battle.defenderOrder || 'none'].effects
-          // Aura dodge bonus + equip dodge for defending divisions + ±10% deviation
-          const defEq = getDivisionEquipBonus(d)
-          const dodgeChance = deviate((playerStats.dodgeChance || 5) * tmpl.dodgeMult * defOrderFx.dodgeMult * (1 + defAura.dodgePct / 100) + defEq.bonusDodge) / 100
-          if (Math.random() < dodgeChance) {
-            divEvents.push({ divName: d.name, side: 'atk', event: 'dodge' })
-            return
-          }
-          const totalDefArmor = ((playerStats.armorBlock || 0) + defEq.bonusArmor) * tmpl.armorMult * defOrderFx.armorMult * defMilBonus.armorBonus * defLeyLine.armorMult
-            * ((d.health / d.maxHealth) < 0.30 ? 0.90 : 1.0)  // 🔥 DESPERATION: -10% armor when HP < 30%
-          const defArmorMit = totalDefArmor / (totalDefArmor + 100)
-          let finalDmg = Math.max(1, Math.floor(basePerDiv * (1 - defArmorMit)))
-          finalDmg = Math.max(1, Math.floor(finalDmg / 1.35)) // healthMult divider x1.35
-          hitSchedule.push({ divId: id, divName: d.name, damage: finalDmg, equipDmg: 0.3, side: 'atk', displayDmg: 0, isCrit: false })
-          defHitCount++
-        })
-      }
-      // Defender hits attacker divisions
-      let atkHitCount = 0
-      if (atkDivIds.length > 0 && manpowerDmgToAttacker > 0) {
-        const basePerDiv = Math.max(1, Math.floor(manpowerDmgToAttacker / atkDivIds.length))
-        atkDivIds.forEach(id => {
-          const d = armyStore.divisions[id]
-          if (!d) return
-          const tmpl = DIVISION_TEMPLATES[d.type as keyof typeof DIVISION_TEMPLATES]
-          if (!tmpl) return
-          const atkOrderFx = TACTICAL_ORDERS[battle.attackerOrder || 'none'].effects
-          // Aura dodge bonus + equip dodge for attacking divisions + ±10% deviation
-          const atkEq = getDivisionEquipBonus(d)
-          const dodgeChance = deviate((playerStats.dodgeChance || 5) * tmpl.dodgeMult * atkOrderFx.dodgeMult * (1 + atkAura.dodgePct / 100) + atkEq.bonusDodge) * revoltDodgeMult / 100
-          if (Math.random() < dodgeChance) {
-            divEvents.push({ divName: d.name, side: 'def', event: 'dodge' })
-            return
-          }
-          const totalAtkArmor = ((playerStats.armorBlock || 0) + atkEq.bonusArmor) * tmpl.armorMult * atkOrderFx.armorMult * atkMilBonus.armorBonus * atkLeyLine.armorMult
-            * ((d.health / d.maxHealth) < 0.30 ? 0.90 : 1.0)  // 🔥 DESPERATION: -10% armor when HP < 30%
-          const atkArmorMit = totalAtkArmor / (totalAtkArmor + 100)
-          let finalDmg = Math.max(1, Math.floor(basePerDiv * (1 - atkArmorMit)))
-          finalDmg = Math.max(1, Math.floor(finalDmg / 1.35)) // healthMult divider x1.35
-          hitSchedule.push({ divId: id, divName: d.name, damage: finalDmg, equipDmg: 0.3, side: 'def', displayDmg: 0, isCrit: false })
-          atkHitCount++
-        })
-      }
-
-      // Distribute raw display damage proportionally across hits
-      // atk side: attacker dealt atkTotalDmg → distribute across defHitCount hits
-      // def side: defender dealt defTotalDmg → distribute across atkHitCount hits
-      let atkDmgRemaining = atkTotalDmg
-      let defDmgRemaining = defTotalDmg
-      let atkHitsSeen = 0, defHitsSeen = 0
-      hitSchedule.forEach(hit => {
-        if (hit.side === 'atk' && defHitCount > 0) {
-          atkHitsSeen++
-          if (atkHitsSeen === defHitCount) { hit.displayDmg = atkDmgRemaining } // last hit gets remainder
-          else { const share = Math.floor(atkTotalDmg / defHitCount); hit.displayDmg = share; atkDmgRemaining -= share }
-        } else if (hit.side === 'def' && atkHitCount > 0) {
-          defHitsSeen++
-          if (defHitsSeen === atkHitCount) { hit.displayDmg = defDmgRemaining }
-          else { const share = Math.floor(defTotalDmg / atkHitCount); hit.displayDmg = share; defDmgRemaining -= share }
-        }
-      })
-
-      // --- Stagger damage application across 14 seconds (real-time HP + damage bar updates) ---
-      const battleId = battle.id
-      if (hitSchedule.length > 0) {
-        const TICK_SPREAD_MS = 14000
-        const interval = Math.floor(TICK_SPREAD_MS / hitSchedule.length)
-        // Shuffle hit order for visual variety
-        for (let i = hitSchedule.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1))
-          ;[hitSchedule[i], hitSchedule[j]] = [hitSchedule[j], hitSchedule[i]]
-        }
-        const applyHit = (hit: typeof hitSchedule[0]) => {
-          useArmyStore.getState().applyBattleDamage(hit.divId, hit.damage, hit.equipDmg)
-          // Push real-time per-division combat log entry
-          useBattleStore.setState(s => {
-            const b = s.battles[battleId]
-            if (!b) return s
-            const sideLabel = hit.side === 'atk' ? '⚔️' : '🛡️'
-            const critTag = hit.isCrit ? ' 💥CRIT' : ''
-            const logEntry = {
-              tick, timestamp: Date.now(), type: 'damage' as const, side: hit.side === 'atk' ? 'attacker' as const : 'defender' as const,
-              damage: hit.displayDmg,
-              message: `${sideLabel} ${hit.divName} deals ${hit.displayDmg} dmg${critTag}`,
-            }
-            return {
-              battles: { ...s.battles, [battleId]: {
-                ...b,
-                combatLog: [...b.combatLog.slice(-50), logEntry],
-                currentTick: {
-                  attackerDamage: b.currentTick.attackerDamage + (hit.side === 'atk' ? hit.displayDmg : 0),
-                  defenderDamage: b.currentTick.defenderDamage + (hit.side === 'def' ? hit.displayDmg : 0),
-                },
-                attacker: {
-                  ...b.attacker,
-                  damageDealt: b.attacker.damageDealt + (hit.side === 'atk' ? hit.displayDmg : 0),
-                },
-                defender: {
-                  ...b.defender,
-                  damageDealt: b.defender.damageDealt + (hit.side === 'def' ? hit.displayDmg : 0),
-                },
-              }}
-            }
-          })
-        }
-        hitSchedule.forEach((hit, idx) => {
-          // All hits are async (min 100ms) to fire AFTER end-of-tick state update
-          const delay = Math.min(100 + idx * interval, TICK_SPREAD_MS)
-          setTimeout(() => applyHit(hit), delay)
-        })
-        // Stagger miss/dodge events interleaved with hits
-        const totalSlots = hitSchedule.length + divEvents.length
-        const eventInterval = totalSlots > 0 ? Math.floor(TICK_SPREAD_MS / totalSlots) : 500
-        divEvents.forEach((evt, idx) => {
-          const delay = Math.min(100 + (hitSchedule.length + idx) * eventInterval, TICK_SPREAD_MS)
-          setTimeout(() => {
-            useBattleStore.setState(s => {
-              const b = s.battles[battleId]
-              if (!b) return s
-              const icon = evt.event === 'miss' ? '❌' : evt.event === 'dodge' ? '💨' : '💥'
-              const label = evt.event === 'miss' ? 'MISS' : evt.event === 'dodge' ? 'DODGE' : 'CRIT'
-              const logEntry = {
-                tick, timestamp: Date.now(), type: 'damage' as const,
-                side: evt.side === 'atk' ? 'attacker' as const : 'defender' as const,
-                message: `${icon} ${evt.divName} — ${label}${evt.dmg ? ` (${evt.dmg} dmg)` : ''}`,
-              }
-              return {
-                battles: { ...s.battles, [battleId]: {
-                  ...b,
-                  combatLog: [...b.combatLog.slice(-50), logEntry],
-                }}
-              }
-            })
-          }, delay)
-        })
-      }
-
-      // --- Combat log (tick summary — individual hits logged in real-time via applyHit) ---
-      if (atkTotalDmg === 0 && defTotalDmg === 0 && atkDivIds.length === 0 && defDivIds.length === 0) {
-        newCombatLog.push({
-          tick, timestamp: now, type: 'phase_change', side: 'attacker',
-          message: `⏸️ T${tick}: No divisions engaged — deploy troops to fight!`,
-        })
-      }
-
-      // --- Refresh division states after damage ---
-      const updatedArmyStore = useArmyStore.getState()
-
-      // Check for destroyed divisions and generate debris
-      let atkDestroyed = 0, defDestroyed = 0
-      let debrisScrap = 0, debrisMatX = 0, debrisBoxes = 0
-      battle.attacker.divisionIds.forEach(id => {
-        const d = updatedArmyStore.divisions[id]
-        if (d?.status === 'destroyed') {
-          atkDestroyed++
-          newCombatLog.push({ tick, timestamp: now, type: 'destroyed', side: 'attacker', divisionName: d.name, message: `💀 ${d.name} destroyed!` })
-          const debris = rollDebris(d.type)
-          debrisScrap += debris.scrap; debrisMatX += debris.materialX; debrisBoxes += debris.militaryBox ? 1 : 0
-        }
-      })
-      battle.defender.divisionIds.forEach(id => {
-        const d = updatedArmyStore.divisions[id]
-        if (d?.status === 'destroyed') {
-          defDestroyed++
-          newCombatLog.push({ tick, timestamp: now, type: 'destroyed', side: 'defender', divisionName: d.name, message: `💀 ${d.name} destroyed!` })
-          const debris = rollDebris(d.type)
-          debrisScrap += debris.scrap; debrisMatX += debris.materialX; debrisBoxes += debris.militaryBox ? 1 : 0
-        }
-      })
-
-      // ⚡ VENGEANCE: When an allied division is destroyed, surviving allies get buffed for 3 ticks
-      if (atkDestroyed > 0 && !battle.vengeanceBuff) battle.vengeanceBuff = { attacker: -1, defender: -1 }
-      if (atkDestroyed > 0) {
-        battle.vengeanceBuff.attacker = tick + 3  // attacker lost divs → attacker survivors get vengeance
-        newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚡ VENGEANCE! Attacker divisions rage — +20% ATK, +10% hit for 3 ticks!` })
-      }
-      if (defDestroyed > 0) {
-        battle.vengeanceBuff.defender = tick + 3  // defender lost divs → defender survivors get vengeance
-        newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `⚡ VENGEANCE! Defender divisions rage — +20% ATK, +10% hit for 3 ticks!` })
-      }
-
-      // Deposit debris into the region
-      if ((debrisScrap > 0 || debrisMatX > 0 || debrisBoxes > 0) && battle.regionId) {
-        useRegionStore.getState().addDebris(battle.regionId, debrisScrap, debrisMatX, debrisBoxes)
-      }
-
-      // BOH rewards for division kills: +1 🎖️ per enemy division destroyed
-      const ps0 = usePlayerStore.getState()
-      const playerCountry0 = ps0.countryCode || 'US'
-      if (playerCountry0 === battle.attackerId && defDestroyed > 0) {
-        ps0.addResource('badgesOfHonor', defDestroyed, 'division_kill')
-      } else if (playerCountry0 === battle.defenderId && atkDestroyed > 0) {
-        ps0.addResource('badgesOfHonor', atkDestroyed, 'division_kill')
-      }
-
-      // --- Award ground points ---
-      const activeRoundIndex = battle.rounds.length - 1
-      const activeRound = { ...battle.rounds[activeRoundIndex] }
-      const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
-      const pointIncrement = getPointIncrement(totalGroundPoints)
-      // Accumulate TOTAL damage this tick (division + player manual) into per-round totals
-      const atkTickDmgTotal = atkTotalDmg + (battle.currentTick?.attackerDamage || 0)
-      const defTickDmgTotal = defTotalDmg + (battle.currentTick?.defenderDamage || 0)
-      activeRound.attackerRoundDmg = (activeRound.attackerRoundDmg || 0) + atkTickDmgTotal
-      activeRound.defenderRoundDmg = (activeRound.defenderRoundDmg || 0) + defTickDmgTotal
-
-      // Award points based on ROUND-LONG damage with 50%+ threshold
-      const totalRoundDmg = (activeRound.attackerRoundDmg || 0) + (activeRound.defenderRoundDmg || 0)
-      if (totalRoundDmg > 0) {
-        const atkRoundPct = (activeRound.attackerRoundDmg || 0) / totalRoundDmg
-        const defRoundPct = (activeRound.defenderRoundDmg || 0) / totalRoundDmg
-        if (atkRoundPct > 0.5) {
-          activeRound.attackerPoints += pointIncrement
-        } else if (defRoundPct > 0.5) {
-          activeRound.defenderPoints += pointIncrement
-        }
-        // 50/50 stalemate → 0 points
-      } else if (atkDivIds.length > 0 && defDivIds.length === 0) {
-        // Attacker has divisions, defender doesn't: attacker gains ground
-        activeRound.attackerPoints += pointIncrement
-      } else if (defDivIds.length > 0 && atkDivIds.length === 0) {
-        // Defender has divisions, attacker doesn't: defender gains ground
-        activeRound.defenderPoints += pointIncrement
-      }
-      let newRounds = [...battle.rounds.slice(0, -1), activeRound]
-
-      // --- Victory conditions: ONLY ground points decide rounds/battles ---
-      // Division wipeout does NOT instantly end the battle — the side with no divs
-      // simply can't deal damage, so the other side earns ground points unopposed.
-      let newStatus: 'active' | 'attacker_won' | 'defender_won' = battle.status
-      let atkRoundsWon = battle.attackerRoundsWon
-      let defRoundsWon = battle.defenderRoundsWon
-
-      if (activeRound.attackerPoints >= POINTS_TO_WIN_ROUND || activeRound.defenderPoints >= POINTS_TO_WIN_ROUND) {
-        // Record round end data
-        activeRound.endedAt = now
-        activeRound.ticksElapsed = tick - (battle.rounds.slice(0, -1).reduce((sum, r) => sum + (r.ticksElapsed || 0), 0))
-        activeRound.attackerDmgTotal = activeRound.attackerRoundDmg || 0
-        activeRound.defenderDmgTotal = activeRound.defenderRoundDmg || 0
-        if (activeRound.attackerPoints >= POINTS_TO_WIN_ROUND) { atkRoundsWon++; activeRound.status = 'attacker_won' }
-        else { defRoundsWon++; activeRound.status = 'defender_won' }
-        if (atkRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
-          newStatus = 'attacker_won'
-          const world = useWorldStore.getState()
-          if (battle.type === 'invasion') world.occupyCountry(battle.defenderId, battle.attackerId, false)
-          // Revolt victory: liberate the region back to native country
-          if (battle.type === 'revolt' && battle.regionId) {
-            useRegionStore.getState().liberateRegion(battle.regionId)
-          }
-          // Flip region control if battle targets a specific region (non-revolt)
-          if (battle.type !== 'revolt' && battle.regionId) {
-            const regionStore = useRegionStore.getState()
-            const regionIdx = regionStore.regions.findIndex(r => r.id === battle.regionId)
-            if (regionIdx >= 0) {
-              useRegionStore.setState(s => ({
-                regions: s.regions.map((r, i) => i === regionIdx ? { ...r, controlledBy: battle.attackerId } : r)
-              }))
-            }
-          }
-          // --- War Rewards (damage-weighted, with Economic Theory research bonus) ---
-          const atkKills = battle.defender.divisionsDestroyed + defDestroyed
-          const defKills = battle.attacker.divisionsDestroyed + atkDestroyed
-          const ecoBonuses = useResearchStore.getState().getEconomyBonuses(battle.attackerId)
-          const winnerRewards = getWarRewards(atkKills, true, ecoBonuses.allEconomyBonus)
-          const loserRewards = getWarRewards(defKills, false)
-          const ps = usePlayerStore.getState()
-          const playerCC = ps.countryCode || 'US'
-
-          // Damage-weighted reward: share based on player's contribution
-          const myAtkDmg = battle.attackerDamageDealers[ps.name] || 0
-          const totalAtkDmg = battle.attacker.damageDealt || 1
-          const worldState = useWorldStore.getState()
-          if (playerCC === battle.attackerId && myAtkDmg > 0) {
-            const myShare = getWarRewardShare(winnerRewards.totalMoney, myAtkDmg, totalAtkDmg)
-            // Draw from war fund instead of creating money
-            const actualPayout = Math.max(5000, worldState.drawFromWarFund(myShare))
-            ps.earnMoney(actualPayout)  // local state sync only
-            const milB = useSpecializationStore.getState().getMilitaryBonuses()
-            ps.addResource('badgesOfHonor', 1 + (milB?.bohWinBonus || 0), 'battle_win')
-          } else if (playerCC === battle.defenderId) {
-            // Loser consolation is also damage-weighted
-            const myDefDmg = battle.defenderDamageDealers[ps.name] || 0
-            const totalDefDmg = battle.defender.damageDealt || 1
-            if (myDefDmg > 0) {
-              const myShare = getWarRewardShare(loserRewards.totalMoney, myDefDmg, totalDefDmg)
-              const actualPayout = Math.max(5000, worldState.drawFromWarFund(myShare))
-              ps.earnMoney(actualPayout)  // local state sync only
-            }
-          }
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ VICTORY! ${getCountryName(battle.attackerId)} captures ${battle.regionName}! 💰 Pool: $${winnerRewards.totalMoney.toLocaleString()} (damage-weighted)` })
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFEAT — ${getCountryName(battle.defenderId)} loses ${battle.regionName}. 💰 Consolation pool: $${loserRewards.totalMoney.toLocaleString()}` })
-        } else if (defRoundsWon >= ROUNDS_TO_WIN_BATTLE) {
-          newStatus = 'defender_won'
-          // --- War Rewards (damage-weighted, with Economic Theory research bonus) ---
-          const dAtkKills = battle.defender.divisionsDestroyed + defDestroyed
-          const dDefKills = battle.attacker.divisionsDestroyed + atkDestroyed
-          const dEcoBonuses = useResearchStore.getState().getEconomyBonuses(battle.defenderId)
-          const dWinnerRewards = getWarRewards(dDefKills, true, dEcoBonuses.allEconomyBonus)
-          const dLoserRewards = getWarRewards(dAtkKills, false)
-          const dPs = usePlayerStore.getState()
-          const dPlayerCC = dPs.countryCode || 'US'
-
-          // Damage-weighted reward: share based on player's contribution
-          const dMyDefDmg = battle.defenderDamageDealers[dPs.name] || 0
-          const dTotalDefDmg = battle.defender.damageDealt || 1
-          const dWorldState = useWorldStore.getState()
-          if (dPlayerCC === battle.defenderId && dMyDefDmg > 0) {
-            const dMyShare = getWarRewardShare(dWinnerRewards.totalMoney, dMyDefDmg, dTotalDefDmg)
-            // Draw from war fund instead of creating money
-            const dActualPayout = Math.max(5000, dWorldState.drawFromWarFund(dMyShare))
-            dPs.earnMoney(dActualPayout)  // local state sync only
-            const milB = useSpecializationStore.getState().getMilitaryBonuses()
-            dPs.addResource('badgesOfHonor', 1 + (milB?.bohWinBonus || 0), 'battle_win')
-          } else if (dPlayerCC === battle.attackerId) {
-            // Loser consolation is also damage-weighted
-            const dMyAtkDmg = battle.attackerDamageDealers[dPs.name] || 0
-            const dTotalAtkDmg = battle.attacker.damageDealt || 1
-            if (dMyAtkDmg > 0) {
-              const dMyShare = getWarRewardShare(dLoserRewards.totalMoney, dMyAtkDmg, dTotalAtkDmg)
-              const dActualPayout = Math.max(5000, dWorldState.drawFromWarFund(dMyShare))
-              dPs.earnMoney(dActualPayout)  // local state sync only
-            }
-          }
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'defender', message: `🛡️ DEFENSE HOLDS! ${getCountryName(battle.defenderId)} defends ${battle.regionName}! 💰 Pool: $${dWinnerRewards.totalMoney.toLocaleString()} (damage-weighted)` })
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `⚔️ ATTACK FAILED — ${getCountryName(battle.attackerId)} repelled from ${battle.regionName}. 💰 Consolation pool: $${dLoserRewards.totalMoney.toLocaleString()}` })
-        } else {
-          newRounds = [...newRounds, { attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }]
-          newCombatLog.push({ tick, timestamp: now, type: 'phase_change', side: 'attacker', message: `🔔 Round ${battle.rounds.length} complete! New round begins.` })
-        }
-      }
-
-      // --- Update battle state ---
-      // NOTE: currentTick starts at {0,0} and is incremented by staggered hits
-      newBattles[battle.id] = {
-        ...battle,
-        ticksElapsed: tick,
-        divisionCooldowns: cooldowns,
-        status: newStatus,
-        attackerRoundsWon: atkRoundsWon,
-        defenderRoundsWon: defRoundsWon,
-        rounds: newRounds,
-        currentTick: { attackerDamage: 0, defenderDamage: 0 },
-        attacker: {
-          ...battle.attacker,
-          // damageDealt is incremented per-hit in applyHit — don't add here
-          manpowerLost: (battle.attacker.manpowerLost || 0) + manpowerDmgToAttacker,
-          divisionsDestroyed: (battle.attacker.divisionsDestroyed || 0) + atkDestroyed,
-          
-        },
-        defender: {
-          ...battle.defender,
-          // damageDealt is incremented per-hit in applyHit — don't add here
-          manpowerLost: (battle.defender.manpowerLost || 0) + manpowerDmgToDefender,
-          divisionsDestroyed: (battle.defender.divisionsDestroyed || 0) + defDestroyed,
-          
-        },
-        combatLog: newCombatLog.slice(-100),
-      }
-
-      // If battle resolved, reset division states and check War Cards
-      if (newStatus !== 'active') {
-        const finalArmyStore = useArmyStore.getState()
-        ;[...battle.attacker.divisionIds, ...battle.defender.divisionIds].forEach(id => {
-          const d = finalArmyStore.divisions[id]
-          if (d && d.status === 'in_combat') {
-            useArmyStore.setState((s: any) => ({
-              divisions: {
-                ...s.divisions,
-                [id]: {
-                  ...s.divisions[id],
-                  status: 'recovering',
-                  experience: Math.min(100, d.experience + 10),
-                  battlesSurvived: d.battlesSurvived + 1,
-                },
-              },
-            }))
-          }
-        })
-
-        // ── Specialization: round/battle win hooks ──
-        try {
-          const ps = usePlayerStore.getState()
-          const pCC = ps.countryCode || 'US'
-          const isAttacking = pCC === battle.attackerId
-          const isDefending = pCC === battle.defenderId
-          const isAbroad = !isAttacking && !isDefending
-          const playerWon = (newStatus === 'attacker_won' && isAttacking) || (newStatus === 'defender_won' && isDefending) ||
-            (isAbroad && ((newStatus === 'attacker_won' && (battle.attackerDamageDealers[ps.name] || 0) > 0) ||
-                          (newStatus === 'defender_won' && (battle.defenderDamageDealers[ps.name] || 0) > 0)))
-          const spec = useSpecializationStore.getState()
-          if (playerWon && !isAbroad) spec.recordRoundWin()
-          if (playerWon && isAbroad) spec.recordAbroadRoundWin()
-          // Mercenary: abroad kill
-          if (isAbroad && playerWon) spec.recordAbroadKill()
-        } catch (e) { /* silent */ }
-
-        // ── War Cards: combat achievements are now evaluated server-side ──
-        // (evaluateBattleCards() in warCard.service.ts handles battle-context cards)
-        // No client-side evaluation needed.
-
-        // ── #9 FIX: Feed Global War Fund instead of per-battle treasury drain ──
-        try {
-          const finalBattle = newBattles[battle.id]
-          const winnerSide = newStatus === 'attacker_won' ? 'attacker' : 'defender'
-          const loserSide = newStatus === 'attacker_won' ? 'defender' : 'attacker'
-          const winnerCountry = winnerSide === 'attacker' ? finalBattle.attackerId : finalBattle.defenderId
-          const loserCountry = loserSide === 'attacker' ? finalBattle.attackerId : finalBattle.defenderId
-
-          const worldState = useWorldStore.getState()
-
-          // Contribute 2% from both treasuries to global war fund
-          worldState.contributeToWarFund(finalBattle.attackerId, finalBattle.defenderId)
-
-          // Record damage dealt by each side's country for daily distribution
-          const atkTotalDmg = Object.values(finalBattle.attackerDamageDealers || {}).reduce((s, d) => s + d, 0)
-          const defTotalDmg = Object.values(finalBattle.defenderDamageDealers || {}).reduce((s, d) => s + d, 0)
-          if (atkTotalDmg > 0) worldState.recordWarFundDamage(finalBattle.attackerId, atkTotalDmg)
-          if (defTotalDmg > 0) worldState.recordWarFundDamage(finalBattle.defenderId, defTotalDmg)
-
-          // Record battle outcome for win/loss multiplier
-          worldState.recordWarFundBattleOutcome(winnerCountry, loserCountry)
-        } catch (e) {
-          console.warn('[WarFund] Error recording battle to war fund:', e)
-        }
-      }
-    })
-
-    if (hasChanges) {
-      set({ battles: newBattles })
-    }
   },
 
 
@@ -1732,167 +846,6 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       console.error('[Battle] Server defend failed:', err)
       return { blocked: 0, message: 'Server error. Try again.' }
     }
-  },
-
-  // ====== DEPLOY DIVISIONS TO BATTLE ======
-  deployDivisionsToBattle: (battleId, divisionIds, side) => {
-    const state = get()
-    const battle = state.battles[battleId]
-    if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
-
-    const armyStore = useArmyStore.getState()
-
-    // ── Anti-grief: block deploying to the enemy side of a war ──
-    const playerCountry = usePlayerStore.getState().countryCode || 'US'
-    const sideCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
-    const enemySide = side === 'attacker' ? battle.defenderId : battle.attackerId
-    const world = useWorldStore.getState()
-    const atWarWithSide = world.wars.some(w => w.status === 'active' &&
-      ((w.attacker === playerCountry && w.defender === sideCountry) || (w.attacker === sideCountry && w.defender === playerCountry)))
-    // Block if player is at war with the side they're trying to help (griefing prevention)
-    if (atWarWithSide) return { success: false, message: 'Cannot deploy to enemy side.' }
-
-    // ── Validate that divisions are deployable ──
-    const validIds = divisionIds.filter(id => {
-      const d = armyStore.divisions[id]
-      if (!d) return false
-      if (d.status !== 'ready' && d.status !== 'training') return false
-      if (d.health <= 0) return false
-      return true
-    })
-    if (validIds.length === 0) return { success: false, message: 'No valid divisions to deploy.' }
-
-    // Mark divisions as in_combat with deployment timestamp
-    const deployedAtTick = get().battles[battleId]?.ticksElapsed || 0
-    validIds.forEach(id => {
-      useArmyStore.setState((s: any) => ({
-        divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'in_combat', deployedAtTick } }
-      }))
-    })
-
-    // Add to battle side
-    const sideData = side === 'attacker' ? battle.attacker : battle.defender
-    const newDivisionIds = [...new Set([...sideData.divisionIds, ...validIds])]
-    const newEngaged = [...new Set([...sideData.engagedDivisionIds, ...validIds])]
-
-    set(s => ({
-      battles: {
-        ...s.battles,
-        [battleId]: {
-          ...battle,
-          [side]: {
-            ...sideData,
-            divisionIds: newDivisionIds,
-            engagedDivisionIds: newEngaged,
-          },
-          currentTick: {
-            attackerDamage: battle.currentTick.attackerDamage,
-            defenderDamage: battle.currentTick.defenderDamage,
-          },
-          combatLog: [...battle.combatLog, {
-            tick: battle.ticksElapsed, timestamp: Date.now(), type: 'reinforcement' as const, side,
-            message: `🚀 ${validIds.length} division(s) deployed as reinforcements!`,
-          }],
-        },
-      },
-    }))
-
-    // Persist to backend (fire-and-forget)
-    import('../api/client').then(({ battleDeploy }) => battleDeploy(battleId, validIds, side).catch(() => {}))
-    return { success: true, message: `${validIds.length} division(s) deployed to battle!` }
-  },
-
-  removeDivisionsFromBattle: (battleId, side) => {
-    const state = get()
-    const battle = state.battles[battleId]
-    if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
-
-    const sideData = side === 'attacker' ? battle.attacker : battle.defender
-    if (sideData.engagedDivisionIds.length === 0) return { success: false, message: 'No divisions to remove.' }
-
-    const count = sideData.engagedDivisionIds.length
-
-    // Set divisions to 'recovering'
-    sideData.engagedDivisionIds.forEach(id => {
-      useArmyStore.setState((s: any) => {
-        const d = s.divisions[id]
-        if (!d || d.status === 'destroyed') return s
-        return {
-          divisions: { ...s.divisions, [id]: { ...d, status: 'recovering', trainingProgress: 0 } }
-        }
-      })
-    })
-
-    // Clear from battle side
-    set(s => ({
-      battles: {
-        ...s.battles,
-        [battleId]: {
-          ...battle,
-          [side]: {
-            ...sideData,
-            engagedDivisionIds: [],
-          },
-          combatLog: [...battle.combatLog, {
-            tick: battle.ticksElapsed, timestamp: Date.now(), type: 'retreat' as const, side,
-            message: `🏳️ ${count} division(s) withdrawn from battle!`,
-          }],
-        },
-      },
-    }))
-
-    return { success: true, message: `${count} division(s) withdrawn and recovering.` }
-  },
-
-  recallDivisionFromBattle: (battleId, divisionId, side) => {
-    const state = get()
-    const battle = state.battles[battleId]
-    if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
-
-    const sideData = side === 'attacker' ? battle.attacker : battle.defender
-    if (!sideData.engagedDivisionIds.includes(divisionId)) return { success: false, message: 'Division not in battle.' }
-
-    // ── #5 FIX: 120-tick (30 min) minimum deployment before recall ──
-    const div = useArmyStore.getState().divisions[divisionId]
-    if (div && typeof div.deployedAtTick === 'number') {
-      const currentTick = battle.ticksElapsed || 0
-      const ticksDeployed = currentTick - div.deployedAtTick
-      if (ticksDeployed < 120) {
-        const ticksRemaining = 120 - ticksDeployed
-        const minsRemaining = Math.ceil((ticksRemaining * 15) / 60)
-        return { success: false, message: `Division must stay deployed for 30 min. ${minsRemaining} min remaining.` }
-      }
-    }
-
-    // Set division to 'recovering'
-    useArmyStore.setState((s: any) => {
-      const d = s.divisions[divisionId]
-      if (!d || d.status === 'destroyed') return s
-      return { divisions: { ...s.divisions, [divisionId]: { ...d, status: 'recovering', trainingProgress: 0 } } }
-    })
-
-    const divName = useArmyStore.getState().divisions[divisionId]?.name || divisionId
-
-    set(s => ({
-      battles: {
-        ...s.battles,
-        [battleId]: {
-          ...battle,
-          [side]: {
-            ...sideData,
-            engagedDivisionIds: sideData.engagedDivisionIds.filter(id => id !== divisionId),
-          },
-          combatLog: [...battle.combatLog, {
-            tick: battle.ticksElapsed, timestamp: Date.now(), type: 'retreat' as const, side,
-            message: `🛡️ ${divName} withdrawn from battle.`,
-          }],
-        },
-      },
-    }))
-
-    // Persist to backend (fire-and-forget)
-    import('../api/client').then(({ battleRecall }) => battleRecall(battleId, divisionId, side).catch(() => {}))
-    return { success: true, message: `${divName} recalled.` }
   },
 }))
 

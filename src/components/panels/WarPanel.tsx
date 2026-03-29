@@ -1,54 +1,37 @@
 import { useState, useEffect } from 'react'
-import { useArmyStore } from '../../stores/army'
 import { useBattleStore } from '../../stores/battleStore'
 import { usePlayerStore } from '../../stores/playerStore'
-import { useGovernmentStore } from '../../stores/governmentStore'
 import { useUIStore } from '../../stores/uiStore'
-import { ENABLE_DIVISIONS } from '../../config/features'
 import WarOverviewTab from './WarOverviewTab'
-import WarRecruitTab from './WarRecruitTab'
-import WarForcesTab from './WarForcesTab'
 import WarCombatTab from './WarCombatTab'
 import '../../styles/war.css'
 
-type WarTab = 'overview' | 'recruit' | 'armies' | 'battles'
+type WarTab = 'overview' | 'battles'
 
 export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { panelFullscreen?: boolean; setPanelFullscreen?: (v: boolean) => void }) {
-  const armyStore = useArmyStore()
   const battleStore = useBattleStore()
   const player = usePlayerStore()
   const iso = player.countryCode || 'US'
   const warDefaultTab = useUIStore(s => s.warDefaultTab)
 
-  const myDivisions = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso)
   const activeBattles = Object.values(battleStore.battles).filter(b => b.status === 'active')
 
   const [tab, setTab] = useState<WarTab>(() => {
-    if (warDefaultTab && ['overview', 'recruit', 'armies', 'battles'].includes(warDefaultTab)) return warDefaultTab as WarTab
+    if (warDefaultTab && ['overview', 'battles'].includes(warDefaultTab)) return warDefaultTab as WarTab
     return activeBattles.length > 0 ? 'battles' : 'overview'
   })
   const [editingMotd, setEditingMotd] = useState(false)
 
-  // When warDefaultTab changes externally (e.g. clicking Recruit in ActionBar), switch tab
+  // When warDefaultTab changes externally (e.g. clicking in ActionBar), switch tab
   useEffect(() => {
-    if (warDefaultTab && ['overview', 'recruit', 'armies', 'battles'].includes(warDefaultTab)) {
+    if (warDefaultTab && ['overview', 'battles'].includes(warDefaultTab)) {
       setTab(warDefaultTab as WarTab)
       useUIStore.getState().setWarDefaultTab(null)
     }
   }, [warDefaultTab])
 
-  const govStore = useGovernmentStore()
-  const gov = govStore.governments[iso]
-  const shopCount = gov?.divisionShop?.length || 0
-  const claimableContracts = govStore.militaryContracts.filter((c: any) => c.playerId === player.name && c.status === 'claimable').length
-  const recruitBadge = shopCount + claimableContracts || undefined
-
-  const tabs: { id: WarTab; label: string; icon: string; isImg?: boolean; count?: number }[] = [
+  const tabs: { id: WarTab; label: string; icon: string; count?: number }[] = [
     { id: 'overview', label: 'HQ', icon: '🎯' },
-    ...(ENABLE_DIVISIONS ? [
-      { id: 'recruit' as WarTab, label: 'RECRUIT', icon: '/assets/icons/gear.png', isImg: true, count: recruitBadge },
-      { id: 'armies' as WarTab, label: 'FORCES', icon: '/assets/icons/divs.png', isImg: true, count: myDivisions.length },
-    ] : []),
     { id: 'battles', label: 'COMBAT', icon: '⚔️', count: activeBattles.length },
   ]
 
@@ -109,10 +92,7 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
             className={`war-tab ${tab === t.id ? 'war-tab--active' : ''}`}
             onClick={() => setTab(t.id)}
           >
-            {t.isImg
-              ? <img src={t.icon} alt={t.label} className="war-tab__img" />
-              : <span className="war-tab__icon">{t.icon}</span>
-            }
+            <span className="war-tab__icon">{t.icon}</span>
             <span className="war-tab__label">{t.label}</span>
             {t.count !== undefined && t.count > 0 && <span className="war-tab__badge">{t.count}</span>}
           </button>
@@ -120,8 +100,6 @@ export default function WarPanel({ panelFullscreen, setPanelFullscreen }: { pane
       </div>
       <div className="war-content">
         {tab === 'overview' && <WarOverviewTab iso={iso} />}
-        {tab === 'recruit' && <WarRecruitTab />}
-        {tab === 'armies' && <WarForcesTab iso={iso} />}
         {tab === 'battles' && <WarCombatTab panelFullscreen={panelFullscreen} setPanelFullscreen={setPanelFullscreen} />}
       </div>
     </div>

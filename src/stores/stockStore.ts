@@ -4,7 +4,6 @@ import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
 import { useNewsStore } from './newsStore'
 import { useCompanyStore } from './companyStore'
-import { useArmyStore } from './army'
 import { useBattleStore } from './battleStore'
 import { useInventoryStore } from './inventoryStore'
 import { useRegionStore } from './regionStore'
@@ -28,13 +27,12 @@ export { BOND_DURATIONS }
 
 // ══════════════════════════════════════════════
 // FUNDAMENTALS-BASED PRICE CALCULATION
-// Price = f(companies, regions, divisions, equipment, fire, treasury) / population
+// Price = f(companies, regions, equipment, fire, treasury) / population
 // ══════════════════════════════════════════════
 
 const WEIGHTS = {
   companies:    15,      // economic engine — slow growth
   regions:      8,       // territorial expansion — war reward
-  divisions:    5,       // military power — depletes in war
   equipment:    0.5,     // military resources — consumed in combat
   combatDamage: 0.002,   // fire/aggression — grows during war
   treasury:     0.00005, // national wealth — taxes/spending
@@ -50,16 +48,10 @@ export function calculateFundamentals(countryCode: string): number {
   const regions = useRegionStore.getState().regions.filter(r => r.controlledBy === countryCode)
   const regionScore = regions.length
 
-  // 3. Military divisions belonging to this country (alive only)
-  const allDivisions = Object.values(useArmyStore.getState().divisions)
-  const countryDivs = allDivisions.filter(d => d.countryCode === countryCode && d.status !== 'destroyed')
-  const divisionScore = countryDivs.reduce((sum, d) => sum + (d.manpower / Math.max(1, d.maxManpower)), 0)
-
-  // 4. Equipment value — items assigned to country's divisions
+  // 3. Equipment value — player items in this country
   const items = useInventoryStore.getState().items
-  const divIds = new Set(countryDivs.map(d => d.id))
   const equipmentScore = items
-    .filter(i => i.location === 'division' && i.assignedToDivision && divIds.has(i.assignedToDivision))
+    .filter(i => i.equipped)
     .reduce((sum, i) => {
       const tierValue = { t1: 10, t2: 25, t3: 50, t4: 100, t5: 200 }[i.tier as string] || 10
       return sum + tierValue * (i.durability / 100)
@@ -83,7 +75,6 @@ export function calculateFundamentals(countryCode: string): number {
   const rawValue = (
     companyScore   * WEIGHTS.companies +
     regionScore    * WEIGHTS.regions +
-    divisionScore  * WEIGHTS.divisions +
     equipmentScore * WEIGHTS.equipment +
     combatDamage   * WEIGHTS.combatDamage +
     treasury       * WEIGHTS.treasury

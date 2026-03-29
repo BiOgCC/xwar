@@ -157,6 +157,25 @@ export function initSocketHooks() {
     })
   })
 
+  // Territory capture broadcast — updates region counts in worldStore
+  socketManager.on('battle:occupationUpdate', (data: {
+    regionName: string; newController: string; prevController: string;
+    captureBonus: { money: number; oil: number; scrap: number };
+  }) => {
+    console.log(`[WS] 🏴 Territory captured: ${data.newController} took ${data.regionName} from ${data.prevController}`)
+    useWorldStore.setState((s) => ({
+      countries: s.countries.map((c: any) => {
+        if (c.code === data.newController) {
+          return { ...c, regions: (c.regions || 0) + 1, fund: { ...c.fund, money: (c.fund?.money || 0) + data.captureBonus.money, oil: (c.fund?.oil || 0) + data.captureBonus.oil } }
+        }
+        if (c.code === data.prevController) {
+          return { ...c, regions: Math.max(0, (c.regions || 0) - 1) }
+        }
+        return c
+      })
+    }))
+  })
+
   socketManager.on('battle:roundEnd', (data: {
     battleId: string; roundIndex: number; winner: 'attacker' | 'defender'
   }) => {
@@ -164,13 +183,24 @@ export function initSocketHooks() {
   })
 
   socketManager.on('battle:order', (data: {
-    battleId: string; side: 'attacker' | 'defender'; order: string
+    battleId: string; side?: 'attacker' | 'defender'; order?: string; // Tactical order change
+    // BattleOrder system (new):
+    battleOrder?: any;
   }) => {
     useBattleStore.setState((s) => {
       const b = s.battles[data.battleId]
       if (!b) return s
-      const key = data.side === 'attacker' ? 'attackerOrder' : 'defenderOrder'
-      return { battles: { ...s.battles, [data.battleId]: { ...b, [key]: data.order } } }
+      // Handle tactical order change (legacy)
+      if (data.side && data.order && !data.battleOrder) {
+        const key = data.side === 'attacker' ? 'attackerOrder' : 'defenderOrder'
+        return { battles: { ...s.battles, [data.battleId]: { ...b, [key]: data.order } } }
+      }
+      // Handle new BattleOrder system
+      if (data.battleOrder) {
+        const existingOrders = (b as any).battleOrders ?? []
+        return { battles: { ...s.battles, [data.battleId]: { ...b, battleOrders: [...existingOrders, data.battleOrder] } } }
+      }
+      return s
     })
   })
 
@@ -241,6 +271,8 @@ export function initSocketHooks() {
     targetRegion: string; type: string; battle?: any
   }) => {
     console.log(`[WS] ⚔️ Battle started: ${data.attackerCode} → ${data.defenderCode} in ${data.targetRegion}`)
+    // Auto-join battle room to receive battle:state tick updates
+    socketManager.joinBattle(data.battleId)
     const now = Date.now()
     const b = data.battle
     const shell: any = {
@@ -254,7 +286,7 @@ export function initSocketHooks() {
       attacker: b?.attacker ?? { countryCode: data.attackerCode, divisionIds: [], engagedDivisionIds: [], damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
       defender: b?.defender ?? { countryCode: data.defenderCode, divisionIds: [], engagedDivisionIds: [], damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
       attackerRoundsWon: 0, defenderRoundsWon: 0,
-      rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }],
+      rounds: [{ attackerPoints: 0, defenderPoints: 0, attackerDmgTotal: 0, defenderDmgTotal: 0, status: 'active', startedAt: now }],
       currentTick: { attackerDamage: 0, defenderDamage: 0 },
       combatLog: b?.combatLog ?? [], attackerDamageDealers: {}, defenderDamageDealers: {},
       damageFeed: [], divisionCooldowns: {},

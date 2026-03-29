@@ -15,8 +15,9 @@ import { eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
   players, playerSkills, items, divisions as divisionsTable,
-  battles as battlesTable, countries, muMembers,
+  battles as battlesTable, countries, muMembers, governments, militaryUnits, alliances,
 } from '../db/schema.js'
+import { REGION_ADJACENCY, CAPITAL_REGIONS, isConnectedToCapital } from '../data/region-adjacency.js'
 import { warCardEmitter, evaluateBattleCards } from './warCard.service.js'
 
 // ═══════════════════════════════════════════════
@@ -24,7 +25,7 @@ import { warCardEmitter, evaluateBattleCards } from './warCard.service.js'
 // ═══════════════════════════════════════════════
 
 // Battle Types (mirrors client types/battle.types.ts)
-export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike'
+export type BattleType = 'assault' | 'invasion' | 'occupation' | 'sabotage' | 'naval_strike' | 'air_strike' | 'revolt'
 export type TacticalOrder = 'none' | 'charge' | 'fortify' | 'precision' | 'blitz'
 
 export interface OrderEffects {
@@ -72,16 +73,39 @@ const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
   warship:  { id: 'warship',  atkDmgMult: 0.30, hitRate: 0.60, critRateMult: 1.35, critDmgMult: 2.20, healthMult: 40.0, dodgeMult: 0.70, armorMult: 2.50, attackSpeed: 0.4 },
 }
 
-const POINTS_TO_WIN_ROUND = 600
+const POINTS_TO_WIN_ROUND = 300
 const ROUNDS_TO_WIN_BATTLE = 2
+const MAX_ROUNDS = 3
 const MAX_DAMAGE_PER_CALL = 50_000
+const TERRAIN_TICK_GATE = 8  // Only award terrain every 8th tick (8 × 15s = 120s)
+
+// Battle Order costs (money)
+const BATTLE_ORDER_COSTS: Record<string, number> = { low: 100, medium: 200, high: 300 }
+const BATTLE_ORDER_BONUS: Record<string, number> = { low: 0.05, medium: 0.10, high: 0.15 }
 
 function getPointIncrement(totalGroundPoints: number): number {
   if (totalGroundPoints < 100) return 1
   if (totalGroundPoints < 200) return 2
   if (totalGroundPoints < 300) return 3
   if (totalGroundPoints < 400) return 4
-  return 5
+  if (totalGroundPoints < 500) return 5
+  if (totalGroundPoints < 600) return 6
+  return 6  // cap at +6
+}
+
+// ═══════════════════════════════════════════════
+//  BATTLE ORDER INTERFACE
+// ═══════════════════════════════════════════════
+
+export interface BattleOrder {
+  id: string
+  battleId: string
+  issuerType: 'country' | 'mu'
+  issuerCode: string        // country code or MU id
+  side: 'attacker' | 'defender'
+  priority: 'low' | 'medium' | 'high'
+  issuedBy: string          // player name
+  issuedAt: number
 }
 
 function deviate(v: number): number {
@@ -150,8 +174,11 @@ interface Battle {
   attackerId: string
   defenderId: string
   regionName: string
+  regionId?: string  // e.g. 'US-FL' — for region_ownership table sync
+  attackerRegionId?: string  // Region the attacker launched from (for Military Base bonus)
   startedAt: number
   ticksElapsed: number
+  battleTickCounter: number  // Counts ticks for 2-min terrain gate (awards terrain every 8th tick)
   status: 'active' | 'attacker_won' | 'defender_won'
   attacker: BattleSide
   defender: BattleSide
@@ -174,6 +201,12 @@ interface Battle {
   adrenalineState: Record<string, AdrenalineState>
   /** Division health snapshots — { [divisionId]: { health, maxHealth, manpower } } */
   divisionHealthState: Record<string, { health: number; maxHealth: number; manpower: number }>
+  /** Battle orders — per country/MU, not per side */
+  battleOrders: BattleOrder[]
+  /** Whether the defended region is connected to the defender's capital via supply line */
+  defenderHasSupplyLine: boolean
+  /** Revolt pressure value (0-40) — only relevant for type=revolt */
+  revoltPressure: number
 }
 
 // In-memory division snapshot for combat performance (avoids DB reads per tick per div)
@@ -282,34 +315,51 @@ class BattleService {
     defenderCode: string,
     regionName: string,
     type: BattleType = 'invasion',
+    regionId?: string,
+    attackerRegionId?: string,
+    revoltPressure: number = 0,
   ): Promise<{ success: boolean; message: string; battleId?: string }> {
+    // ── One-battle-per-country-pair check ──
+    for (const b of this.battles.values()) {
+      if (b.status === 'active' &&
+        ((b.attackerId === attackerCode && b.defenderId === defenderCode) ||
+         (b.attackerId === defenderCode && b.defenderId === attackerCode))) {
+        return { success: false, message: 'A battle is already active between these countries.', battleId: b.id }
+      }
+    }
+
     // Check for existing active battle in same region (memory + DB)
     for (const b of this.battles.values()) {
       if (b.regionName === regionName && b.status === 'active') {
-        return { success: false, message: 'Battle already active in this region.' }
+        return { success: false, message: 'Battle already active in this region.', battleId: b.id }
       }
     }
     // Also check DB for any persisted active battles in this region
-    const existingInDB = await db.execute(sql`
+    const existingResult = await db.execute(sql`
       SELECT id FROM battles WHERE region_name = ${regionName} AND status = 'active' LIMIT 1
     `)
-    if ((existingInDB as any[]).length > 0) {
-      const existingId = (existingInDB as any[])[0].id as string
-      // Restore it into memory if not already there
+    const existingInDB = Array.isArray(existingResult) ? existingResult : (existingResult as any)?.rows ?? []
+    if (existingInDB.length > 0) {
+      const existingId = existingInDB[0].id as string
       if (!this.battles.has(existingId)) {
         await this.restoreFromDB()
       }
-      return { success: false, message: 'Battle already active in this region.' }
+      return { success: false, message: 'Battle already active in this region.', battleId: existingId }
     }
+
+    // ── Compute supply line for defender ──
+    const defenderHasSupplyLine = await this.computeDefenderSupplyLine(defenderCode, regionId || regionName)
 
     // Generate a proper UUID so it matches battlesTable.id (UUID primary key)
     const idResult = await db.execute(sql`SELECT gen_random_uuid() AS id`)
-    const id = (idResult as any[])[0].id as string
+    const idRows = Array.isArray(idResult) ? idResult : (idResult as any)?.rows ?? []
+    const id = idRows[0]?.id as string
     const now = Date.now()
 
     const battle: Battle = {
       id, type, attackerId: attackerCode, defenderId: defenderCode,
-      regionName, startedAt: now, ticksElapsed: 0, status: 'active',
+      regionName, regionId, attackerRegionId,
+      startedAt: now, ticksElapsed: 0, battleTickCounter: 0, status: 'active',
       attacker: {
         countryCode: attackerCode, divisionIds: [], engagedDivisionIds: [],
         damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
@@ -323,7 +373,9 @@ class BattleService {
       currentTick: { attackerDamage: 0, defenderDamage: 0 },
       combatLog: [{
         tick: 0, timestamp: now, type: 'phase_change', side: 'attacker',
-        message: `⚔️ Battle for ${regionName} begins!`,
+        message: type === 'revolt'
+          ? `🔥 REVOLT for ${regionName} begins! Resistance: ${revoltPressure}%`
+          : `⚔️ Battle for ${regionName} begins!`,
       }],
       attackerDamageDealers: {}, defenderDamageDealers: {},
       damageFeed: [], divisionCooldowns: {},
@@ -332,6 +384,9 @@ class BattleService {
       playerBattleStats: {},
       adrenalineState: {},
       divisionHealthState: {},
+      battleOrders: [],
+      defenderHasSupplyLine,
+      revoltPressure: type === 'revolt' ? Math.min(40, Math.max(0, revoltPressure)) : 0,
     }
 
     // ── Persist to DB immediately so it survives refreshes ──
@@ -340,6 +395,8 @@ class BattleService {
       attackerId: attackerCode,
       defenderId: defenderCode,
       regionName,
+      regionId: regionId || null,
+      type: type,
       status: 'active',
       round: 1,
       maxRounds: 3,
@@ -356,11 +413,134 @@ class BattleService {
     // Broadcast battle start (matches client socket-hooks.ts 'battle:started' listener)
     this.emit(id, 'battle:started', {
       battleId: id, attackerCode, defenderCode,
-      targetRegion: regionName, type,
+      targetRegion: regionName, regionId, type,
     })
 
-    logger.info(`[Battle] Launched & persisted: ${attackerCode} → ${defenderCode} (${regionName}) id=${id}`)
+    logger.info(`[Battle] Launched & persisted: ${attackerCode} → ${defenderCode} (${regionName}) type=${type} id=${id}`)
     return { success: true, message: `Battle for ${regionName} has begun!`, battleId: id }
+  }
+
+  // ── Battle Orders ──
+
+  async addBattleOrder(
+    battleId: string,
+    issuerType: 'country' | 'mu',
+    issuerCode: string,
+    side: 'attacker' | 'defender',
+    priority: 'low' | 'medium' | 'high',
+    issuedBy: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const battle = this.battles.get(battleId)
+    if (!battle || battle.status !== 'active') return { success: false, message: 'Battle not active.' }
+
+    // Check for existing order from same issuer
+    const existing = battle.battleOrders.find(o => o.issuerType === issuerType && o.issuerCode === issuerCode)
+    if (existing) return { success: false, message: `A battle order from this ${issuerType} is already active.` }
+
+    const cost = BATTLE_ORDER_COSTS[priority] ?? 200
+    const bonusPct = Math.round((BATTLE_ORDER_BONUS[priority] ?? 0.10) * 100)
+
+    // Deduct cost
+    if (issuerType === 'country') {
+      // Deduct from country fund
+      const updateResult = await db.execute(sql`
+        UPDATE countries SET fund = jsonb_set(
+          COALESCE(fund, '{}'::jsonb),
+          '{money}',
+          (GREATEST(0, COALESCE((fund->>'money')::numeric, 0) - ${cost}))::text::jsonb
+        )
+        WHERE code = ${issuerCode} AND COALESCE((fund->>'money')::numeric, 0) >= ${cost}
+      `)
+      const rowCount = (updateResult as any)?.rowCount ?? (updateResult as any)?.length ?? 0
+      if (rowCount === 0) return { success: false, message: `Not enough money in national fund (${cost} required).` }
+    } else {
+      // Deduct from MU treasury
+      const updateResult = await db.execute(sql`
+        UPDATE military_units SET vault = jsonb_set(
+          COALESCE(vault, '{}'::jsonb),
+          '{treasury}',
+          (GREATEST(0, COALESCE((vault->>'treasury')::numeric, 0) - ${cost}))::text::jsonb
+        )
+        WHERE id = ${issuerCode}::uuid AND COALESCE((vault->>'treasury')::numeric, 0) >= ${cost}
+      `)
+      const rowCount = (updateResult as any)?.rowCount ?? (updateResult as any)?.length ?? 0
+      if (rowCount === 0) return { success: false, message: `Not enough money in MU treasury (${cost} required).` }
+    }
+
+    const order: BattleOrder = {
+      id: `bo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      battleId,
+      issuerType,
+      issuerCode,
+      side,
+      priority,
+      issuedBy,
+      issuedAt: Date.now(),
+    }
+
+    battle.battleOrders.push(order)
+
+    this.emit(battleId, 'battle:order', { battleId, order })
+    logger.info(`[Battle] Battle order issued: ${issuerType}=${issuerCode} priority=${priority} side=${side} by ${issuedBy}`)
+
+    return { success: true, message: `🎯 Battle order issued! ${priority.toUpperCase()} priority (+${bonusPct}% damage). Cost: ${cost} money.` }
+  }
+
+  // ── Supply Line Computation ──
+
+  private async computeDefenderSupplyLine(defenderCode: string, regionIdOrName: string): Promise<boolean> {
+    try {
+      // Get all region IDs controlled by the defender from region_ownership table
+      const ownedResult = await db.execute(sql`
+        SELECT region_id FROM region_ownership WHERE country_code = ${defenderCode}
+      `)
+      const ownedRows = Array.isArray(ownedResult) ? ownedResult : (ownedResult as any)?.rows ?? []
+      const controlledRegions = new Set<string>(ownedRows.map((r: any) => r.region_id as string))
+
+      // Also include the defender's core regions (from REGION_ADJACENCY where cc matches)
+      for (const [rId, node] of Object.entries(REGION_ADJACENCY)) {
+        if (node.cc === defenderCode) controlledRegions.add(rId)
+      }
+
+      // Remove regions occupied by others (from occupied_regions)
+      const occupiedResult = await db.execute(sql`
+        SELECT occupied_regions FROM countries WHERE code != ${defenderCode}
+      `)
+      const occupiedRows = Array.isArray(occupiedResult) ? occupiedResult : (occupiedResult as any)?.rows ?? []
+      for (const row of occupiedRows as any[]) {
+        const occ = row.occupied_regions as Record<string, string> | null
+        if (occ) {
+          // occupied_regions format: { regionName: originalOwnerCode }
+          // We need to map regionName → regionId — but we don't have that mapping here
+          // For now, remove from controlledRegions if the region belongs to defender
+          for (const [, origOwner] of Object.entries(occ)) {
+            if (origOwner === defenderCode) {
+              // This region was taken from the defender — but we only have regionName, not regionId
+              // The BFS uses regionIds, so this is an approximation
+            }
+          }
+        }
+      }
+
+      // Use the target regionId for the BFS check
+      const targetId = regionIdOrName  // Expecting regionId format 'US-FL'
+      return isConnectedToCapital(defenderCode, targetId, controlledRegions)
+    } catch (e) {
+      logger.warn(`[Battle] Supply line check failed for ${defenderCode}, defaulting to true`)
+      return true  // Default to connected on error
+    }
+  }
+
+  /** Recompute supply lines for all active battles involving this defender */
+  async recomputeSupplyLinesForCountry(defenderCode: string): Promise<void> {
+    for (const battle of this.battles.values()) {
+      if (battle.status !== 'active') continue
+      if (battle.defenderId === defenderCode) {
+        battle.defenderHasSupplyLine = await this.computeDefenderSupplyLine(
+          defenderCode, battle.regionId || battle.regionName
+        )
+      }
+    }
   }
 
   // ── Tactical orders ──
@@ -604,12 +784,141 @@ class BattleService {
     // Record weapon presence for counter-buff tracking
     this.recordWeaponPresence(battleId, side, weaponSubtype, playerName, damage)
 
-    // Military base infra bonus
-    const [sideCountry] = await db.select().from(countries)
-      .where(eq(countries.code, side === 'attacker' ? battle.attackerId : battle.defenderId)).limit(1)
-    if (sideCountry?.militaryBaseLevel && sideCountry.militaryBaseLevel > 0) {
-      damage = Math.round(damage * (1 + 0.05 + Math.random() * 0.15))
+    // ══════════════════════════════════════════════
+    //  REGIONAL BATTLE BONUSES (9 total)
+    // ══════════════════════════════════════════════
+
+    // 10a. Alliance Bonus (+10%): player's country is in an alliance with the fighting side's country
+    try {
+      const allyCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
+      // Find any alliance that has BOTH this player's country AND the side's country in its members
+      const allianceResult = await db.execute(sql`
+        SELECT id FROM alliances
+        WHERE members @> ${JSON.stringify([{ countryCode }])}::jsonb
+          AND members @> ${JSON.stringify([{ countryCode: allyCountry }])}::jsonb
+        LIMIT 1
+      `)
+      const allianceRows = Array.isArray(allianceResult) ? allianceResult : (allianceResult as any)?.rows ?? []
+      if (allianceRows.length > 0) {
+        damage = Math.floor(damage * 1.10)
+        buffMsg += ' 🤝 ALLIANCE +10%'
+      }
+    } catch (e) { /* alliance query failed */ }
+
+    // 10b. Sworn Enemy Bonus (+10%): player's country has declared the opposing country as sworn enemy
+    try {
+      const [playerGov] = await db.select({ swornEnemy: governments.swornEnemy })
+        .from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
+      const enemyCode = side === 'attacker' ? battle.defenderId : battle.attackerId
+      if (playerGov?.swornEnemy === enemyCode) {
+        damage = Math.floor(damage * 1.10)
+        buffMsg += ' 😤 SWORN ENEMY +10%'
+      }
+    } catch (e) { /* sworn enemy query failed */ }
+
+    // 10c. Resistance Bonus (+1% to +40%): only for revolt battles, attacker side (native country)
+    if (battle.type === 'revolt' && side === 'attacker' && battle.revoltPressure > 0) {
+      const resistanceMult = 1 + (battle.revoltPressure / 100)  // 0-40 → 1.00-1.40
+      damage = Math.floor(damage * resistanceMult)
+      buffMsg += ` 🔥 RESISTANCE +${Math.round(battle.revoltPressure)}%`
     }
+
+    // 10d. Core Region Bonus (+15%): defender is defending their OWN homeland region
+    if (side === 'defender' && countryCode === battle.defenderId) {
+      const regionNode = REGION_ADJACENCY[battle.regionId || '']
+      if (regionNode && regionNode.cc === countryCode) {
+        damage = Math.floor(damage * 1.15)
+        buffMsg += ' 🏠 CORE REGION +15%'
+      }
+    }
+
+    // 10e. Military Base Bonus (attacker): +5% per level from attacker's launch region
+    if (side === 'attacker' && battle.attackerRegionId) {
+      try {
+        // Look up the country that owns the launch region to find military base level
+        const atkRegionNode = REGION_ADJACENCY[battle.attackerRegionId]
+        if (atkRegionNode) {
+          const [atkCountry] = await db.select({ militaryBaseLevel: countries.militaryBaseLevel })
+            .from(countries).where(eq(countries.code, atkRegionNode.cc)).limit(1)
+          if (atkCountry?.militaryBaseLevel && atkCountry.militaryBaseLevel > 0) {
+            const milBaseMult = 1 + 0.05 * atkCountry.militaryBaseLevel
+            damage = Math.floor(damage * milBaseMult)
+            buffMsg += ` 🏗️ MIL BASE +${Math.round((milBaseMult - 1) * 100)}%`
+          }
+        }
+      } catch (e) { /* military base query failed */ }
+    }
+
+    // 10f. Bunker Bonus (defender): +5% per level from defending country
+    if (side === 'defender') {
+      try {
+        const [defCountry] = await db.select({ bunkerLevel: countries.bunkerLevel })
+          .from(countries).where(eq(countries.code, battle.defenderId)).limit(1)
+        if (defCountry?.bunkerLevel && defCountry.bunkerLevel > 0) {
+          const bunkerMult = 1 + 0.05 * defCountry.bunkerLevel
+          damage = Math.floor(damage * bunkerMult)
+          buffMsg += ` 🛡️ BUNKER +${Math.round((bunkerMult - 1) * 100)}%`
+        }
+      } catch (e) { /* bunker query failed */ }
+    }
+
+    // 10g. Battle Order Bonus (+5/10/15% per order, stacking for same side)
+    if (battle.battleOrders.length > 0) {
+      let orderBonusTotal = 0
+      for (const bo of battle.battleOrders) {
+        if (bo.side !== side) continue
+        orderBonusTotal += BATTLE_ORDER_BONUS[bo.priority] ?? 0
+      }
+      if (orderBonusTotal > 0) {
+        damage = Math.floor(damage * (1 + orderBonusTotal))
+        buffMsg += ` 🎯 ORDER +${Math.round(orderBonusTotal * 100)}%`
+      }
+    }
+
+    // 10h. MU Headquarters Bonus (+5% per hq_level, max +20%)
+    try {
+      const muMembership = await db.select({ unitId: muMembers.unitId })
+        .from(muMembers).where(eq(muMembers.playerId, playerId)).limit(1)
+      if (muMembership.length > 0) {
+        const [mu] = await db.select({ hqLevel: militaryUnits.hqLevel })
+          .from(militaryUnits).where(eq(militaryUnits.id, muMembership[0].unitId)).limit(1)
+        if (mu?.hqLevel && mu.hqLevel > 0) {
+          const hqMult = Math.min(1.20, 1 + 0.05 * mu.hqLevel)
+          damage = Math.floor(damage * hqMult)
+          buffMsg += ` 🏰 HQ +${Math.round((hqMult - 1) * 100)}%`
+        }
+      }
+    } catch (e) { /* MU HQ query failed */ }
+
+    // 10i. Supply Line Penalty (-25%): defender loses bonus if region is disconnected from capital
+    if (side === 'defender' && !battle.defenderHasSupplyLine) {
+      damage = Math.floor(damage * 0.75)
+      buffMsg += ' ❌ NO SUPPLY -25%'
+    }
+
+    // ── Cyber Ops Damage Bonuses (Air Strike / Naval Strike) ──
+    // Check for active completed cyber ops granting damage bonuses to the attacker's country
+    try {
+      const activeOps = await db.execute(sql`
+        SELECT operation_id FROM cyber_ops
+        WHERE country_code = ${countryCode}
+          AND target_country = ${side === 'attacker' ? battle.defenderId : battle.attackerId}
+          AND status = 'completed'
+          AND expires_at > NOW()
+          AND operation_id IN ('air_strike', 'naval_strike')
+        LIMIT 2
+      `)
+      const opRows = Array.isArray(activeOps) ? activeOps : (activeOps as any)?.rows ?? []
+      for (const op of opRows as any[]) {
+        if (op.operation_id === 'air_strike') {
+          damage = Math.floor(damage * 1.30)
+          buffMsg += ' ✈️ AIR STRIKE +30%'
+        } else if (op.operation_id === 'naval_strike') {
+          damage = Math.floor(damage * 1.25)
+          buffMsg += ' ⛴️ NAVAL STRIKE +25%'
+        }
+      }
+    } catch (e) { /* cyber ops query failed, skip bonus */ }
 
     // Ensure minimum 1 damage
     damage = Math.max(1, damage)
@@ -1031,6 +1340,7 @@ class BattleService {
       adrenalineState: (battle as any).adrenalineState ?? {},
       playerBattleStats: battle.playerBattleStats as any,
       divisionHealthState: divHealthState as any,
+      battleOrders: battle.battleOrders as any,
     }).where(eq(battlesTable.id, battle.id))
   }
 
@@ -1218,38 +1528,44 @@ class BattleService {
       return d && d.status !== 'destroyed' && d.status !== 'recovering'
     })
 
-    // ── Ground points ──
+    // ── Ground points (gated: only every 8th tick = 120s) ──
     const activeRoundIndex = battle.rounds.length - 1
     const activeRound = battle.rounds[activeRoundIndex]
 
-    // Accumulate division damage into round totals
+    // Accumulate division damage into round totals every tick
     // (player damage is accumulated separately in addDamage())
     activeRound.attackerDmgTotal += atkTotalDmg
     activeRound.defenderDmgTotal += defTotalDmg
 
-    const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
-    const pointIncrement = getPointIncrement(totalGroundPoints)
+    // Only award terrain points on the 2-minute boundary
+    battle.battleTickCounter = (battle.battleTickCounter || 0) + 1
+    const isTerrainTick = battle.battleTickCounter % TERRAIN_TICK_GATE === 0
 
-    // Award ground points based on TOTAL round-accumulated damage, not per-tick
-    const roundAtkDmg = activeRound.attackerDmgTotal
-    const roundDefDmg = activeRound.defenderDmgTotal
+    if (isTerrainTick) {
+      const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
+      const pointIncrement = getPointIncrement(totalGroundPoints)
 
-    if (roundAtkDmg > 0 || roundDefDmg > 0) {
-      if (roundAtkDmg > roundDefDmg) activeRound.attackerPoints += pointIncrement
-      else if (roundDefDmg > roundAtkDmg) activeRound.defenderPoints += pointIncrement
-      else {
-        // Tie: division count tiebreaker, then random
-        const atkAlive = battle.attacker.engagedDivisionIds.length
-        const defAlive = battle.defender.engagedDivisionIds.length
-        if (atkAlive > defAlive) activeRound.attackerPoints += pointIncrement
-        else if (defAlive > atkAlive) activeRound.defenderPoints += pointIncrement
-        else if (Math.random() < 0.5) activeRound.attackerPoints += pointIncrement
-        else activeRound.defenderPoints += pointIncrement
+      // Award ground points based on TOTAL round-accumulated damage, not per-tick
+      const roundAtkDmg = activeRound.attackerDmgTotal
+      const roundDefDmg = activeRound.defenderDmgTotal
+
+      if (roundAtkDmg > 0 || roundDefDmg > 0) {
+        if (roundAtkDmg > roundDefDmg) activeRound.attackerPoints += pointIncrement
+        else if (roundDefDmg > roundAtkDmg) activeRound.defenderPoints += pointIncrement
+        else {
+          // Tie: division count tiebreaker, then random
+          const atkAlive = battle.attacker.engagedDivisionIds.length
+          const defAlive = battle.defender.engagedDivisionIds.length
+          if (atkAlive > defAlive) activeRound.attackerPoints += pointIncrement
+          else if (defAlive > atkAlive) activeRound.defenderPoints += pointIncrement
+          else if (Math.random() < 0.5) activeRound.attackerPoints += pointIncrement
+          else activeRound.defenderPoints += pointIncrement
+        }
+      } else if (battle.attacker.engagedDivisionIds.length > 0 && battle.defender.engagedDivisionIds.length === 0) {
+        activeRound.attackerPoints += pointIncrement
+      } else if (battle.defender.engagedDivisionIds.length > 0 && battle.attacker.engagedDivisionIds.length === 0) {
+        activeRound.defenderPoints += pointIncrement
       }
-    } else if (battle.attacker.engagedDivisionIds.length > 0 && battle.defender.engagedDivisionIds.length === 0) {
-      activeRound.attackerPoints += pointIncrement
-    } else if (battle.defender.engagedDivisionIds.length > 0 && battle.attacker.engagedDivisionIds.length === 0) {
-      activeRound.defenderPoints += pointIncrement
     }
 
     // ── Round / Battle resolution ──
@@ -1388,6 +1704,15 @@ class BattleService {
           WHERE code = ${originalOwner}
         `)
 
+        // 2b. Sync region_ownership table (for ley line engine)
+        if (battle.regionId) {
+          await db.execute(sql`
+            INSERT INTO region_ownership (region_id, country_code, captured_at, updated_at)
+            VALUES (${battle.regionId}, ${conquerorCode}, NOW(), NOW())
+            ON CONFLICT (region_id) DO UPDATE SET country_code = ${conquerorCode}, updated_at = NOW()
+          `)
+        }
+
         // 3. Award conqueror's national fund — territory capture bonus
         const captureBonus = {
           money: 5000,
@@ -1474,6 +1799,14 @@ class BattleService {
             AND occupied_regions ? ${battle.regionName}
         `)
 
+        // Restore region_ownership to defender
+        if (battle.regionId) {
+          await db.execute(sql`
+            UPDATE region_ownership SET country_code = ${battle.defenderId}, updated_at = NOW()
+            WHERE region_id = ${battle.regionId} AND country_code != ${battle.defenderId}
+          `)
+        }
+
         // Award defending players — full defense victory bonuses
         const defenderPlayers = Object.keys(battle.defenderDamageDealers)
         for (const playerName of defenderPlayers) {
@@ -1506,10 +1839,75 @@ class BattleService {
       }
     }
 
+    // ── REVOLT FINALIZATION ──
+    if (battle.type === 'revolt') {
+      try {
+        if (battle.status === 'attacker_won') {
+          // Revolt succeeded: region is liberated back to native country
+          // The attacker in a revolt IS the native country, defender is the occupier
+          const nativeCountry = battle.attackerId
+          const occupier = battle.defenderId
+
+          // Reset region_ownership to native country
+          if (battle.regionId) {
+            await db.execute(sql`
+              INSERT INTO region_ownership (region_id, country_code, captured_at, updated_at)
+              VALUES (${battle.regionId}, ${nativeCountry}, NOW(), NOW())
+              ON CONFLICT (region_id) DO UPDATE SET country_code = ${nativeCountry}, updated_at = NOW()
+            `)
+          }
+
+          // Remove from occupier's occupied_regions
+          await db.execute(sql`
+            UPDATE countries
+            SET occupied_regions = occupied_regions - ${battle.regionName}::text
+            WHERE code = ${occupier}
+          `)
+
+          // Update regions count
+          await db.execute(sql`UPDATE countries SET regions = regions + 1 WHERE code = ${nativeCountry}`)
+          await db.execute(sql`UPDATE countries SET regions = GREATEST(0, regions - 1) WHERE code = ${occupier}`)
+
+          logger.info(`[Battle] REVOLT SUCCEEDED: ${battle.regionName} liberated by ${nativeCountry} from ${occupier}`)
+
+          this.emit(battle.id, 'battle:occupationUpdate', {
+            regionName: battle.regionName,
+            newController: nativeCountry,
+            prevController: occupier,
+            isRevolt: true,
+          })
+        } else {
+          // Revolt failed: occupier holds — no territory change
+          logger.info(`[Battle] REVOLT FAILED: ${battle.defenderId} retains control of ${battle.regionName}`)
+        }
+
+        // Reset revolt pressure to 0 regardless of winner
+        if (battle.regionId) {
+          await db.execute(sql`
+            UPDATE region_ownership SET updated_at = NOW() WHERE region_id = ${battle.regionId}
+          `)
+        }
+      } catch (e) {
+        logger.error(e, `[Battle] Revolt finalization failed for ${battle.id}`)
+      }
+    }
+
+    // ── SUPPLY LINE RECOMPUTATION after any territory transfer ──
+    if (battle.status === 'attacker_won' || battle.status === 'defender_won') {
+      try {
+        // Recompute supply lines for both sides since territory may have changed
+        await this.recomputeSupplyLinesForCountry(battle.attackerId)
+        await this.recomputeSupplyLinesForCountry(battle.defenderId)
+      } catch (e) {
+        logger.warn(`[Battle] Supply line recomputation failed after ${battle.id}`)
+      }
+    }
+
     // Broadcast battle end
     this.emit(battle.id, 'battle:end', {
       battleId: battle.id,
       winner: battle.status === 'attacker_won' ? battle.attackerId : battle.defenderId,
+      type: battle.type,
       attackerStats: {
         damageDealt: battle.attacker.damageDealt,
         manpowerLost: battle.attacker.manpowerLost,
@@ -1522,7 +1920,7 @@ class BattleService {
       },
     })
 
-    logger.info(`[Battle] ${battle.id} ended: ${battle.status} (ATK ${battle.attacker.damageDealt} / DEF ${battle.defender.damageDealt})`)
+    logger.info(`[Battle] ${battle.id} ended: ${battle.status} type=${battle.type} (ATK ${battle.attacker.damageDealt} / DEF ${battle.defender.damageDealt})`)
   }
 
   // ── Internal helpers ──
@@ -1636,23 +2034,35 @@ class BattleService {
           ADD COLUMN IF NOT EXISTS defender_order varchar(16) DEFAULT 'none',
           ADD COLUMN IF NOT EXISTS adrenaline_state jsonb DEFAULT '{}',
           ADD COLUMN IF NOT EXISTS player_battle_stats jsonb DEFAULT '{}',
-          ADD COLUMN IF NOT EXISTS division_health_state jsonb DEFAULT '{}'
+          ADD COLUMN IF NOT EXISTS division_health_state jsonb DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS region_id varchar(16),
+          ADD COLUMN IF NOT EXISTS attacker_region_id varchar(16),
+          ADD COLUMN IF NOT EXISTS battle_orders jsonb DEFAULT '[]'
+      `)
+      // MU HQ migration
+      await db.execute(sql`
+        ALTER TABLE military_units
+          ADD COLUMN IF NOT EXISTS hq_level integer NOT NULL DEFAULT 0
       `)
     } catch (e) {
       logger.warn({ err: e }, '[Battle] Schema migration warning (safe to ignore if columns exist)')
     }
 
     try {
-      const rows = await db.execute(sql`
-        SELECT id, attacker_id, defender_id, region_name, type, status,
+      const dbResult = await db.execute(sql`
+        SELECT id, attacker_id, defender_id, region_name, region_id, attacker_region_id,
+               type, status,
                attacker_rounds_won, defender_rounds_won,
                attacker_damage, defender_damage, started_at,
                rounds, combat_log,
                attacker_damage_dealers, defender_damage_dealers,
                engaged_divisions, attacker_order, defender_order,
-               adrenaline_state, player_battle_stats, division_health_state
+               adrenaline_state, player_battle_stats, division_health_state,
+               battle_orders
         FROM battles WHERE status = 'active'
       `)
+      // db.execute may return { rows: [...] } or an array directly depending on driver
+      const rows = Array.isArray(dbResult) ? dbResult : (dbResult as any)?.rows ?? []
 
       let restored = 0
       for (const row of rows as any[]) {
@@ -1689,8 +2099,11 @@ class BattleService {
           attackerId: row.attacker_id,
           defenderId: row.defender_id,
           regionName: row.region_name,
+          regionId: row.region_id || undefined,
+          attackerRegionId: row.attacker_region_id || undefined,
           startedAt: new Date(row.started_at).getTime(),
           ticksElapsed: 0,
+          battleTickCounter: 0,
           status: 'active',
           attacker: {
             countryCode: row.attacker_id,
@@ -1722,6 +2135,9 @@ class BattleService {
           playerBattleStats: (row.player_battle_stats as any) ?? {},
           adrenalineState: (row.adrenaline_state as any) ?? {},
           divisionHealthState: (row.division_health_state as any) ?? {},
+          battleOrders: Array.isArray((row as any).battle_orders) ? (row as any).battle_orders : [],
+          defenderHasSupplyLine: true,  // Will be recomputed below
+          revoltPressure: 0,
         }
 
         this.battles.set(row.id, battle)

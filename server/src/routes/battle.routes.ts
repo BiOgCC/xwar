@@ -8,9 +8,9 @@ import { z } from 'zod'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { battleService } from '../services/battle.service.js'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { players } from '../db/schema.js'
+import { players, governments } from '../db/schema.js'
 
 const router = Router()
 
@@ -53,6 +53,7 @@ function normalizeBattle(b: any, source: 'memory' | 'db' = 'memory'): any {
     attackerId,
     defenderId,
     regionName: isDb ? (b.region_name ?? b.regionName ?? '') : (b.regionName ?? ''),
+    regionId: isDb ? (b.region_id ?? b.regionId ?? null) : (b.regionId ?? null),
     startedAt,
     ticksElapsed: b.ticksElapsed ?? 0,
     status: b.status ?? 'active',
@@ -102,25 +103,33 @@ router.get('/active', async (_req, res) => {
     // 2. Also query DB for any active battles (catches ones after server restart)
     const { db } = await import('../db/connection.js')
     const { sql: sqlTag } = await import('drizzle-orm')
-    const dbRows = await db.execute(sqlTag`
-      SELECT id, attacker_id, defender_id, region_name, status,
-             attacker_rounds_won, defender_rounds_won,
-             attacker_damage, defender_damage, created_at
-      FROM battles WHERE status = 'active'
-    `)
+    let dbOnlyBattles: any[] = []
+    try {
+      const dbRows = await db.execute(sqlTag`
+        SELECT id, attacker_id, defender_id, region_name, status,
+               attacker_rounds_won, defender_rounds_won,
+               attacker_damage, defender_damage, created_at
+        FROM battles WHERE status = 'active'
+      `)
+      // db.execute may return { rows: [...] } or an array directly depending on driver
+      const rowArray = Array.isArray(dbRows) ? dbRows : (dbRows as any)?.rows ?? []
 
-    // Restore any DB battles not yet in memory
-    const memIds = new Set(memBattles.map(b => b.id))
-    const dbOnlyIds = (dbRows as any[]).filter(r => !memIds.has(r.id))
-    if (dbOnlyIds.length > 0) {
-      // Trigger restore (fire-and-forget is fine, DB has the source of truth)
-      battleService.restoreFromDB().catch(() => {})
+      // Restore any DB battles not yet in memory
+      const memIds = new Set(memBattles.map(b => b.id))
+      dbOnlyBattles = rowArray.filter((r: any) => !memIds.has(r.id))
+      if (dbOnlyBattles.length > 0) {
+        // Trigger restore (fire-and-forget)
+        battleService.restoreFromDB().catch(() => {})
+      }
+    } catch (dbErr) {
+      console.error('[Battle] DB query for active battles failed:', dbErr)
+      // Continue with in-memory battles only
     }
 
     // Full normalized battles — memory ones first, then DB-only extras
     const combined = [
       ...memBattles.map(b => normalizeBattle(b, 'memory')),
-      ...dbOnlyIds.map((r: any) => normalizeBattle(r, 'db')),
+      ...dbOnlyBattles.map((r: any) => normalizeBattle(r, 'db')),
     ]
 
     res.json({ success: true, count: combined.length, battles: combined })
@@ -145,7 +154,7 @@ router.get('/:id', async (req, res) => {
     // Not in memory — query DB with ALL new JSONB columns
     const { db: dbConn } = await import('../db/connection.js')
     const { sql: sqlTag } = await import('drizzle-orm')
-    const rows = await dbConn.execute(sqlTag`
+    const dbResult = await dbConn.execute(sqlTag`
       SELECT id, attacker_id, defender_id, region_name, type, status,
              attacker_rounds_won, defender_rounds_won,
              attacker_damage, defender_damage, winner, started_at, finished_at,
@@ -155,11 +164,12 @@ router.get('/:id', async (req, res) => {
              adrenaline_state, player_battle_stats, division_health_state
       FROM battles WHERE id = ${req.params.id} LIMIT 1
     `)
-    if ((rows as any[]).length === 0) {
+    const rows = Array.isArray(dbResult) ? dbResult : (dbResult as any)?.rows ?? []
+    if (rows.length === 0) {
       res.status(404).json({ error: 'Battle not found' })
       return
     }
-    const r = (rows as any[])[0]
+    const r = rows[0]
     // Restore to memory if still active so next tick fires correctly
     if (r.status === 'active') { battleService.restoreFromDB().catch(() => {}) }
 
@@ -178,13 +188,16 @@ const launchSchema = z.object({
   attackerCode: z.string().min(2).max(4),
   defenderCode: z.string().min(2).max(4),
   regionName: z.string().min(1).max(64),
-  type: z.enum(['assault', 'invasion', 'occupation', 'sabotage', 'naval_strike', 'air_strike']).default('invasion'),
+  regionId: z.string().max(16).optional(),
+  attackerRegionId: z.string().max(16).optional(),
+  type: z.enum(['assault', 'invasion', 'occupation', 'sabotage', 'naval_strike', 'air_strike', 'revolt']).default('invasion'),
+  revoltPressure: z.number().min(0).max(100).optional(),
 })
 
 router.post('/launch', requireAuth as any, validate(launchSchema), async (req, res) => {
   try {
     const { playerId } = (req as AuthRequest).player!
-    const { attackerCode, defenderCode, regionName, type } = req.body
+    const { attackerCode, defenderCode, regionName, regionId, attackerRegionId, type, revoltPressure } = req.body
 
     // Verify the player belongs to the attacker country
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
@@ -193,8 +206,54 @@ router.post('/launch', requireAuth as any, validate(launchSchema), async (req, r
       return
     }
 
-    const result = await battleService.launchBattle(attackerCode, defenderCode, regionName, type)
+    // ── Authorization: only president, VP, or defense minister can launch ──
+    try {
+      const [gov] = await db.select({
+        president: governments.president,
+        vicePresident: governments.vicePresident,
+        defenseMinister: governments.defenseMinister,
+      }).from(governments).where(eq(governments.countryCode, attackerCode)).limit(1)
+
+      if (gov) {
+        const authorizedIds = [gov.president, gov.vicePresident, gov.defenseMinister].filter(Boolean)
+        if (authorizedIds.length > 0 && !authorizedIds.includes(playerId)) {
+          res.status(403).json({ error: 'Only the President, Vice President, or Minister of Defense can initiate battles.' })
+          return
+        }
+      }
+      // If no government row exists, allow anyone (early game / no government yet)
+    } catch (govErr) {
+      // Government check failed — allow the battle (don't block gameplay)
+      console.warn('[Battle] Government authorization check failed, allowing launch:', govErr)
+    }
+
+    // ── War prerequisite: check if a 'declare_war' law was passed ──
+    try {
+      const warResult = await db.execute(sql`
+        SELECT id FROM governments
+        WHERE country_code = ${attackerCode}
+          AND laws->'proposals' @> ${JSON.stringify([{ lawType: 'declare_war', targetCountry: defenderCode, status: 'passed' }])}::jsonb
+        LIMIT 1
+      `)
+      const warRows = Array.isArray(warResult) ? warResult : (warResult as any)?.rows ?? []
+      // Only enforce if governments table has data and war law system is active
+      // For alpha: log warning but don't block if no war declared
+      if (warRows.length === 0 && type !== 'revolt') {
+        console.warn(`[Battle] No 'declare_war' law found for ${attackerCode} → ${defenderCode}. Allowing for alpha.`)
+      }
+    } catch (warErr) {
+      // War check failed — allow anyway for alpha
+    }
+
+    const result = await battleService.launchBattle(
+      attackerCode, defenderCode, regionName, type, regionId,
+      attackerRegionId, revoltPressure || 0
+    )
     if (!result.success) {
+      if (result.battleId) {
+        res.json({ success: true, message: result.message, battleId: result.battleId, existing: true })
+        return
+      }
       console.error('[Battle] Launch rejected:', result.message, { attackerCode, defenderCode, regionName, type })
       res.status(400).json({ error: result.message })
       return
@@ -203,6 +262,39 @@ router.post('/launch', requireAuth as any, validate(launchSchema), async (req, r
     res.json({ success: true, message: result.message, battleId: result.battleId })
   } catch (err) {
     console.error('[Battle] Launch error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
+//  POST /api/battle/:id/battle-order — Issue a battle order
+// ═══════════════════════════════════════════════
+
+const battleOrderSchema = z.object({
+  issuerType: z.enum(['country', 'mu']),
+  issuerCode: z.string().min(1).max(64),
+  side: z.enum(['attacker', 'defender']),
+  priority: z.enum(['low', 'medium', 'high']),
+})
+
+router.post('/:id/battle-order', requireAuth as any, validate(battleOrderSchema), async (req, res) => {
+  try {
+    const { playerName } = (req as AuthRequest).player!
+    const battleId = req.params.id
+    const { issuerType, issuerCode, side, priority } = req.body
+
+    const result = await battleService.addBattleOrder(
+      battleId, issuerType, issuerCode, side, priority, playerName
+    )
+
+    if (!result.success) {
+      res.status(400).json({ error: result.message })
+      return
+    }
+
+    res.json({ success: true, message: result.message })
+  } catch (err) {
+    console.error('[Battle] Battle order error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

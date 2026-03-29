@@ -110,6 +110,16 @@ export interface Battle {
   missileCooldowns?: Record<string, number>
   /** Weapon counter-buff: tracks which weapon subtypes each side has used for counter-buff activation */
   weaponPresence: Record<'attacker' | 'defender', Record<string, WeaponPresenceEntry>>
+  /** Region the attacker launched from */
+  attackerRegionId?: string
+  /** Tick counter for 2-minute terrain gate */
+  battleTickCounter?: number
+  /** Active battle orders from countries/MUs */
+  battleOrders?: BattleOrder[]
+  /** Whether defender's region is connected to their capital via supply line */
+  defenderHasSupplyLine?: boolean
+  /** Revolt pressure value (0-40) for revolt battles */
+  revoltPressure?: number
 }
 
 /** Per-weapon-subtype presence tracking for counter-buff system */
@@ -129,4 +139,17 @@ export interface MercenaryContract {
   fundedBy: string       // player name who created the contract
   countryCode: string    // country that funded it
   createdAt: number
+}
+
+// ── Battle Orders ──
+
+export interface BattleOrder {
+  id: string
+  battleId: string
+  issuerType: 'country' | 'mu'
+  issuerCode: string
+  side: 'attacker' | 'defender'
+  priority: 'low' | 'medium' | 'high'
+  issuedBy: string
+  issuedAt: number
 }

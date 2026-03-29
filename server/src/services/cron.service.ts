@@ -150,6 +150,15 @@ export function initCronJobs() {
     }
   })
 
+  // Undercover detection — every 5 minutes (server-authoritative)
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      await runDailyJobsPipeline('undercover_detect')
+    } catch (err) {
+      logger.error(err, '[CRON][DAILY] undercover_detect error:')
+    }
+  })
+
   logger.info('[CRON] All pipelines initialized:')
   logger.info('  ⚔️  Fast Combat     — every 15s  (training, recovery)')
   logger.info('  ⚡ Ley Line Engine  — every 30s  (ownership, buffs, activation)')
@@ -164,6 +173,7 @@ export function initCronJobs() {
   logger.info('      • Election tally    — every 6h')
   logger.info('      • Region resolve    — every 60s')
   logger.info('      • Cyber restore     — every 30m')
+  logger.info('      • Undercover detect — every 5m')
 
   // Warm-start: run the ley line engine once immediately so the cache
   // is populated before the first API request arrives

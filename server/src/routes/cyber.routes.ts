@@ -36,6 +36,7 @@ router.use(requireAuth as any)
 type CyberOpId =
   | 'resource_intel' | 'military_intel' | 'infrastructure_scan' | 'blueprint_loot'
   | 'company_sabotage' | 'logistics_disruption' | 'bunker_override' | 'power_grid_attack'
+  | 'air_strike' | 'naval_strike'
   | 'disinformation' | 'botnet_attack'
 
 interface OpDef {
@@ -58,6 +59,8 @@ const OPS: Record<CyberOpId, OpDef> = {
   logistics_disruption:  { id: 'logistics_disruption',  pillar: 'sabotage',    chargesRequired: 2, successChance: 85, detectionChance: 20, durationMs: 172800000 },
   bunker_override:       { id: 'bunker_override',       pillar: 'sabotage',    chargesRequired: 2, successChance: 80, detectionChance: 30, durationMs: 86400000 },
   power_grid_attack:     { id: 'power_grid_attack',     pillar: 'sabotage',    chargesRequired: 2, successChance: 80, detectionChance: 30, durationMs: 5400000 },
+  air_strike:            { id: 'air_strike',             pillar: 'sabotage',    chargesRequired: 2, successChance: 85, detectionChance: 20, durationMs: 43200000 },  // 12h
+  naval_strike:          { id: 'naval_strike',           pillar: 'sabotage',    chargesRequired: 2, successChance: 85, detectionChance: 20, durationMs: 43200000 },  // 12h
   // T4 Propaganda (2 charges)
   disinformation:        { id: 'disinformation',        pillar: 'propaganda',  chargesRequired: 2, successChance: 80, detectionChance: 30, durationMs: 1800000 },
   botnet_attack:         { id: 'botnet_attack',         pillar: 'propaganda',  chargesRequired: 2, successChance: 80, detectionChance: 30, durationMs: 3600000 },
@@ -1140,6 +1143,8 @@ async function applyOperationResult(op: any, succeeded: boolean, raceData?: any)
     }
     if (op.operationId === 'company_sabotage') resultData.effect = '20% production stolen for 24h'
     if (op.operationId === 'power_grid_attack') resultData.effect = '33% companies disabled for 90 min'
+    if (op.operationId === 'air_strike') resultData.effect = '+30% damage bonus in active battles for 12h'
+    if (op.operationId === 'naval_strike') resultData.effect = '+25% damage bonus + trade route disruption for 12h'
 
     // ── Botnet Attack: 300k fake damage to a battle for 30 min ──
     if (op.operationId === 'botnet_attack' && op.targetCountry) {
@@ -1198,7 +1203,8 @@ async function applyOperationResult(op: any, succeeded: boolean, raceData?: any)
       }
     }
 
-    // ── Espionage: themed reports ──
+    // ── Espionage: themed reports (with ±5% fuzzy noise for counter-intel) ──
+    const fuzz = (val: number) => Math.round(val * (0.95 + Math.random() * 0.10))
     if (op.targetCountry) {
       const [country] = await db.select().from(countries).where(eq(countries.code, op.targetCountry)).limit(1)
 
@@ -1207,13 +1213,14 @@ async function applyOperationResult(op: any, succeeded: boolean, raceData?: any)
         resultData.report = {
           type: 'Resource Intelligence',
           summary: `Economic scan of ${country.name}`,
-          treasury: fund.money ?? 0,
-          oilReserves: fund.oil ?? 0,
-          scrapStockpile: fund.scraps ?? 0,
-          materialX: fund.materialX ?? 0,
-          bitcoin: fund.bitcoin ?? 0,
-          population: country.population,
+          treasury: fuzz(fund.money ?? 0),
+          oilReserves: fuzz(fund.oil ?? 0),
+          scrapStockpile: fuzz(fund.scraps ?? 0),
+          materialX: fuzz(fund.materialX ?? 0),
+          bitcoin: fuzz(fund.bitcoin ?? 0),
+          population: fuzz(country.population ?? 0),
           taxExempt: country.taxExempt,
+          note: 'Values are approximate (±5%)',
         }
         resultData.effect = 'Resource stockpiles revealed'
       }
@@ -1221,11 +1228,12 @@ async function applyOperationResult(op: any, succeeded: boolean, raceData?: any)
         resultData.report = {
           type: 'Military Intelligence',
           summary: `Military assessment of ${country.name}`,
-          militaryStrength: country.military,
+          militaryStrength: fuzz(country.military ?? 0),
           bunkerLevel: country.bunkerLevel,
           militaryBaseLevel: country.militaryBaseLevel,
           regions: country.regions,
-          population: country.population,
+          population: fuzz(country.population ?? 0),
+          note: 'Values are approximate (±5%)',
         }
         resultData.effect = 'Military disposition revealed'
       }

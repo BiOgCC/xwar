@@ -60,13 +60,15 @@ router.get('/state', requireAuth as any, async (req, res) => {
     // Also check DB for battles not yet loaded into memory (e.g., after server restart)
     try {
       const { sql: sqlTag } = await import('drizzle-orm')
-      const dbActiveBattles = await db.execute(sqlTag`
+      const dbResult = await db.execute(sqlTag`
         SELECT id, attacker_id, defender_id, region_name, status,
                attacker_rounds_won, defender_rounds_won,
                attacker_damage, defender_damage, created_at
         FROM battles WHERE status = 'active'
       `)
-      for (const r of dbActiveBattles as any[]) {
+      // db.execute may return { rows: [...] } or an array directly depending on driver
+      const dbActiveBattles = Array.isArray(dbResult) ? dbResult : (dbResult as any)?.rows ?? []
+      for (const r of dbActiveBattles) {
         if (!battlesMap[r.id]) {
           // Build a minimal battle shell for the client
           battlesMap[r.id] = {

@@ -85,15 +85,18 @@ function getTerrainHeight(x: number, z: number, heightVariation: number): number
 // ====== UNIT COLORS ======
 
 const UNIT_COLORS: Record<DivisionType, { body: string; accent: string }> = {
-  recon:   { body: '#5a8c5a', accent: '#3d6b3d' },
-  assault: { body: '#6a7a3a', accent: '#4a5a2a' },
-  sniper:  { body: '#4a6a4a', accent: '#2a4a2a' },
-  rpg:     { body: '#7a6a3a', accent: '#5a4a2a' },
-  jeep:    { body: '#6a6a6a', accent: '#4a4a4a' },
-  tank:    { body: '#5a5a5a', accent: '#3a3a3a' },
-  jet:     { body: '#4a5a7a', accent: '#2a3a5a' },
-  warship: { body: '#3a4a6a', accent: '#1a2a4a' },
-  submarine: { body: '#0f172a', accent: '#1e293b' },
+  recon:       { body: '#5a8c5a', accent: '#3d6b3d' },
+  assault:     { body: '#6a7a3a', accent: '#4a5a2a' },
+  sniper:      { body: '#4a6a4a', accent: '#2a4a2a' },
+  rpg:         { body: '#7a6a3a', accent: '#5a4a2a' },
+  jeep:        { body: '#6a6a6a', accent: '#4a4a4a' },
+  tank:        { body: '#5a5a5a', accent: '#3a3a3a' },
+  jet:         { body: '#4a5a7a', accent: '#2a3a5a' },
+  warship:     { body: '#3a4a6a', accent: '#1a2a4a' },
+  submarine:   { body: '#0f172a', accent: '#1e293b' },
+  artillery:   { body: '#7a5a3a', accent: '#5a3a2a' },
+  medic:       { body: '#3a7a5a', accent: '#2a5a3a' },
+  engineering: { body: '#5a6a7a', accent: '#3a4a5a' },
 }
 
 // ====== TERRAIN GROUND ======

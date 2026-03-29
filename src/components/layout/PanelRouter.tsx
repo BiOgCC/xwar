@@ -9,7 +9,6 @@ import ProfilePanel from '../panels/ProfilePanel'
 import GovernmentPanel from '../panels/GovernmentPanel'
 import MilitaryPanel from '../panels/MilitaryPanel'
 import MUPanel from '../panels/MUPanel'
-import ArmedForcesPanel from '../panels/ArmedForcesPanel'
 import TacticalOpsPanel from '../panels/TacticalOpsPanel'
 import MissionsPanel from '../panels/MissionsPanel'
 import PrestigePanel from '../panels/PrestigePanel'
@@ -329,7 +328,7 @@ export default function PanelRouter() {
           {activePanel === 'profile' && <ProfilePanel />}
           {activePanel === 'military' && <MilitaryPanel />}
           {activePanel === 'mu' && <MUPanel />}
-          {activePanel === 'armed_forces' && <ArmedForcesPanel />}
+
           {activePanel === 'combat' && <WarPanel panelFullscreen={panelFullscreen} setPanelFullscreen={setPanelFullscreen} />}
           {activePanel === 'foreign_country' && <ForeignCountryPanel />}
           {activePanel === 'market' && <MarketPanel />}

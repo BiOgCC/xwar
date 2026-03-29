@@ -1,530 +1,102 @@
+// ═══════════════════════════════════════════════════════════
+// ARMY STORE STUB — provides no-op implementations for all
+// symbols that were previously imported from src/stores/army/*.
+// This prevents import errors during the transition period
+// while the division system is being fully purged from all
+// consuming files.
+// ═══════════════════════════════════════════════════════════
+
 import { create } from 'zustand'
-import type { ArmyState, Division, Army, MilitaryRankType, ArmyMember, BattleOrder } from './types'
-import { DIVISION_TEMPLATES, DEFAULT_DISTRIBUTION_INTERVAL } from './types'
-import { usePlayerStore, getMilitaryRank } from '../playerStore'
-import { useInventoryStore } from '../inventoryStore'
 
-import { createRecruitmentSlice, initDivCounter } from './recruitment'
-import { createCombatSlice } from './combat'
-import { createVaultSlice } from './vault'
-import { createSalarySlice } from './salary'
-import { createQueriesSlice } from './queries'
-
-let armyCounter = 0
-
-// ====== COMPOSE STORE (lazy init inside create callback) ======
-
-export const useArmyStore = create<ArmyState>((set, get) => {
-
-  // Start with empty state — divisions and armies are hydrated from the server
-  const divs: Record<string, Division> = {}
-  const armies: Record<string, Army> = {}
-
-  initDivCounter(0)
-
-  return {
-  divisions: divs,
-  armies,
-
-  // Spread all slice actions into the store
-  ...createRecruitmentSlice(set, get),
-  ...createCombatSlice(set, get),
-  ...createVaultSlice(set, get),
-  ...createSalarySlice(set, get),
-  ...createQueriesSlice(set, get),
-
-  // ====== EQUIPMENT (simple inline) ======
-
-  equipItemToDivision: (divisionId, itemId) => {
-    const state = get()
-    const div = state.divisions[divisionId]
-    if (!div) return false
-    if (div.equipment.length >= 3) return false
-    if (div.equipment.includes(itemId)) return false
-
-    set(s => ({
-      divisions: {
-        ...s.divisions,
-        [divisionId]: {
-          ...div,
-          equipment: [...div.equipment, itemId],
-        },
-      },
-    }))
-    return true
-  },
-
-  unequipItemFromDivision: (divisionId, itemId) => {
-    const state = get()
-    const div = state.divisions[divisionId]
-    if (!div || !div.equipment.includes(itemId)) return false
-
-    set(s => ({
-      divisions: {
-        ...s.divisions,
-        [divisionId]: {
-          ...div,
-          equipment: div.equipment.filter(e => e !== itemId),
-        },
-      },
-    }))
-    return true
-  },
-
-  recalculateDivisionStats: (_divisionId) => {
-    // No-op: division stats are now computed at combat time
-  },
-
-  // ====== ARMY MANAGEMENT ======
-
-  createArmy: (name, province) => {
-    const player = usePlayerStore.getState()
-    const id = `army_${++armyCounter}_${Date.now()}`
-
-    set(state => ({
-      armies: {
-        ...state.armies,
-        [id]: {
-          id, name,
-          commanderId: player.name,
-          countryCode: player.countryCode || 'US',
-          divisionIds: [],
-          members: [{ playerId: player.name, role: getMilitaryRank(player.level).rank, joinedAt: Date.now(), contributedPower: 0, totalDamageThisPeriod: 0 }],
-          maxSquadSize: 12,
-          vault: { ammo: 0, jets: 0, tanks: 0, oil: 0, materialX: 0, money: 0, equipmentIds: [] },
-          contributions: [], activeBuffs: [], activeOrders: [],
-          deployedToBattleId: null,
-          deployedProvince: province,
-          status: 'idle',
-          totalManpower: 0,
-          totalAttack: 0,
-          totalDefense: 0,
-          autoDefenseLimit: 0,
-          salaryPool: 0, splitMode: 'equal', soldierBalances: {}, distributionInterval: DEFAULT_DISTRIBUTION_INTERVAL, lastDistribution: Date.now(), lastClaimed: {},
-        },
-      },
-    }))
-
-    return id
-  },
-
-  assignDivisionToArmy: (divisionId, armyId) => {
-    const state = get()
-    const div = state.divisions[divisionId]
-    const army = state.armies[armyId]
-    if (!div || !army) return false
-
-    get().removeDivisionFromArmy(divisionId)
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: {
-          ...army,
-          divisionIds: [...army.divisionIds, divisionId],
-        },
-      },
-    }))
-
-    get().recalculateArmyTotals(armyId)
-    return true
-  },
-
-  removeDivisionFromArmy: (divisionId) => {
-    const state = get()
-    let removedFrom: string | null = null
-
-    Object.values(state.armies).forEach(army => {
-      if (army.divisionIds.includes(divisionId)) {
-        removedFrom = army.id
-      }
-    })
-
-    if (!removedFrom) return false
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [removedFrom!]: {
-          ...s.armies[removedFrom!],
-          divisionIds: s.armies[removedFrom!].divisionIds.filter(id => id !== divisionId),
-        },
-      },
-    }))
-
-    get().recalculateArmyTotals(removedFrom!)
-    return true
-  },
-
-  disbandDivision: (divisionId) => {
-    const state = get()
-    const div = state.divisions[divisionId]
-    if (!div) return { success: false, message: 'Division not found.' }
-    if (div.status === 'in_combat') return { success: false, message: 'Cannot disband a division in combat.' }
-    const player = usePlayerStore.getState()
-    if (div.ownerId !== player.name) return { success: false, message: 'Not your division.' }
-
-    div.equipment.forEach(eqId => {
-      useInventoryStore.setState(s => ({
-        items: s.items.map(i => i.id === eqId ? {
-          ...i, location: 'inventory' as const, assignedToDivision: undefined, equipped: false,
-        } : i)
-      }))
-    })
-
-    get().removeDivisionFromArmy(divisionId)
-
-    set(s => {
-      const newDivisions = { ...s.divisions }
-      delete newDivisions[divisionId]
-      return { divisions: newDivisions }
-    })
-
-    return { success: true, message: `${div.name} has been disbanded.` }
-  },
-
-  recalculateArmyTotals: (armyId) => {
-    set(state => {
-      const army = state.armies[armyId]
-      if (!army) return state
-
-      let totalManpower = 0
-      let totalAttack = 0
-      let totalDefense = 0
-
-      army.divisionIds.forEach(id => {
-        const div = state.divisions[id]
-        if (div) {
-          totalManpower += div.manpower
-          totalAttack += div.manpower
-          totalDefense += div.manpower
-        }
-      })
-
-      return {
-        armies: {
-          ...state.armies,
-          [armyId]: { ...army, totalManpower, totalAttack, totalDefense },
-        },
-      }
-    })
-  },
-
-  // ====== ENLISTMENT ======
-
-  enlistInArmy: (armyId) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const army = state.armies[armyId]
-    if (!army) return { success: false, message: 'Army not found.' }
-    if (army.countryCode !== (player.countryCode || 'US')) return { success: false, message: 'You can only join armies from your country.' }
-
-    const alreadyIn = Object.values(state.armies).find(a => a.members.some(m => m.playerId === player.name))
-    if (alreadyIn) return { success: false, message: `Already enlisted in ${alreadyIn.name}. Leave first.` }
-
-    const rank = getMilitaryRank(player.level)
-    const newMember: ArmyMember = {
-      playerId: player.name,
-      role: rank.rank,
-      joinedAt: Date.now(),
-      contributedPower: 0,
-      totalDamageThisPeriod: 0,
-    }
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: {
-          ...army,
-          members: [...army.members, newMember],
-        },
-      },
-    }))
-
-    usePlayerStore.setState({ enlistedArmyId: armyId })
-    return { success: true, message: `Enlisted in ${army.name} as ${rank.label}!` }
-  },
-
-  leaveArmy: () => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const currentArmy = Object.values(state.armies).find(a => a.members.some(m => m.playerId === player.name))
-    if (!currentArmy) return { success: false, message: 'Not enlisted in any army.' }
-
-    if (currentArmy.commanderId === player.name) return { success: false, message: 'Commanders cannot leave. Disband or transfer command first.' }
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [currentArmy.id]: {
-          ...currentArmy,
-          members: currentArmy.members.filter(m => m.playerId !== player.name),
-        },
-      },
-    }))
-
-    usePlayerStore.setState({ enlistedArmyId: null })
-    return { success: true, message: `Left ${currentArmy.name}.` }
-  },
-
-  promoteMember: (armyId, playerId, newRole) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const army = state.armies[armyId]
-    if (!army) return { success: false, message: 'Army not found.' }
-
-    const promoter = army.members.find(m => m.playerId === player.name)
-    if (!promoter) return { success: false, message: 'You are not in this army.' }
-    const promoterRankIdx = ['private', 'corporal', 'sergeant', 'lieutenant', 'captain', 'colonel', 'general'].indexOf(promoter.role)
-    if (promoterRankIdx < 5) return { success: false, message: 'Only Colonels and Generals can promote.' }
-
-    const target = army.members.find(m => m.playerId === playerId)
-    if (!target) return { success: false, message: 'Player not found in army.' }
-
-    const newRoleIdx = ['private', 'corporal', 'sergeant', 'lieutenant', 'captain', 'colonel', 'general'].indexOf(newRole)
-    if (newRoleIdx >= promoterRankIdx) return { success: false, message: 'Cannot promote to your rank or higher.' }
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: {
-          ...army,
-          members: army.members.map(m =>
-            m.playerId === playerId ? { ...m, role: newRole } : m
-          ),
-        },
-      },
-    }))
-
-    return { success: true, message: `${playerId} promoted to ${newRole}.` }
-  },
-
-  // ====== DEPLOYMENT ======
-
-  deployArmyToBattle: (armyId, battleId) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const army = state.armies[armyId]
-    if (!army) return { success: false, message: 'Army not found.' }
-
-    const member = army.members.find(m => m.playerId === player.name)
-    if (!member) return { success: false, message: 'Not in this army.' }
-    const rankIdx = ['private', 'corporal', 'sergeant', 'lieutenant', 'captain', 'colonel', 'general'].indexOf(member.role)
-    if (rankIdx < 3) return { success: false, message: 'Only Lieutenants+ can deploy armies.' }
-
-    if (army.deployedToBattleId) return { success: false, message: `Already deployed to battle ${army.deployedToBattleId}. Recall first.` }
-    if (army.divisionIds.length === 0) return { success: false, message: 'No divisions to deploy.' }
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: { ...army, deployedToBattleId: battleId, status: 'attacking' as const },
-      },
-    }))
-
-    return { success: true, message: `${army.name} deployed to battle!` }
-  },
-
-  recallArmy: (armyId) => {
-    const state = get()
-    const army = state.armies[armyId]
-    if (!army) return { success: false, message: 'Army not found.' }
-    if (!army.deployedToBattleId) return { success: false, message: 'Army is not deployed.' }
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: { ...army, deployedToBattleId: null, status: 'idle' as const },
-      },
-    }))
-
-    return { success: true, message: `${army.name} recalled.` }
-  },
-
-  deployToRegion: (armyId, regionCode) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const army = state.armies[armyId]
-    if (!army) return { success: false, message: 'Army not found.' }
-
-    const member = army.members.find(m => m.playerId === player.name)
-    if (!member) return { success: false, message: 'Not in this army.' }
-    const rankIdx = ['private', 'corporal', 'sergeant', 'lieutenant', 'captain', 'colonel', 'general'].indexOf(member.role)
-    if (rankIdx < 3) return { success: false, message: 'Only Lieutenants+ can deploy armies.' }
-
-    if (army.deployedToBattleId) return { success: false, message: 'Army is in battle. Recall from battle first.' }
-    if (army.divisionIds.length === 0) return { success: false, message: 'No divisions to deploy.' }
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: { ...army, deployedProvince: regionCode, status: 'idle' as const },
-      },
-    }))
-
-    return { success: true, message: `${army.name} deployed to ${regionCode}!` }
-  },
-
-  // ====== AUTODEFENSE LIMIT ======
-
-  setArmyAutoDefenseLimit: (armyId, limit) => {
-    const state = get()
-    const army = state.armies[armyId]
-    if (!army) return { success: false, message: 'Army not found.' }
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: { ...army, autoDefenseLimit: limit },
-      },
-    }))
-
-    // Persist to backend (fire-and-forget)
-    import('../../api/client').then(({ setArmyAutoDefense }) => {
-      setArmyAutoDefense(armyId, limit).catch(() => {})
-    })
-
-    const label = limit === -1 ? 'ALL' : limit === 0 ? 'OFF' : `${limit}`
-    return { success: true, message: `Autodefense set to ${label} for ${army.name}.` }
-  },
-
-  // ====== BATTLE ORDERS ======
-
-  issueOrder: (armyId, orderType, targetRegion, bountyPool, durationMs, damageMultiplier) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const army = state.armies[armyId]
-    if (!army) return { success: false, message: 'Army not found.' }
-
-    const member = army.members.find(m => m.playerId === player.name)
-    if (!member) return { success: false, message: 'Not in this army.' }
-    const rankIdx = ['private', 'corporal', 'sergeant', 'lieutenant', 'captain', 'colonel', 'general'].indexOf(member.role)
-    if (rankIdx < 4) return { success: false, message: 'Only Captains+ can issue orders.' }
-
-    if (army.vault.money < bountyPool) return { success: false, message: `Not enough vault money. Vault has $${army.vault.money}.` }
-
-    const order: BattleOrder = {
-      id: `order_${Date.now()}`,
-      armyId,
-      orderType,
-      targetRegion,
-      issuedBy: player.name,
-      issuedAt: Date.now(),
-      expiresAt: Date.now() + durationMs,
-      damageMultiplier,
-      bountyPool,
-      claimedBy: [],
-    }
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: {
-          ...army,
-          activeOrders: [...army.activeOrders, order],
-          vault: { ...army.vault, money: army.vault.money - bountyPool },
-        },
-      },
-    }))
-
-    return { success: true, message: `Order issued: ${orderType} at ${targetRegion} with $${bountyPool} bounty!` }
-  },
-
-  recordDamageContribution: (armyId, orderId, playerId, damage) => {
-    const state = get()
-    const army = state.armies[armyId]
-    if (!army) return
-
-    const orders = army.activeOrders.map(o => {
-      if (o.id !== orderId) return o
-      const existing = o.claimedBy.find(c => c.playerId === playerId)
-      if (existing) {
-        return {
-          ...o,
-          claimedBy: o.claimedBy.map(c =>
-            c.playerId === playerId ? { ...c, damageContribution: c.damageContribution + damage } : c
-          ),
-        }
-      } else {
-        return {
-          ...o,
-          claimedBy: [...o.claimedBy, { playerId, damageContribution: damage }],
-        }
-      }
-    })
-
-    set(s => ({
-      armies: {
-        ...s.armies,
-        [armyId]: { ...army, activeOrders: orders },
-      },
-    }))
-  },
-
-  processEconomyUpkeepTick: () => {
-    // Upkeep removed — no-op
-  },
-
-  // ====== PMC LENDING ======
-  // Casuals lend divisions to the PMC commander for use while they're AFK.
-  // The commander can deploy these divisions offensively/defensively.
-  // The owner retains ownership and can recall at any time (unless in combat).
-
-  lendDivisionToPMC: (divisionId) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const div = state.divisions[divisionId]
-    if (!div) return { success: false, message: 'Division not found.' }
-    if (div.deployedToPMC) return { success: false, message: 'Already lent to PMC.' }
-    if (div.status === 'in_combat') return { success: false, message: 'Cannot lend a division in combat.' }
-    if (div.status === 'destroyed') return { success: false, message: 'Cannot lend a destroyed division.' }
-
-    // Find the player's army
-    const myArmy = Object.values(state.armies).find(a => a.members.some(m => m.playerId === player.name))
-    if (!myArmy) return { success: false, message: 'You must be enlisted in a PMC first.' }
-
-    // Check ownership: player owns it OR div is in their army
-    const isInMyArmy = myArmy.divisionIds.includes(divisionId)
-    if (div.ownerId !== player.name && !isInMyArmy) return { success: false, message: 'Not your division.' }
-
-    // Assign to army if not already
-    if (!isInMyArmy) {
-      get().assignDivisionToArmy(divisionId, myArmy.id)
-    }
-
-    set(s => ({
-      divisions: {
-        ...s.divisions,
-        [divisionId]: { ...s.divisions[divisionId], deployedToPMC: true },
-      },
-    }))
-
-    return { success: true, message: `${div.name} lent to ${myArmy.name}. Commander can now deploy it!` }
-  },
-
-  recallDivisionFromPMC: (divisionId) => {
-    const player = usePlayerStore.getState()
-    const state = get()
-    const div = state.divisions[divisionId]
-    if (!div) return { success: false, message: 'Division not found.' }
-    if (!div.deployedToPMC) return { success: false, message: 'Division is not lent to PMC.' }
-    if (div.status === 'in_combat') return { success: false, message: 'Cannot recall a division in combat. Wait for battle to end.' }
-
-    // Check ownership: player owns it OR div is in their army
-    const myArmy = Object.values(state.armies).find(a => a.members.some(m => m.playerId === player.name))
-    const isInMyArmy = myArmy?.divisionIds.includes(divisionId)
-    if (div.ownerId !== player.name && !isInMyArmy) return { success: false, message: 'Not your division.' }
-
-    set(s => ({
-      divisions: {
-        ...s.divisions,
-        [divisionId]: { ...s.divisions[divisionId], deployedToPMC: false },
-      },
-    }))
-
-    return { success: true, message: `${div.name} recalled to your personal forces.` }
-  },
-}})
-
-// Re-export everything from types for backward compatibility
-export * from './types'
+// ── Type stubs ──
+
+export type DivisionType =
+  | 'recon' | 'assault' | 'sniper' | 'rpg'
+  | 'jeep' | 'tank' | 'jet' | 'warship'
+  | 'submarine' | 'artillery' | 'medic' | 'engineering'
+
+export type DivisionCategory = 'infantry' | 'mechanized' | 'air' | 'naval'
+export type DivisionStatus = 'ready' | 'training' | 'in_combat' | 'recovering' | 'destroyed' | 'scavenging' | 'patrolling' | 'listed'
+export type StarQuality = 0 | 1 | 2 | 3 | 4 | 5
+
+export interface StatModifiers {
+  atkDmgMult: number
+  defDmgMult: number
+  manpowerMult: number
+  healthMult: number
+  critChance: number
+  dodgeChance: number
+}
+
+export interface Division {
+  id: string
+  name: string
+  type: DivisionType
+  category: DivisionCategory
+  countryCode: string
+  armyId: string | null
+  ownerId: string
+  level: number
+  xp: number
+  manpower: number
+  maxManpower: number
+  health: number
+  maxHealth: number
+  status: DivisionStatus
+  starQuality: StarQuality
+  starModifiers: StatModifiers
+  equipmentSlots: Record<string, string | null>
+  awolTimestamp: number | null
+  deployedAtTick?: number
+  trainingProgress: number
+  stance: string
+  experience: number
+  killCount: number
+}
+
+export interface Army {
+  id: string
+  name: string
+  countryCode: string
+  ownerId: string
+  commanderId: string
+  members: { playerId: string; role: string }[]
+  divisionIds: string[]
+  vault: { money: number; oil: number; scrap: number; materialX: number }
+  autoDefenseLimit: number
+}
+
+// ── Template stub ──
+
+export const DIVISION_TEMPLATES: Record<string, any> = {}
+
+// ── Helper stubs ──
+
+export function rollStarQuality(_level?: number): { star: StarQuality; modifiers: StatModifiers } {
+  return { star: 0, modifiers: { atkDmgMult: 1, defDmgMult: 1, manpowerMult: 1, healthMult: 1, critChance: 0, dodgeChance: 0 } }
+}
+export function rollDebris(): { scrap: number; materialX: number; militaryBoxes: number } {
+  return { scrap: 0, materialX: 0, militaryBoxes: 0 }
+}
+export function getDivisionEquipBonus(_div: any): any {
+  return { atk: 0, def: 0, hp: 0, crit: 0, dodge: 0, manpower: 0, speed: 0, range: 0 }
+}
+export function getEffectiveManpower(_div: any): number { return 0 }
+export function getEffectiveHealth(_div: any): number { return 0 }
+
+// ── Store stub ──
+
+export interface ArmyState {
+  armies: Record<string, Army>
+  divisions: Record<string, Division>
+  getPlayerPopCap: () => { used: number; max: number }
+  applyBattleDamage: (divId: string, damage: number, equipDmg: number) => void
+  [key: string]: any
+}
+
+export const useArmyStore = create<ArmyState>(() => ({
+  armies: {},
+  divisions: {},
+  getPlayerPopCap: () => ({ used: 0, max: 100 }),
+  applyBattleDamage: () => {},
+}))

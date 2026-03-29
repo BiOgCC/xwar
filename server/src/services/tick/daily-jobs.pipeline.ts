@@ -375,6 +375,76 @@ export async function restoreCyberEffects() {
 }
 
 /**
+ * Undercover detection — runs every 5 minutes.
+ * For player ops in 'deploying' status, applies a 30% detection roll.
+ * After 30min (6 checks) undetected → resolves the op with a success roll.
+ * On detection → marks as 'detected' (failed).
+ */
+export async function undercoverDetection() {
+  const deployingOps = await db.execute(sql`
+    SELECT id, operation_id, country_code, target_country, launched_by, deployed_at, result
+    FROM cyber_ops
+    WHERE status = 'deploying'
+      AND pillar = 'espionage'
+  `)
+
+  const rows = (deployingOps as any).rows || (deployingOps as any[])
+  if (!rows || rows.length === 0) return
+
+  const now = Date.now()
+  let detected = 0
+  let resolved = 0
+
+  for (const op of rows) {
+    const deployedAt = op.deployed_at ? new Date(op.deployed_at).getTime() : now
+    const elapsed = now - deployedAt
+    const SCAN_DURATION_MS = 30 * 60 * 1000 // 30 minutes
+
+    // Detection roll: 30% chance
+    const detectionRoll = Math.random() * 100
+    if (detectionRoll < 30) {
+      // Detected! Mark as failed
+      await db.execute(sql`
+        UPDATE cyber_ops
+        SET status = 'detected',
+            result = result || '{"detected": true, "detectedAt": "${sql.raw(new Date().toISOString())}"}'::jsonb
+        WHERE id = ${op.id}
+      `)
+      detected++
+
+      // News event
+      await db.execute(sql`
+        INSERT INTO news_events (type, headline, country_code, data)
+        VALUES (
+          'intel_detected',
+          ${`🔍 ${op.target_country} detected an undercover ${op.operation_id.replace(/_/g, ' ')} operation from ${op.country_code}!`},
+          ${op.target_country},
+          ${JSON.stringify({ op: op.operation_id, from: op.country_code })}::jsonb
+        )
+      `)
+      continue
+    }
+
+    // If 30 minutes have passed undetected → resolve with success roll
+    if (elapsed >= SCAN_DURATION_MS) {
+      const successChance = 80 // base success chance for espionage
+      const succeeded = Math.random() * 100 < successChance
+      await db.execute(sql`
+        UPDATE cyber_ops
+        SET status = ${succeeded ? 'completed' : 'failed'},
+            result = result || ${JSON.stringify({ succeeded, resolvedAt: new Date().toISOString() })}::jsonb
+        WHERE id = ${op.id}
+      `)
+      resolved++
+    }
+  }
+
+  if (detected > 0 || resolved > 0) {
+    logger.info(`[DAILY] Undercover detection: ${detected} detected, ${resolved} resolved.`)
+  }
+}
+
+/**
  * Run all daily/scheduled pipeline operations.
  * Each operation is independently try/caught so one failure doesn't block others.
  */
@@ -405,6 +475,9 @@ export async function runDailyJobsPipeline(jobName: string) {
       break
     case 'restore_cyber':
       await restoreCyberEffects()
+      break
+    case 'undercover_detect':
+      await undercoverDetection()
       break
     default:
       logger.warn(`[DAILY] Unknown job: ${jobName}`)

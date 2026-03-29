@@ -11,7 +11,6 @@ import playerRoutes from './routes/player.routes.js'
 import inventoryRoutes from './routes/inventory.routes.js'
 import worldRoutes from './routes/world.routes.js'
 import casinoRoutes from './routes/casino.routes.js'
-import armyRoutes from './routes/army.routes.js'
 import battleRoutes from './routes/battle.routes.js'
 import marketRoutes from './routes/market.routes.js'
 import companyRoutes from './routes/company.routes.js'
@@ -80,7 +79,6 @@ if (runApi) {
   app.use('/api/inventory', inventoryRoutes)
   app.use('/api/world', worldRoutes)
   app.use('/api/casino', casinoLimiter, casinoRoutes)
-  app.use('/api/army', armyRoutes)
   app.use('/api/battle', battleRoutes)
   app.use('/api/market', marketRoutes)
   app.use('/api/company', companyRoutes)
@@ -101,8 +99,10 @@ if (runApi) {
   app.use('/api/mu', muRoutes)
   app.use('/api/prestige', prestigeRoutes)
 
-  // ── Restore persisted battles into memory on boot ──
+  // ── Restore persisted battles into memory on boot & wire Socket.IO ──
   import('./services/battle.service.js').then(({ battleService }) => {
+    // Wire Socket.IO so battle:state events actually broadcast to clients
+    if (io) battleService.setIO(io)
     battleService.restoreFromDB().catch(err => logger.error(err, '[Boot] Failed to restore battles'))
   })
 

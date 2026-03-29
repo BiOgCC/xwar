@@ -74,25 +74,38 @@ function App() {
       useCompanyStore.getState().fetchAll()
 
       // ── Hydrate active battles from API on every (re)load ──
-      import('./api/client').then(({ getActiveBattles }) => {
+      Promise.all([
+        import('./api/client'),
+        import('./api/socket'),
+      ]).then(([{ getActiveBattles }, { socketManager }]) => {
         getActiveBattles().then((res: any) => {
           if (!res?.battles?.length) return
           const toAdd: Record<string, any> = {}
           for (const b of res.battles) {
+            // Join battle socket room so we receive battle:state ticks
+            socketManager.joinBattle(b.id)
+
             toAdd[b.id] = {
               id: b.id, type: b.type ?? 'invasion',
               attackerId: b.attackerId, defenderId: b.defenderId,
               regionName: b.regionName, startedAt: b.startedAt,
               ticksElapsed: b.ticksElapsed ?? 0, status: b.status,
-              attacker: { countryCode: b.attackerId, divisionIds: [], engagedDivisionIds: [], damageDealt: b.attackerDamage ?? 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
-              defender: { countryCode: b.defenderId, divisionIds: [], engagedDivisionIds: [], damageDealt: b.defenderDamage ?? 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+              // Preserve full attacker/defender objects from server (includes damageDealt, engaged divisions, etc.)
+              attacker: b.attacker ?? { countryCode: b.attackerId, divisionIds: [], engagedDivisionIds: [], damageDealt: b.attackerDamage ?? 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+              defender: b.defender ?? { countryCode: b.defenderId, divisionIds: [], engagedDivisionIds: [], damageDealt: b.defenderDamage ?? 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
               attackerRoundsWon: b.attackerRoundsWon ?? 0, defenderRoundsWon: b.defenderRoundsWon ?? 0,
-              rounds: b.rounds?.length ? b.rounds : [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: b.startedAt }],
-              currentTick: { attackerDamage: 0, defenderDamage: 0 },
-              combatLog: [], attackerDamageDealers: {}, defenderDamageDealers: {},
-              damageFeed: [], divisionCooldowns: {},
-              attackerOrder: 'none' as const, defenderOrder: 'none' as const,
-              orderMessage: '', motd: '', playerBattleStats: {},
+              // Preserve full round objects (including attackerDmgTotal, defenderDmgTotal for ground-point calculation)
+              rounds: Array.isArray(b.rounds) && b.rounds.length > 0
+                ? b.rounds
+                : [{ attackerPoints: 0, defenderPoints: 0, attackerDmgTotal: 0, defenderDmgTotal: 0, status: 'active', startedAt: b.startedAt }],
+              currentTick: b.currentTick ?? { attackerDamage: 0, defenderDamage: 0 },
+              combatLog: Array.isArray(b.combatLog) && b.combatLog.length > 0 ? b.combatLog : [],
+              attackerDamageDealers: b.attackerDamageDealers ?? {},
+              defenderDamageDealers: b.defenderDamageDealers ?? {},
+              damageFeed: b.damageFeed ?? [], divisionCooldowns: b.divisionCooldowns ?? {},
+              attackerOrder: b.attackerOrder ?? 'none' as const,
+              defenderOrder: b.defenderOrder ?? 'none' as const,
+              orderMessage: b.orderMessage ?? '', motd: b.motd ?? '', playerBattleStats: b.playerBattleStats ?? {},
               playerAdrenaline: {}, playerSurge: {}, playerCrash: {}, playerAdrenalinePeakAt: {},
               vengeanceBuff: { attacker: -1, defender: -1 },
               mercenaryContracts: [], weaponPresence: { attacker: {}, defender: {} },

@@ -26,7 +26,11 @@ import { mkTicker, mkId } from './helpers'
 // NOTE: placeResourceOrder & matchResourceOrders from ./resourceMarket are DEPRECATED
 // (overridden below to use backend API). Import removed to avoid confusion.
 import { placeEquipmentSellOrder, buyEquipment, placeVaultEquipmentSellOrder, buyEquipmentToVault } from './equipmentMarket'
-import { placeDivisionSellOrder, placeVaultDivisionSellOrder, placeCountryDivisionSellOrder, buyDivision } from './divisionMarket'
+// Division market removed — stub functions
+const placeDivisionSellOrder = (..._: any[]) => ({ success: false, message: 'Division system removed' })
+const placeVaultDivisionSellOrder = (..._: any[]) => ({ success: false, message: 'Division system removed' })
+const placeCountryDivisionSellOrder = (..._: any[]) => ({ success: false, message: 'Division system removed' })
+const buyDivision = (..._: any[]) => ({ success: false, message: 'Division system removed' })
 import { tickPrices } from './priceTicker'
 import { placeCountryOrder, placeForceVaultOrder } from './countryTrading'
 

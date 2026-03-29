@@ -2,14 +2,12 @@ import { useCallback, type RefObject } from 'react'
 import { usePlayerStore } from '../stores/playerStore'
 import { useWorldStore } from '../stores/worldStore'
 import { useBattleStore } from '../stores/battleStore'
-import { useArmyStore } from '../stores/army'
 import { useUIStore } from '../stores/uiStore'
-import { ENABLE_DIVISIONS } from '../config/features'
 import { COUNTRY_ISO } from '../data/countries'
 import { COUNTRY_CENTROIDS, type GameMapHandle } from '../components/map/GameMap'
 
 export interface AttackResult {
-  action: 'war_declared' | 'hoi_battle' | 'personal_attack' | 'no_target'
+  action: 'war_declared' | 'personal_attack' | 'no_target'
   success: boolean
   damage?: number
   isCrit?: boolean
@@ -19,7 +17,7 @@ export interface AttackResult {
 
 /**
  * Extracts all attack logic from App.tsx into a single reusable hook.
- * Handles: war declaration → army lookup → HOI battle or personal attack → UI feedback.
+ * Handles: war declaration → launch PvP battle → personal attack → UI feedback.
  */
 export function useAttack(mapRef: RefObject<GameMapHandle | null>) {
   return useCallback(async (targetCountryName: string, mouseEvent?: React.MouseEvent): Promise<AttackResult> => {
@@ -29,7 +27,6 @@ export function useAttack(mapRef: RefObject<GameMapHandle | null>) {
     const player = usePlayerStore.getState()
     const world = useWorldStore.getState()
     const battle = useBattleStore.getState()
-    const army = useArmyStore.getState()
     const ui = useUIStore.getState()
     const attackerIso = player.countryCode || 'US'
 
@@ -43,34 +40,8 @@ export function useAttack(mapRef: RefObject<GameMapHandle | null>) {
       return { action: 'war_declared', success: true }
     }
 
-    // ── Step 2: Find army with ready divisions → HOI battle (divisions only) ──
-    if (ENABLE_DIVISIONS) {
-      const myArmies = (Object.values(army.armies) as any[]).filter((a: any) => a.countryCode === attackerIso)
-      const armyWithDivs = myArmies.find((a: any) =>
-        a.divisionIds.some((id: string) => army.divisions[id]?.status === 'ready')
-      )
-
-      if (armyWithDivs) {
-        const result = battle.launchHOIBattle(armyWithDivs.id, defenderIso, 'invasion')
-
-        if (result.success) {
-          // Fly camera to target
-          const coord = COUNTRY_CENTROIDS[targetCountryName] || COUNTRY_CENTROIDS['United States']
-          if (coord && mapRef.current) {
-            mapRef.current.flyTo(coord[0], coord[1], 4)
-          }
-        }
-
-        if (mouseEvent) {
-          ui.addFloatingText('⚔️ BATTLE LAUNCHED!', mouseEvent.clientX, mouseEvent.clientY, '#ef4444')
-        }
-
-        return { action: 'hoi_battle', success: result.success, battleId: result.battleId }
-      }
-    }
-
-    // ── Step 3: No divisions → launch battle + personal attack via battleStore ──
-    battle.launchAttack(attackerIso, defenderIso, targetCountryName)
+    // ── Step 2: Launch battle + personal attack via battleStore ──
+    await battle.launchAttack(attackerIso, defenderIso, targetCountryName)
 
     // Find the battle we just created (or existing one for this region)
     const activeBattle = Object.values(useBattleStore.getState().battles).find(
@@ -78,6 +49,12 @@ export function useAttack(mapRef: RefObject<GameMapHandle | null>) {
     )
 
     if (activeBattle) {
+      // Fly camera to target
+      const coord = COUNTRY_CENTROIDS[targetCountryName] || COUNTRY_CENTROIDS['United States']
+      if (coord && mapRef.current) {
+        mapRef.current.flyTo(coord[0], coord[1], 4)
+      }
+
       // Route through battleStore.playerAttack (has rate limiting, side detection, damage cap)
       const result = await useBattleStore.getState().playerAttack(activeBattle.id)
       if (mouseEvent) {
