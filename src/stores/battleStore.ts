@@ -13,7 +13,6 @@ import { useSkillsStore } from './skillsStore'
 import { useInventoryStore } from './inventoryStore'
 import { useArmyStore, getDivisionEquipBonus, DIVISION_TEMPLATES, rollDebris, type Division } from './army'
 import { useSpecializationStore } from './specializationStore'
-import { useWarCardsStore } from './warCardsStore'
 import { getCountryName, getCountryFlag, getCountryFlagUrl } from '../data/countries'
 import { useRegionStore } from './regionStore'
 import type { Region } from './regionStore'
@@ -211,134 +210,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   },
 
   // ====== NPC TEST BATTLES ======
-  spawnNPCBattles: () => {
-    const NPC_BATTLE_COUNT = 10
-    const COMPOSITION: (keyof typeof DIVISION_TEMPLATES)[] = ['assault', 'assault', 'sniper', 'tank']
-    const NPC_EXP = 50  // level 5
-    const NPC_COUNTRIES = [
-      ['US', 'RU'], ['US', 'CN'], ['GB', 'DE'], ['FR', 'IT'],
-      ['JP', 'KR'], ['BR', 'AR'], ['IN', 'PK'], ['AU', 'NZ'],
-      ['CA', 'MX'], ['TR', 'EG'],
-    ]
-
-    // Don't re-spawn if NPC battles already exist
-    const existing = Object.values(get().battles).filter(b => b.id.startsWith('npc_battle_'))
-    if (existing.length >= NPC_BATTLE_COUNT) return
-
-    const newBattles: Record<string, Battle> = { ...get().battles }
-    const armyStore = useArmyStore.getState()
-    const newDivisions: Record<string, Division> = { ...armyStore.divisions }
-    const now = Date.now()
-    const maxStamina = 100  // NPC default
-
-    for (let i = 0; i < NPC_BATTLE_COUNT; i++) {
-      const [atkCountry, defCountry] = NPC_COUNTRIES[i % NPC_COUNTRIES.length]
-      const battleId = `npc_battle_${i + 1}`
-
-      // Create divisions for both sides
-      const atkDivIds: string[] = []
-      const defDivIds: string[] = []
-
-      COMPOSITION.forEach((type, j) => {
-        const template = DIVISION_TEMPLATES[type]
-        const hp = Math.floor(template.healthMult * maxStamina)
-        const mp = template.manpowerCost
-
-        const atkDivId = `npc_${battleId}_atk_${type}_${j}`
-        const defDivId = `npc_${battleId}_def_${type}_${j}`
-
-        const baseMods = { atkDmgMult: 0, hitRate: 0, critRateMult: 0, critDmgMult: 0, healthMult: 0, dodgeMult: 0, armorMult: 0, attackSpeed: 0 }
-
-        const makeNPCDiv = (id: string, country: string, side: string): Division => ({
-          id,
-          type: type as any,
-          name: `${side.toUpperCase()} ${template.name} #${j + 1}`,
-          category: template.category,
-          ownerId: `NPC_${country}`,
-          countryCode: country,
-          manpower: mp, maxManpower: mp,
-          health: hp, maxHealth: hp,
-          equipment: [],
-          experience: NPC_EXP,
-          stance: 'unassigned' as const,
-          autoTrainingEnabled: false,
-          status: 'in_combat' as const,
-          trainingProgress: 0,
-          recoveryTicksNeeded: 0,
-          readyAt: 0,
-          reinforcing: false,
-          reinforceProgress: 0,
-          killCount: 0,
-          battlesSurvived: 0,
-          starQuality: 'standard' as any,
-          statModifiers: baseMods,
-          deployedToPMC: false,
-        })
-
-        newDivisions[atkDivId] = makeNPCDiv(atkDivId, atkCountry, 'ATK')
-        newDivisions[defDivId] = makeNPCDiv(defDivId, defCountry, 'DEF')
-        atkDivIds.push(atkDivId)
-        defDivIds.push(defDivId)
-      })
-
-      // Create battle
-      const atkName = getCountryName(atkCountry)
-      const defName = getCountryName(defCountry)
-
-      const battle: Battle = {
-        id: battleId,
-        type: 'invasion',
-        attackerId: atkCountry,
-        defenderId: defCountry,
-        regionName: `NPC #${i + 1}: ${atkName} vs ${defName}`,
-        startedAt: now,
-        ticksElapsed: 0,
-        status: 'active',
-        attacker: {
-          countryCode: atkCountry,
-          divisionIds: atkDivIds,
-          engagedDivisionIds: atkDivIds,
-          damageDealt: 0, manpowerLost: 0,
-          divisionsDestroyed: 0, divisionsRetreated: 0,
-        },
-        defender: {
-          countryCode: defCountry,
-          divisionIds: defDivIds,
-          engagedDivisionIds: defDivIds,
-          damageDealt: 0, manpowerLost: 0,
-          divisionsDestroyed: 0, divisionsRetreated: 0,
-        },
-        attackerRoundsWon: 0, defenderRoundsWon: 0,
-        rounds: [{ attackerPoints: 0, defenderPoints: 0, status: 'active', startedAt: now }],
-        currentTick: { attackerDamage: 0, defenderDamage: 0 },
-        combatLog: [{
-          tick: 0, timestamp: now, type: 'phase_change', side: 'attacker',
-          message: `NPC Battle #${i + 1}: ${atkName} vs ${defName} — Mirror match (${COMPOSITION.join(', ')})`,
-        }],
-        attackerDamageDealers: {}, defenderDamageDealers: {},
-        damageFeed: [],
-        divisionCooldowns: {},
-        attackerOrder: 'none' as TacticalOrder,
-        defenderOrder: 'none' as TacticalOrder,
-        orderMessage: '',
-        motd: '',
-        playerAdrenaline: {},
-        playerSurge: {},
-        playerCrash: {},
-        playerAdrenalinePeakAt: {},
-        vengeanceBuff: { attacker: -1, defender: -1 },
-        mercenaryContracts: [],
-        weaponPresence: { attacker: {}, defender: {} },
-      }
-
-      newBattles[battleId] = battle
-    }
-
-    // Inject NPC divisions into army store
-    useArmyStore.setState({ divisions: newDivisions })
-    set({ battles: newBattles })
-    console.log(`[NPC] Spawned ${NPC_BATTLE_COUNT} NPC mirror-match battles`)
-  },
+  // NPC battles removed — server-authoritative battles only
+  spawnNPCBattles: () => {},
   combatTickLeft: 15,
   setCombatTickLeft: (val: number) => set({ combatTickLeft: val }),
   setBattleOrder: (battleId: string, side: 'attacker' | 'defender', order: TacticalOrder) => {
@@ -1590,46 +1463,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           if (isAbroad && playerWon) spec.recordAbroadKill()
         } catch (e) { /* silent */ }
 
-        // ── War Cards: evaluate combat achievements at battle end ──
-        try {
-          const ps = usePlayerStore.getState()
-          const finalBattle = newBattles[battle.id]
-          const totalBattleDmg = (finalBattle.attacker.damageDealt || 0) + (finalBattle.defender.damageDealt || 0)
-          const playerDmg = (finalBattle.attackerDamageDealers[ps.name] || 0) + (finalBattle.defenderDamageDealers[ps.name] || 0)
-
-          // Detect comeback: player's side won after being 50%+ behind with enemy at 599
-          let isComeback = false
-          for (const round of finalBattle.rounds) {
-            if (round.status === 'attacker_won' && round.defenderPoints >= 599) {
-              const deficit = round.defenderPoints - round.attackerPoints
-              if (deficit >= 300) isComeback = true // was 50%+ behind at some point
-            } else if (round.status === 'defender_won' && round.attackerPoints >= 599) {
-              const deficit = round.attackerPoints - round.defenderPoints
-              if (deficit >= 300) isComeback = true
-            }
-          }
-
-          // Check if this is the largest battle on the server (by total damage)
-          const allBattles = Object.values(newBattles)
-          const largestDmg = Math.max(...allBattles.map(b => (b.attacker.damageDealt || 0) + (b.defender.damageDealt || 0)))
-          const isBiggest = totalBattleDmg >= largestDmg && totalBattleDmg > 0
-
-          if (playerDmg > 0) {
-            useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-              totalDamageDone: ps.damageDone,
-              totalMoney: ps.money,
-              totalItemsProduced: ps.itemsProduced,
-              playerLevel: ps.level,
-              battleDamageDealt: playerDmg,
-              battleTotalDamage: totalBattleDmg,
-              battleTicksElapsed: finalBattle.ticksElapsed,
-              battleIsLargest: isBiggest,
-              battleIsComeback: isComeback,
-            }, finalBattle.id)
-          }
-        } catch (e) {
-          console.warn('[WarCards] Error checking combat cards:', e)
-        }
+        // ── War Cards: combat achievements are now evaluated server-side ──
+        // (evaluateBattleCards() in warCard.service.ts handles battle-context cards)
+        // No client-side evaluation needed.
 
         // ── #9 FIX: Feed Global War Fund instead of per-battle treasury drain ──
         try {

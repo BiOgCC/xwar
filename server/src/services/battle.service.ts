@@ -17,6 +17,7 @@ import {
   players, playerSkills, items, divisions as divisionsTable,
   battles as battlesTable, countries, muMembers,
 } from '../db/schema.js'
+import { warCardEmitter, evaluateBattleCards } from './warCard.service.js'
 
 // ═══════════════════════════════════════════════
 //  SHARED CONSTANTS & TYPES
@@ -136,6 +137,13 @@ interface BattleTick {
   defenderDamage: number
 }
 
+// Per-player battle stats for war card evaluation
+interface PlayerBattleStats {
+  critsLanded: number
+  hitsTaken: number
+  totalDamage: number
+}
+
 interface Battle {
   id: string
   type: BattleType
@@ -160,6 +168,8 @@ interface Battle {
   defenderOrder: TacticalOrder
   orderMessage: string
   motd: string
+  /** Per-player combat stats for war card evaluation (keyed by playerId) */
+  playerBattleStats: Record<string, PlayerBattleStats>
 }
 
 // In-memory division snapshot for combat performance (avoids DB reads per tick per div)
@@ -283,6 +293,7 @@ class BattleService {
       damageFeed: [], divisionCooldowns: {},
       attackerOrder: 'none', defenderOrder: 'none',
       orderMessage: '', motd: '',
+      playerBattleStats: {},
     }
 
     this.battles.set(id, battle)
@@ -474,7 +485,7 @@ class BattleService {
     // MU Bonus: +5% base + 1%/member (capped at +20%)
     try {
       const muMembership = await db.select({ unitId: muMembers.unitId })
-        .from(muMembers).where(eq(muMembers.playerId, playerName)).limit(1)
+        .from(muMembers).where(eq(muMembers.playerId, playerId)).limit(1)
       if (muMembership.length > 0) {
         const memberCount = await db.select({ count: sql<number>`count(*)::int` })
           .from(muMembers).where(eq(muMembers.unitId, muMembership[0].unitId))
@@ -594,6 +605,16 @@ class BattleService {
     // Record damage
     this.addDamage(battleId, side, damage, isCrit, isDodged, playerName)
 
+    // ── Track per-player battle stats for war card evaluation ──
+    if (!battle.playerBattleStats[playerId]) {
+      battle.playerBattleStats[playerId] = { critsLanded: 0, hitsTaken: 0, totalDamage: 0 }
+    }
+    const pbs = battle.playerBattleStats[playerId]
+    pbs.totalDamage += damage
+    if (isCrit) pbs.critsLanded += 1
+    // hitsTaken is incremented for the enemy side when they receive damage
+    // (we track the attacker's hits; enemy's hitsTaken is tracked elsewhere)
+
     // ── Phase 5: Server-side rewards & side effects ──
     let dropMsg = ''
 
@@ -638,6 +659,26 @@ class BattleService {
     try {
       await db.execute(sql`UPDATE players SET damage_done = COALESCE(damage_done, 0) + ${damage} WHERE id = ${playerId}`)
     } catch (e) { /* damage tracking failed */ }
+
+    // ── War Card evaluation (fire-and-forget) ──
+    // Stat-based cards
+    warCardEmitter.emit('player_action', playerId)
+    // Battle-context cards (check every 5th hit to avoid DB spam)
+    if (pbs.totalDamage > 0 && (pbs.critsLanded + pbs.hitsTaken) % 5 === 0) {
+      const totalBattleDmg = battle.attacker.damageDealt + battle.defender.damageDealt
+      evaluateBattleCards({
+        playerId,
+        battleId,
+        playerDamageInBattle: pbs.totalDamage,
+        totalBattleDamage: totalBattleDmg,
+        critsLanded: pbs.critsLanded,
+        hitsTaken: pbs.hitsTaken,
+        singleHitDamage: damage,
+        isComeback: false,  // evaluated at battle end
+        isLargestBattle: false,
+        battleDamageRatio: totalBattleDmg > 0 ? pbs.totalDamage / totalBattleDmg : 0,
+      }).catch(() => {})
+    }
 
     // Broadcast hit event
     this.emit(battleId, 'battle:playerHit', {

@@ -18,7 +18,6 @@ import {
   getItemImagePath,
   SCRAP_VALUES,
   WEAPON_SUBTYPES,
-  generateStats,
   type EquipItem,
   type EquipSlot,
   type EquipTier,

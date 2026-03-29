@@ -13,9 +13,9 @@ import { LEY_LINE_DEFS } from '../data/leyLineRegistry'
 import type { LeyLineDef as RegistryLineDef } from '../data/leyLineRegistry'
 
 // ── API ───────────────────────────────────────────────────────────────────────
-const B = 'http://localhost:3001'
+const B = import.meta.env.VITE_API_URL || ''
 async function api(path: string, opts?: RequestInit) {
-  const token = localStorage.getItem('token') || ''
+  const token = localStorage.getItem('xwar_token') || ''
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 10_000) // 10s timeout
   try {
@@ -146,12 +146,12 @@ export default function AdminPage() {
       const [s, l, n] = await Promise.all([
         api('/api/admin/stats'),
         api('/api/admin/ley-lines'),
-        api('/api/world/news?limit=30'),
+        api('/api/admin/logs'),
       ])
       setAuthed(true)
       if (s.ok) setStats(s.result)
       if (l.ok) { setLines(l.result.dbLines??[]); setStaticLines(l.result.staticFallbackLines??[]) }
-      if (n.news) setNews(n.news)
+      if (n.ok && n.result) setNews(n.result)
     } catch(e:any) {
       if (e.message==='UNAUTHORIZED') {
         setAuthed(false)

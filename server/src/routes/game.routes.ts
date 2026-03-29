@@ -47,9 +47,9 @@ router.get('/state', requireAuth as any, async (req, res) => {
     // Auto-seat player as president if no one holds the position for their country
     const playerCountry = player.countryCode
     if (playerCountry && governmentMap[playerCountry] && !governmentMap[playerCountry].president) {
-      await db.update(governments).set({ president: player.name! }).where(eq(governments.countryCode, playerCountry))
-      governmentMap[playerCountry] = { ...governmentMap[playerCountry], president: player.name }
-      logger.info(`[GAME] Auto-seated ${player.name} as president of ${playerCountry}`)
+      await db.update(governments).set({ president: player.id }).where(eq(governments.countryCode, playerCountry))
+      governmentMap[playerCountry] = { ...governmentMap[playerCountry], president: player.id }
+      logger.info(`[GAME] Auto-seated ${player.name} (${player.id}) as president of ${playerCountry}`)
     }
 
     // ── Active Battles (in-memory from battleService) ──
@@ -78,7 +78,7 @@ router.get('/state', requireAuth as any, async (req, res) => {
 
     // ── Military Unit (Guild) ──
     const [playerMuMembership] = await db.select().from(muMembers)
-      .where(eq(muMembers.playerId, player.name!)).limit(1)
+      .where(eq(muMembers.playerId, player.id)).limit(1)
     let muData: any = null
     if (playerMuMembership) {
       const [muUnit] = await db.select().from(militaryUnits)

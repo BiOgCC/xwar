@@ -533,14 +533,21 @@ router.get('/my-companies', requireAuth as any, async (req, res) => {
   try {
     const { playerId } = (req as AuthRequest).player!
     const myCompanies = await db.select().from(companies).where(eq(companies.ownerId, playerId))
-    const transactions = await db.select().from(companyTransactions)
-      .where(eq(companyTransactions.playerId, playerId))
-      .orderBy(sql`${companyTransactions.timestamp} DESC`)
-      .limit(50)
+
+    // Transactions query wrapped separately so a failure doesn't kill the whole request
+    let transactions: any[] = []
+    try {
+      transactions = await db.select().from(companyTransactions)
+        .where(eq(companyTransactions.playerId, playerId))
+        .orderBy(sql`${companyTransactions.timestamp} DESC`)
+        .limit(50)
+    } catch (txErr) {
+      console.error('[COMPANY] Transactions fetch error (non-fatal):', txErr)
+    }
 
     res.json({ success: true, companies: myCompanies, transactions })
-  } catch (err) {
-    console.error('[COMPANY] My companies error:', err)
+  } catch (err: any) {
+    console.error('[COMPANY] My companies error:', err?.message || err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

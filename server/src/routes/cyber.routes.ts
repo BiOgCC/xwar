@@ -600,19 +600,11 @@ router.post('/sabotage/contribute', validate(sabotageContributeSchema), async (r
       res.status(403).json({ error: 'Only target country can contribute as defender' }); return
     }
 
-    // Check stamina (TEMP: bypassed for debugging — logs the value)
+    // Check stamina
     const staminaVal = Number(player.stamina ?? 0)
-    console.log('[CYBER] ===== STAMINA DEBUG =====')
-    console.log('[CYBER] Player ID:', playerId)
-    console.log('[CYBER] Player Name:', player.name)
-    console.log('[CYBER] Raw stamina:', player.stamina)
-    console.log('[CYBER] Type:', typeof player.stamina)
-    console.log('[CYBER] Parsed:', staminaVal)
-    console.log('[CYBER] All player keys:', Object.keys(player))
-    // TEMP: skip stamina check for testing
-    // if (staminaVal < SABOTAGE_STAMINA_COST) {
-    //   res.status(400).json({ error: `Not enough stamina (need ${SABOTAGE_STAMINA_COST}, have ${Math.floor(staminaVal)})` }); return
-    // }
+    if (staminaVal < SABOTAGE_STAMINA_COST) {
+      res.status(400).json({ error: `Not enough stamina (need ${SABOTAGE_STAMINA_COST}, have ${Math.floor(staminaVal)})` }); return
+    }
 
     // Load skills for multiplier
     const [skills] = await db.select().from(playerSkills).where(eq(playerSkills.playerId, playerId)).limit(1)

@@ -89,7 +89,18 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
     const reward = DAILY_REWARDS[rewardIndex]
     const newStreak = state.loginStreak + 1
 
-    // Apply rewards client-side immediately
+    // Server-authoritative: ask server to apply rewards first
+    try {
+      const res = await claimDailyReward()
+      if (!res.success) {
+        return { success: false, message: res.message || 'Server rejected claim' }
+      }
+    } catch (err) {
+      console.warn('[DailyReward] Server claim failed:', err)
+      return { success: false, message: 'Server unavailable — try again later' }
+    }
+
+    // Server confirmed — now apply to local state for instant UI update
     const player = usePlayerStore.getState()
     if (reward.money) player.earnMoney(reward.money)
     if (reward.bitcoin) {
@@ -116,13 +127,6 @@ export const useDailyRewardStore = create<DailyRewardState>((set, get) => ({
       lastClaimedAt: Date.now(),
       showPopup: false,
     })
-
-    // Try API as best-effort (fire-and-forget)
-    try {
-      await claimDailyReward()
-    } catch {
-      // API unavailable — rewards already applied client-side
-    }
 
     return { success: true, message: `Claimed Day ${rewardIndex + 1} reward!`, reward }
   },

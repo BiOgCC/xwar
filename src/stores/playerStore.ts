@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { useInventoryStore } from './inventoryStore'
 import { useSkillsStore } from './skillsStore'
 import { useSpecializationStore } from './specializationStore'
-import { useWarCardsStore } from './warCardsStore'
 import { rateLimiter, validateEarn, validateSpend, logSuspicion } from '../engine/AntiExploit'
 import { applyCatchUpXP } from '../engine/catchup'
 import { useWorldStore } from './worldStore'
@@ -37,6 +36,7 @@ export function getMilitaryRank(level: number): { rank: MilitaryRank; label: str
 export { RANK_TABLE }
 
 export interface PlayerState {
+  id: string
   name: string
   role: PlayerRole
   rank: number
@@ -168,6 +168,7 @@ function xpForLevel(level: number): number {
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
+  id: '',
   name: 'Commander_X',
   role: 'military',
   rank: 12,
@@ -470,18 +471,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     // Record damage for specialization XP
     useSpecializationStore.getState().recordDamage(finalDamage)
     useAllianceStore.getState().contributeIdeologyXP(1)
-    // War Cards: check damage milestones + single-hit record + weekly tracking
-    const newState = get()
-    const wc = useWarCardsStore.getState()
-    wc.addWeeklyDamage(newState.name, finalDamage)
-    wc.checkSingleHitRecord(newState.name, newState.name, finalDamage)
-    wc.checkAndAwardCards(newState.name, newState.name, {
-      totalDamageDone: newState.damageDone,
-      totalMoney: newState.money,
-      totalItemsProduced: newState.itemsProduced,
-      playerLevel: newState.level,
-      singleHitDamage: finalDamage,
-    })
     // Persist attack to backend (fire-and-forget)
     import('../api/client').then(({ attackApi }) => attackApi().catch(() => {}))
     // Research RP contribution — fight = +3 RP (fire-and-forget)
@@ -548,16 +537,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set((s) => ({ money: s.money + finalAmount }))
     // Track in economy ledger
     if (_econFlowHook) _econFlowHook('player_earn', finalAmount, 'created', 'money')
-    // War Cards: check money milestones
-    const s = get()
-    const wc = useWarCardsStore.getState()
-    wc.addWeeklyMoney(s.name, amount)
-    wc.checkAndAwardCards(s.name, s.name, {
-      totalDamageDone: s.damageDone,
-      totalMoney: s.money,
-      totalItemsProduced: s.itemsProduced,
-      playerLevel: s.level,
-    })
   },
 
   gainXP: (amount) =>
@@ -725,21 +704,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   checkShameCards: () => {
-    const s = get()
-    useWarCardsStore.getState().checkAndAwardCards(s.name, s.name, {
-      totalDamageDone: s.damageDone,
-      totalMoney: s.money,
-      totalItemsProduced: s.itemsProduced,
-      playerLevel: s.level,
-      muteCount: s.muteCount,
-      deathCount: s.deathCount,
-      battlesLost: s.battlesLost,
-      totalCasinoLosses: s.totalCasinoLosses,
-      bankruptcyCount: s.bankruptcyCount,
-      countrySwitches: s.countrySwitches,
-      casinoSpins: s.casinoSpins,
-      itemsDestroyed: s.itemsDestroyed,
-    })
+    // Shame cards are now evaluated server-side via warCardEmitter
+    // No client-side evaluation needed
   },
 
   fetchPlayer: async () => {
@@ -750,6 +716,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
       // Remap snake_case API fields to camelCase store fields
       const patch: Partial<PlayerState> = {
+        id: res.id ?? '',
         name: res.name,
         role: res.role,
         countryCode: res.countryCode ?? res.country_code,

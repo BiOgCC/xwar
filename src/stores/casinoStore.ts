@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { usePlayerStore } from './playerStore'
 import { useWorldStore } from './worldStore'
 import { useNewsStore } from './newsStore'
-import { useInventoryStore, generateStats, WEAPON_SUBTYPES } from './inventoryStore'
+import { useInventoryStore, WEAPON_SUBTYPES } from './inventoryStore'
 import type { EquipTier, EquipSlot, EquipItem } from './inventoryStore'
 
 /* ══════════════════════════════════════════════

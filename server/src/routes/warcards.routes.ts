@@ -63,31 +63,22 @@ router.get('/:id', async (req, res) => {
   }
 })
 
-// ── POST /api/warcards/mint/:id ── Web3 Minting placeholder
-router.post('/mint/:id', async (req, res) => {
+// ── GET /api/warcards/export ── Generate shareable card collection text
+router.get('/export', async (req, res) => {
   try {
     const { playerId } = (req as AuthRequest).player!
-    const cardId = req.params.id
+    const [player] = await db.select({ name: players.name }).from(players).where(eq(players.id, playerId)).limit(1)
+    const myCards = await db.select().from(warCards).where(eq(warCards.playerId, playerId))
 
-    const [card] = await db.select().from(warCards).where(eq(warCards.id, cardId)).limit(1)
-
-    if (!card || card.playerId !== playerId) {
-      res.status(404).json({ error: 'Card not found or not owned by you' })
-      return
+    const playerName = player?.name || 'Unknown'
+    const lines = [`🃏 ${playerName}'s War Cards (${myCards.length})`]
+    for (const card of myCards) {
+      lines.push(`  ✦ ${card.cardDefId} — earned ${new Date(card.earnedAt!).toLocaleDateString()}`)
     }
 
-    if (card.minted) {
-      res.status(400).json({ error: 'Card already minted on-chain' })
-      return
-    }
-
-    // Mock Web3 mint transaction logic here
-    await db.update(warCards).set({ minted: true }).where(eq(warCards.id, cardId))
-
-    res.json({ success: true, message: 'Successfully minted card to blockchain' })
-
+    res.json({ success: true, text: lines.join('\n') })
   } catch (err) {
-    console.error('[WAR CARDS] Mint error:', err)
+    console.error('[WAR CARDS] Export error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

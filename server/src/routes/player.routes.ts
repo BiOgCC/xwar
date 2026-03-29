@@ -1,10 +1,11 @@
 import { Router } from 'express'
-import { eq, sql } from 'drizzle-orm'
+import { eq, sql, inArray } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import { players, playerSkills, playerSpecialization, items, governments, countries } from '../db/schema.js'
 import { v4 as uuidv4 } from 'uuid'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { calculateAttackDamage, grantXP, spendMoney, earnMoney, consumeBar } from '../services/player.service.js'
+import { rollItemOfTier } from '../services/inventory.service.js'
 
 const router = Router()
 
@@ -74,6 +75,7 @@ router.get('/country', async (req, res) => {
 
     const [player] = await db.select({
       id: players.id,
+      name: players.name,
       countryCode: players.countryCode,
     }).from(players).where(eq(players.id, playerId)).limit(1)
 
@@ -88,7 +90,7 @@ router.get('/country', async (req, res) => {
     const [gov] = await db.select().from(governments)
       .where(eq(governments.countryCode, countryCode)).limit(1)
 
-    // Determine this player's gov role
+    // Determine this player's gov role (gov columns now store player UUIDs)
     let govRole: string = 'citizen'
     if (gov) {
       if (gov.president === playerId) govRole = 'president'
@@ -96,8 +98,7 @@ router.get('/country', async (req, res) => {
       else if (gov.defenseMinister === playerId) govRole = 'defense_minister'
       else if (gov.ecoMinister === playerId) govRole = 'eco_minister'
       else {
-        const congressRaw = gov.congress as unknown
-        const congress: string[] = Array.isArray(congressRaw) ? congressRaw : []
+        const congress: string[] = Array.isArray(gov.congress) ? (gov.congress as string[]) : []
         if (congress.includes(playerId)) govRole = 'congress_member'
       }
     }
@@ -108,15 +109,31 @@ router.get('/country', async (req, res) => {
     )
     const population = Number((countResult as any)?.count ?? 0)
 
+    // Resolve names for display (batch lookup the UUIDs)
+    const officialIds = [gov?.president, gov?.vicePresident, gov?.defenseMinister, gov?.ecoMinister].filter(Boolean) as string[]
+    const congressIds: string[] = Array.isArray(gov?.congress) ? (gov!.congress as string[]) : []
+    const allIds = [...new Set([...officialIds, ...congressIds])]
+    const nameMap: Record<string, string> = {}
+    if (allIds.length > 0) {
+      const nameRows = await db.select({ id: players.id, name: players.name }).from(players).where(inArray(players.id, allIds))
+      for (const r of nameRows) { if (r.name) nameMap[r.id] = r.name }
+    }
+
     res.json({
       countryCode,
       govRole,
       population,
       government: gov ? {
         presidentId: gov.president,
+        presidentName: gov.president ? (nameMap[gov.president] || null) : null,
         vicePresidentId: gov.vicePresident,
+        vicePresidentName: gov.vicePresident ? (nameMap[gov.vicePresident] || null) : null,
         defenseMinisterId: gov.defenseMinister,
+        defenseMinisterName: gov.defenseMinister ? (nameMap[gov.defenseMinister] || null) : null,
         ecoMinisterId: gov.ecoMinister,
+        ecoMinisterName: gov.ecoMinister ? (nameMap[gov.ecoMinister] || null) : null,
+        congressIds,
+        congressNames: congressIds.map(id => nameMap[id] || id),
       } : null,
     })
   } catch (err) {
@@ -457,30 +474,12 @@ router.post('/daily-reward', async (req, res) => {
       updates.bitcoin = (player.bitcoin ?? 0) + 3
     } else if (newStreak === 7) {
       grantedMoney = 500_000
-      // Grant T5 Item
-      const slots = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots'] as const
-      const slot = slots[Math.floor(Math.random() * slots.length)]
-      const category = slot === 'weapon' ? 'weapon' : 'armor'
-      
-      const WEAPON_SUBTYPES = ['assault_rifle', 'sniper', 'shotgun', 'smg', 'lmg', 'pistol', 'melee']
-      const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[Math.floor(Math.random() * WEAPON_SUBTYPES.length)] : null
-
-      // Simplified stats for server generation (client can format it)
-      const newDmg = slot === 'weapon' ? 200 + Math.floor(Math.random() * 50) : 0
-      const newArmor = slot !== 'weapon' ? 40 + Math.floor(Math.random() * 20) : 0
-
+      // Grant T5 Item using canonical item generation
+      const rewardItem = rollItemOfTier('t5', playerId)
       await db.insert(items).values({
         id: uuidv4(),
-        ownerId: playerId,
-        name: `🎁 Daily ${tierText(slot)}`,
-        slot,
-        category,
-        tier: 't5',
-        weaponSubtype: subtype,
-        stats: { damage: newDmg, armor: newArmor },
-        equipped: false,
-        durability: '100',
-        location: 'inventory'
+        ...rewardItem,
+        name: `🎁 Daily ${rewardItem.name}`,
       })
     }
 

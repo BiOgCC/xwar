@@ -135,12 +135,12 @@ router.post('/select', requireAuth as any, validate(selectSchema), async (req, r
 
     // Auto-assign president if country has none and player belongs to this country
     if (!gov.president && player.countryCode === countryCode) {
-      await db.update(governments).set({ president: player.name }).where(eq(governments.countryCode, countryCode))
-      gov.president = player.name
+      await db.update(governments).set({ president: playerId }).where(eq(governments.countryCode, countryCode))
+      gov.president = playerId
     }
 
-    if ((gov.president || '').toLowerCase() !== (player.name || '').toLowerCase()) {
-      console.warn(`[RESEARCH] President auth failed: gov.president="${gov.president}" vs player.name="${player.name}" (id=${playerId}, country=${countryCode})`)
+    if (gov.president !== playerId) {
+      console.warn(`[RESEARCH] President auth failed: gov.president="${gov.president}" vs playerId="${playerId}" (country=${countryCode})`)
       res.status(403).json({ error: 'Only the president can select research.' }); return
     }
     if (player.countryCode !== countryCode) {

@@ -196,6 +196,8 @@ const WEEK_DURATION = 7 * 24 * 60 * 60 * 1000
 const SERVER_EPOCH = new Date('2026-01-01').getTime()
 const currentWeek = Math.floor((Date.now() - SERVER_EPOCH) / WEEK_DURATION) + 1
 
+import { api } from '../api/client'
+
 export const usePrestigeStore = create<PrestigeState>((set, get) => {
   return {
     currentWeek,
@@ -215,120 +217,36 @@ export const usePrestigeStore = create<PrestigeState>((set, get) => {
     })),
 
     createBlueprint: (playerId, playerName) => {
-      const state = get()
-      const pp = state.prestigePlayers.find(p => p.playerId === playerId && p.weekNumber === state.currentWeek)
-      if (!pp) return { success: false, message: 'You do not have Prestige status this week.' }
-      if (pp.blueprintCreated) return { success: false, message: 'You already created a blueprint this week.' }
+      // Fire API call, update state from response
+      api.post('/prestige/blueprint/create', {}).then((res: any) => {
+        if (res.success && res.item) {
+          // Refresh items from backend
+          get().fetchItems()
+          get().fetchRankings()
+        }
+      }).catch(() => {})
 
-      // Badges of Honor cost
+      // Optimistic: check locally if player has enough badges
       const player = usePlayerStore.getState()
       if (player.badgesOfHonor < PRESTIGE_COSTS.createBlueprint) {
-        return { success: false, message: `Need ${PRESTIGE_COSTS.createBlueprint} Badges of Honor to create a blueprint.` }
+        return { success: false, message: `Need ${PRESTIGE_COSTS.createBlueprint} Badges of Honor.` }
       }
-      player.spendBadgesOfHonor(PRESTIGE_COSTS.createBlueprint)
-
-      const isMilitary = pp.category === 'military'
-      const itemNames = isMilitary ? MILITARY_ITEM_NAMES : ECONOMIC_ITEM_NAMES
-      const itemTypes = isMilitary ? MILITARY_ITEM_TYPES : ECONOMIC_ITEM_TYPES
-      const stats = isMilitary ? generateMilitaryStats() : generateEconomicStats()
-
-      const blueprint: PrestigeBlueprint = {
-        blueprintId: `pbp_${++bpCounter}_${Date.now()}`,
-        creatorPlayerId: playerId,
-        creatorPlayerName: playerName,
-        weekNumber: state.currentWeek,
-        itemName: itemNames[Math.floor(Math.random() * itemNames.length)],
-        itemType: itemTypes[Math.floor(Math.random() * itemTypes.length)],
-        category: pp.category,
-        bonusStats: stats,
-        tradable: true,
-        singleUse: true,
-        listedOnMarket: false,
-        marketPrice: 0,
-        createdAt: Date.now(),
-      }
-
-      set({
-        blueprints: [...state.blueprints, blueprint],
-        prestigePlayers: state.prestigePlayers.map(p =>
-          p.playerId === playerId && p.weekNumber === state.currentWeek
-            ? { ...p, blueprintCreated: true } : p
-        ),
-      })
-
-      return { success: true, message: `Blueprint "${blueprint.itemName}" created!`, blueprint }
+      return { success: true, message: 'Creating prestige item...' }
     },
 
     craftItem: (blueprintId, crafterId, crafterName) => {
-      const state = get()
-      const bp = state.blueprints.find(b => b.blueprintId === blueprintId)
-      if (!bp) return { success: false, message: 'Blueprint not found.' }
-
-      // Badges of Honor cost
-      const player = usePlayerStore.getState()
-      if (player.badgesOfHonor < PRESTIGE_COSTS.craftItem) {
-        return { success: false, message: `Need ${PRESTIGE_COSTS.craftItem} Badges of Honor to craft a prestige item.` }
-      }
-      player.spendBadgesOfHonor(PRESTIGE_COSTS.craftItem)
-
-      // Check player doesn't already have a prestige item equipped
-      const existingEquipped = state.items.find(i => i.craftedBy === crafterId && i.equipped)
-      // They can craft but only equip one at a time — no restriction on crafting itself
-
-      const item: PrestigeItem = {
-        itemId: `pitem_${++itemCounter}_${Date.now()}`,
-        blueprintId: bp.blueprintId,
-        craftedBy: crafterId,
-        craftedByName: crafterName,
-        inventedBy: bp.creatorPlayerId,
-        inventedByName: bp.creatorPlayerName,
-        itemName: bp.itemName,
-        itemType: bp.itemType,
-        category: bp.category,
-        bonusStats: { ...bp.bonusStats },
-        durability: 'infinite',
-        equipped: false,
-        serverWeek: bp.weekNumber,
-        createdAt: Date.now(),
-      }
-
-      // Destroy blueprint (single use)
-      set({
-        blueprints: state.blueprints.filter(b => b.blueprintId !== blueprintId),
-        items: [...state.items, item],
-      })
-
-      return { success: true, message: `Crafted "${item.itemName}" — eternal durability!`, item }
+      // In alpha, crafting is merged into blueprint creation on the backend
+      return { success: false, message: 'Use Create Blueprint to directly create prestige items.' }
     },
 
     listBlueprintOnMarket: (blueprintId, price) => {
-      const state = get()
-      const bp = state.blueprints.find(b => b.blueprintId === blueprintId)
-      if (!bp || !bp.tradable) return false
-
-      set({
-        blueprints: state.blueprints.map(b =>
-          b.blueprintId === blueprintId ? { ...b, listedOnMarket: true, marketPrice: price } : b
-        ),
-      })
-      return true
+      // Not available in alpha
+      return false
     },
 
     buyBlueprint: (blueprintId, buyerId) => {
-      const state = get()
-      const bp = state.blueprints.find(b => b.blueprintId === blueprintId && b.listedOnMarket)
-      if (!bp) return { success: false, message: 'Blueprint not available.' }
-      if (bp.creatorPlayerId === buyerId) return { success: false, message: 'Cannot buy your own blueprint.' }
-
-      // Transfer ownership
-      set({
-        blueprints: state.blueprints.map(b =>
-          b.blueprintId === blueprintId
-            ? { ...b, listedOnMarket: false, creatorPlayerId: buyerId } : b
-        ),
-      })
-
-      return { success: true, message: `Purchased "${bp.itemName}" blueprint!` }
+      // Not available in alpha
+      return { success: false, message: 'Prestige market not available in alpha.' }
     },
 
     equipPrestigeItem: (itemId) => set((state) => ({

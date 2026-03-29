@@ -45,29 +45,38 @@ export async function fullBarRefill() {
 
 /**
  * Country auto-income — runs every 8 hours.
- * Generates income for every country based on population + infrastructure.
+ * Generates income for every country based on ACTIVE PLAYER COUNT + infrastructure.
  * Income formula:
- *   baseMoney = population * 0.1
+ *   baseMoney = activePlayerCount * 5000
  *   infraMultiplier = 1 + port*0.05 + airport*0.05 + milBase*0.03 + bunker*0.02
  *   fund.money += floor(baseMoney * infraMultiplier)
+ *
+ * Only countries with real players receive income.
  */
 export async function countryAutoIncome() {
   await db.execute(sql`
-    UPDATE countries SET
+    UPDATE countries c SET
       fund = jsonb_set(
-        fund,
+        c.fund,
         '{money}',
         to_jsonb(
-          COALESCE((fund->>'money')::bigint, 0) +
+          COALESCE((c.fund->>'money')::bigint, 0) +
           FLOOR(
-            population * 0.1 *
-            (1 + port_level * 0.05 + airport_level * 0.05 + military_base_level * 0.03 + bunker_level * 0.02)
+            pc.player_count * 5000 *
+            (1 + c.port_level * 0.05 + c.airport_level * 0.05 + c.military_base_level * 0.03 + c.bunker_level * 0.02)
           )::bigint
         )
       )
-    WHERE population > 0
+    FROM (
+      SELECT country_code, COUNT(*)::int AS player_count
+      FROM players
+      WHERE country_code IS NOT NULL
+      GROUP BY country_code
+    ) pc
+    WHERE c.code = pc.country_code
+      AND pc.player_count > 0
   `)
-  logger.info('[DAILY] Country auto-income distributed.')
+  logger.info('[DAILY] Country auto-income distributed (based on active player count).')
 
   // Emit fund:update to each country room
   const emit = await getEmitter()
@@ -194,7 +203,7 @@ export async function tallyElections() {
     allCandidates.sort((a, b) => b.totalWeightedVotes - a.totalWeightedVotes || b.voterIds.length - a.voterIds.length)
 
     const winner = allCandidates.length > 0 ? allCandidates[0] : null
-    const congressMembers = allCandidates.slice(1, 6).map(c => c.name)
+    const congressMembers = allCandidates.slice(1, 6).map(c => c.id)  // store UUIDs for congress
 
     const rankings = allCandidates.map(c => ({
       id: c.id, name: c.name, totalWeightedVotes: c.totalWeightedVotes, voterCount: c.voterIds.length,
@@ -210,8 +219,9 @@ export async function tallyElections() {
       candidates: [], votes: [], lastResult,
     }
 
-    // Update president, congress, and election state
-    const newPresident = winner?.name || gov.president
+    // Update president (UUID), congress (UUID[]), and election state
+    const newPresident = winner?.id || gov.president
+    const newPresidentName = winner?.name || 'Unknown'
     await db.execute(sql`
       UPDATE governments SET
         president = ${newPresident},
@@ -220,26 +230,26 @@ export async function tallyElections() {
       WHERE country_code = ${gov.country_code}
     `)
 
-    // Insert news event
+    // Insert news event (use display name)
     await db.execute(sql`
       INSERT INTO news_events (type, headline, country_code, data)
       VALUES (
         'election_result',
-        ${`🗳️ ${newPresident} elected president of ${gov.country_code}! Congress: ${congressMembers.join(', ') || 'none'}`},
+        ${`🗳️ ${newPresidentName} elected president of ${gov.country_code}! Congress: ${allCandidates.slice(1, 6).map(c => c.name).join(', ') || 'none'}`},
         ${gov.country_code},
-        ${JSON.stringify({ winner: newPresident, congress: congressMembers, rankings, totalVotes: votes.length })}::jsonb
+        ${JSON.stringify({ winner: newPresidentName, winnerId: newPresident, congress: congressMembers, rankings, totalVotes: votes.length })}::jsonb
       )
     `)
 
     // Socket.IO broadcast
     const emit = await getEmitter()
     if (emit) {
-      emit('election:result', { winner: newPresident, congress: congressMembers, countryCode: gov.country_code, rankings }, `country:${gov.country_code}`)
-      emit('news', { type: 'election_result', headline: `🗳️ ${newPresident} elected president of ${gov.country_code}!`, countryCode: gov.country_code })
+      emit('election:result', { winner: newPresidentName, winnerId: newPresident, congress: congressMembers, countryCode: gov.country_code, rankings }, `country:${gov.country_code}`)
+      emit('news', { type: 'election_result', headline: `🗳️ ${newPresidentName} elected president of ${gov.country_code}!`, countryCode: gov.country_code })
     }
 
     resolved++
-    logger.info(`[ELECTION] ${gov.country_code}: ${newPresident} elected president. Congress: [${congressMembers.join(', ')}]`)
+    logger.info(`[ELECTION] ${gov.country_code}: ${newPresidentName} (${newPresident}) elected president. Congress: [${congressMembers.join(', ')}]`)
   }
 
   if (resolved > 0) {

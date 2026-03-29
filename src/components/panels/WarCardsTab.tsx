@@ -195,7 +195,7 @@ function WarCard({ def, earned }: { def: WarCardDefinition; earned?: EarnedWarCa
         )}
       </div>
 
-      {/* ─── Bottom: Rarity badge + NFT status ─── */}
+      {/* ─── Bottom: Rarity badge ─── */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '3px 2px 0',
@@ -207,7 +207,6 @@ function WarCard({ def, earned }: { def: WarCardDefinition; earned?: EarnedWarCa
           {rarMeta.label.toUpperCase()}
         </span>
 
-        {/* Stats badge (like the 0/0 in the template) */}
         <div style={{
           fontSize: '7px', fontWeight: 900, padding: '1px 6px',
           background: isOwned ? `${frame.border}15` : 'rgba(255,255,255,0.03)',
@@ -215,9 +214,7 @@ function WarCard({ def, earned }: { def: WarCardDefinition; earned?: EarnedWarCa
           borderRadius: '3px',
           color: isOwned ? frame.border : '#334155',
         }}>
-          {earned?.nft?.mintState === 'minted' ? '⛓ NFT' :
-           earned?.nft?.mintState === 'pending' ? '⏳' :
-           earned ? '◇ MINT' : '—'}
+          {isOwned ? '✦ EARNED' : '—'}
         </div>
       </div>
 
@@ -243,13 +240,14 @@ export default function WarCardsTab() {
   const ui = useUIStore()
   const [subTab, setSubTab] = useState<SubTab>('collection')
   const [filterCat, setFilterCat] = useState<CardCategory | 'all'>('all')
+  const [exported, setExported] = useState(false)
 
   useEffect(() => {
     cards.fetchMyCards()
     cards.fetchAllCards()
   }, [])
 
-  const myCards = cards.getPlayerCards(player.name)
+  const myCards = cards.getPlayerCards(player.id)
   const hallOfFame = cards.getHallOfFame()
   const leaderboard = cards.getLeaderboard()
   const allDefs = cards.cardDefinitions
@@ -257,9 +255,15 @@ export default function WarCardsTab() {
   const filteredDefs = filterCat === 'all' ? allDefs : allDefs.filter(d => d.category === filterCat)
   const sortedDefs = [...filteredDefs].sort((a, b) => RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity))
 
-  const handleMint = async (earnedCardId: string) => {
-    const result = await cards.requestMint(earnedCardId, 'polygon')
-    ui.addFloatingText(result.message, window.innerWidth / 2, window.innerHeight / 2, result.success ? '#22d38a' : '#ef4444')
+  const handleExport = () => {
+    const text = cards.exportCollection(player.name)
+    navigator.clipboard.writeText(text).then(() => {
+      setExported(true)
+      ui.addFloatingText('📋 Copied to clipboard!', window.innerWidth / 2, window.innerHeight / 2, '#22d38a')
+      setTimeout(() => setExported(false), 2000)
+    }).catch(() => {
+      ui.addFloatingText('Failed to copy', window.innerWidth / 2, window.innerHeight / 2, '#ef4444')
+    })
   }
 
   const subTabs: { id: SubTab; label: string }[] = [
@@ -299,42 +303,48 @@ export default function WarCardsTab() {
 
       {/* ====== COLLECTION ====== */}
       {subTab === 'collection' && (
-        myCards.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '30px 10px', color: '#334155' }}>
-            <div style={{ fontSize: '32px', marginBottom: '8px', opacity: 0.3 }}>🃏</div>
-            <div style={{ fontSize: '10px' }}>No cards earned yet.</div>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            {myCards
-              .sort((a, b) => {
-                const da = cards.getCardDef(a.cardDefId), db = cards.getCardDef(b.cardDefId)
-                if (!da || !db) return 0
-                return RARITY_ORDER.indexOf(da.rarity) - RARITY_ORDER.indexOf(db.rarity)
-              })
-              .map(earned => {
-                const def = cards.getCardDef(earned.cardDefId)
-                if (!def) return null
-                return (
-                  <div key={earned.id}>
-                    <WarCard def={def} earned={earned} />
-                    {earned.nft.mintState === 'unminted' && (
-                      <button
-                        onClick={() => handleMint(earned.id)}
-                        style={{
-                          width: '100%', marginTop: '3px', padding: '4px', fontSize: '7px', fontWeight: 700,
-                          background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)',
-                          borderRadius: '3px', color: '#a855f7', cursor: 'pointer', letterSpacing: '0.5px',
-                        }}
-                      >
-                        ⛓ MINT AS NFT
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-          </div>
-        )
+        <>
+          {/* Export Button */}
+          <button
+            onClick={handleExport}
+            style={{
+              width: '100%', padding: '5px', fontSize: '8px', fontWeight: 700,
+              background: exported ? 'rgba(34,211,138,0.1)' : 'rgba(168,85,247,0.08)',
+              border: `1px solid ${exported ? 'rgba(34,211,138,0.3)' : 'rgba(168,85,247,0.2)'}`,
+              borderRadius: '3px',
+              color: exported ? '#22d38a' : '#a855f7',
+              cursor: 'pointer', letterSpacing: '0.5px',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {exported ? '✓ COPIED TO CLIPBOARD' : '📤 EXPORT COLLECTION (DISCORD / SHARE)'}
+          </button>
+
+          {myCards.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '30px 10px', color: '#334155' }}>
+              <div style={{ fontSize: '32px', marginBottom: '8px', opacity: 0.3 }}>🃏</div>
+              <div style={{ fontSize: '10px' }}>No cards earned yet.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {myCards
+                .sort((a, b) => {
+                  const da = cards.getCardDef(a.cardDefId), db = cards.getCardDef(b.cardDefId)
+                  if (!da || !db) return 0
+                  return RARITY_ORDER.indexOf(da.rarity) - RARITY_ORDER.indexOf(db.rarity)
+                })
+                .map(earned => {
+                  const def = cards.getCardDef(earned.cardDefId)
+                  if (!def) return null
+                  return (
+                    <div key={earned.id}>
+                      <WarCard def={def} earned={earned} />
+                    </div>
+                  )
+                })}
+            </div>
+          )}
+        </>
       )}
 
       {/* ====== ALL CARDS ====== */}
@@ -428,7 +438,7 @@ export default function WarCardsTab() {
                   <div key={entry.playerId} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     padding: '5px 6px',
-                    background: entry.playerId === player.name ? 'rgba(251,191,36,0.06)' : 'rgba(255,255,255,0.02)',
+                    background: entry.playerId === player.id ? 'rgba(251,191,36,0.06)' : 'rgba(255,255,255,0.02)',
                     borderRadius: '2px', borderLeft: `2px solid ${rc[i] || '#334155'}`,
                   }}>
                     <div>

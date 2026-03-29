@@ -13,7 +13,7 @@ import { useWorldStore } from '../stores/worldStore'
 import { useLeyLineStore } from '../stores/leyLineStore'
 import { checkTimeSanity } from '../engine/AntiExploit'
 import { wrapStoreWithIntegrityCheck } from '../engine/storeFreeze'
-import { ENABLE_DIVISIONS } from '../config/features'
+
 
 // Register economy flow hook: playerStore -> worldStore
 registerEconFlowHook((source, amount, type, resource) => {
@@ -41,10 +41,6 @@ export function useGameLoop() {
     // ── Start the clock (idempotent — safe to call multiple times) ──
     gameClock.start()
 
-    // Spawn NPC test battles on first mount (divisions only)
-    if (ENABLE_DIVISIONS) {
-      try { useBattleStore.getState().spawnNPCBattles() } catch (e) { console.warn('[NPC] spawnNPCBattles:', e) }
-    }
 
     // ── Subscribe phase handlers ──
     const unsubs: (() => void)[] = []
@@ -53,9 +49,6 @@ export function useGameLoop() {
     unsubs.push(gameClock.subscribe('combat', () => {
       // Player combat tick: ground points from manual attacks (always runs)
       try { useBattleStore.getState().processPlayerCombatTick() } catch (e) { console.warn('[Combat] processPlayerCombatTick:', e) }
-      if (ENABLE_DIVISIONS) {
-        try { useBattleStore.getState().processHOICombatTick() } catch (e) { console.warn('[Combat] processHOICombatTick:', e) }
-      }
       try { useRegionStore.getState().processRevoltTick() } catch (e) { console.warn('[Revolt] processRevoltTick:', e) }
     }))
 
@@ -70,12 +63,6 @@ export function useGameLoop() {
       } catch (e) { console.warn('[Cyber]:', e) }
     }))
 
-    // TRAINING (15s) — army training progress (divisions only)
-    if (ENABLE_DIVISIONS) {
-      unsubs.push(gameClock.subscribe('training', () => {
-        try { useArmyStore.getState().processTrainingTick() } catch (e) { console.warn('[Training]:', e) }
-      }))
-    }
 
     // GOVERNMENT (15s) — shop spawn, contract maturity
     unsubs.push(gameClock.subscribe('government', () => {
@@ -83,7 +70,6 @@ export function useGameLoop() {
         const playerCountry = usePlayerStore.getState().countryCode || 'US'
         const govStore = useGovernmentStore.getState()
         govStore.cleanExpiredListings(playerCountry)
-        if (ENABLE_DIVISIONS) govStore.spawnShopDivisions(playerCountry)
         govStore.processContractMaturity()
       } catch (e) { console.warn('[Government]:', e) }
     }))
@@ -132,24 +118,10 @@ export function useGameLoop() {
         })
       } catch (e) { console.warn('[Economy] alliance treaty:', e) }
 
-      // Daily checks: war cards, company maintenance, fund snapshot
+      // War cards: periodically refresh earned cards from backend
       try {
-        const player = usePlayerStore.getState()
         import('../stores/warCardsStore').then(m => {
-          m.useWarCardsStore.getState().checkAndAwardCards(player.name, player.name, {
-            totalDamageDone: player.damageDone,
-            totalMoney: player.money,
-            totalItemsProduced: player.itemsProduced,
-            playerLevel: player.level,
-            muteCount: player.muteCount,
-            deathCount: player.deathCount,
-            battlesLost: player.battlesLost,
-            totalCasinoLosses: player.totalCasinoLosses,
-            bankruptcyCount: player.bankruptcyCount,
-            countrySwitches: player.countrySwitches,
-            casinoSpins: player.casinoSpins,
-            itemsDestroyed: player.itemsDestroyed,
-          })
+          m.useWarCardsStore.getState().fetchMyCards()
         })
       } catch (e) { console.warn('[Economy] war cards:', e) }
 

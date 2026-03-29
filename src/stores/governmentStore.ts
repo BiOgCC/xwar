@@ -143,8 +143,8 @@ export interface GovernmentState {
   recruitEquipmentFromMarket: (countryCode: string, orderId: string) => { success: boolean; message: string }
   buyCasesForCountry: (countryCode: string, quantity: number) => { success: boolean; message: string }
   appointRole: (countryCode: string, targetId: string, role: 'vicepresident' | 'minister' | 'congress' | 'citizen') => { success: boolean; message: string }
-  appointPosition: (countryCode: string, position: 'vicePresident' | 'defenseMinister' | 'ecoMinister', playerName: string | null) => Promise<{ success: boolean; message: string }>
-  appointCongressMember: (countryCode: string, playerName: string, action: 'add' | 'remove') => Promise<{ success: boolean; message: string }>
+  appointPosition: (countryCode: string, position: 'vicePresident' | 'defenseMinister' | 'ecoMinister', targetPlayerId: string | null) => Promise<{ success: boolean; message: string }>
+  appointCongressMember: (countryCode: string, targetPlayerId: string, action: 'add' | 'remove') => Promise<{ success: boolean; message: string }>
   // Revolt system
   canTriggerRevolt: (countryCode: string, playerId: string) => boolean
   // Citizen dividend
@@ -745,13 +745,13 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     const gov = get().governments[countryCode]
     if (!country || !gov) return []
 
-    const playerCount = gov.citizens.length
+    const playerCount = (gov.citizens || []).length
     const halfPlayers = Math.max(1, Math.floor(playerCount / 2))
 
     return Object.entries(INFRA_DIVISION_MAP).map(([category, info]) => {
       const infraLevel = info.getLevel(country)
       const maxSlots = infraLevel * halfPlayers
-      const currentSlots = gov.divisionShop.filter(l => info.types.includes(l.divisionType)).length
+      const currentSlots = (gov.divisionShop || []).filter(l => info.types.includes(l.divisionType)).length
       return { category, maxSlots, currentSlots }
     })
   },
@@ -763,10 +763,10 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     const country = useWorldStore.getState().countries.find(c => c.code === countryCode)
     if (!country) return
 
-    const playerCount = gov.citizens.length
+    const playerCount = (gov.citizens || []).length
     const halfPlayers = Math.max(1, Math.floor(playerCount / 2))
     const now = Date.now()
-    let newListings = [...gov.divisionShop]
+    let newListings = [...(gov.divisionShop || [])]
     let changed = false
 
     for (const [, info] of Object.entries(INFRA_DIVISION_MAP)) {
@@ -889,8 +889,8 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     if (!gov) return
 
     const now = Date.now()
-    const filtered = gov.divisionShop.filter(l => now < l.expiresAt)
-    if (filtered.length !== gov.divisionShop.length) {
+    const filtered = (gov.divisionShop || []).filter(l => now < l.expiresAt)
+    if (filtered.length !== (gov.divisionShop || []).length) {
       set({
         governments: {
           ...state.governments,
@@ -1015,7 +1015,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     for (const [, info] of Object.entries(INFRA_DIVISION_MAP)) {
       const infraLevel = info.getLevel(country)
       const maxSlots = infraLevel * halfPlayers
-      const currentSlots = gov.divisionShop.filter(l => info.types.includes(l.divisionType)).length
+      const currentSlots = (gov.divisionShop || []).filter(l => info.types.includes(l.divisionType)).length
       if (currentSlots < maxSlots) {
         candidates.push({ types: info.types, emptySlots: maxSlots - currentSlots })
       }
@@ -1666,9 +1666,9 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     worldState.recordEconFlow('citizen_dividend_payout', perCitizen, 'created')
   },
 
-  appointPosition: async (countryCode, position, playerName) => {
+  appointPosition: async (countryCode, position, targetPlayerId) => {
     try {
-      const res: any = await api.post('/gov/appoint', { countryCode, position, playerName })
+      const res: any = await api.post('/gov/appoint', { countryCode, position, targetPlayerId })
       // Update local state immediately
       set(s => {
         const gov = s.governments[countryCode]
@@ -1676,7 +1676,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
         return {
           governments: {
             ...s.governments,
-            [countryCode]: { ...gov, [position]: playerName }
+            [countryCode]: { ...gov, [position]: targetPlayerId }
           }
         }
       })
@@ -1686,9 +1686,9 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     }
   },
 
-  appointCongressMember: async (countryCode, playerName, action) => {
+  appointCongressMember: async (countryCode, targetPlayerId, action) => {
     try {
-      const res: any = await api.post('/gov/appoint-congress', { countryCode, playerName, action })
+      const res: any = await api.post('/gov/appoint-congress', { countryCode, targetPlayerId, action })
       // Update local congress list from response
       if (res.congress) {
         set(s => {

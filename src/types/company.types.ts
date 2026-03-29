@@ -19,6 +19,8 @@ export interface Company {
   productionMax: number
   location: string
   disabledUntil?: number
+  createdAt?: string | number
+  oilStarvedSince?: string | number | null
 }
 
 export interface CompanyTemplate {

@@ -12,6 +12,42 @@ export type { CompanyType, Company, CompanyTemplate, DepositEvent, JobListing, C
 // Employment tax rate (10%)
 const TAX_RATE = 0.10
 
+// ── Oil Upkeep per company level (mirrors server values) ──
+export const OIL_UPKEEP_PER_LEVEL: Record<number, { oilCost: number; countryTax: number }> = {
+  1: { oilCost: 5,   countryTax: 1 },
+  2: { oilCost: 10,  countryTax: 2 },
+  3: { oilCost: 18,  countryTax: 4 },
+  4: { oilCost: 30,  countryTax: 6 },
+  5: { oilCost: 50,  countryTax: 10 },
+  6: { oilCost: 80,  countryTax: 16 },
+  7: { oilCost: 120, countryTax: 24 },
+}
+
+/** Get the oil upkeep cost for a company level */
+export function getOilUpkeep(level: number): { oilCost: number; countryTax: number } {
+  return OIL_UPKEEP_PER_LEVEL[level] || OIL_UPKEEP_PER_LEVEL[7]
+}
+
+/** Get starvation status for a company */
+export function getStarvationStatus(oilStarvedSince: string | number | null | undefined): {
+  isStarved: boolean
+  multiplier: number
+  label: string
+  color: string
+  hoursLeft: number
+} {
+  if (!oilStarvedSince) return { isStarved: false, multiplier: 1.0, label: 'OK', color: '#22d38a', hoursLeft: 0 }
+  const starvedMs = Date.now() - new Date(oilStarvedSince).getTime()
+  const hoursStarved = starvedMs / (60 * 60 * 1000)
+  if (hoursStarved < 24) {
+    return { isStarved: true, multiplier: 0.5, label: '50% PROD', color: '#f59e0b', hoursLeft: Math.ceil(24 - hoursStarved) }
+  }
+  if (hoursStarved < 72) {
+    return { isStarved: true, multiplier: 0.25, label: '25% PROD', color: '#ef4444', hoursLeft: Math.ceil(72 - hoursStarved) }
+  }
+  return { isStarved: true, multiplier: 0, label: 'HALTED', color: '#dc2626', hoursLeft: 0 }
+}
+
 // Map company types to deposit types for bonus matching
 const COMPANY_DEPOSIT_MAP: Partial<Record<CompanyType, DepositType>> = {
   wheat_farm: 'wheat',
@@ -251,13 +287,10 @@ export interface CompanyState {
   processMaintenanceTick: () => void
 }
 
-let companyCounter = 2
+let companyCounter = 0
 
 export const useCompanyStore = create<CompanyState>((set, get) => ({
-  companies: [
-    { id: 'comp-1', type: 'bitcoin_miner', level: 1, autoProduction: true, productionProgress: 0, productionMax: 100, location: 'US' },
-    { id: 'comp-2', type: 'wheat_farm', level: 1, autoProduction: true, productionProgress: 0, productionMax: 80, location: 'US' },
-  ],
+  companies: [],
 
   deposits: [],
   // Only player-posted jobs appear here — no NPC employers
@@ -300,7 +333,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const newComp: Company = (res && res.success && res.company)
       ? res.company
       : {
-          id: `comp-${++companyCounter}-${Date.now()}`,
+          id: crypto.randomUUID(),
           type,
           level: 1,
           autoProduction: false,
@@ -407,10 +440,10 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       return { message: error.message || 'Enterprise failed.', type: 'error' }
     }
 
-    if (!res || !res.success) return { message: 'Enterprise failed.', type: 'error' }
+    if (!res || !res.success) return { message: res?.message || 'Enterprise failed.', type: 'error' }
 
+    // Server succeeded — now apply client-side state sync
     const player = usePlayerStore.getState()
-    if (Math.floor(player.entrepreneurship) < 10) return { message: 'Not enough enterprise points (10 required).', type: 'error' }
 
     usePlayerStore.setState((s) => ({
       entrepreneurship: Math.max(0, s.entrepreneurship - 10),
@@ -459,10 +492,14 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     const company = state.companies.find((c) => c.id === companyId)
     if (!company || company.productionProgress <= 0) return null
 
-    const res = await api.post<{ success: boolean, message?: string }>('/company/produce', { companyId }).catch((e) => e)
+    let res: any
+    try {
+      res = await api.post<{ success: boolean, message?: string }>('/company/produce', { companyId })
+    } catch (error: any) {
+      return { message: error.message || 'Production failed. Missing resources?', type: 'error' }
+    }
     if (!res || !res.success) {
-      const errorMsg = (res as any)?.response?.data?.error || res?.message || 'Production failed. Missing resources?'
-      return { message: errorMsg, type: 'error' }
+      return { message: res?.message || 'Production failed.', type: 'error' }
     }
 
     // Backend updated everything. Just fetch to re-sync!
@@ -505,13 +542,10 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
       return { message: error.message || 'Failed to work. Network error or rejected.', type: 'error' }
     }
 
-    if (!res || !res.success) return { message: 'Failed to work. Network error or rejected.', type: 'error' }
+    if (!res || !res.success) return { message: res?.message || 'Failed to work. Network error or rejected.', type: 'error' }
 
+    // Server succeeded — now apply client-side state sync
     const player = usePlayerStore.getState()
-    if (Math.floor(player.work) < 10) return { message: 'Not enough work points (10 required).', type: 'error' }
-    
-    // The backend handles money deduction, addition, taxation, and work points.
-    // We just need to sync the local player store and potentially the employer company if we own it.
     
     usePlayerStore.setState((s) => ({
       work: Math.max(0, s.work - 10),

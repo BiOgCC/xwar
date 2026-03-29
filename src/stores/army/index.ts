@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { ArmyState, Division, Army, MilitaryRankType, ArmyMember, BattleOrder } from './types'
-import { DIVISION_TEMPLATES, rollStarQuality, getEffectiveManpower, getEffectiveHealth, DEFAULT_DISTRIBUTION_INTERVAL } from './types'
+import { DIVISION_TEMPLATES, DEFAULT_DISTRIBUTION_INTERVAL } from './types'
 import { usePlayerStore, getMilitaryRank } from '../playerStore'
 import { useInventoryStore } from '../inventoryStore'
 
@@ -10,104 +10,17 @@ import { createVaultSlice } from './vault'
 import { createSalarySlice } from './salary'
 import { createQueriesSlice } from './queries'
 
-// ====== SAFE HEALTH CALC (avoids calling usePlayerStore at module eval time) ======
-
-function safeGetEffectiveHealth(template: import('./types').DivisionTemplate): number {
-  try {
-    return getEffectiveHealth(template)
-  } catch {
-    // Fallback if playerStore not ready yet
-    return Math.floor(template.healthMult * 100)
-  }
-}
-
-// ====== INITIAL MOCK DIVISION HELPER ======
-
-function makeMockDiv(
-  id: string,
-  type: import('./types').DivisionType,
-  name: string,
-  owner: string,
-  country: string,
-  exp: number,
-): Division {
-  const t = DIVISION_TEMPLATES[type]
-  const { star, modifiers } = rollStarQuality()
-  return {
-    id, type, name,
-    category: t.category, ownerId: owner, countryCode: country,
-    manpower: getEffectiveManpower(t), maxManpower: getEffectiveManpower(t),
-    health: safeGetEffectiveHealth(t), maxHealth: safeGetEffectiveHealth(t),
-    equipment: [], experience: exp,
-    status: 'ready', trainingProgress: t.trainingTime,
-    reinforcing: false, reinforceProgress: 0, recoveryTicksNeeded: 0,
-    readyAt: 0,
-    stance: 'unassigned' as const,
-    autoTrainingEnabled: false,
-    killCount: 0, battlesSurvived: 0,
-    starQuality: star, statModifiers: modifiers,
-    deployedToPMC: false,
-  }
-}
-
 let armyCounter = 0
 
 // ====== COMPOSE STORE (lazy init inside create callback) ======
 
 export const useArmyStore = create<ArmyState>((set, get) => {
-  // ── Build initial divisions lazily ──
-  const playerName = (() => { try { return usePlayerStore.getState().name || 'Commander' } catch { return 'Commander' } })()
 
+  // Start with empty state — divisions and armies are hydrated from the server
   const divs: Record<string, Division> = {}
+  const armies: Record<string, Army> = {}
 
-  // US Army
-  const usDefs: [import('./types').DivisionType, string][] = [
-    ['recon', '1st Recon "Big Red Eye"'], ['assault', '82nd Airborne'],
-    ['sniper', '101st Marksmen'], ['rpg', '10th Mountain RPG'],
-    ['jeep', '1st Fast Attack Brigade'], ['tank', '3rd Armored Brigade'],
-  ]
-  usDefs.forEach(([type, name], i) => { divs[`div_us_${i}`] = makeMockDiv(`div_us_${i}`, type, name, playerName, 'US', 20 + i * 5) })
-
-  // RU Army
-  const ruDefs: [import('./types').DivisionType, string][] = [
-    ['assault', '4th Guards Assault'], ['rpg', '20th Guards RPG'],
-    ['sniper', '150th Sniper Division'], ['tank', 'T-90 Heavy Armor'],
-  ]
-  ruDefs.forEach(([type, name], i) => { divs[`div_ru_${i}`] = makeMockDiv(`div_ru_${i}`, type, name, 'AI_Commander_Putin', 'RU', 30) })
-
-  // CN Army
-  const cnDefs: [import('./types').DivisionType, string][] = [
-    ['recon', 'PLA 1st Recon Group'], ['assault', 'PLA 2nd Assault Group'],
-    ['sniper', 'PLA 3rd Sniper Group'], ['tank', 'Type 99A Battalion'],
-    ['jet', 'J-20 Strike Wing'],
-  ]
-  cnDefs.forEach(([type, name], i) => { divs[`div_cn_${i}`] = makeMockDiv(`div_cn_${i}`, type, name, 'AI_Commander_Xi', 'CN', 25) })
-
-  initDivCounter(Object.keys(divs).length)
-
-  // ── Build initial armies ──
-  function mkArmy(id: string, name: string, commander: string, country: string, prefix: string, vault: import('./types').ArmyVault): Army {
-    const ids = Object.keys(divs).filter(k => k.startsWith(prefix))
-    return {
-      id, name, commanderId: commander, countryCode: country,
-      divisionIds: ids, deployedProvince: country,
-      members: [{ playerId: commander, role: 'general' as MilitaryRankType, joinedAt: Date.now(), contributedPower: 0, totalDamageThisPeriod: 0 }],
-      maxSquadSize: 12, vault,
-      contributions: [], activeBuffs: [], activeOrders: [],
-      deployedToBattleId: null, status: 'idle',
-      totalManpower: ids.reduce((s, did) => s + divs[did].manpower, 0),
-      totalAttack: ids.length * 100, totalDefense: ids.length * 100,
-      autoDefenseLimit: 0,
-      salaryPool: 0, splitMode: 'equal', soldierBalances: {}, distributionInterval: DEFAULT_DISTRIBUTION_INTERVAL, lastDistribution: Date.now(), lastClaimed: {},
-    }
-  }
-
-  const armies: Record<string, Army> = {
-    army_us_1: mkArmy('army_us_1', 'US Army Group Alpha', playerName, 'US', 'div_us_', { ammo: 0, jets: 0, tanks: 0, oil: 0, materialX: 0, money: 0, equipmentIds: [] }),
-    army_ru_1: mkArmy('army_ru_1', 'Russian Western Front', 'AI_Commander_Putin', 'RU', 'div_ru_', { ammo: 500, jets: 2, tanks: 3, oil: 5000, materialX: 2000, money: 100000, equipmentIds: [] }),
-    army_cn_1: mkArmy('army_cn_1', 'PLA Northern Command', 'AI_Commander_Xi', 'CN', 'div_cn_', { ammo: 600, jets: 3, tanks: 5, oil: 8000, materialX: 3000, money: 200000, equipmentIds: [] }),
-  }
-  armyCounter = Object.keys(armies).length
+  initDivCounter(0)
 
   return {
   divisions: divs,

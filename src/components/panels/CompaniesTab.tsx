@@ -10,6 +10,8 @@ import {
   COMPANY_TEMPLATES,
   getUpgradeCost,
   getLocationBonus,
+  getOilUpkeep,
+  getStarvationStatus,
   type CompanyType,
 } from '../../stores/companyStore'
 import CompanyIcon from '../companies/CompanyIcon'
@@ -240,6 +242,31 @@ export default function CompaniesTab() {
             </div>
           </div>
 
+          {/* Oil Upkeep Summary */}
+          {(() => {
+            const totalOilPerTick = companyStore.companies.reduce((sum, c) => sum + getOilUpkeep(c.level).oilCost, 0)
+            const totalCountryTax = companyStore.companies.reduce((sum, c) => sum + getOilUpkeep(c.level).countryTax, 0)
+            const playerOil = player.oil || 0
+            const ticksAffordable = totalOilPerTick > 0 ? Math.floor(playerOil / totalOilPerTick) : Infinity
+            const isLow = ticksAffordable < 6 && ticksAffordable !== Infinity // Less than 3 hours worth (6 ticks × 30min)
+            return totalOilPerTick > 0 ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+                padding: '5px 10px', margin: '0 0 6px', borderRadius: '4px', fontSize: '9px',
+                background: isLow ? 'rgba(239,68,68,0.08)' : 'rgba(168,85,247,0.06)',
+                border: `1px solid ${isLow ? 'rgba(239,68,68,0.2)' : 'rgba(168,85,247,0.15)'}`,
+              }}>
+                <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  🛢️ Total Upkeep: <strong style={{ color: isLow ? '#ef4444' : '#e2e8f0' }}>{totalOilPerTick} oil/tick</strong>
+                  <span style={{ color: '#64748b' }}>({totalCountryTax} to country)</span>
+                </span>
+                <span style={{ color: isLow ? '#ef4444' : '#22d38a', fontWeight: 700 }}>
+                  {ticksAffordable === Infinity ? '∞' : `~${ticksAffordable} ticks left`}
+                  {isLow && ' ⚠️'}
+                </span>
+              </div>
+            ) : null
+          })()}
           <div className="ctab-company-list">
             {companyStore.companies.map((company) => {
               const template = COMPANY_TEMPLATES[company.type]
@@ -250,12 +277,15 @@ export default function CompaniesTab() {
               const countryObj = worldStore.getCountry(company.location)
               const pct = Math.min(100, Math.floor(company.productionProgress / company.productionMax * 100))
               const isDisabled = company.disabledUntil && Date.now() < company.disabledUntil
+              const upkeep = getOilUpkeep(company.level)
+              const starvation = getStarvationStatus(company.oilStarvedSince)
+              const isGracePeriod = company.createdAt && (Date.now() - new Date(company.createdAt).getTime() < 24 * 60 * 60 * 1000)
 
               return (
                 <div
                   key={company.id}
                   className={`ctab-company-card ${isDisabled ? 'ctab-company-card--disabled' : ''}`}
-                  style={{ borderColor: `${template.color}35` }}
+                  style={{ borderColor: starvation.isStarved ? `${starvation.color}50` : `${template.color}35` }}
                 >
                   {/* Card Header */}
                   <div className="ctab-company-card__header" style={{ background: `linear-gradient(135deg, ${template.color}12, transparent 80%)` }}>
@@ -274,6 +304,11 @@ export default function CompaniesTab() {
                         }
                         {company.autoProduction && <span className="ctab-badge ctab-badge--amber">⚡AUTO</span>}
                         {hasActiveJob && <span className="ctab-badge" style={{ background: 'rgba(34,211,138,0.1)', color: '#22d38a' }}>📋 HIRING</span>}
+                        {starvation.isStarved && (
+                          <span className="ctab-badge" style={{ background: `${starvation.color}15`, color: starvation.color, border: `1px solid ${starvation.color}30`, fontWeight: 700 }}>
+                            ⚠️ {starvation.label}{starvation.hoursLeft > 0 ? ` (${starvation.hoursLeft}h)` : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -281,6 +316,19 @@ export default function CompaniesTab() {
                       <span className="ctab-company-card__produces">{template.produces}</span>
                       <span className="ctab-company-card__location">📍 {countryObj?.code || company.location}</span>
                     </div>
+                  </div>
+
+                  {/* Oil Upkeep Info */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '3px', margin: '0 6px', fontSize: '8px' }}>
+                    <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      🛢️ Upkeep: <span style={{ color: starvation.isStarved ? starvation.color : '#e2e8f0', fontWeight: 700 }}>{upkeep.oilCost} oil/tick</span>
+                    </span>
+                    <span style={{ color: '#64748b' }}>
+                      → <span style={{ color: '#38bdf8' }}>{upkeep.countryTax}</span> oil to country
+                    </span>
+                    {isGracePeriod && (
+                      <span style={{ color: '#22d38a', fontWeight: 700 }}>🆓 GRACE</span>
+                    )}
                   </div>
 
                   {/* Production Bar (not prospector) */}

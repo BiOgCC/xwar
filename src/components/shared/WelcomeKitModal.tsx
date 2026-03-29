@@ -10,21 +10,21 @@ import type { DivisionType } from '../../stores/army/types'
 const DIV_TYPES: DivisionType[] = ['recon', 'assault', 'sniper', 'rpg', 'jeep', 'tank', 'jet', 'warship', 'submarine']
 
 const RESOURCES = [
-  { key: 'money', label: 'Money', amount: 100_000, icon: '💰' },
-  { key: 'oil', label: 'Oil', amount: 100_000, icon: '🛢️' },
-  { key: 'materialX', label: 'Material X', amount: 100_000, icon: '⚗️' },
-  { key: 'scrap', label: 'Scrap', amount: 100_000, icon: '🔩' },
-  { key: 'bitcoin', label: 'Bitcoin', amount: 100_000, icon: '₿' },
-  { key: 'bread', label: 'Bread', amount: 100_000, icon: '🍞' },
-  { key: 'sushi', label: 'Sushi', amount: 100_000, icon: '🍣' },
-  { key: 'wagyu', label: 'Wagyu', amount: 100_000, icon: '🥩' },
-  { key: 'lootBoxes', label: 'Loot Boxes', amount: 50, icon: '📦' },
-  { key: 'militaryBoxes', label: 'Military Boxes', amount: 50, icon: '🧰' },
-  { key: 'supplyBoxes', label: 'Supply Boxes', amount: 10, icon: '📋' },
-  { key: 'badgesOfHonor', label: 'Badges', amount: 100, icon: '🏅' },
+  { key: 'money', label: 'Money', amount: 500_000, icon: '💰' },
+  { key: 'oil', label: 'Oil', amount: 5_000, icon: '🛢️' },
+  { key: 'materialX', label: 'Material X', amount: 2_000, icon: '⚗️' },
+  { key: 'scrap', label: 'Scrap', amount: 2_000, icon: '🔩' },
+  { key: 'bitcoin', label: 'Bitcoin', amount: 20, icon: '₿' },
+  { key: 'bread', label: 'Bread', amount: 50, icon: '🍞' },
+  { key: 'sushi', label: 'Sushi', amount: 30, icon: '🍣' },
+  { key: 'wagyu', label: 'Wagyu', amount: 20, icon: '🥩' },
+  { key: 'lootBoxes', label: 'Loot Boxes', amount: 5, icon: '📦' },
+  { key: 'militaryBoxes', label: 'Mil Boxes', amount: 3, icon: '🧰' },
+  { key: 'supplyBoxes', label: 'Supply Boxes', amount: 2, icon: '📋' },
+  { key: 'badgesOfHonor', label: 'Badges', amount: 15, icon: '🏅' },
 ]
 
-const XP_GRANT = 4000
+const XP_GRANT = 1000
 
 export default function WelcomeKitModal() {
   const [show, setShow] = useState(false)

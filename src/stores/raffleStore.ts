@@ -175,8 +175,11 @@ export const useRaffleStore = create<RaffleState>((set, get) => ({
     const player = usePlayerStore.getState()
     if (player.money < TICKET_PRICE) return
 
+    // ALPHA: Deduct money server-side via API (fire-and-forget)
+    import('../api/client').then(({ api }) => {
+      api.post('/casino/raffle/buy', { amount: TICKET_PRICE }).catch(() => {})
+    })
     player.spendMoney(TICKET_PRICE)
-    player.incrementCasinoSpins()
 
     const ticket: RaffleTicket = {
       id: `raffle_p_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -189,7 +192,6 @@ export const useRaffleStore = create<RaffleState>((set, get) => ({
       pot: prev.pot + TICKET_PRICE,
       playerTicketCount: prev.playerTicketCount + 1,
       totalSpent: prev.totalSpent + TICKET_PRICE,
-      // Track weekly entrant
       weeklyEntrants: prev.weeklyEntrants.includes(player.name)
         ? prev.weeklyEntrants
         : [...prev.weeklyEntrants, player.name],
@@ -297,14 +299,8 @@ export const useRaffleStore = create<RaffleState>((set, get) => ({
       if (animStep >= totalSteps) {
         if (drawAnimInterval) { clearInterval(drawAnimInterval); drawAnimInterval = null }
 
-        // Payout
-        if (winnerTicket.isPlayer) {
-          usePlayerStore.getState().earnMoney(payout)
-        }
-
-        // Treasury tax
-        const player = usePlayerStore.getState()
-        useWorldStore.getState().addTreasuryTax(player.countryCode, treasuryTax)
+        // ALPHA: No real money payout — raffle is display-only
+        // Winnings are cosmetic to avoid desync between clients
 
         // News ticker — ALWAYS announce daily raffle winner
         useNewsStore.getState().pushEvent(
@@ -362,12 +358,7 @@ export const useRaffleStore = create<RaffleState>((set, get) => ({
     const payout = Math.floor(state.weeklyJackpot * 0.90)  // 90% to winner
     const tax = state.weeklyJackpot - payout  // 10% to treasury
 
-    // Pay if player won
-    const player = usePlayerStore.getState()
-    if (winnerName === player.name) {
-      player.earnMoney(payout)
-    }
-    useWorldStore.getState().addTreasuryTax(player.countryCode, tax)
+    // ALPHA: No real money payout for weekly jackpot — display-only
 
     useNewsStore.getState().pushEvent('casino',
       `🏆🌟 WEEKLY JACKPOT: ${winnerName} WON $${payout.toLocaleString()}! (${entrants.length} entrants)`

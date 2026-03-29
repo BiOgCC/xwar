@@ -51,17 +51,6 @@ export interface WarCardDefinition {
   condition: (ctx: CardConditionContext) => boolean
 }
 
-export type NFTMintState = 'unminted' | 'pending' | 'minted' | 'failed'
-
-export interface NFTStatus {
-  mintState: NFTMintState
-  tokenId?: string
-  txHash?: string
-  network?: string
-  metadataCID?: string
-  mintedAt?: number
-}
-
 export interface EarnedWarCard {
   id: string
   cardDefId: string
@@ -71,7 +60,6 @@ export interface EarnedWarCard {
   weekNumber?: number
   recordValue?: number
   battleId?: string
-  nft: NFTStatus
 }
 
 export interface WeeklyTracking {

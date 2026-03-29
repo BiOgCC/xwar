@@ -1,9 +1,9 @@
 import { Router } from 'express'
 import { eq, and, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
-import { items } from '../db/schema.js'
+import { items, playerSkills } from '../db/schema.js'
 import { requireAuth, type AuthRequest } from '../middleware/auth.js'
-import { rollLootBoxItem, rollMilitaryBoxItem, generateWelcomeKit, generateStats, WEAPON_SUBTYPES } from '../services/inventory.service.js'
+import { rollLootBoxItem, rollMilitaryBoxItem, rollItemOfTier, generateWelcomeKit, generateStats, WEAPON_SUBTYPES } from '../services/inventory.service.js'
 import { players } from '../db/schema.js'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -97,7 +97,7 @@ router.post('/dismantle/:id', async (req, res) => {
     if (item.location !== 'inventory') { res.status(400).json({ error: 'Item not in inventory' }); return }
 
     const SCRAP_VALUES: Record<string, number> = {
-      t1: 6, t2: 18, t3: 56, t4: 162, t5: 486, t6: 1480,
+      t1: 6, t2: 18, t3: 56, t4: 162, t5: 486, t6: 1480, t7: 4500,
     }
     const scrapGain = SCRAP_VALUES[item.tier] || 6
 
@@ -272,19 +272,20 @@ router.post('/claim-welcome-kit', async (req, res) => {
     }
 
     // Grant resources
+    // Rebalanced: enough for 6 companies + 24 upgrades + 10 tactical orders
     const RESOURCE_GRANTS: Record<string, number> = {
-      money: 100_000,
-      oil: 100_000,
-      material_x: 100_000,
-      scrap: 100_000,
-      bitcoin: 100_000,
-      bread: 100_000,
-      sushi: 100_000,
-      wagyu: 100_000,
-      loot_boxes: 50,
-      military_boxes: 50,
-      supply_boxes: 10,
-      badges_of_honor: 100,
+      money: 500_000,        // 6 companies (~300k) + 24 upgrades (132k) + buffer
+      oil: 5_000,            // Starter supply for company upkeep
+      material_x: 2_000,     // Starter ammo crafting
+      scrap: 2_000,          // Starter item crafting
+      bitcoin: 20,           // 6 companies (6) + 10 tac ops (10) + buffer (4)
+      bread: 50,             // Moderate food supply
+      sushi: 30,             // Moderate food supply
+      wagyu: 20,             // Moderate food supply
+      loot_boxes: 5,         // Small starting bonus
+      military_boxes: 3,     // Small starting bonus
+      supply_boxes: 2,       // Small starting bonus
+      badges_of_honor: 15,   // 10 tac ops (10) + buffer (5)
     }
 
     // Build SET clause for resource grants
@@ -293,8 +294,8 @@ router.post('/claim-welcome-kit', async (req, res) => {
       .join(', ')
     await db.execute(sql`UPDATE players SET ${sql.raw(setClauses)}, welcome_kit_claimed = true WHERE id = ${playerId}`)
 
-    // Grant XP (update level and experience)
-    const xpGrant = 4000
+    // Grant XP → exactly 10 levels (L1→L11: 10 × 100 XP = 1000)
+    const xpGrant = 1000
     let level = player.level ?? 1
     let experience = (player.experience ?? 0) + xpGrant
     let expToNext = player.expToNext ?? 100
@@ -327,7 +328,7 @@ router.post('/claim-welcome-kit', async (req, res) => {
   }
 })
 
-// ── POST /api/inventory/craft ── Craft an item from scrap
+// ── POST /api/inventory/craft ── Craft an item from scrap + BTC
 router.post('/craft', async (req, res) => {
   try {
     const { playerId } = (req as AuthRequest).player!
@@ -339,23 +340,34 @@ router.post('/craft', async (req, res) => {
     }
 
     const SCRAP_COSTS: Record<string, number> = {
-      t1: 20, t2: 60, t3: 180, t4: 540, t5: 1620, t6: 4860, t7: 14580,
+      t1: 50, t2: 150, t3: 450, t4: 1350, t5: 4050, t6: 12150, t7: 36450,
     }
+    const BTC_COST = 1
     const cost = SCRAP_COSTS[tier]
     if (!cost) { res.status(400).json({ error: 'Invalid tier' }); return }
 
-    // Check player has scrap
+    // Check player has scrap + BTC
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
     if ((player.scrap ?? 0) < cost) {
       res.status(400).json({ error: `Not enough scrap (need ${cost}, have ${player.scrap ?? 0})` })
       return
     }
+    if ((player.bitcoin ?? 0) < BTC_COST) {
+      res.status(400).json({ error: `Not enough BTC (need ${BTC_COST})` })
+      return
+    }
 
-    // Deduct scrap
-    await db.update(players).set({
-      scrap: (player.scrap ?? 0) - cost,
-    }).where(eq(players.id, playerId))
+    // Deduct scrap + BTC atomically
+    const deductResult = await db.update(players).set({
+      scrap: sql`${players.scrap} - ${cost}`,
+      bitcoin: sql`${players.bitcoin} - ${BTC_COST}`,
+    }).where(
+      sql`${players.id} = ${playerId} AND ${players.scrap} >= ${cost} AND ${players.bitcoin} >= ${BTC_COST}`
+    ).returning()
+    if (deductResult.length === 0) {
+      res.status(400).json({ error: 'Not enough resources' }); return
+    }
 
     // Generate item using canonical stats from inventory.service.ts
     const validTier = tier as 't1' | 't2' | 't3' | 't4' | 't5' | 't6' | 't7'
@@ -369,11 +381,26 @@ router.post('/craft', async (req, res) => {
 
     const result = generateStats(category, slot, validTier, subtype as any)
 
+    // Superforging: industrialist skill gives 2% per level chance (max 20%), +9-16% all stats
+    let isSuperforged = false
+    const [skills] = await db.select().from(playerSkills).where(eq(playerSkills.playerId, playerId)).limit(1)
+    const indLevel = skills?.industrialist || 0
+    const superforgeChance = Math.min(0.20, indLevel * 0.02)
+    if (superforgeChance > 0 && Math.random() < superforgeChance) {
+      isSuperforged = true
+      const sfBonus = 1.09 + Math.random() * 0.07 // +9% to +16%
+      for (const key of Object.keys(result.stats)) {
+        if (typeof (result.stats as any)[key] === 'number') {
+          (result.stats as any)[key] = Math.ceil((result.stats as any)[key] * sfBonus)
+        }
+      }
+    }
+
     const itemId = uuidv4()
     const craftedItem = {
       id: itemId,
       ownerId: playerId,
-      name: result.name,
+      name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
       slot,
       category,
       tier,
@@ -386,9 +413,42 @@ router.post('/craft', async (req, res) => {
 
     await db.insert(items).values(craftedItem)
 
-    res.json({ success: true, item: craftedItem, scrapCost: cost })
+    res.json({ success: true, item: { ...craftedItem, superforged: isSuperforged }, scrapCost: cost, btcCost: BTC_COST })
   } catch (err) {
     console.error('[INVENTORY] Craft error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ── POST /api/inventory/badge-purchase ── Buy equipment with Badges of Honor
+router.post('/badge-purchase', async (req, res) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const { tier } = req.body
+
+    const BADGE_COSTS: Record<string, number> = { t2: 3, t3: 6, t4: 12 }
+    const cost = BADGE_COSTS[tier]
+    if (!cost) { res.status(400).json({ error: 'Invalid tier for badge purchase' }); return }
+
+    // Check & deduct badges atomically
+    const deductResult = await db.update(players).set({
+      badgesOfHonor: sql`${players.badgesOfHonor} - ${cost}`,
+    }).where(
+      sql`${players.id} = ${playerId} AND ${players.badgesOfHonor} >= ${cost}`
+    ).returning()
+    if (deductResult.length === 0) {
+      res.status(400).json({ error: `Not enough Badges of Honor (need ${cost})` }); return
+    }
+
+    // Generate random item of the requested tier
+    const newItem = rollItemOfTier(tier as any, playerId)
+    const itemId = uuidv4()
+    const insertedItem = { ...newItem, id: itemId }
+    await db.insert(items).values(insertedItem)
+
+    res.json({ success: true, item: insertedItem, badgeCost: cost })
+  } catch (err) {
+    console.error('[INVENTORY] Badge purchase error:', err)
     res.status(500).json({ error: 'Internal server error' })
   }
 })

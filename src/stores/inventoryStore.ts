@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { api } from '../api/client'
 import { usePlayerStore } from './playerStore'
-import { useWarCardsStore } from './warCardsStore'
 import { rateLimiter } from '../engine/AntiExploit'
 
 import type { EquipTier, ArmorSlot, WeaponSlot, VehicleSlot, EquipSlot, EquipCategory, WeaponSubtype, EquipStats, ItemLocation, EquipItem, LootBoxRewardType, LootBoxResult } from '../types/inventory.types'
@@ -113,180 +112,9 @@ export interface InventoryState {
   getItemById: (itemId: string) => EquipItem | undefined  // Any item by ID regardless of location
 }
 
-let itemCounter = 0
-
-function randomInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min
-}
-
-export function generateStats(category: EquipCategory, slot: EquipSlot, tier: EquipTier, weaponSubtype?: WeaponSubtype): { name: string, stats: EquipStats, weaponSubtype?: WeaponSubtype } {
-  const tLevel = parseInt(tier[1], 10) // 1 to 6
-  
-  if (category === 'weapon') {
-    // T1: Knife (20-49 dmg, 5% crit)
-    // T2: Gun (50-80 dmg, 6-10% crit)
-    // T3: Rifle (81-120 dmg, 11-15% crit)
-    // T4: Sniper (121-150 dmg, 16-20% crit)
-    // T5: Tank (151-199 dmg, 15-20% crit)  |  RPG (same stats)
-    // T6: Jet (200-300 dmg, 16-22% crit)   |  Warship (same stats)
-    // T7: Submarine (350-500 dmg, 18-25% crit)
-    
-    // Handle subtypes for T5 and T6 and T7
-    if (tier === 't5' && weaponSubtype === 'rpg') {
-      return { name: 'RPG', stats: { damage: randomInt(151, 199), critRate: randomInt(15, 20) }, weaponSubtype: 'rpg' }
-    }
-    if (tier === 't6' && weaponSubtype === 'warship') {
-      return { name: 'Warship', stats: { damage: randomInt(200, 300), critRate: randomInt(16, 22) }, weaponSubtype: 'warship' }
-    }
-    if (tier === 't7' && weaponSubtype === 'submarine') {
-      return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(18, 25) }, weaponSubtype: 'submarine' }
-    }
-    
-    switch (tier) {
-      case 't1': return { name: 'Knife', stats: { damage: randomInt(20, 49), critRate: 5 }, weaponSubtype: 'knife' }
-      case 't2': return { name: 'Gun', stats: { damage: randomInt(50, 80), critRate: randomInt(6, 10) }, weaponSubtype: 'gun' }
-      case 't3': return { name: 'Rifle', stats: { damage: randomInt(81, 120), critRate: randomInt(11, 15) }, weaponSubtype: 'rifle' }
-      case 't4': return { name: 'Sniper', stats: { damage: randomInt(121, 150), critRate: randomInt(16, 20) }, weaponSubtype: 'sniper' }
-      case 't5': return { name: 'Tank', stats: { damage: randomInt(151, 199), critRate: randomInt(15, 20) }, weaponSubtype: 'tank' }
-      case 't6': return { name: 'Jet', stats: { damage: randomInt(200, 300), critRate: randomInt(16, 22) }, weaponSubtype: 'jet' }
-      case 't7': return { name: 'Submarine', stats: { damage: randomInt(350, 500), critRate: randomInt(18, 25) }, weaponSubtype: 'submarine' }
-    }
-  } else if (category === 'vehicle') {
-    if (tier === 't7') {
-      return { name: 'T7 Submarine', stats: { damage: randomInt(400, 550), critRate: randomInt(20, 28) } }
-    } else if (tier === 't6') {
-      return { name: 'T6 Warship', stats: { damage: randomInt(301, 400), critRate: randomInt(16, 22) } }
-    } else {
-      return { name: `T${tLevel} Vehicle`, stats: { damage: randomInt(10 * tLevel, 20 * tLevel) } } // Fallback
-    }
-  } else {
-    // Armor
-    // Helmet: 20% crit damage per tier
-    // Chest/Legs: 5% armor per tier
-    // Boots: 5% dodge per tier
-    // Gloves: 5% precision per tier
-    const namePrefix = TIER_LABELS[tier].split(' ')[0]
-    switch (slot) {
-      case 'helmet': {
-        const base = 20 * tLevel
-        return { name: `${namePrefix} Helmet`, stats: { critDamage: randomInt(Math.max(1, base - 8), base) } }
-      }
-      case 'chest': {
-        const base = 5 * tLevel
-        return { name: `${namePrefix} Chestplate`, stats: { armor: randomInt(Math.max(1, base - 3), base) } }
-      }
-      case 'legs': {
-        const base = 5 * tLevel
-        return { name: `${namePrefix} Legging`, stats: { armor: randomInt(Math.max(1, base - 3), base) } }
-      }
-      case 'boots': {
-        const base = 5 * tLevel
-        return { name: `${namePrefix} Boots`, stats: { dodge: randomInt(Math.max(1, base - 3), base) } }
-      }
-      case 'gloves': {
-        const base = 5 * tLevel
-        return { name: `${namePrefix} Gloves`, stats: { precision: randomInt(Math.max(1, base - 4), base) } }
-      }
-    }
-  }
-  return { name: 'Unknown Item', stats: {} }
-}
-
-function rollLootBoxItem(): EquipItem {
-  // Tier chance
-  const rT = Math.random() * 100
-  let tier: EquipTier = 't1'
-  if (rT < 0.05) tier = 't7'
-  else if (rT < 0.15) tier = 't6'
-  else if (rT < 1.00) tier = 't5'
-  else if (rT < 4.00) tier = 't4'
-  else if (rT < 11.00) tier = 't3'
-  else if (rT < 50.00) tier = 't2'
-
-  return rollItemOfTier(tier)
-}
-
-function rollMilitaryBoxItem(): EquipItem {
-  // Military Box chance
-  const rT = Math.random() * 100
-  let tier: EquipTier = 't3'
-  if (rT < 2.00) tier = 't7'
-  else if (rT < 7.00) tier = 't6'
-  else if (rT < 25.00) tier = 't5'
-  else if (rT < 50.00) tier = 't4'
-  else if (rT < 80.00) tier = 't3'
-  else if (rT < 95.00) tier = 't2'
-  else tier = 't1'
-
-  return rollItemOfTier(tier)
-}
-
-export function rollItemOfTier(tier: EquipTier): EquipItem {
-  // Type chance (66% Armor, 34% Weapon, but if T6/T7, 20% chance of Vehicle)
-  let category: EquipCategory = Math.random() < 0.66 ? 'armor' : 'weapon'
-  let slot: EquipSlot = 'weapon'
-  
-  if ((tier === 't6' || tier === 't7') && Math.random() < 0.20) {
-    category = 'vehicle'
-    slot = 'vehicle'
-  } else if (category === 'armor') {
-    slot = ARMOR_SLOTS[Math.floor(Math.random() * ARMOR_SLOTS.length)]
-  }
-
-  // For T5/T6 weapons, randomly pick a subtype
-  let subtype: WeaponSubtype | undefined
-  if (category === 'weapon') {
-    const subtypes = WEAPON_SUBTYPES[tier]
-    subtype = subtypes[Math.floor(Math.random() * subtypes.length)]
-  }
-
-  const result = generateStats(category, slot, tier, subtype)
-
-  return {
-    id: `item-${++itemCounter}-${Date.now()}`,
-    name: result.name,
-    slot,
-    category,
-    tier,
-    equipped: false,
-    durability: 100,
-    stats: result.stats,
-    weaponSubtype: result.weaponSubtype,
-    location: 'inventory',
-  }
-}
-
-function getStarterKit(): EquipItem[] {
-  const kit: EquipItem[] = []
-  const slots: EquipSlot[] = ['helmet', 'chest', 'legs', 'gloves', 'boots', 'weapon']
-  const tiers: EquipTier[] = ['t1', 't2', 't3', 't4', 't5', 't6']
-  
-  tiers.forEach(tier => {
-    slots.forEach(slot => {
-      const category: EquipCategory = slot === 'weapon' ? 'weapon' : 'armor'
-      const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][0] : undefined
-      const { name, stats, weaponSubtype } = generateStats(category, slot, tier, subtype)
-      kit.push({
-        id: `start-${tier}-${slot}-${Math.random().toString(36).substring(2, 9)}`,
-        name,
-        slot,
-        category,
-        tier,
-        equipped: tier === 't3', // Equip T3 set
-        durability: 100,
-        stats,
-        weaponSubtype,
-        location: 'inventory',
-      })
-    })
-  })
-  // Add a second T5 weapon (rpg) and T6 weapon (warship) for subtype variety
-  const rpg = generateStats('weapon', 'weapon', 't5', 'rpg')
-  kit.push({ id: `start-t5-rpg-${Math.random().toString(36).substring(2, 9)}`, name: rpg.name, slot: 'weapon', category: 'weapon', tier: 't5', equipped: false, durability: 100, stats: rpg.stats, weaponSubtype: rpg.weaponSubtype, location: 'inventory' })
-  const warship = generateStats('weapon', 'weapon', 't6', 'warship')
-  kit.push({ id: `start-t6-warship-${Math.random().toString(36).substring(2, 9)}`, name: warship.name, slot: 'weapon', category: 'weapon', tier: 't6', equipped: false, durability: 100, stats: warship.stats, weaponSubtype: warship.weaponSubtype, location: 'inventory' })
-  return kit
-}
+// NOTE: Item generation (generateStats, rollItemOfTier, etc.) has been moved
+// to server/src/services/inventory.service.ts. All item creation is now
+// server-authoritative via API calls.
 
 export const useInventoryStore = create<InventoryState>((set, get) => ({
   items: [],
@@ -325,16 +153,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
       // Track case opens
       set(s => ({ totalCasesOpened: s.totalCasesOpened + 1 }))
-      const inv = get()
-      const ps = usePlayerStore.getState()
-      useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-        totalDamageDone: ps.damageDone,
-        totalMoney: ps.money,
-        totalItemsProduced: ps.itemsProduced,
-        playerLevel: ps.level,
-        totalCasesOpened: inv.totalCasesOpened,
-        totalItemsDismantled: inv.totalItemsDismantled,
-      })
 
       let rewardType: LootBoxRewardType = 'item'
       if (!item && bonusMoney > 0 && bonusScrap === 0) rewardType = 'money'
@@ -357,13 +175,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       usePlayerStore.getState().removeResource('militaryBoxes', 1, 'milbox_open')
 
       set(s => ({ items: [...s.items, res.item], totalCasesOpened: s.totalCasesOpened + 1 }))
-      const inv = get()
-      const ps = usePlayerStore.getState()
-      useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-        totalDamageDone: ps.damageDone, totalMoney: ps.money,
-        totalItemsProduced: ps.itemsProduced, playerLevel: ps.level,
-        totalCasesOpened: inv.totalCasesOpened, totalItemsDismantled: inv.totalItemsDismantled,
-      })
       return { rewardType: 'item' as LootBoxRewardType, item: res.item, scrap: 0, money: 0, oil: 0, badgesOfHonor: 0 }
     } catch(e: any) {
       console.error('Military box error:', e.message)
@@ -416,17 +227,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         
         usePlayerStore.getState().addResource('scrap', res.scrapGained || 0, 'item_dismantle')
 
-        // War Cards
-        const inv = get()
-        const ps = usePlayerStore.getState()
-        useWarCardsStore.getState().checkAndAwardCards(ps.name, ps.name, {
-          totalDamageDone: ps.damageDone,
-          totalMoney: ps.money,
-          totalItemsProduced: ps.itemsProduced,
-          playerLevel: ps.level,
-          totalCasesOpened: inv.totalCasesOpened,
-          totalItemsDismantled: inv.totalItemsDismantled,
-        })
         return { success: true, scrapGained: res.scrapGained, message: 'Dismantled item' }
       }
       return { success: false, scrapGained: 0, message: res.error || 'Failed to dismantle' }

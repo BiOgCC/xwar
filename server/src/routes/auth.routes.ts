@@ -98,14 +98,14 @@ router.post('/register', validate(registerSchema), async (req, res) => {
     if (!existingGov) {
       await db.insert(governments).values({
         countryCode,
-        president: name,
+        president: player.id,
         vicePresident: null,
         defenseMinister: null,
         ecoMinister: null,
       })
     } else if (!existingGov.president) {
       // Country exists but has no president — auto-assign this player
-      await db.update(governments).set({ president: name }).where(eq(governments.countryCode, countryCode))
+      await db.update(governments).set({ president: player.id }).where(eq(governments.countryCode, countryCode))
     }
 
     // Generate token

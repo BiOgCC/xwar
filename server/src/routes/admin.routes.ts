@@ -36,6 +36,7 @@ import {
   countryStocks,
 } from '../db/schema.js'
 import { validate } from '../middleware/validate.js'
+import { requireAuth, type AuthRequest } from '../middleware/auth.js'
 import { runFastCombatPipeline } from '../services/tick/fast-combat.pipeline.js'
 import { runMediumSimPipeline } from '../services/tick/medium-sim.pipeline.js'
 import { runSlowEconomyPipeline } from '../services/tick/slow-economy.pipeline.js'
@@ -46,12 +47,19 @@ import { LEY_LINE_DEFS } from '../config/leyLineRegistry.server.js'
 
 const router = Router()
 
-// ── Dev-only guard ──
-router.use((_req: Request, res: Response, next) => {
-  if (process.env.NODE_ENV === 'production') {
-    res.status(404).end(); return
+// ── Admin auth guard — requires valid JWT + 'admin' role in DB ──
+router.use(requireAuth as any)
+router.use(async (req: Request, res: Response, next) => {
+  try {
+    const { playerId } = (req as AuthRequest).player!
+    const [player] = await db.select({ role: players.role }).from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player || player.role !== 'admin') {
+      res.status(403).json({ error: 'Admin access required' }); return
+    }
+    next()
+  } catch {
+    res.status(500).json({ error: 'Auth check failed' })
   }
-  next()
 })
 
 const ok = (res: Response, result: unknown) =>

@@ -4,7 +4,6 @@ import { usePlayerStore } from '../../../stores/playerStore'
 import { useSkillsStore } from '../../../stores/skillsStore'
 import {
   useInventoryStore,
-  generateStats,
   TIER_COLORS,
   TIER_LABELS,
   TIER_ORDER,
@@ -16,6 +15,7 @@ import {
   type EquipTier,
   type WeaponSubtype,
 } from '../../../stores/inventoryStore'
+import { craftItem } from '../../../api/client'
 import GameModal from '../../shared/GameModal'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SPRINGS } from '../../shared/AnimationSystem'
@@ -65,38 +65,27 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
   const [craftedItem, setCraftedItem] = useState<{ item: EquipItem; superforged: boolean } | null>(null)
   const [craftHistory, setCraftHistory] = useState<{ item: EquipItem; superforged: boolean }[]>([])
 
-  const doCraft = (tier: EquipTier, slot: EquipSlot) => {
+  const [isCrafting, setIsCrafting] = useState(false)
+
+  const doCraft = async (tier: EquipTier, slot: EquipSlot) => {
     const cost = costTable[tier]
-    if (player.scrap < cost.scrap || player.bitcoin < cost.bitcoin) return
-    player.spendBitcoin(cost.bitcoin)
-    player.spendScrap(cost.scrap)
-    const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
-    const subtype = slot === 'weapon' ? WEAPON_SUBTYPES[tier][Math.floor(Math.random() * WEAPON_SUBTYPES[tier].length)] : undefined
-    const result = generateStats(category, slot, tier, subtype)
-
-    const indLevel = useSkillsStore.getState().economic.industrialist || 0
-    const superforgeChance = Math.min(0.20, indLevel * 0.02)
-    const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
-    const sfBonus = 1.09 + Math.random() * 0.07 // +9% to +16%
-    if (isSuperforged) {
-      for (const key of Object.keys(result.stats) as Array<keyof typeof result.stats>) {
-        if (typeof result.stats[key] === 'number') {
-          (result.stats as any)[key] = Math.ceil(result.stats[key]! * sfBonus)
-        }
-      }
+    if (player.scrap < cost.scrap || player.bitcoin < cost.bitcoin || isCrafting) return
+    setIsCrafting(true)
+    try {
+      const category = slot === 'weapon' ? 'weapon' : 'armor'
+      const res = await craftItem(tier, slot, category)
+      if (!res.success) return
+      // Refresh server state
+      await inventory.fetchInventory()
+      await usePlayerStore.getState().fetchPlayer()
+      const entry = { item: res.item as EquipItem, superforged: !!res.item.superforged }
+      setCraftedItem(entry)
+      setCraftHistory(prev => [entry, ...prev])
+    } catch (e) {
+      console.error('[Craft] Failed:', e)
+    } finally {
+      setIsCrafting(false)
     }
-
-    const newItem: EquipItem = {
-      id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
-      slot, category, tier, equipped: false, durability: 100,
-      location: 'inventory', stats: result.stats, weaponSubtype: result.weaponSubtype,
-      superforged: isSuperforged || undefined,
-    }
-    inventory.addItem(newItem)
-    const entry = { item: newItem, superforged: isSuperforged }
-    setCraftedItem(entry)
-    setCraftHistory(prev => [entry, ...prev])
   }
 
   const doRandomCraft = (tier: EquipTier) => {
@@ -177,36 +166,11 @@ export default function InventoryCraftModal({ onClose }: CraftModalProps) {
                       {tc.scrap} ⚙️ / {tc.bitcoin} ₿
                     </div>
                     <button
-                      disabled={!canAfford}
-                      onClick={() => {
+                      disabled={!canAfford || isCrafting}
+                      onClick={async () => {
                         if (entry.subtype) {
-                          const cost = costTable[entry.tier]
-                          if (player.scrap < cost.scrap || player.bitcoin < cost.bitcoin) return
-                          player.spendBitcoin(cost.bitcoin)
-                          player.spendScrap(cost.scrap)
-                          const result = generateStats('weapon', 'weapon', entry.tier, entry.subtype)
-                          const indLevel = useSkillsStore.getState().economic.industrialist || 0
-                          const superforgeChance = Math.min(0.20, indLevel * 0.02)
-                          const isSuperforged = superforgeChance > 0 && Math.random() < superforgeChance
-                          const sfBonus = 1.09 + Math.random() * 0.07 // +9% to +16%
-                          if (isSuperforged) {
-                            for (const key of Object.keys(result.stats) as Array<keyof typeof result.stats>) {
-                              if (typeof result.stats[key] === 'number') {
-                                (result.stats as any)[key] = Math.ceil(result.stats[key]! * sfBonus)
-                              }
-                            }
-                          }
-                          const newItem: EquipItem = {
-                            id: `crafted_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-                            name: isSuperforged ? `\u26a1 ${result.name}` : result.name,
-                            slot: 'weapon', category: 'weapon', tier: entry.tier, equipped: false, durability: 100,
-                            location: 'inventory', stats: result.stats, weaponSubtype: result.weaponSubtype,
-                            superforged: isSuperforged || undefined,
-                          }
-                          inventory.addItem(newItem)
-                          const histEntry = { item: newItem, superforged: isSuperforged }
-                          setCraftedItem(histEntry)
-                          setCraftHistory(prev => [histEntry, ...prev])
+                          // Craft specific weapon subtype — server handles all RNG + superforging
+                          await doCraft(entry.tier, 'weapon')
                         } else {
                           doCraft(entry.tier, craftSlot)
                         }

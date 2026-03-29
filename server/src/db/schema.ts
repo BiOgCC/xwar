@@ -334,6 +334,8 @@ export const companies = pgTable('companies', {
   location:         varchar('location', { length: 4 }).references(() => countries.code),
   disabledUntil:    timestamp('disabled_until'),
   nextMaintenanceDue: timestamp('next_maintenance_due'),
+  createdAt:        timestamp('created_at').defaultNow(),
+  oilStarvedSince:  timestamp('oil_starved_since'),
 }, (table) => ({
   ownerIdx: index('idx_companies_owner').on(table.ownerId),
   locationIdx: index('idx_companies_location').on(table.location),
@@ -413,13 +415,13 @@ export const tradeHistory = pgTable('trade_history', {
 
 export const governments = pgTable('governments', {
   countryCode:      varchar('country_code', { length: 4 }).primaryKey().references(() => countries.code),
-  president:        varchar('president', { length: 32 }),
-  vicePresident:    varchar('vice_president', { length: 32 }),
-  defenseMinister:  varchar('defense_minister', { length: 32 }),
-  ecoMinister:      varchar('eco_minister', { length: 32 }),
+  president:        uuid('president').references(() => players.id),
+  vicePresident:    uuid('vice_president').references(() => players.id),
+  defenseMinister:  uuid('defense_minister').references(() => players.id),
+  ecoMinister:      uuid('eco_minister').references(() => players.id),
   taxRate:          integer('tax_rate').default(25),
   swornEnemy:       varchar('sworn_enemy', { length: 4 }),
-  congress:         jsonb('congress').default([]),
+  congress:         jsonb('congress').default([]),              // UUID string[] of congress member player IDs
   laws:             jsonb('laws').default({}),
   nuclearAuthorized: boolean('nuclear_authorized').default(false),
   enrichmentStartedAt:   timestamp('enrichment_started_at'),
@@ -832,12 +834,12 @@ export const militaryUnits = pgTable('military_units', {
   name:           varchar('name', { length: 64 }).notNull(),
   bannerUrl:      text('banner_url').default(''),
   avatarUrl:      text('avatar_url').default(''),
-  ownerId:        varchar('owner_id', { length: 64 }).notNull(),  // player name or GOV_XX
-  ownerName:      varchar('owner_name', { length: 64 }),
+  ownerId:        uuid('owner_id').notNull().references(() => players.id),  // player UUID who created/owns the MU
+  ownerName:      varchar('owner_name', { length: 64 }),                   // display name (denormalized)
   ownerCountry:   varchar('owner_country', { length: 4 }),
   countryCode:    varchar('country_code', { length: 4 }).references(() => countries.code),
-  regionId:       varchar('region_id', { length: 32 }).default(''),
-  locationRegion: varchar('location_region', { length: 64 }).default(''),
+  regionId:       varchar('region_id', { length: 32 }).default(''),        // cosmetic — future feature
+  locationRegion: varchar('location_region', { length: 64 }).default(''),  // cosmetic — future feature
   vault:          jsonb('vault').default({ treasury: 0, resources: {} }),
   upgrades:       jsonb('upgrades').default({ barracks: 0, warDoctrine: 0, logistics: 0, intelligence: 0 }),
   transactions:   jsonb('transactions').default([]),     // last 50 MUTransaction[]
@@ -859,8 +861,8 @@ export const militaryUnits = pgTable('military_units', {
 
 export const muMembers = pgTable('mu_members', {
   unitId:       uuid('unit_id').references(() => militaryUnits.id, { onDelete: 'cascade' }).notNull(),
-  playerId:     varchar('player_id', { length: 64 }).notNull(),  // player name
-  playerName:   varchar('player_name', { length: 32 }),
+  playerId:     uuid('player_id').references(() => players.id).notNull(),  // player UUID
+  playerName:   varchar('player_name', { length: 32 }),                   // display name (denormalized)
   level:        integer('level').default(1),
   countryCode:  varchar('country_code', { length: 4 }),
   health:       integer('health').default(10),

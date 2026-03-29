@@ -30,9 +30,11 @@ import adminRoutes from './routes/admin.routes.js'
 import leyLineRoutes from './routes/leylines.router.js'
 import gameRoutes from './routes/game.routes.js'
 import muRoutes from './routes/mu.routes.js'
+import prestigeRoutes from './routes/prestige.routes.js'
 
 import { generalLimiter, authLimiter, casinoLimiter } from './middleware/rateLimit.js'
 import { errorHandler } from './middleware/errorHandler.js'
+import { sanitizeInput } from './middleware/sanitize.js'
 import { initCronJobs } from './services/cron.service.js'
 
 // ── Role Management ──
@@ -63,6 +65,7 @@ if (runApi) {
   // ── Middleware ──
   app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'], credentials: true }))
   app.use(express.json())
+  app.use(sanitizeInput)            // ── Sanitize all inputs (XSS, injection, null bytes) ──
   app.use(pinoHttp({ logger }))
   app.use(generalLimiter)
 
@@ -92,10 +95,11 @@ if (runApi) {
   app.use('/api/naval', navalRoutes)
   app.use('/api/research', researchRoutes)
   app.use('/api/trade-routes', tradeRouteRoutes)
-  app.use('/api/admin', authLimiter, adminRoutes)
+  app.use('/api/admin', adminRoutes)          // auth + role guard is inside the router
   app.use('/api/ley-lines', leyLineRoutes)
   app.use('/api/game', gameRoutes)
   app.use('/api/mu', muRoutes)
+  app.use('/api/prestige', prestigeRoutes)
 
   // ── Global error handler (must be AFTER routes) ──
   app.use(errorHandler)

@@ -73,7 +73,7 @@ router.post('/create', requireAuth as any, validate(createSchema), async (req, r
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
 
     // Check not already in a MU
-    const existing = await db.select().from(muMembers).where(eq(muMembers.playerId, player.name!)).limit(1)
+    const existing = await db.select().from(muMembers).where(eq(muMembers.playerId, playerId)).limit(1)
     if (existing.length > 0) { res.status(400).json({ error: 'Already in a Military Unit.' }); return }
 
     const CREATE_COST = 50_000
@@ -85,7 +85,7 @@ router.post('/create', requireAuth as any, validate(createSchema), async (req, r
     // Create unit
     const [newUnit] = await db.insert(militaryUnits).values({
       name: name.trim(),
-      ownerId: player.name!,
+      ownerId: playerId,
       ownerName: player.name!,
       ownerCountry: player.countryCode || 'US',
       countryCode: player.countryCode || 'US',
@@ -99,7 +99,7 @@ router.post('/create', requireAuth as any, validate(createSchema), async (req, r
     // Add creator as commander
     await db.insert(muMembers).values({
       unitId: newUnit.id,
-      playerId: player.name!,
+      playerId,
       playerName: player.name!,
       level: player.level ?? 1,
       countryCode: player.countryCode || 'US',
@@ -128,7 +128,7 @@ router.post('/join', requireAuth as any, validate(joinSchema), async (req, res) 
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
 
-    const existing = await db.select().from(muMembers).where(eq(muMembers.playerId, player.name!)).limit(1)
+    const existing = await db.select().from(muMembers).where(eq(muMembers.playerId, playerId)).limit(1)
     if (existing.length > 0) { res.status(400).json({ error: 'Already in a Military Unit.' }); return }
 
     const [unit] = await db.select().from(militaryUnits).where(eq(militaryUnits.id, unitId)).limit(1)
@@ -141,7 +141,7 @@ router.post('/join', requireAuth as any, validate(joinSchema), async (req, res) 
 
     await db.insert(muMembers).values({
       unitId,
-      playerId: player.name!,
+      playerId,
       playerName: player.name!,
       level: player.level ?? 1,
       countryCode: player.countryCode || 'US',
@@ -166,20 +166,20 @@ router.post('/leave', requireAuth as any, async (req, res) => {
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
 
-    const [membership] = await db.select().from(muMembers).where(eq(muMembers.playerId, player.name!)).limit(1)
+    const [membership] = await db.select().from(muMembers).where(eq(muMembers.playerId, playerId)).limit(1)
     if (!membership) { res.status(400).json({ error: 'Not in a Military Unit.' }); return }
 
     const [unit] = await db.select().from(militaryUnits).where(eq(militaryUnits.id, membership.unitId)).limit(1)
     if (!unit) { res.status(404).json({ error: 'Unit not found.' }); return }
 
     // Owner can't leave if others remain (player-owned MUs only)
-    if (!unit.isStateOwned && unit.ownerId === player.name) {
+    if (!unit.isStateOwned && unit.ownerId === playerId) {
       const allMembers = await db.select().from(muMembers).where(eq(muMembers.unitId, unit.id))
       if (allMembers.length > 1) { res.status(400).json({ error: 'Transfer ownership before leaving.' }); return }
     }
 
     // Remove membership
-    await db.delete(muMembers).where(and(eq(muMembers.unitId, membership.unitId), eq(muMembers.playerId, player.name!)))
+    await db.delete(muMembers).where(and(eq(muMembers.unitId, membership.unitId), eq(muMembers.playerId, playerId)))
 
     // If player-owned and last member, delete unit
     if (!unit.isStateOwned) {
@@ -278,8 +278,8 @@ router.post('/distribute', requireAuth as any, validate(distributeSchema), async
 
     // Check commander/owner
     const [membership] = await db.select().from(muMembers)
-      .where(and(eq(muMembers.unitId, unitId), eq(muMembers.playerId, player.name!))).limit(1)
-    if (!membership || (membership.role !== 'commander' && unit.ownerId !== player.name)) {
+      .where(and(eq(muMembers.unitId, unitId), eq(muMembers.playerId, playerId))).limit(1)
+    if (!membership || (membership.role !== 'commander' && unit.ownerId !== playerId)) {
       res.status(403).json({ error: 'Only commanders can distribute.' }); return
     }
 
@@ -312,7 +312,7 @@ router.post('/distribute', requireAuth as any, validate(distributeSchema), async
 
     // Credit each member's player account
     for (const member of allMembers) {
-      const [mp] = await db.select().from(players).where(eq(players.name, member.playerId)).limit(1)
+      const [mp] = await db.select().from(players).where(eq(players.id, member.playerId)).limit(1)
       if (mp) {
         if (resourceId === 'money') {
           await db.update(players).set({ money: (mp.money ?? 0) + perMember }).where(eq(players.id, mp.id))
@@ -359,8 +359,8 @@ router.post('/upgrade', requireAuth as any, validate(upgradeSchema), async (req,
 
     // Check commander/owner
     const [membership] = await db.select().from(muMembers)
-      .where(and(eq(muMembers.unitId, unitId), eq(muMembers.playerId, player.name!))).limit(1)
-    if (!membership || (membership.role !== 'commander' && unit.ownerId !== player.name)) {
+      .where(and(eq(muMembers.unitId, unitId), eq(muMembers.playerId, playerId))).limit(1)
+    if (!membership || (membership.role !== 'commander' && unit.ownerId !== playerId)) {
       res.status(403).json({ error: 'Only commanders/owner can upgrade.' }); return
     }
 
@@ -411,7 +411,7 @@ router.post('/promote', requireAuth as any, validate(memberSchema), async (req, 
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
 
     const [unit] = await db.select().from(militaryUnits).where(eq(militaryUnits.id, unitId)).limit(1)
-    if (!unit || unit.ownerId !== player.name) { res.status(403).json({ error: 'Only owner can promote.' }); return }
+    if (!unit || unit.ownerId !== playerId) { res.status(403).json({ error: 'Only owner can promote.' }); return }
 
     await db.update(muMembers).set({ role: 'commander' })
       .where(and(eq(muMembers.unitId, unitId), eq(muMembers.playerId, targetPlayerId)))
@@ -436,7 +436,7 @@ router.post('/demote', requireAuth as any, validate(memberSchema), async (req, r
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
 
     const [unit] = await db.select().from(militaryUnits).where(eq(militaryUnits.id, unitId)).limit(1)
-    if (!unit || unit.ownerId !== player.name) { res.status(403).json({ error: 'Only owner can demote.' }); return }
+    if (!unit || unit.ownerId !== playerId) { res.status(403).json({ error: 'Only owner can demote.' }); return }
 
     await db.update(muMembers).set({ role: 'member' })
       .where(and(eq(muMembers.unitId, unitId), eq(muMembers.playerId, targetPlayerId)))
@@ -502,7 +502,7 @@ router.get('/player-unit', requireAuth as any, async (req, res) => {
     const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
     if (!player) { res.status(404).json({ error: 'Player not found' }); return }
 
-    const [membership] = await db.select().from(muMembers).where(eq(muMembers.playerId, player.name!)).limit(1)
+    const [membership] = await db.select().from(muMembers).where(eq(muMembers.playerId, playerId)).limit(1)
     if (!membership) { res.json({ success: true, unit: null, membership: null }); return }
 
     const [unit] = await db.select().from(militaryUnits).where(eq(militaryUnits.id, membership.unitId)).limit(1)

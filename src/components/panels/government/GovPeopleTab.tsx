@@ -13,7 +13,7 @@ interface PositionCardProps {
   position?: AppointablePosition
   countryCode: string
   isPresident: boolean
-  citizens: string[]
+  citizens: { id: string; name: string }[]
 }
 
 function PositionCard({ icon, iconColor, title, holder, position, countryCode, isPresident, citizens }: PositionCardProps) {
@@ -23,12 +23,12 @@ function PositionCard({ icon, iconColor, title, holder, position, countryCode, i
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
-  const filtered = citizens.filter(n => n.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
+  const filtered = citizens.filter(c => c.name.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
 
-  async function appoint(name: string | null) {
+  async function appoint(id: string | null) {
     if (!position) return
     setLoading(true)
-    const res = await govStore.appointPosition(countryCode, position, name)
+    const res = await govStore.appointPosition(countryCode, position, id)
     setMsg({ text: res.message, ok: res.success })
     setLoading(false)
     setShowPicker(false)
@@ -92,13 +92,13 @@ function PositionCard({ icon, iconColor, title, holder, position, countryCode, i
           <div className="gov-people-picker__list">
             {filtered.length === 0 ? (
               <div className="gov-people-picker__empty">No citizens found</div>
-            ) : filtered.map(name => (
+            ) : filtered.map(c => (
               <button
-                key={name}
+                key={c.id}
                 className="gov-people-picker__item"
-                onClick={() => { appoint(name); setSearch('') }}
+                onClick={() => { appoint(c.id); setSearch('') }}
               >
-                {name}
+                {c.name}
               </button>
             ))}
           </div>
@@ -158,20 +158,28 @@ export default function GovPeopleTab() {
     <div className="gov-empty">Government data unavailable.</div>
   )
 
-  const isPresident = gov.president === player.name
+  const g = gov as any
+  const isPresident = g.presidentId === player.id || g.president === player.name || g.president === player.id
   // Build a list of citizens (excluding those already in positions/congress)
-  const occupiedNames = new Set([gov.president, gov.vicePresident, gov.defenseMinister, gov.ecoMinister].filter(Boolean))
-  const citizens = (gov.citizens || [])
-    .map((c: { name: string }) => c.name)
-    .filter((n: string) => !occupiedNames.has(n))
+  const officialIds = new Set([g.presidentId || g.president, g.vicePresidentId || g.vicePresident, g.defenseMinisterId || g.defenseMinister, g.ecoMinisterId || g.ecoMinister].filter(Boolean))
+  const citizenPairs = (gov.citizens || [])
+    .filter((c: any) => !officialIds.has(c.id))
+    .map((c: any) => ({ id: c.id, name: c.name }))
 
-  const congressFiltered = citizens
-    .filter((n: string) => !gov.congress.includes(n) && n.toLowerCase().includes(congressSearch.toLowerCase()))
+  // For display: resolve congress member UUIDs to names
+  const citizenNameMap: Record<string, string> = {}
+  for (const c of (gov.citizens || [])) { citizenNameMap[c.id] = c.name }
+
+  const congressDisplayNames = (gov.congress || []).map((idOrName: string) => citizenNameMap[idOrName] || idOrName)
+  const congressIds = (gov.congress || []) as string[]
+
+  const congressFiltered = citizenPairs
+    .filter((c: any) => !congressIds.includes(c.id) && c.name.toLowerCase().includes(congressSearch.toLowerCase()))
     .slice(0, 8)
 
-  async function addCongress(name: string) {
+  async function addCongress(id: string) {
     setLoading(true)
-    const res = await govStore.appointCongressMember(iso, name, 'add')
+    const res = await govStore.appointCongressMember(iso, id, 'add')
     setCongressMsg({ text: res.message, ok: res.success })
     setLoading(false)
     setShowCongressAdd(false)
@@ -194,8 +202,8 @@ export default function GovPeopleTab() {
           </div>
           <div className="gov-people-card__body">
             <div className="gov-people-card__title">President</div>
-            {gov.president ? (
-              <div className="gov-people-card__holder">{gov.president}</div>
+            {g.presidentName || g.president ? (
+              <div className="gov-people-card__holder">{g.presidentName || g.president}</div>
             ) : (
               <div className="gov-people-card__vacant">Vacant</div>
             )}
@@ -207,11 +215,11 @@ export default function GovPeopleTab() {
           icon={<ChevronDown size={20} />}
           iconColor="#a78bfa"
           title="Vice President"
-          holder={gov.vicePresident}
+          holder={(gov as any).vicePresidentName || gov.vicePresident}
           position="vicePresident"
           countryCode={iso}
           isPresident={isPresident}
-          citizens={citizens}
+          citizens={citizenPairs}
         />
       </div>
 
@@ -226,11 +234,11 @@ export default function GovPeopleTab() {
           icon={<ShieldCheck size={20} />}
           iconColor="#ef4444"
           title="Minister of Defense"
-          holder={gov.defenseMinister}
+          holder={(gov as any).defenseMinisterName || gov.defenseMinister}
           position="defenseMinister"
           countryCode={iso}
           isPresident={isPresident}
-          citizens={citizens}
+          citizens={citizenPairs}
         />
 
         {/* Minister of Economy */}
@@ -238,19 +246,19 @@ export default function GovPeopleTab() {
           icon={<TrendingUp size={20} />}
           iconColor="#22d38a"
           title="Minister of Economy"
-          holder={gov.ecoMinister}
+          holder={(gov as any).ecoMinisterName || gov.ecoMinister}
           position="ecoMinister"
           countryCode={iso}
           isPresident={isPresident}
-          citizens={citizens}
+          citizens={citizenPairs}
         />
       </div>
 
       {/* ── Congress ── */}
       <div className="gov-people-section-title" style={{ marginTop: '14px' }}>
         <Users size={13} style={{ color: '#60a5fa' }} /> Congress
-        <span className="gov-people-congress-count">{gov.congress.length}/10</span>
-        {isPresident && gov.congress.length < 10 && (
+        <span className="gov-people-congress-count">{congressIds.length}/10</span>
+        {isPresident && congressIds.length < 10 && (
           <button
             className="gov-people-btn gov-people-btn--appoint"
             style={{ marginLeft: 'auto' }}
@@ -280,14 +288,14 @@ export default function GovPeopleTab() {
           <div className="gov-people-picker__list">
             {congressFiltered.length === 0 ? (
               <div className="gov-people-picker__empty">No citizens found</div>
-            ) : congressFiltered.map((name: string) => (
+            ) : congressFiltered.map((c: any) => (
               <button
-                key={name}
+                key={c.id}
                 className="gov-people-picker__item"
-                onClick={() => addCongress(name)}
+                onClick={() => addCongress(c.id)}
                 disabled={loading}
               >
-                {name}
+                {c.name}
               </button>
             ))}
           </div>
@@ -295,12 +303,12 @@ export default function GovPeopleTab() {
       )}
 
       <div className="gov-congress-list">
-        {gov.congress.length === 0 ? (
+        {congressIds.length === 0 ? (
           <div className="gov-congress-empty">No congress members yet.</div>
-        ) : gov.congress.map((m: string) => (
+        ) : congressIds.map((id: string, i: number) => (
           <CongressRow
-            key={m}
-            member={m}
+            key={id}
+            member={congressDisplayNames[i] || id}
             countryCode={iso}
             isPresident={isPresident}
           />

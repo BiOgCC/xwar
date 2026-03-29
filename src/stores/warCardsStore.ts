@@ -2,8 +2,8 @@ import { create } from 'zustand'
 import { api } from '../api/client'
 import { usePlayerStore } from './playerStore'
 
-import type { CardCategory, CardRarity, CardConditionContext, WarCardDefinition, EarnedWarCard, NFTMintState, NFTStatus, WeeklyTracking } from '../types/war.types'
-export type { CardCategory, CardRarity, CardConditionContext, WarCardDefinition, EarnedWarCard, NFTMintState, NFTStatus, WeeklyTracking }
+import type { CardCategory, CardRarity, CardConditionContext, WarCardDefinition, EarnedWarCard, WeeklyTracking } from '../types/war.types'
+export type { CardCategory, CardRarity, CardConditionContext, WarCardDefinition, EarnedWarCard, WeeklyTracking }
 
 export const CARD_CATEGORY_META: Record<CardCategory, { label: string; color: string; icon: string }> = {
   milestone: { label: 'Milestone', color: '#f59e0b', icon: '🏆' },
@@ -19,10 +19,6 @@ export const CARD_RARITY_META: Record<CardRarity, { label: string; color: string
   rare:      { label: 'Rare',      color: '#3b82f6', glowEffect: 'pulse' },
   epic:      { label: 'Epic',      color: '#a855f7', glowEffect: 'shimmer' },
   legendary: { label: 'Legendary', color: '#f59e0b', glowEffect: 'animated-gold' },
-}
-
-function emptyNFT(): NFTStatus {
-  return { mintState: 'unminted' }
 }
 
 // ====== CARD DEFINITIONS ======
@@ -85,7 +81,7 @@ const CARD_DEFINITIONS: WarCardDefinition[] = [
     description: 'Deal the most damage in a week.',
     flavorText: '"This week belongs to you."',
     category: 'timed', rarity: 'rare', firstOnly: false, weekly: true,
-    condition: () => false, // Evaluated specially at week end
+    condition: () => false, // Evaluated at week end on backend
   },
   {
     id: 'timed_top1_dmg_10w',
@@ -146,7 +142,7 @@ const CARD_DEFINITIONS: WarCardDefinition[] = [
     description: 'Deal the most damage in the largest battle on the server.',
     flavorText: '"When the world went to war, you stood tallest."',
     category: 'combat', rarity: 'legendary', firstOnly: false, weekly: false,
-    condition: (ctx) => !!ctx.battleIsLargest, // Evaluated by record-tracking logic
+    condition: (ctx) => !!ctx.battleIsLargest,
   },
   {
     id: 'combat_comeback',
@@ -207,7 +203,7 @@ const CARD_DEFINITIONS: WarCardDefinition[] = [
     condition: (ctx) => ctx.totalItemsDismantled >= 20_000,
   },
 
-  // ── SHAME (auto-spawn — these you can't avoid) ──
+  // ── SHAME ──
   {
     id: 'shame_silenced',
     name: 'Silenced',
@@ -295,16 +291,11 @@ const CARD_DEFINITIONS: WarCardDefinition[] = [
 export interface WarCardsState {
   cardDefinitions: WarCardDefinition[]
   earnedCards: EarnedWarCard[]
-  weeklyTracking: WeeklyTracking
-  /** Server-wide record for highest single hit */
-  highestSingleHit: { playerId: string; playerName: string; damage: number } | null
 
   // ── Actions ──
   fetchAllCards: () => Promise<void>
   fetchMyCards: () => Promise<void>
-  /** Deprecated: Evaluation is now handled asynchronously on the backend */
-  checkAndAwardCards: (playerId: string, playerName: string, ctx: Partial<CardConditionContext>, battleId?: string) => EarnedWarCard[]
-  /** Get all cards earned by a player */
+  /** Get all cards earned by a player (by UUID) */
   getPlayerCards: (playerId: string) => EarnedWarCard[]
   /** Check if a first-only card has been claimed */
   isCardClaimed: (cardDefId: string) => boolean
@@ -314,42 +305,13 @@ export interface WarCardsState {
   getHallOfFame: () => EarnedWarCard[]
   /** Player leaderboard by card count */
   getLeaderboard: () => { playerId: string; playerName: string; count: number }[]
-
-  // ── Weekly ──
-  /** Track weekly damage for a player */
-  addWeeklyDamage: (playerId: string, amount: number) => void
-  /** Track weekly money for a player */
-  addWeeklyMoney: (playerId: string, amount: number) => void
-  /** Roll over to a new week — evaluate weekly cards, reset tracking */
-  rolloverWeek: (newWeekNumber: number) => void
-
-  // ── Records ──
-  /** Check and update the highest single-hit record */
-  checkSingleHitRecord: (playerId: string, playerName: string, damage: number, battleId?: string) => boolean
-
-  // ── NFT ──
-  /** Request minting for an earned card */
-  requestMint: (earnedCardId: string, network: string) => Promise<{ success: boolean; message: string }>
-  /** Callback when minting completes (from external service) */
-  confirmMint: (earnedCardId: string, tokenId: string, txHash: string, metadataCID: string) => void
-  /** Mark a mint as failed */
-  failMint: (earnedCardId: string) => void
-  /** Generate NFT metadata JSON for a card (for IPFS upload) */
-  generateNFTMetadata: (earnedCardId: string) => object | null
+  /** Export collection summary as shareable text */
+  exportCollection: (playerName: string) => string
 }
-
-// Week calculation (shared with prestigeStore)
-const WEEK_DURATION = 7 * 24 * 60 * 60 * 1000
-const SERVER_EPOCH = new Date('2026-01-01').getTime()
-const currentWeek = Math.floor((Date.now() - SERVER_EPOCH) / WEEK_DURATION) + 1
-
-let earnedCardCounter = 0
 
 export const useWarCardsStore = create<WarCardsState>((set, get) => ({
   cardDefinitions: CARD_DEFINITIONS,
   earnedCards: [],
-  weeklyTracking: { weekNumber: currentWeek, damageByPlayer: {}, moneyByPlayer: {} },
-  highestSingleHit: null,
 
   // ── API Fetchers ──
   fetchAllCards: async () => {
@@ -357,18 +319,17 @@ export const useWarCardsStore = create<WarCardsState>((set, get) => ({
       const res: any = await api.get('/warcards/all')
       if (res.success && res.cards) {
         set(s => {
-          const fetched = res.cards.map((c: any) => ({
+          const fetched: EarnedWarCard[] = res.cards.map((c: any) => ({
             id: c.id,
             cardDefId: c.cardDefId,
             playerId: c.playerId,
             playerName: c.playerName || 'Unknown',
             earnedAt: new Date(c.earnedAt).getTime(),
-            nft: { mintState: c.minted ? 'minted' : 'unminted' } as NFTStatus,
           }))
 
-          const myPlayerName = usePlayerStore.getState().name
-          const existingMyCards = s.earnedCards.filter(e => e.playerName === myPlayerName)
-          const fetchedOthers = fetched.filter((e: EarnedWarCard) => e.playerName !== myPlayerName)
+          const myPlayerId = usePlayerStore.getState().id
+          const existingMyCards = s.earnedCards.filter(e => e.playerId === myPlayerId)
+          const fetchedOthers = fetched.filter(e => e.playerId !== myPlayerId)
 
           return { earnedCards: [...existingMyCards, ...fetchedOthers] }
         })
@@ -380,31 +341,24 @@ export const useWarCardsStore = create<WarCardsState>((set, get) => ({
     try {
       const res: any = await api.get('/warcards')
       if (res.success && res.cards) {
+        const playerId = usePlayerStore.getState().id
         const playerName = usePlayerStore.getState().name
-        const myMapped = res.cards.map((c: any) => ({
+        const myMapped: EarnedWarCard[] = res.cards.map((c: any) => ({
           id: c.id,
           cardDefId: c.cardDefId,
-          playerId: c.playerId,
+          playerId: c.playerId || playerId,
           playerName,
           earnedAt: new Date(c.earnedAt).getTime(),
-          nft: { mintState: c.minted ? 'minted' : 'unminted' } as NFTStatus,
         }))
-        // Only override my cards, keeping others for Hall of Fame if they exist
+        // Only override my cards, keeping others for Hall of Fame
         set(s => ({
           earnedCards: [
-            ...s.earnedCards.filter(e => e.playerName !== playerName),
-            ...myMapped
-          ]
+            ...s.earnedCards.filter(e => e.playerId !== playerId),
+            ...myMapped,
+          ],
         }))
       }
     } catch (e) { console.error('Error fetching my cards', e) }
-  },
-
-  // ── Check & Award ──
-  checkAndAwardCards: (playerId, playerName, partialCtx, battleId) => {
-    // Deprecated in favor of backend asynchronous event emitting
-    // The backend now listens to 'player_action' via warCardEmitter and mints cards
-    return []
   },
 
   getPlayerCards: (playerId) => get().earnedCards.filter(e => e.playerId === playerId),
@@ -426,198 +380,30 @@ export const useWarCardsStore = create<WarCardsState>((set, get) => ({
       .sort((a, b) => b.count - a.count)
   },
 
-  // ── Weekly Tracking ──
-  addWeeklyDamage: (playerId, amount) => set(s => ({
-    weeklyTracking: {
-      ...s.weeklyTracking,
-      damageByPlayer: {
-        ...s.weeklyTracking.damageByPlayer,
-        [playerId]: (s.weeklyTracking.damageByPlayer[playerId] ?? 0) + amount,
-      },
-    },
-  })),
-
-  addWeeklyMoney: (playerId, amount) => set(s => ({
-    weeklyTracking: {
-      ...s.weeklyTracking,
-      moneyByPlayer: {
-        ...s.weeklyTracking.moneyByPlayer,
-        [playerId]: (s.weeklyTracking.moneyByPlayer[playerId] ?? 0) + amount,
-      },
-    },
-  })),
-
-  rolloverWeek: (newWeekNumber) => {
+  exportCollection: (playerName: string) => {
     const state = get()
-    const weekly = state.weeklyTracking
+    const myCards = state.earnedCards.filter(e => e.playerName === playerName)
+    if (myCards.length === 0) return `🃏 ${playerName}'s War Cards: None earned yet.`
 
-    // Find the "Weekly Warrior" winner (most damage this week)
-    const weeklyWarriorDef = state.cardDefinitions.find(d => d.id === 'timed_weekly_warrior')
-    if (weeklyWarriorDef) {
-      const entries = Object.entries(weekly.damageByPlayer)
-      if (entries.length > 0) {
-        entries.sort((a, b) => b[1] - a[1])
-        const [winnerId, winnerDmg] = entries[0]
-        // Award the weekly card
-        const earned: EarnedWarCard = {
-          id: `wc_${++earnedCardCounter}_${Date.now()}`,
-          cardDefId: 'timed_weekly_warrior',
-          playerId: winnerId,
-          playerName: winnerId, // In a real system, resolve to display name
-          earnedAt: Date.now(),
-          weekNumber: weekly.weekNumber,
-          recordValue: winnerDmg,
-          nft: emptyNFT(),
-        }
-        set(s => ({ earnedCards: [...s.earnedCards, earned] }))
+    const lines = [`🃏 **${playerName}'s War Cards** (${myCards.length}/${state.cardDefinitions.length})\n`]
+    const byCategory: Record<string, { def: WarCardDefinition; earned: EarnedWarCard }[]> = {}
+
+    for (const earned of myCards) {
+      const def = state.getCardDef(earned.cardDefId)
+      if (!def) continue
+      if (!byCategory[def.category]) byCategory[def.category] = []
+      byCategory[def.category].push({ def, earned })
+    }
+
+    for (const [cat, cards] of Object.entries(byCategory)) {
+      const meta = CARD_CATEGORY_META[cat as CardCategory]
+      lines.push(`${meta.icon} **${meta.label}**`)
+      for (const { def } of cards) {
+        const rarMeta = CARD_RARITY_META[def.rarity]
+        lines.push(`  ${rarMeta.label} — ${def.name}`)
       }
     }
 
-    // Reset tracking
-    set({ weeklyTracking: { weekNumber: newWeekNumber, damageByPlayer: {}, moneyByPlayer: {} } })
-  },
-
-  // ── Records ──
-  checkSingleHitRecord: (playerId, playerName, damage, battleId) => {
-    const state = get()
-    const current = state.highestSingleHit
-
-    if (current && current.damage >= damage) return false
-
-    // New record!
-    set({ highestSingleHit: { playerId, playerName, damage } })
-
-    // Award (or re-award) the "One-Shot Wonder" card
-    // Remove previous holder's card if it exists
-    const existingCards = state.earnedCards.filter(e => e.cardDefId !== 'combat_one_shot')
-    const earned: EarnedWarCard = {
-      id: `wc_${++earnedCardCounter}_${Date.now()}`,
-      cardDefId: 'combat_one_shot',
-      playerId,
-      playerName,
-      earnedAt: Date.now(),
-      recordValue: damage,
-      battleId,
-      nft: emptyNFT(),
-    }
-    set({ earnedCards: [...existingCards, earned] })
-    return true
-  },
-
-  requestMint: async (earnedCardId, network) => {
-    const state = get()
-    const card = state.earnedCards.find(e => e.id === earnedCardId)
-    if (!card) return { success: false, message: 'Card not found.' }
-    if (card.nft.mintState === 'minted') return { success: false, message: 'Already minted.' }
-    if (card.nft.mintState === 'pending') return { success: false, message: 'Mint already in progress.' }
-
-    set(s => ({
-      earnedCards: s.earnedCards.map(e =>
-        e.id === earnedCardId
-          ? { ...e, nft: { ...e.nft, mintState: 'pending' as NFTMintState, network } }
-          : e
-      ),
-    }))
-
-    try {
-      // Call backend route to verify and execute mock mint
-      const res: any = await api.post(`/warcards/mint/${earnedCardId}`)
-      if (res.success) {
-        get().confirmMint(earnedCardId, 'mock_token', 'mock_tx', 'mock_cid')
-        return { success: true, message: res.message }
-      } else {
-        get().failMint(earnedCardId)
-        return { success: false, message: res.error || 'Failed to mint' }
-      }
-    } catch (err: any) {
-      get().failMint(earnedCardId)
-      return { success: false, message: err.message || 'Error executing request' }
-    }
-  },
-
-  confirmMint: (earnedCardId, tokenId, txHash, metadataCID) => {
-    set(s => ({
-      earnedCards: s.earnedCards.map(e =>
-        e.id === earnedCardId
-          ? { ...e, nft: { ...e.nft, mintState: 'minted' as NFTMintState, tokenId, txHash, metadataCID, mintedAt: Date.now() } }
-          : e
-      ),
-    }))
-  },
-
-  failMint: (earnedCardId) => {
-    set(s => ({
-      earnedCards: s.earnedCards.map(e =>
-        e.id === earnedCardId
-          ? { ...e, nft: { ...e.nft, mintState: 'failed' as NFTMintState } }
-          : e
-      ),
-    }))
-  },
-
-  generateNFTMetadata: (earnedCardId) => {
-    const state = get()
-    const earned = state.earnedCards.find(e => e.id === earnedCardId)
-    if (!earned) return null
-    const def = state.cardDefinitions.find(d => d.id === earned.cardDefId)
-    if (!def) return null
-
-    return {
-      name: `XWAR: ${def.name}`,
-      description: def.description,
-      image: '', // TODO: Generate or link card artwork
-      external_url: 'https://xwar.io', // TODO: Replace with real URL
-      attributes: [
-        { trait_type: 'Category', value: CARD_CATEGORY_META[def.category].label },
-        { trait_type: 'Rarity', value: CARD_RARITY_META[def.rarity].label },
-        { trait_type: 'Earned By', value: earned.playerName },
-        { trait_type: 'Earned At', value: new Date(earned.earnedAt).toISOString() },
-        ...(earned.recordValue ? [{ trait_type: 'Record Value', value: earned.recordValue }] : []),
-        ...(earned.weekNumber ? [{ trait_type: 'Week', value: earned.weekNumber }] : []),
-        { trait_type: 'First Only', value: def.firstOnly ? 'Yes' : 'No' },
-      ],
-    }
+    return lines.join('\n')
   },
 }))
-
-// ====== HELPERS ======
-
-function getRecordValue(def: WarCardDefinition, ctx: CardConditionContext): number | undefined {
-  switch (def.id) {
-    case 'milestone_100k_dmg':
-    case 'milestone_1m_dmg':
-      return ctx.totalDamageDone
-    case 'milestone_1m_money':
-    case 'milestone_10m_money':
-      return ctx.totalMoney
-    case 'milestone_1k_items':
-      return ctx.totalItemsProduced
-    case 'timed_1m_dmg_week':
-      return ctx.weeklyDamage
-    case 'timed_top1_dmg_10w':
-      return ctx.consecutiveWeeksTopDamage
-    case 'timed_top1_econ_10w':
-      return ctx.consecutiveWeeksTopEconomy
-    case 'combat_dominator':
-    case 'combat_biggest_battle':
-      return ctx.battleDamageDealt
-    case 'combat_iron_wall':
-      return ctx.battleHitsTaken
-    case 'combat_critical_mass':
-      return ctx.battleCritsLanded
-    case 'econ_casino_royale':
-      return ctx.casinoSessionWinnings
-    case 'econ_market_maker':
-      return ctx.marketTransactions
-    case 'econ_bond_king':
-      return ctx.bondExchangeProfit
-    case 'econ_case_addict':
-      return ctx.totalCasesOpened
-    case 'econ_master_crafter':
-      return ctx.totalItemsCrafted
-    case 'econ_scrap_lord':
-      return ctx.totalItemsDismantled
-    default:
-      return undefined
-  }
-}

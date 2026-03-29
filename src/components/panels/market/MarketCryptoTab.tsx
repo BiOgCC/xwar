@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { usePlayerStore } from '../../../stores/playerStore'
-import { useInventoryStore, generateStats, TIER_COLORS, TIER_LABELS, WEAPON_SUBTYPES, type EquipTier } from '../../../stores/inventoryStore'
+import { useInventoryStore, TIER_COLORS, TIER_LABELS, type EquipTier } from '../../../stores/inventoryStore'
+import { badgePurchase } from '../../../api/client'
 import BadgeOfHonorIcon from '../../shared/BadgeOfHonorIcon'
 
 interface MarketCryptoTabProps {
@@ -20,6 +21,7 @@ const GEAR_OFFERS: { tier: EquipTier; price: number; label: string }[] = [
 
 export default function MarketCryptoTab({ showFb }: MarketCryptoTabProps) {
   const player = usePlayerStore()
+  const [isBuying, setIsBuying] = useState(false)
 
   const handleBuyBox = (price: number, resource: 'lootBoxes' | 'militaryBoxes' | 'supplyBoxes', label: string) => {
     if (player.badgesOfHonor < price) {
@@ -30,28 +32,26 @@ export default function MarketCryptoTab({ showFb }: MarketCryptoTabProps) {
     showFb(`Purchased ${label}!`, true)
   }
 
-  const handleBuyGear = (tier: EquipTier, price: number) => {
-    if (player.badgesOfHonor < price) {
+  const handleBuyGear = async (tier: EquipTier, price: number) => {
+    if (player.badgesOfHonor < price || isBuying) {
       showFb('Not enough Badges of Honor.', false); return
     }
-    usePlayerStore.getState().spendBadgesOfHonor(price)
-
-    const slots = ['weapon', 'helmet', 'chest', 'legs', 'gloves', 'boots'] as const
-    const slot = slots[Math.floor(Math.random() * slots.length)]
-    const category = slot === 'weapon' ? 'weapon' as const : 'armor' as const
-    const subtypes = WEAPON_SUBTYPES[tier]
-    const subtype = slot === 'weapon' ? subtypes[Math.floor(Math.random() * subtypes.length)] : undefined
-
-    const result = generateStats(category, slot, tier, subtype)
-
-    useInventoryStore.getState().addItem({
-      id: `eq_badge_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      name: result.name, category, slot, tier,
-      weaponSubtype: result.weaponSubtype || subtype,
-      stats: result.stats,
-      location: 'inventory', equipped: false, durability: 100,
-    })
-    showFb(`Purchased ${result.name}!`, true)
+    setIsBuying(true)
+    try {
+      const res = await badgePurchase(tier)
+      if (!res.success) {
+        showFb('Purchase failed.', false); return
+      }
+      // Refresh server state
+      await useInventoryStore.getState().fetchInventory()
+      await usePlayerStore.getState().fetchPlayer()
+      showFb(`Purchased ${res.item.name}!`, true)
+    } catch (e) {
+      showFb('Purchase failed.', false)
+      console.error('[BadgeMarket] Failed:', e)
+    } finally {
+      setIsBuying(false)
+    }
   }
 
   return (

@@ -205,6 +205,10 @@ export async function craftItem(tier: string, slot: string, category: string) {
   return api.post<any>('/inventory/craft', { tier, slot, category })
 }
 
+export async function badgePurchase(tier: string) {
+  return api.post<{ success: boolean; item: any; badgeCost: number }>('/inventory/badge-purchase', { tier })
+}
+
 // ── Skills API ──────────────────────────────────────────────
 
 export async function getMySkills() {
