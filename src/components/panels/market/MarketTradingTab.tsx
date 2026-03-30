@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useMarketStore, RESOURCE_DEFS, type ResourceId } from '../../../stores/market'
-import { useArmyStore } from '../../../stores/army'
+
 import { useWorldStore } from '../../../stores/worldStore'
 import { useGovernmentStore } from '../../../stores/governmentStore'
 import ResourceIcon from '../../shared/ResourceIcon'
@@ -148,14 +148,9 @@ export default function MarketTradingTab({ showFb }: MarketTradingTabProps) {
   const isPresident = gov?.president === player.name
   const countryFund = useWorldStore.getState().getCountry(iso)?.fund
 
-  const armyStoreAll = useArmyStore.getState()
-  const playersArmies = Object.values(armyStoreAll.armies)
-  const myEnlistedArmy = playersArmies.find(a => a.members.some(m => m.playerId === player.name))
-  const isVaultOfficer = myEnlistedArmy ? (
-    myEnlistedArmy.commanderId === player.name ||
-    (myEnlistedArmy.members.find(m => m.playerId === player.name)?.role === 'colonel') ||
-    (myEnlistedArmy.members.find(m => m.playerId === player.name)?.role === 'general')
-  ) : false
+  // Army vault system removed
+  const myEnlistedArmy: any = null
+  const isVaultOfficer = false
 
   return (
     <>
@@ -263,9 +258,7 @@ export default function MarketTradingTab({ showFb }: MarketTradingTabProps) {
               </div>
               <button onClick={async () => {
                 let r
-                if (vaultMode && isVaultOfficer && myEnlistedArmy) {
-                  r = await market.placeForceVaultOrder(myEnlistedArmy.id, orderType, selResource, qty, limitPrice)
-                } else if (countryMode && isPresident) {
+                if (countryMode && isPresident) {
                   r = await market.placeCountryOrder(orderType, selResource, qty, limitPrice)
                 } else {
                   r = await market.placeResourceOrder(orderType, selResource, qty, limitPrice)
@@ -273,7 +266,7 @@ export default function MarketTradingTab({ showFb }: MarketTradingTabProps) {
                 showFb(r.message, r.success)
                 market.fetchListings()
               }} className={`mkt-form__submit ${orderType === 'buy' ? 'mkt-form__submit--buy' : 'mkt-form__submit--sell'}`}>
-                {vaultMode ? '🏦 ' : countryMode ? '🏛️ ' : ''}{orderType === 'buy' ? 'BUY' : 'SELL'} — ${totalCost.toFixed(2)}
+                {countryMode ? '🏛️ ' : ''}{orderType === 'buy' ? 'BUY' : 'SELL'} — ${totalCost.toFixed(2)}
               </button>
             </div>
 
@@ -286,7 +279,7 @@ export default function MarketTradingTab({ showFb }: MarketTradingTabProps) {
                     <span className="mkt-book__rank">#{i + 1}</span>
                     <span className="mkt-book__avatar" style={{ background: 'rgba(34,211,138,0.2)' }}>👤</span>
                     <div className="mkt-book__info">
-                      <span className="mkt-book__name">{o.source === 'country' ? '🏛️' : o.source === 'force_vault' ? '🏦' : ''}{o.playerId.length > 10 ? o.playerId.slice(0, 10) + '…' : o.playerId}</span>
+                      <span className="mkt-book__name">{o.source === 'country' ? '🏛️' : ''}{o.playerId.length > 10 ? o.playerId.slice(0, 10) + '…' : o.playerId}</span>
                       <span className="mkt-book__details">
                         <span className="mkt-book__price mkt-book__price--bid">🪙{o.pricePerUnit.toFixed(2)}/u</span>
                         <span className="mkt-book__qty">📦 {(o.amount - o.filledAmount).toLocaleString()}</span>
@@ -303,7 +296,7 @@ export default function MarketTradingTab({ showFb }: MarketTradingTabProps) {
                     <span className="mkt-book__rank">#{i + 1}</span>
                     <span className="mkt-book__avatar" style={{ background: 'rgba(239,68,68,0.2)' }}>👤</span>
                     <div className="mkt-book__info">
-                      <span className="mkt-book__name">{o.source === 'country' ? '🏛️' : o.source === 'force_vault' ? '🏦' : ''}{o.playerId.length > 10 ? o.playerId.slice(0, 10) + '…' : o.playerId}</span>
+                      <span className="mkt-book__name">{o.source === 'country' ? '🏛️' : ''}{o.playerId.length > 10 ? o.playerId.slice(0, 10) + '…' : o.playerId}</span>
                       <span className="mkt-book__details">
                         <span className="mkt-book__price mkt-book__price--ask">🪙{o.pricePerUnit.toFixed(2)}/u</span>
                         <span className="mkt-book__qty">📦 {(o.amount - o.filledAmount).toLocaleString()}</span>

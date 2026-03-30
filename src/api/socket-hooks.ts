@@ -46,13 +46,19 @@ export function initSocketHooks() {
     if (!data?.id) return
     useBattleStore.setState((s) => {
       const existing: any = s.battles[data.id] ?? {}
+      // Preserve client-side damageDealt if it's higher than server value
+      // (playerHit events arrive between ticks and push client ahead of server)
+      const existingAtkDmg = existing.attacker?.damageDealt ?? 0
+      const existingDefDmg = existing.defender?.damageDealt ?? 0
+      const serverAtkDmg = data.attacker?.damageDealt ?? 0
+      const serverDefDmg = data.defender?.damageDealt ?? 0
+
       // Build merged battle: defaults < existing < server data < bridged adrenaline
       const merged: any = Object.assign(
         {},
         // Client-only defaults (not sent by server)
         {
           damageFeed: [],
-          divisionCooldowns: {},
           orderMessage: '',
           motd: '',
           playerAdrenaline: {},
@@ -67,6 +73,17 @@ export function initSocketHooks() {
         existing,
         // Server data wins for all shared fields
         data,
+        // Fix snap-back: use Math.max for damageDealt so playerHit increments aren't lost
+        {
+          attacker: {
+            ...(data.attacker ?? existing.attacker ?? {}),
+            damageDealt: Math.max(existingAtkDmg, serverAtkDmg),
+          },
+          defender: {
+            ...(data.defender ?? existing.defender ?? {}),
+            damageDealt: Math.max(existingDefDmg, serverDefDmg),
+          },
+        },
         // Bridge adrenalineState → client playerAdrenaline map (always last)
         {
           playerAdrenaline: data.adrenalineState
@@ -119,11 +136,23 @@ export function initSocketHooks() {
       ].slice(0, 20)
       const side = data.side as 'attacker' | 'defender'
       const dealerKey = side === 'attacker' ? 'attackerDamageDealers' : 'defenderDamageDealers'
+      const sideObj = b[side]
+      // Only increment damageDealt for OTHER players' hits.
+      // The local player's hits are already applied optimistically in playerAttack().
+      // The periodic battle:state handler (Math.max) reconciles the authoritative total.
+      const localPlayer = usePlayerStore.getState().name
+      const isLocalHit = data.playerName === localPlayer
       return {
         battles: {
           ...s.battles,
           [data.battleId]: {
             ...b,
+            [side]: {
+              ...sideObj,
+              damageDealt: isLocalHit
+                ? (sideObj?.damageDealt || 0)         // already applied via HTTP
+                : (sideObj?.damageDealt || 0) + data.damage,  // other player's hit
+            },
             damageFeed: newFeed,
             [dealerKey]: {
               ...b[dealerKey],
@@ -137,8 +166,8 @@ export function initSocketHooks() {
 
   socketManager.on('battle:end', (data: {
     battleId: string; winner: string
-    attackerStats: { damageDealt: number; manpowerLost: number; divisionsDestroyed: number }
-    defenderStats: { damageDealt: number; manpowerLost: number; divisionsDestroyed: number }
+    attackerStats: { damageDealt: number }
+    defenderStats: { damageDealt: number }
   }) => {
     useBattleStore.setState((s) => {
       const b = s.battles[data.battleId]
@@ -149,8 +178,8 @@ export function initSocketHooks() {
           [data.battleId]: {
             ...b,
             status: data.winner === b.attackerId ? 'attacker_won' : 'defender_won',
-            attacker: { ...b.attacker, damageDealt: data.attackerStats.damageDealt, manpowerLost: data.attackerStats.manpowerLost, divisionsDestroyed: data.attackerStats.divisionsDestroyed },
-            defender: { ...b.defender, damageDealt: data.defenderStats.damageDealt, manpowerLost: data.defenderStats.manpowerLost, divisionsDestroyed: data.defenderStats.divisionsDestroyed },
+            attacker: { ...b.attacker, damageDealt: data.attackerStats.damageDealt },
+            defender: { ...b.defender, damageDealt: data.defenderStats.damageDealt },
           },
         },
       }
@@ -202,18 +231,6 @@ export function initSocketHooks() {
       }
       return s
     })
-  })
-
-  socketManager.on('battle:deploy', (data: {
-    battleId: string; divisionIds: string[]; side: 'attacker' | 'defender'
-  }) => {
-    console.log(`[WS] 🚀 ${data.divisionIds.length} division(s) deployed to ${data.side}`)
-  })
-
-  socketManager.on('battle:recall', (data: {
-    battleId: string; divisionId: string; side: string; divisionName: string
-  }) => {
-    console.log(`[WS] 🛡️ ${data.divisionName} recalled from battle`)
   })
 
   // ═══════════════════════════════════════════════
@@ -283,13 +300,13 @@ export function initSocketHooks() {
       regionName: b?.regionName ?? data.targetRegion,
       startedAt: b?.startedAt ?? now,
       ticksElapsed: 0, status: 'active',
-      attacker: b?.attacker ?? { countryCode: data.attackerCode, divisionIds: [], engagedDivisionIds: [], damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
-      defender: b?.defender ?? { countryCode: data.defenderCode, divisionIds: [], engagedDivisionIds: [], damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0 },
+      attacker: b?.attacker ?? { countryCode: data.attackerCode, damageDealt: 0 },
+      defender: b?.defender ?? { countryCode: data.defenderCode, damageDealt: 0 },
       attackerRoundsWon: 0, defenderRoundsWon: 0,
       rounds: [{ attackerPoints: 0, defenderPoints: 0, attackerDmgTotal: 0, defenderDmgTotal: 0, status: 'active', startedAt: now }],
       currentTick: { attackerDamage: 0, defenderDamage: 0 },
       combatLog: b?.combatLog ?? [], attackerDamageDealers: {}, defenderDamageDealers: {},
-      damageFeed: [], divisionCooldowns: {},
+      damageFeed: [],
       attackerOrder: 'none', defenderOrder: 'none',
       orderMessage: '', motd: '',
       playerAdrenaline: {}, playerSurge: {}, playerCrash: {}, playerAdrenalinePeakAt: {},

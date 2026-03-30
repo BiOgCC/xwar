@@ -5,16 +5,16 @@
  * to run on the server. All damage calculations, round resolution, and
  * battle outcomes are computed here and broadcast via Socket.IO.
  *
- * Division/player data is read from the database (Drizzle schema).
+ * Player data is read from the database (Drizzle schema).
  * In-memory battle state is held in a Map for tick performance.
  */
 
 import type { Server as SocketServer } from 'socket.io'
 import { logger } from '../utils/logger.js'
-import { eq, inArray, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/connection.js'
 import {
-  players, playerSkills, items, divisions as divisionsTable,
+  players, playerSkills, items,
   battles as battlesTable, countries, muMembers, governments, militaryUnits, alliances,
 } from '../db/schema.js'
 import { REGION_ADJACENCY, CAPITAL_REGIONS, isConnectedToCapital } from '../data/region-adjacency.js'
@@ -47,36 +47,11 @@ export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; effects: Or
   blitz:     { label: 'BLITZ',     effects: { atkMult: 1.10, armorMult: 1, dodgeMult: 1, hitBonus: 0, critBonus: 0, critDmgMult: 1.10, speedMult: 1 } },
 }
 
-// Division Types (mirrors client stores/army/types.ts)
-export type DivisionType = 'recon' | 'assault' | 'sniper' | 'rpg' | 'jeep' | 'tank' | 'jet' | 'warship'
 
-interface DivisionTemplate {
-  id: DivisionType
-  atkDmgMult: number
-  hitRate: number
-  critRateMult: number
-  critDmgMult: number
-  healthMult: number
-  dodgeMult: number
-  armorMult: number
-  attackSpeed: number
-}
-
-const DIVISION_TEMPLATES: Record<DivisionType, DivisionTemplate> = {
-  recon:    { id: 'recon',    atkDmgMult: 0.10, hitRate: 0.50, critRateMult: 0.80, critDmgMult: 1.50, healthMult: 24.0, dodgeMult: 1.30, armorMult: 1.00, attackSpeed: 1.5 },
-  assault:  { id: 'assault',  atkDmgMult: 0.11, hitRate: 0.55, critRateMult: 1.00, critDmgMult: 1.60, healthMult: 28.8, dodgeMult: 0.90, armorMult: 1.10, attackSpeed: 1 },
-  sniper:   { id: 'sniper',   atkDmgMult: 0.13, hitRate: 0.70, critRateMult: 1.56, critDmgMult: 2.50, healthMult: 24.0, dodgeMult: 0.90, armorMult: 0.80, attackSpeed: 0.6 },
-  rpg:      { id: 'rpg',      atkDmgMult: 0.15, hitRate: 0.50, critRateMult: 1.20, critDmgMult: 2.00, healthMult: 30.0, dodgeMult: 0.70, armorMult: 1.30, attackSpeed: 0.8 },
-  jeep:     { id: 'jeep',     atkDmgMult: 0.20, hitRate: 0.60, critRateMult: 0.90, critDmgMult: 1.70, healthMult: 30.0, dodgeMult: 1.50, armorMult: 1.50, attackSpeed: 1.3 },
-  tank:     { id: 'tank',     atkDmgMult: 0.22, hitRate: 0.66, critRateMult: 1.10, critDmgMult: 1.80, healthMult: 36.0, dodgeMult: 0.80, armorMult: 2.00, attackSpeed: 0.5 },
-  jet:      { id: 'jet',      atkDmgMult: 0.26, hitRate: 0.80, critRateMult: 1.75, critDmgMult: 2.80, healthMult: 26.0, dodgeMult: 1.40, armorMult: 1.00, attackSpeed: 0.7 },
-  warship:  { id: 'warship',  atkDmgMult: 0.30, hitRate: 0.60, critRateMult: 1.35, critDmgMult: 2.20, healthMult: 40.0, dodgeMult: 0.70, armorMult: 2.50, attackSpeed: 0.4 },
-}
 
 const POINTS_TO_WIN_ROUND = 300
 const ROUNDS_TO_WIN_BATTLE = 2
 const MAX_ROUNDS = 3
-const MAX_DAMAGE_PER_CALL = 50_000
 const TERRAIN_TICK_GATE = 8  // Only award terrain every 8th tick (8 × 15s = 120s)
 
 // Battle Order costs (money)
@@ -118,12 +93,7 @@ function deviate(v: number): number {
 
 interface BattleSide {
   countryCode: string
-  divisionIds: string[]
-  engagedDivisionIds: string[]
   damageDealt: number
-  manpowerLost: number
-  divisionsDestroyed: number
-  divisionsRetreated: number
 }
 
 interface BattleRound {
@@ -142,7 +112,6 @@ interface CombatLogEntry {
   timestamp: number
   type: string
   side: 'attacker' | 'defender'
-  divisionName?: string
   damage?: number
   message: string
 }
@@ -190,7 +159,6 @@ interface Battle {
   attackerDamageDealers: Record<string, number>
   defenderDamageDealers: Record<string, number>
   damageFeed: DamageEvent[]
-  divisionCooldowns: Record<string, number>
   attackerOrder: TacticalOrder
   defenderOrder: TacticalOrder
   orderMessage: string
@@ -199,8 +167,6 @@ interface Battle {
   playerBattleStats: Record<string, PlayerBattleStats>
   /** Adrenaline state per player — DB-persisted */
   adrenalineState: Record<string, AdrenalineState>
-  /** Division health snapshots — { [divisionId]: { health, maxHealth, manpower } } */
-  divisionHealthState: Record<string, { health: number; maxHealth: number; manpower: number }>
   /** Battle orders — per country/MU, not per side */
   battleOrders: BattleOrder[]
   /** Whether the defended region is connected to the defender's capital via supply line */
@@ -209,25 +175,7 @@ interface Battle {
   revoltPressure: number
 }
 
-// In-memory division snapshot for combat performance (avoids DB reads per tick per div)
-interface DivisionSnapshot {
-  id: string
-  type: DivisionType
-  name: string
-  countryCode: string
-  ownerId: string
-  manpower: number
-  maxManpower: number
-  health: number
-  maxHealth: number
-  experience: number
-  status: string
-  starMods: {
-    atkDmgMult: number; hitRate: number; critRateMult: number; critDmgMult: number
-    healthMult: number; dodgeMult: number; armorMult: number; attackSpeed: number
-  }
-  deployedAtTick?: number
-}
+
 
 // Rate limiter for player actions
 const playerCooldowns = new Map<string, number>()
@@ -258,9 +206,9 @@ function getAdrenaline(battle: Battle, playerId: string): AdrenalineState {
 
 class BattleService {
   private battles = new Map<string, Battle>()
-  private divisionCache = new Map<string, DivisionSnapshot>()
   private weaponPresence = new Map<string, Record<'attacker' | 'defender', Record<string, { players: Record<string, { hitCount: number; totalDamage: number }>; expiryTick: number }>>>()
   private io: SocketServer | null = null
+  private _migrationRan = false
 
   /** Attach Socket.IO server */
   setIO(io: SocketServer): void {
@@ -360,14 +308,8 @@ class BattleService {
       id, type, attackerId: attackerCode, defenderId: defenderCode,
       regionName, regionId, attackerRegionId,
       startedAt: now, ticksElapsed: 0, battleTickCounter: 0, status: 'active',
-      attacker: {
-        countryCode: attackerCode, divisionIds: [], engagedDivisionIds: [],
-        damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
-      },
-      defender: {
-        countryCode: defenderCode, divisionIds: [], engagedDivisionIds: [],
-        damageDealt: 0, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
-      },
+      attacker: { countryCode: attackerCode, damageDealt: 0 },
+      defender: { countryCode: defenderCode, damageDealt: 0 },
       attackerRoundsWon: 0, defenderRoundsWon: 0,
       rounds: [{ attackerPoints: 0, defenderPoints: 0, attackerDmgTotal: 0, defenderDmgTotal: 0, status: 'active', startedAt: now }],
       currentTick: { attackerDamage: 0, defenderDamage: 0 },
@@ -378,12 +320,11 @@ class BattleService {
           : `⚔️ Battle for ${regionName} begins!`,
       }],
       attackerDamageDealers: {}, defenderDamageDealers: {},
-      damageFeed: [], divisionCooldowns: {},
+      damageFeed: [],
       attackerOrder: 'none', defenderOrder: 'none',
       orderMessage: '', motd: '',
       playerBattleStats: {},
       adrenalineState: {},
-      divisionHealthState: {},
       battleOrders: [],
       defenderHasSupplyLine,
       revoltPressure: type === 'revolt' ? Math.min(40, Math.max(0, revoltPressure)) : 0,
@@ -622,12 +563,8 @@ class BattleService {
     let ammoMult = 1.0
     let ammoCritBonus = 0
 
-    if (weaponSubtype !== 'knife') {
-      if (equippedAmmo === 'none') return FAIL('No ammo equipped! Equip ammo to fire.')
-      const ammoField = `${equippedAmmo}Bullets` as keyof typeof player
-      const ammoCount = Number((player as any)[ammoField] ?? 0)
-      if (ammoCount <= 0) return FAIL(`Out of ${equippedAmmo} ammo!`)
-    }
+    // Ammo is optional — players can always fight bare-fist
+    // If no ammo or no weapon, they just deal base damage without ammo multiplier
 
     // Apply ammo multiplier + consume
     if (equippedAmmo !== 'none') {
@@ -702,8 +639,6 @@ class BattleService {
       }
     }
 
-    // Cap damage
-    damage = Math.min(damage, MAX_DAMAGE_PER_CALL)
 
     // ── Buff multipliers (applied to both miss and full hit) ──
     let buffMsg = ''
@@ -963,11 +898,19 @@ class BattleService {
       surgeMsg = ' 💥 CRASHED!'
     }
 
+
+
     // Re-ensure minimum after mults
     damage = Math.max(1, damage)
 
     // Record damage
     this.addDamage(battleId, side, damage, isCrit, isDodged, playerName)
+
+    // ── Mercenary per-hit payouts (foreign players on contracted side) ──
+    let mercMsg = ''
+    try {
+      mercMsg = await this.payMercContracts(battle, playerId, playerName, countryCode, side, damage)
+    } catch (e) { /* merc payout failed, non-critical */ }
 
     // ── Track per-player battle stats for war card evaluation ──
     if (!battle.playerBattleStats[playerId]) {
@@ -1055,7 +998,7 @@ class BattleService {
         ? `🎯 FREE HIT! ${damage} damage (no stamina cost)!`
         : isCrit
           ? `💥 CRITICAL HIT! ${damage} damage dealt!`
-          : `⚔️ ${damage} damage dealt.`) + surgeMsg + buffMsg + dropMsg
+          : `⚔️ ${damage} damage dealt.`) + surgeMsg + buffMsg + dropMsg + mercMsg
 
     return { damage, isCrit, isMiss, isDodged, side, message, staminaLeft: newStamina, adrenaline: adrState.value }
   }
@@ -1186,97 +1129,193 @@ class BattleService {
       await db.execute(sql`UPDATE players SET experience = experience + 10 WHERE id = ${playerId}`)
     } catch (e) { /* non-critical */ }
 
-    // Reduce enemy tick damage
-    const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
-    battle.currentTick[enemySide] = Math.max(0, battle.currentTick[enemySide] - blocked)
+    // Add defensive damage to the player's OWN side (contributes to ground points)
+    const defSide: 'attacker' | 'defender' = isAttacker ? 'attacker' : 'defender'
+    this.addDamage(battleId, defSide, blocked, false, false, playerName)
 
-    this.emit(battleId, 'battle:playerDefend', { battleId, playerName, blocked, side: isAttacker ? 'attacker' : 'defender' })
+    // Broadcast hit event for defend (so client updates damage feed + bar)
+    this.emit(battleId, 'battle:playerHit', {
+      battleId, side: defSide, playerName: `${playerName} 🛡️`, damage: blocked, isCrit: false, isMiss: false, isDodged: false,
+    })
 
     return { blocked, message: `🛡️ Blocked ${blocked} incoming damage!`, staminaLeft: newStamina }
   }
 
-  // ── Deploy divisions ──
+  // ── Missile Launcher (server-authoritative) ──
 
-  async deployDivisions(
-    battleId: string, divisionIds: string[], side: 'attacker' | 'defender', countryCode: string,
-  ): Promise<{ success: boolean; message: string }> {
+  async launchMissile(
+    battleId: string, playerId: string, playerName: string, countryCode: string,
+    side: 'attacker' | 'defender',
+  ): Promise<{ success: boolean; message: string; damage?: number }> {
     const battle = this.battles.get(battleId)
-    if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
+    if (!battle || battle.status !== 'active') {
+      return { success: false, message: 'No active battle.' }
+    }
 
+    // Verify player is on the correct side
     const sideCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
-    if (countryCode !== sideCountry) return { success: false, message: 'Country mismatch for this side.' }
-
-    // Load divisions from DB
-    const divRows = await db.select().from(divisionsTable).where(inArray(divisionsTable.id, divisionIds))
-    const validIds = divRows
-      .filter(d => d.countryCode === sideCountry && (d.status === 'ready' || d.status === 'training') && (d.health ?? 0) > 0)
-      .map(d => d.id)
-
-    if (validIds.length === 0) return { success: false, message: 'No valid divisions to deploy.' }
-
-    // Update DB status
-    await db.update(divisionsTable).set({ status: 'in_combat' }).where(inArray(divisionsTable.id, validIds))
-
-    // Cache snapshots
-    for (const d of divRows.filter(r => validIds.includes(r.id))) {
-      this.cacheDivision(d)
+    if (countryCode !== sideCountry) {
+      return { success: false, message: 'You can only launch missiles for your own side.' }
     }
 
-    // Update battle state
-    const sideData = side === 'attacker' ? battle.attacker : battle.defender
-    sideData.divisionIds = [...new Set([...sideData.divisionIds, ...validIds])]
-    sideData.engagedDivisionIds = [...new Set([...sideData.engagedDivisionIds, ...validIds])]
+    // Authorization: only president or VP can launch
+    try {
+      const [gov] = await db.select({
+        president: governments.president,
+        vicePresident: governments.vicePresident,
+      }).from(governments).where(eq(governments.countryCode, countryCode)).limit(1)
 
+      if (gov) {
+        const authorizedIds = [gov.president, gov.vicePresident].filter(Boolean)
+        if (authorizedIds.length > 0 && !authorizedIds.includes(playerId)) {
+          return { success: false, message: 'Only the President or Vice President can launch missiles.' }
+        }
+      }
+    } catch (e) { /* gov check failed, allow for alpha */ }
+
+    // Check missile launcher level from countries table
+    const [countryRow] = await db.select({ missileLauncherLevel: countries.missileLauncherLevel })
+      .from(countries).where(eq(countries.code, countryCode)).limit(1)
+
+    const level = countryRow?.missileLauncherLevel ?? 0
+    if (level <= 0) {
+      return { success: false, message: 'No Missile Launcher built. Upgrade in country infrastructure.' }
+    }
+
+    // Cooldown check (5 minutes per country per battle) — stored in-memory on battle
+    const MISSILE_COOLDOWN = 5 * 60 * 1000
+    const now = Date.now()
+    const cooldowns = (battle as any)._missileCooldowns ?? {}
+    const lastLaunch = cooldowns[countryCode] ?? 0
+    if (now - lastLaunch < MISSILE_COOLDOWN) {
+      const remaining = Math.ceil((MISSILE_COOLDOWN - (now - lastLaunch)) / 1000)
+      return { success: false, message: `Missile on cooldown! ${remaining}s remaining.` }
+    }
+
+    // Oil cost: 50 from country fund
+    const OIL_COST = 50
+    const oilResult = await db.execute(sql`
+      UPDATE countries SET fund = jsonb_set(
+        COALESCE(fund, '{}'::jsonb),
+        '{oil}',
+        (GREATEST(0, COALESCE((fund->>'oil')::numeric, 0) - ${OIL_COST}))::text::jsonb
+      )
+      WHERE code = ${countryCode} AND COALESCE((fund->>'oil')::numeric, 0) >= ${OIL_COST}
+    `)
+    const oilRowCount = (oilResult as any)?.rowCount ?? (oilResult as any)?.length ?? 0
+    if (oilRowCount === 0) {
+      return { success: false, message: `Not enough oil in national fund. Needs ${OIL_COST} 🛢️.` }
+    }
+
+    // Damage: base 666,666 × (1 + (level-1) × 0.125)
+    const BASE_DAMAGE = 666_666
+    const burstDamage = Math.round(BASE_DAMAGE * (1 + (level - 1) * 0.125))
+
+    // Apply damage via addDamage (updates round totals, damage dealers, etc.)
+    this.addDamage(battleId, side, burstDamage, true, false, playerName)
+
+    // Set cooldown
+    ;(battle as any)._missileCooldowns = { ...cooldowns, [countryCode]: now }
+
+    // Combat log entry
     battle.combatLog.push({
-      tick: battle.ticksElapsed, timestamp: Date.now(), type: 'reinforcement', side,
-      message: `🚀 ${validIds.length} division(s) deployed as reinforcements!`,
+      tick: battle.ticksElapsed, timestamp: now, type: 'damage' as const,
+      side,
+      message: `🚀 MISSILE LAUNCHED by ${playerName}! ${burstDamage.toLocaleString()} burst damage! (Lv.${level})`,
     })
 
-    this.emit(battleId, 'battle:deploy', { battleId, divisionIds: validIds, side })
+    // Broadcast hit event
+    this.emit(battleId, 'battle:playerHit', {
+      battleId, side, playerName: `${playerName} 🚀`, damage: burstDamage, isCrit: true, isMiss: false, isDodged: false,
+    })
 
-    return { success: true, message: `${validIds.length} division(s) deployed to battle!` }
+    logger.info(`[Battle] Missile launched by ${playerName} (${countryCode}) in ${battleId}: ${burstDamage} damage (Lv.${level})`)
+    return { success: true, message: `🚀 Missile launched! ${burstDamage.toLocaleString()} damage dealt!`, damage: burstDamage }
   }
 
-  // ── Recall division ──
+  // ── Mercenary Contracts (server-authoritative) ──
 
-  async recallDivision(
-    battleId: string, divisionId: string, side: 'attacker' | 'defender',
+  async createMercContract(
+    battleId: string, playerId: string, playerName: string, countryCode: string,
+    side: 'attacker' | 'defender', ratePerHit: number, totalPool: number,
   ): Promise<{ success: boolean; message: string }> {
     const battle = this.battles.get(battleId)
     if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
+    if (ratePerHit <= 0 || totalPool <= 0) return { success: false, message: 'Invalid amounts.' }
 
-    const sideData = side === 'attacker' ? battle.attacker : battle.defender
-    if (!sideData.engagedDivisionIds.includes(divisionId)) {
-      return { success: false, message: 'Division not in battle.' }
-    }
+    // Only president of the side's country can create
+    const sideCountry = side === 'attacker' ? battle.attackerId : battle.defenderId
 
-    // Check 120-tick deployment cooldown
-    const cached = this.divisionCache.get(divisionId)
-    if (cached?.deployedAtTick != null) {
-      const ticksDeployed = battle.ticksElapsed - cached.deployedAtTick
-      if (ticksDeployed < 120) {
-        const minsRemaining = Math.ceil(((120 - ticksDeployed) * 15) / 60)
-        return { success: false, message: `Division must stay deployed for 30 min. ${minsRemaining} min remaining.` }
+    try {
+      const [gov] = await db.select({ president: governments.president })
+        .from(governments).where(eq(governments.countryCode, sideCountry)).limit(1)
+      if (gov && gov.president !== playerId) {
+        return { success: false, message: 'Only the President can fund mercenary contracts.' }
       }
+    } catch (e) { /* gov check failed */ }
+
+    // Deduct from country fund
+    const cost = totalPool
+    const fundResult = await db.execute(sql`
+      UPDATE countries SET fund = jsonb_set(
+        COALESCE(fund, '{}'::jsonb),
+        '{money}',
+        (GREATEST(0, COALESCE((fund->>'money')::numeric, 0) - ${cost}))::text::jsonb
+      )
+      WHERE code = ${sideCountry} AND COALESCE((fund->>'money')::numeric, 0) >= ${cost}
+    `)
+    const fundRowCount = (fundResult as any)?.rowCount ?? (fundResult as any)?.length ?? 0
+    if (fundRowCount === 0) {
+      return { success: false, message: `Not enough money in national fund (${cost.toLocaleString()} required).` }
     }
 
-    // Remove from engaged
-    sideData.engagedDivisionIds = sideData.engagedDivisionIds.filter(id => id !== divisionId)
+    const contract = {
+      id: `merc_${battleId}_${Date.now()}`,
+      side,
+      ratePerHit,
+      totalPool,
+      remaining: totalPool,
+      fundedBy: playerName,
+      countryCode: sideCountry,
+      createdAt: Date.now(),
+    }
 
-    // Update DB status
-    await db.update(divisionsTable).set({ status: 'recovering' }).where(eq(divisionsTable.id, divisionId))
+    // Store in battle state
+    if (!battle.battleOrders) (battle as any).mercContracts = []
+    const contracts = (battle as any).mercContracts ?? []
+    contracts.push(contract)
+    ;(battle as any).mercContracts = contracts
 
-    const divName = cached?.name || divisionId
-
-    battle.combatLog.push({
-      tick: battle.ticksElapsed, timestamp: Date.now(), type: 'retreat', side,
-      message: `🛡️ ${divName} withdrawn from battle.`,
-    })
-
-    this.emit(battleId, 'battle:recall', { battleId, divisionId, side, divisionName: divName })
-
-    return { success: true, message: `${divName} recalled.` }
+    this.emit(battleId, 'battle:mercenary', { battleId, contract })
+    logger.info(`[Battle] Mercenary contract created: ${ratePerHit}/hit, ${totalPool} pool by ${playerName}`)
+    return { success: true, message: `Mercenary contract funded: ${ratePerHit.toLocaleString()}/hit, ${totalPool.toLocaleString()} pool` }
   }
+
+  /** Pay mercenary contracts for a hit — called from playerAttack() */
+  private async payMercContracts(battle: Battle, playerId: string, playerName: string, countryCode: string, side: 'attacker' | 'defender', damage: number): Promise<string> {
+    const contracts = (battle as any).mercContracts as any[] | undefined
+    if (!contracts || contracts.length === 0) return ''
+
+    // Foreign player = mercenary (not from either battle country)
+    const isForeign = countryCode !== battle.attackerId && countryCode !== battle.defenderId
+    if (!isForeign) return ''
+
+    let totalPaid = 0
+    for (const c of contracts) {
+      if (c.side !== side || c.remaining <= 0) continue
+      const payout = Math.min(c.ratePerHit, c.remaining)
+      c.remaining -= payout
+      totalPaid += payout
+    }
+
+    if (totalPaid > 0) {
+      // Pay the mercenary player
+      await db.execute(sql`UPDATE players SET money = money + ${totalPaid} WHERE id = ${playerId}`)
+      return ` 💰 MERC +$${totalPaid}`
+    }
+    return ''
+  }
+
 
   // ═══════════════════════════════════════════════
   //  CORE COMBAT TICK PROCESSOR
@@ -1310,15 +1349,6 @@ class BattleService {
 
   /** Persist ALL battle state to DB — called every tick and after player actions */
   async persistBattle(battle: Battle): Promise<void> {
-    // Build division health snapshot from cache
-    const divHealthState: Record<string, { health: number; maxHealth: number; manpower: number }> = {}
-    const allDivIds = [...battle.attacker.divisionIds, ...battle.defender.divisionIds]
-    for (const id of allDivIds) {
-      const d = this.divisionCache.get(id)
-      if (d) divHealthState[id] = { health: d.health, maxHealth: d.maxHealth, manpower: d.manpower }
-    }
-    battle.divisionHealthState = divHealthState
-
     await db.update(battlesTable).set({
       status: battle.status,
       round: battle.rounds.length,
@@ -1331,15 +1361,10 @@ class BattleService {
       combatLog: battle.combatLog.slice(-100) as any,
       attackerDamageDealers: battle.attackerDamageDealers as any,
       defenderDamageDealers: battle.defenderDamageDealers as any,
-      engagedDivisions: {
-        attacker: battle.attacker.engagedDivisionIds,
-        defender: battle.defender.engagedDivisionIds,
-      } as any,
       attackerOrder: battle.attackerOrder,
       defenderOrder: battle.defenderOrder,
       adrenalineState: (battle as any).adrenalineState ?? {},
       playerBattleStats: battle.playerBattleStats as any,
-      divisionHealthState: divHealthState as any,
       battleOrders: battle.battleOrders as any,
     }).where(eq(battlesTable.id, battle.id))
   }
@@ -1349,193 +1374,12 @@ class BattleService {
     const tick = battle.ticksElapsed + 1
     battle.ticksElapsed = tick
 
-    // Reset per-tick damage counter
+    // Reset per-tick damage counter (player damage accumulates via addDamage() between ticks)
     battle.currentTick = { attackerDamage: 0, defenderDamage: 0 }
-
-    // Get alive divisions for each side from cache
-    const atkDivIds = battle.attacker.engagedDivisionIds.filter(id => {
-      const d = this.divisionCache.get(id)
-      return d && d.status !== 'destroyed' && d.status !== 'recovering'
-    })
-    const defDivIds = battle.defender.engagedDivisionIds.filter(id => {
-      const d = this.divisionCache.get(id)
-      return d && d.status !== 'destroyed' && d.status !== 'recovering'
-    })
-
-    // Base player stats (server uses average since multiple players may be in battle)
-    // For now, use standard base values — individual player stats are applied in playerAttack
-    const baseAttack = 100
-    const baseCritRate = 10
-    const baseCritMultiplier = 1.0
-    const baseDodge = 5
-    const baseArmor = 0
-
-    // ── Compute division damage for attacker ──
-    let atkTotalDmg = 0
-    let atkCrits = 0
-    const cooldowns = battle.divisionCooldowns
-
-    for (const divId of atkDivIds) {
-      const div = this.divisionCache.get(divId)
-      if (!div) continue
-      const template = DIVISION_TEMPLATES[div.type]
-      if (!template) continue
-
-      const atkOrd = TACTICAL_ORDERS[battle.attackerOrder].effects
-      const sm = div.starMods
-
-      const tAtkDmg = template.atkDmgMult * (1 + sm.atkDmgMult)
-      const tHitRate = template.hitRate * (1 + sm.hitRate)
-      const tCritRate = template.critRateMult * (1 + sm.critRateMult)
-      const tCritDmg = template.critDmgMult * (1 + sm.critDmgMult)
-      const tAtkSpeed = (template.attackSpeed) * (1 + sm.attackSpeed)
-
-      const as = tAtkSpeed * atkOrd.speedMult
-      cooldowns[divId] = (cooldowns[divId] || 0) + 1.0
-
-      while (cooldowns[divId] >= as) {
-        cooldowns[divId] -= as
-
-        const divLevel = Math.floor((div.experience || 0) / 10)
-
-        // Hit check
-        if (Math.random() > Math.min(0.95, tHitRate + divLevel * 0.01 + atkOrd.hitBonus)) continue
-
-        // Base damage
-        let dmg = Math.floor((baseAttack + div.manpower * 3) * (tAtkDmg + divLevel * 0.01))
-
-        // Crit check
-        const effectiveCritRate = deviate((baseCritRate + atkOrd.critBonus) * (tCritRate + divLevel * 0.01))
-        if (Math.random() * 100 < effectiveCritRate) {
-          const effectiveCritMult = baseCritMultiplier * (tCritDmg + divLevel * 0.01)
-          dmg = Math.floor(dmg * effectiveCritMult)
-          atkCrits++
-        }
-
-        // Strength modifier
-        const strength = div.health / div.maxHealth
-        dmg = Math.floor(dmg * strength)
-        dmg = Math.floor(dmg * atkOrd.atkMult)
-        dmg = Math.floor(deviate(dmg))
-        atkTotalDmg += Math.max(1, dmg)
-      }
-
-      // Experience gain
-      if (div.experience < 100) {
-        div.experience = Math.min(100, div.experience + 0.5)
-      }
-    }
-
-    // ── Compute division damage for defender ──
-    let defTotalDmg = 0
-    let defCrits = 0
-
-    for (const divId of defDivIds) {
-      const div = this.divisionCache.get(divId)
-      if (!div) continue
-      const template = DIVISION_TEMPLATES[div.type]
-      if (!template) continue
-
-      const defOrd = TACTICAL_ORDERS[battle.defenderOrder].effects
-      const sm = div.starMods
-
-      const dAtkDmg = template.atkDmgMult * (1 + sm.atkDmgMult)
-      const dHitRate = template.hitRate * (1 + sm.hitRate)
-      const dCritRate = template.critRateMult * (1 + sm.critRateMult)
-      const dCritDmg = template.critDmgMult * (1 + sm.critDmgMult)
-      const dAtkSpeed = (template.attackSpeed) * (1 + sm.attackSpeed)
-
-      const defAS = dAtkSpeed * defOrd.speedMult
-      cooldowns[divId] = (cooldowns[divId] || 0) + 1.0
-
-      while (cooldowns[divId] >= defAS) {
-        cooldowns[divId] -= defAS
-
-        const divLevel = Math.floor((div.experience || 0) / 10)
-
-        if (Math.random() > Math.min(0.95, dHitRate + divLevel * 0.01 + defOrd.hitBonus)) continue
-
-        let dmg = Math.floor((baseAttack + div.manpower * 3) * (dAtkDmg + divLevel * 0.01))
-
-        const effectiveCritRate = deviate((baseCritRate + defOrd.critBonus) * (dCritRate + divLevel * 0.01))
-        if (Math.random() * 100 < effectiveCritRate) {
-          const effectiveCritMult = baseCritMultiplier * (dCritDmg + divLevel * 0.01)
-          dmg = Math.floor(dmg * effectiveCritMult)
-          defCrits++
-        }
-
-        const strength = div.health / div.maxHealth
-        dmg = Math.floor(dmg * strength)
-        dmg = Math.floor(dmg * defOrd.atkMult)
-        dmg = Math.floor(deviate(dmg))
-        defTotalDmg += Math.max(1, dmg)
-      }
-
-      if (div.experience < 100) {
-        div.experience = Math.min(100, div.experience + 0.5)
-      }
-    }
-
-    // ── Apply damage to divisions (25% of total → manpower/health loss) ──
-    const manpowerDmgToDefender = Math.floor(atkTotalDmg * 0.25)
-    const manpowerDmgToAttacker = Math.floor(defTotalDmg * 0.25)
-
-    // Damage defender divisions
-    if (defDivIds.length > 0 && manpowerDmgToDefender > 0) {
-      const perDiv = Math.max(1, Math.floor(manpowerDmgToDefender / defDivIds.length))
-      for (const id of defDivIds) {
-        this.applyDivisionDamage(id, perDiv)
-      }
-    }
-
-    // Damage attacker divisions
-    if (atkDivIds.length > 0 && manpowerDmgToAttacker > 0) {
-      const perDiv = Math.max(1, Math.floor(manpowerDmgToAttacker / atkDivIds.length))
-      for (const id of atkDivIds) {
-        this.applyDivisionDamage(id, perDiv)
-      }
-    }
-
-    // Update damage totals
-    battle.attacker.damageDealt += atkTotalDmg
-    battle.defender.damageDealt += defTotalDmg
-    battle.attacker.manpowerLost += manpowerDmgToAttacker
-    battle.defender.manpowerLost += manpowerDmgToDefender
-    battle.currentTick.attackerDamage = atkTotalDmg
-    battle.currentTick.defenderDamage = defTotalDmg
-
-    // Check destroyed divisions
-    let atkDestroyed = 0
-    let defDestroyed = 0
-    for (const id of battle.attacker.engagedDivisionIds) {
-      const d = this.divisionCache.get(id)
-      if (d?.status === 'destroyed') atkDestroyed++
-    }
-    for (const id of battle.defender.engagedDivisionIds) {
-      const d = this.divisionCache.get(id)
-      if (d?.status === 'destroyed') defDestroyed++
-    }
-    battle.attacker.divisionsDestroyed += atkDestroyed
-    battle.defender.divisionsDestroyed += defDestroyed
-
-    // Remove destroyed from engaged
-    battle.attacker.engagedDivisionIds = battle.attacker.engagedDivisionIds.filter(id => {
-      const d = this.divisionCache.get(id)
-      return d && d.status !== 'destroyed' && d.status !== 'recovering'
-    })
-    battle.defender.engagedDivisionIds = battle.defender.engagedDivisionIds.filter(id => {
-      const d = this.divisionCache.get(id)
-      return d && d.status !== 'destroyed' && d.status !== 'recovering'
-    })
 
     // ── Ground points (gated: only every 8th tick = 120s) ──
     const activeRoundIndex = battle.rounds.length - 1
     const activeRound = battle.rounds[activeRoundIndex]
-
-    // Accumulate division damage into round totals every tick
-    // (player damage is accumulated separately in addDamage())
-    activeRound.attackerDmgTotal += atkTotalDmg
-    activeRound.defenderDmgTotal += defTotalDmg
 
     // Only award terrain points on the 2-minute boundary
     battle.battleTickCounter = (battle.battleTickCounter || 0) + 1
@@ -1545,7 +1389,7 @@ class BattleService {
       const totalGroundPoints = activeRound.attackerPoints + activeRound.defenderPoints
       const pointIncrement = getPointIncrement(totalGroundPoints)
 
-      // Award ground points based on TOTAL round-accumulated damage, not per-tick
+      // Award ground points based on TOTAL round-accumulated player damage
       const roundAtkDmg = activeRound.attackerDmgTotal
       const roundDefDmg = activeRound.defenderDmgTotal
 
@@ -1553,18 +1397,10 @@ class BattleService {
         if (roundAtkDmg > roundDefDmg) activeRound.attackerPoints += pointIncrement
         else if (roundDefDmg > roundAtkDmg) activeRound.defenderPoints += pointIncrement
         else {
-          // Tie: division count tiebreaker, then random
-          const atkAlive = battle.attacker.engagedDivisionIds.length
-          const defAlive = battle.defender.engagedDivisionIds.length
-          if (atkAlive > defAlive) activeRound.attackerPoints += pointIncrement
-          else if (defAlive > atkAlive) activeRound.defenderPoints += pointIncrement
-          else if (Math.random() < 0.5) activeRound.attackerPoints += pointIncrement
+          // Tie: random
+          if (Math.random() < 0.5) activeRound.attackerPoints += pointIncrement
           else activeRound.defenderPoints += pointIncrement
         }
-      } else if (battle.attacker.engagedDivisionIds.length > 0 && battle.defender.engagedDivisionIds.length === 0) {
-        activeRound.attackerPoints += pointIncrement
-      } else if (battle.defender.engagedDivisionIds.length > 0 && battle.attacker.engagedDivisionIds.length === 0) {
-        activeRound.defenderPoints += pointIncrement
       }
     }
 
@@ -1618,17 +1454,6 @@ class BattleService {
       battle.combatLog = battle.combatLog.slice(-100)
     }
 
-    // ── Build division health snapshots for client ──
-    const divisionSnapshots: Record<string, { id: string; name: string; health: number; maxHealth: number; manpower: number; status: string; side: 'attacker' | 'defender' }> = {}
-    for (const id of battle.attacker.engagedDivisionIds) {
-      const d = this.divisionCache.get(id)
-      if (d) divisionSnapshots[id] = { id, name: d.name, health: d.health, maxHealth: d.maxHealth, manpower: d.manpower, status: d.status, side: 'attacker' }
-    }
-    for (const id of battle.defender.engagedDivisionIds) {
-      const d = this.divisionCache.get(id)
-      if (d) divisionSnapshots[id] = { id, name: d.name, health: d.health, maxHealth: d.maxHealth, manpower: d.manpower, status: d.status, side: 'defender' }
-    }
-
     // ── Emit full battle:state (replaces battle:tick — client gets authoritative full object) ──
     this.emit(battle.id, 'battle:state', {
       id: battle.id,
@@ -1644,14 +1469,13 @@ class BattleService {
       attackerRoundsWon: battle.attackerRoundsWon,
       defenderRoundsWon: battle.defenderRoundsWon,
       rounds: battle.rounds,
-      currentTick: { attackerDamage: atkTotalDmg, defenderDamage: defTotalDmg },
+      currentTick: battle.currentTick,
       attackerOrder: battle.attackerOrder,
       defenderOrder: battle.defenderOrder,
       combatLog: battle.combatLog,
       attackerDamageDealers: battle.attackerDamageDealers,
       defenderDamageDealers: battle.defenderDamageDealers,
       damageFeed: battle.damageFeed,
-      divisionSnapshots,
     })
   }
 
@@ -1660,20 +1484,6 @@ class BattleService {
   private async finalizeBattle(battle: Battle): Promise<void> {
     // Clean up weapon presence tracking
     this.cleanupWeaponPresence(battle.id)
-
-    // Set all in_combat divisions to recovering
-    const allDivIds = [...battle.attacker.divisionIds, ...battle.defender.divisionIds]
-    if (allDivIds.length > 0) {
-      await db.update(divisionsTable).set({ status: 'recovering' }).where(inArray(divisionsTable.id, allDivIds))
-    }
-
-    // Update division cache
-    for (const id of allDivIds) {
-      const d = this.divisionCache.get(id)
-      if (d && d.status !== 'destroyed') {
-        d.status = 'recovering'
-      }
-    }
 
     // Persist full final state to DB
     await this.persistBattle(battle)
@@ -1908,16 +1718,8 @@ class BattleService {
       battleId: battle.id,
       winner: battle.status === 'attacker_won' ? battle.attackerId : battle.defenderId,
       type: battle.type,
-      attackerStats: {
-        damageDealt: battle.attacker.damageDealt,
-        manpowerLost: battle.attacker.manpowerLost,
-        divisionsDestroyed: battle.attacker.divisionsDestroyed,
-      },
-      defenderStats: {
-        damageDealt: battle.defender.damageDealt,
-        manpowerLost: battle.defender.manpowerLost,
-        divisionsDestroyed: battle.defender.divisionsDestroyed,
-      },
+      attackerStats: { damageDealt: battle.attacker.damageDealt },
+      defenderStats: { damageDealt: battle.defender.damageDealt },
     })
 
     logger.info(`[Battle] ${battle.id} ended: ${battle.status} type=${battle.type} (ATK ${battle.attacker.damageDealt} / DEF ${battle.defender.damageDealt})`)
@@ -1932,7 +1734,7 @@ class BattleService {
     const battle = this.battles.get(battleId)
     if (!battle || battle.status !== 'active') return
 
-    let finalAmount = Math.min(amount, MAX_DAMAGE_PER_CALL)
+    let finalAmount = amount
     if (finalAmount <= 0 || !Number.isFinite(finalAmount)) return
 
     if (side === 'attacker') {
@@ -1958,52 +1760,7 @@ class BattleService {
     ].slice(0, 20)
   }
 
-  private applyDivisionDamage(divisionId: string, damage: number): void {
-    const div = this.divisionCache.get(divisionId)
-    if (!div || div.status === 'destroyed' || div.status === 'recovering') return
 
-    div.health = Math.max(0, div.health - damage)
-    div.manpower = Math.max(0, div.manpower - Math.floor(damage * 0.1))
-
-    if (div.health <= 0) {
-      div.status = 'destroyed'
-      // Persist to DB
-      db.update(divisionsTable).set({
-        status: 'destroyed',
-        health: 0,
-        manpower: div.manpower,
-      }).where(eq(divisionsTable.id, divisionId)).catch(e => {
-        logger.error(e, `[Battle] Failed to persist destroyed division ${divisionId}:`)
-      })
-    }
-  }
-
-  private cacheDivision(row: any): void {
-    const sm = (row.statModifiers ?? {}) as any
-    this.divisionCache.set(row.id, {
-      id: row.id,
-      type: row.type as DivisionType,
-      name: row.name,
-      countryCode: row.countryCode ?? '',
-      ownerId: row.ownerId ?? '',
-      manpower: row.manpower ?? 0,
-      maxManpower: row.maxManpower ?? 0,
-      health: row.health ?? 0,
-      maxHealth: row.maxHealth ?? 0,
-      experience: row.experience ?? 0,
-      status: row.status ?? 'ready',
-      starMods: {
-        atkDmgMult: sm.atkDmgMult ?? 0,
-        hitRate: sm.hitRate ?? 0,
-        critRateMult: sm.critRateMult ?? 0,
-        critDmgMult: sm.critDmgMult ?? 0,
-        healthMult: sm.healthMult ?? 0,
-        dodgeMult: sm.dodgeMult ?? 0,
-        armorMult: sm.armorMult ?? 0,
-        attackSpeed: sm.attackSpeed ?? 0,
-      },
-    })
-  }
 
   private emit(battleId: string, event: string, data: any): void {
     if (this.io) {
@@ -2012,40 +1769,43 @@ class BattleService {
   }
 
   /**
-   * Restore active battles from DB into memory.
-   * Call on server boot so battles survive restarts + refreshes.
-   */
-  /**
    * Restore ALL active battles from DB into memory — call on server boot.
-   * Now restores full JSONB state: rounds, combatLog, damageDealers, adrenaline, orders, divisionHealth.
+   * Restores full JSONB state: rounds, combatLog, damageDealers, adrenaline, orders.
    */
   async restoreFromDB(): Promise<void> {
-    try {
-      // Run additive migration for new columns (safe — IF NOT EXISTS)
-      await db.execute(sql`
-        ALTER TABLE battles
-          ADD COLUMN IF NOT EXISTS type varchar(16) DEFAULT 'invasion',
-          ADD COLUMN IF NOT EXISTS rounds jsonb DEFAULT '[]',
-          ADD COLUMN IF NOT EXISTS combat_log jsonb DEFAULT '[]',
-          ADD COLUMN IF NOT EXISTS attacker_damage_dealers jsonb DEFAULT '{}',
-          ADD COLUMN IF NOT EXISTS defender_damage_dealers jsonb DEFAULT '{}',
-          ADD COLUMN IF NOT EXISTS engaged_divisions jsonb DEFAULT '{"attacker":[],"defender":[]}',
-          ADD COLUMN IF NOT EXISTS attacker_order varchar(16) DEFAULT 'none',
-          ADD COLUMN IF NOT EXISTS defender_order varchar(16) DEFAULT 'none',
-          ADD COLUMN IF NOT EXISTS adrenaline_state jsonb DEFAULT '{}',
-          ADD COLUMN IF NOT EXISTS player_battle_stats jsonb DEFAULT '{}',
-          ADD COLUMN IF NOT EXISTS division_health_state jsonb DEFAULT '{}',
-          ADD COLUMN IF NOT EXISTS region_id varchar(16),
-          ADD COLUMN IF NOT EXISTS attacker_region_id varchar(16),
-          ADD COLUMN IF NOT EXISTS battle_orders jsonb DEFAULT '[]'
-      `)
-      // MU HQ migration
-      await db.execute(sql`
-        ALTER TABLE military_units
-          ADD COLUMN IF NOT EXISTS hq_level integer NOT NULL DEFAULT 0
-      `)
-    } catch (e) {
-      logger.warn({ err: e }, '[Battle] Schema migration warning (safe to ignore if columns exist)')
+    // Run additive migration only once per process lifecycle
+    if (!this._migrationRan) {
+      this._migrationRan = true
+      try {
+        // Run additive migration for new columns (safe — IF NOT EXISTS)
+        await db.execute(sql`
+          ALTER TABLE battles
+            ADD COLUMN IF NOT EXISTS type varchar(16) DEFAULT 'invasion',
+            ADD COLUMN IF NOT EXISTS rounds jsonb DEFAULT '[]',
+            ADD COLUMN IF NOT EXISTS combat_log jsonb DEFAULT '[]',
+            ADD COLUMN IF NOT EXISTS attacker_damage_dealers jsonb DEFAULT '{}',
+            ADD COLUMN IF NOT EXISTS defender_damage_dealers jsonb DEFAULT '{}',
+            ADD COLUMN IF NOT EXISTS attacker_order varchar(16) DEFAULT 'none',
+            ADD COLUMN IF NOT EXISTS defender_order varchar(16) DEFAULT 'none',
+            ADD COLUMN IF NOT EXISTS adrenaline_state jsonb DEFAULT '{}',
+            ADD COLUMN IF NOT EXISTS player_battle_stats jsonb DEFAULT '{}',
+            ADD COLUMN IF NOT EXISTS region_id varchar(16),
+            ADD COLUMN IF NOT EXISTS attacker_region_id varchar(16),
+            ADD COLUMN IF NOT EXISTS battle_orders jsonb DEFAULT '[]'
+        `)
+        // MU HQ migration
+        await db.execute(sql`
+          ALTER TABLE military_units
+            ADD COLUMN IF NOT EXISTS hq_level integer NOT NULL DEFAULT 0
+        `)
+        // Missile launcher infrastructure
+        await db.execute(sql`
+          ALTER TABLE countries
+            ADD COLUMN IF NOT EXISTS missile_launcher_level integer DEFAULT 0
+        `)
+      } catch (e) {
+        logger.warn({ err: e }, '[Battle] Schema migration warning (safe to ignore if columns exist)')
+      }
     }
 
     try {
@@ -2069,25 +1829,6 @@ class BattleService {
         if (this.battles.has(row.id)) continue
 
         const now = Date.now()
-        const engaged = (row.engaged_divisions as any) ?? { attacker: [], defender: [] }
-        const atkEngaged: string[] = engaged.attacker ?? []
-        const defEngaged: string[] = engaged.defender ?? []
-
-        // Restore division health snapshots into cache
-        const divHealth = (row.division_health_state as Record<string, any>) ?? {}
-        for (const [divId, snap] of Object.entries(divHealth)) {
-          if (!this.divisionCache.has(divId)) {
-            // Re-fetch from DB and cache
-            const divRows = await db.select().from(divisionsTable).where(eq(divisionsTable.id, divId)).limit(1)
-            if (divRows[0]) this.cacheDivision(divRows[0])
-          }
-          // Apply persisted health override
-          const cached = this.divisionCache.get(divId)
-          if (cached && snap) {
-            cached.health = (snap as any).health ?? cached.health
-            cached.manpower = (snap as any).manpower ?? cached.manpower
-          }
-        }
 
         const restoredRounds = Array.isArray(row.rounds) && row.rounds.length > 0
           ? row.rounds
@@ -2102,23 +1843,11 @@ class BattleService {
           regionId: row.region_id || undefined,
           attackerRegionId: row.attacker_region_id || undefined,
           startedAt: new Date(row.started_at).getTime(),
-          ticksElapsed: 0,
-          battleTickCounter: 0,
+          ticksElapsed: Math.max(0, Math.floor((now - new Date(row.started_at).getTime()) / 15000)),
+          battleTickCounter: Math.max(0, Math.floor((now - new Date(row.started_at).getTime()) / 15000)) % TERRAIN_TICK_GATE,
           status: 'active',
-          attacker: {
-            countryCode: row.attacker_id,
-            divisionIds: atkEngaged,
-            engagedDivisionIds: atkEngaged,
-            damageDealt: Number(row.attacker_damage ?? 0),
-            manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
-          },
-          defender: {
-            countryCode: row.defender_id,
-            divisionIds: defEngaged,
-            engagedDivisionIds: defEngaged,
-            damageDealt: Number(row.defender_damage ?? 0),
-            manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
-          },
+          attacker: { countryCode: row.attacker_id, damageDealt: Number(row.attacker_damage ?? 0) },
+          defender: { countryCode: row.defender_id, damageDealt: Number(row.defender_damage ?? 0) },
           attackerRoundsWon: row.attacker_rounds_won ?? 0,
           defenderRoundsWon: row.defender_rounds_won ?? 0,
           rounds: restoredRounds,
@@ -2128,15 +1857,14 @@ class BattleService {
             : [{ tick: 0, timestamp: now, type: 'phase_change', side: 'attacker', message: `🔄 Battle for ${row.region_name} restored.` }],
           attackerDamageDealers: (row.attacker_damage_dealers as Record<string,number>) ?? {},
           defenderDamageDealers: (row.defender_damage_dealers as Record<string,number>) ?? {},
-          damageFeed: [], divisionCooldowns: {},
+          damageFeed: [],
           attackerOrder: (row.attacker_order as TacticalOrder) ?? 'none',
           defenderOrder: (row.defender_order as TacticalOrder) ?? 'none',
           orderMessage: '', motd: '',
           playerBattleStats: (row.player_battle_stats as any) ?? {},
           adrenalineState: (row.adrenaline_state as any) ?? {},
-          divisionHealthState: (row.division_health_state as any) ?? {},
           battleOrders: Array.isArray((row as any).battle_orders) ? (row as any).battle_orders : [],
-          defenderHasSupplyLine: true,  // Will be recomputed below
+          defenderHasSupplyLine: true,
           revoltPressure: 0,
         }
 

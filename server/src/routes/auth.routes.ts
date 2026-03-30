@@ -73,10 +73,10 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       sushi: 50,
       wagyu: 50,
       lootBoxes: 3,
-      greenBullets: 100,
-      blueBullets: 100,
-      purpleBullets: 100,
-      redBullets: 100,
+      greenBullets: 1000,
+      blueBullets: 1000,
+      purpleBullets: 1000,
+      redBullets: 1000,
     }).returning({ id: players.id, name: players.name })
 
     // Create skills row

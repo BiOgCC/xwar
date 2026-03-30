@@ -5,10 +5,10 @@ export default function HelpPanel() {
       <div className="hud-card">
         <div className="hud-card__title">🚀 QUICK START</div>
         <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
-          <p style={{ margin: '0 0 8px' }}>Welcome to <b>XWAR</b> — a global domination strategy game. Build your economy, train your army, and conquer territories.</p>
+          <p style={{ margin: '0 0 8px' }}>Welcome to <b>XWAR</b> — a global domination strategy game. Build your economy, equip your weapons, and conquer territories.</p>
           <p style={{ margin: '0 0 8px' }}><b>1.</b> Work &amp; earn money via the Action Bar</p>
           <p style={{ margin: '0 0 8px' }}><b>2.</b> Buy companies to produce resources</p>
-          <p style={{ margin: '0 0 8px' }}><b>3.</b> Train divisions in the Military panel</p>
+          <p style={{ margin: '0 0 8px' }}><b>3.</b> Equip weapons and gear from the Market</p>
           <p style={{ margin: '0' }}><b>4.</b> Declare war and capture enemy regions</p>
         </div>
       </div>
@@ -41,11 +41,11 @@ export default function HelpPanel() {
         <div className="hud-card__title">📖 GAME SYSTEMS</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {[
-            ['⚔️ War & Combat', 'Declare wars, deploy divisions, fight in real-time battles with tactical orders.'],
+            ['⚔️ War & Combat', 'Declare wars, fight in real-time battles with trained divisions and gear.'],
             ['🏭 Economy', 'Work, own companies, produce resources, trade on the market.'],
-            ['🎖️ Military', 'Recruit infantry, tanks, jets, warships. Organize into armies and deploy.'],
+            ['🎖️ Military', 'Launch military operations, join a Military Unit, and fight for your country.'],
             ['🖥️ Cyberwarfare', 'Hack enemies with the Breach Protocol minigame. Steal resources and intel.'],
-            ['🏛️ Government', 'Manage your country\'s treasury, infrastructure, and armed forces.'],
+            ['🏠 Government', 'Manage your country\'s treasury, infrastructure, and military operations.'],
             ['🎰 Casino', 'Play slots, blackjack, and crash for quick profit — or losses.'],
             ['🌊 Naval', 'Control ocean blocks for trade route income and strategic advantage.'],
             ['⭐ Prestige', 'Craft legendary items from rare materials and blueprints.'],

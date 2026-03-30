@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
-import { useArmyStore } from '../../stores/army'
+
 import { useWorldStore } from '../../stores/worldStore'
 import { useGovernmentStore } from '../../stores/governmentStore'
 import { getCatchUpXPMultiplier } from '../../engine/catchup'
@@ -87,7 +87,7 @@ export default function ProfilePanel() {
       {/* ── HERO / XP CARD ─────────────────────────── */}
       {(() => {
         const xpPercent = Math.min(100, (player.experience / player.experienceToNext) * 100)
-        const { used: popUsed, max: popMax } = useArmyStore.getState().getPlayerPopCap()
+        const popUsed = 0, popMax = 0
         const popPct = popMax > 0 ? Math.round((popUsed / popMax) * 100) : 0
         const popColor = popPct >= 90 ? '#ef4444' : popPct >= 70 ? '#f59e0b' : '#22d38a'
         const catchUpMult = getCatchUpXPMultiplier(player.level, useWorldStore.getState().serverMedianLevel)
@@ -241,7 +241,7 @@ export default function ProfilePanel() {
           ))}
           {/* Pop Cap — numbers only, after WORK */}
           {(() => {
-            const popCap = useArmyStore.getState().getPlayerPopCap()
+            const popCap = { used: 0, max: 0 }
             return (
               <div className="profile-bar" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '6px', padding: '2px 0' }}>
                 <span style={{ display: 'flex', lineHeight: 1 }}><Users {...STAT_ICON_PROPS} /></span>

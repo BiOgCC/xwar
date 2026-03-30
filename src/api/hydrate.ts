@@ -102,15 +102,11 @@ export async function hydrateGameState(): Promise<boolean> {
           status: b.status ?? 'active',
           attacker: b.attacker ?? {
             countryCode: b.attackerId ?? b.attacker_id ?? '',
-            divisionIds: [], engagedDivisionIds: [],
             damageDealt: b.attackerDamage ?? 0,
-            manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
           },
           defender: b.defender ?? {
             countryCode: b.defenderId ?? b.defender_id ?? '',
-            divisionIds: [], engagedDivisionIds: [],
             damageDealt: b.defenderDamage ?? 0,
-            manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
           },
           attackerRoundsWon: b.attackerRoundsWon ?? 0,
           defenderRoundsWon: b.defenderRoundsWon ?? 0,
@@ -120,7 +116,6 @@ export async function hydrateGameState(): Promise<boolean> {
           attackerDamageDealers: b.attackerDamageDealers ?? {},
           defenderDamageDealers: b.defenderDamageDealers ?? {},
           damageFeed: b.damageFeed ?? [],
-          divisionCooldowns: b.divisionCooldowns ?? {},
           attackerOrder: b.attackerOrder ?? 'none',
           defenderOrder: b.defenderOrder ?? 'none',
           orderMessage: b.orderMessage ?? '',
@@ -142,6 +137,13 @@ export async function hydrateGameState(): Promise<boolean> {
       }
       useBattleStore.setState(s => ({ battles: { ...s.battles, ...normalized } }))
       console.log(`[HYDRATE] ⚔️ Loaded ${Object.keys(normalized).length} active battle(s) from game state`)
+
+      // Auto-join socket rooms for all active battles (fixes post-refresh desync)
+      for (const id of Object.keys(normalized)) {
+        if (normalized[id].status === 'active') {
+          socketManager.joinBattle(id)
+        }
+      }
     }
 
     // Hydrate world/countries

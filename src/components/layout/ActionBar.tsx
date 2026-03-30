@@ -22,8 +22,7 @@ import { usePlayerStore } from '../../stores/playerStore'
 import { useBattleStore } from '../../stores/battleStore'
 import { useCompanyStore, COMPANY_TEMPLATES } from '../../stores/companyStore'
 import { useMissionStore } from '../../stores/missionStore'
-import { useArmyStore } from '../../stores/army'
-import { ENABLE_DIVISIONS } from '../../config/features'
+
 import CompanyIcon from '../companies/CompanyIcon'
 import '../../styles/actionbar.css'
 
@@ -313,22 +312,7 @@ export default function ActionBar() {
         </button>
       </div>
 
-      {/* ═══ MY FORCES ═══ */}
-      {ENABLE_DIVISIONS && (
-      <div className="action-bar__slot">
-        <button
-          className={`action-bar__btn${activePanel === 'armed_forces' ? ' action-bar__btn--active' : ''}`}
-          onClick={() => { useUIStore.getState().setAfDefaultTab('own'); useUIStore.getState().setActivePanel('armed_forces') }}
-          title="My Forces"
-        >
-          <span className="action-bar__icon"><Shield {...ICON_PROPS} /></span>
-          <span className="action-bar__label">MY FORCES</span>
-          <span className={`action-bar__status action-bar__status--${Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length > 0 ? 'good' : 'neutral'}`}>
-            {Object.values(useArmyStore.getState().divisions).filter((d: any) => d.countryCode === (usePlayerStore.getState().countryCode || 'US')).length} DIV
-          </span>
-        </button>
-      </div>
-      )}
+
 
       {/* ═══ TACTICAL OPS ═══ */}
       <div className="action-bar__slot">

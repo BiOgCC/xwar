@@ -7,7 +7,7 @@ import { useCompanyStore } from '../../../stores/companyStore'
 import { useBattleStore } from '../../../stores/battleStore'
 import { useInventoryStore } from '../../../stores/inventoryStore'
 import { useUIStore } from '../../../stores/uiStore'
-import { useArmyStore } from '../../../stores/army'
+
 import { useRegionStore } from '../../../stores/regionStore'
 import ResourceIcon from '../../shared/ResourceIcon'
 import { TrendingUp, Gift, Radio, Landmark, Users, Vote, Shield, Swords, Sword, Download, Factory, Scroll, Store, Pickaxe, Upload, ShieldHalf, LayoutGrid, Flame } from 'lucide-react'
@@ -97,24 +97,15 @@ export function GovAccountTab() {
   const player = usePlayerStore()
   const govStore = useGovernmentStore()
   const world = useWorldStore()
-  const armyStore = useArmyStore()
+
   const iso = player.countryCode || 'US'
   const gov = govStore.governments[iso]
   const country = world.getCountry(iso)
 
   const fund = country?.fund ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
-  const vault = country?.forceVault ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
 
-  const countryDivs = (Object.values(armyStore.divisions) as any[]).filter(d => d.countryCode === iso)
-  const readyDivs = countryDivs.filter(d => d.status === 'ready').length
-  const inCombatDivs = countryDivs.filter(d => d.status === 'in_combat').length
-  const trainingDivs = countryDivs.filter(d => d.status === 'training').length
-  const divsOnSale = gov?.divisionShop?.length || 0
-
-  const budgetPct = gov?.militaryBudgetPercent || 0
-  const dailyBudget = Math.floor(fund.money * (budgetPct / 100))
-  const perTickBudget = Math.floor(dailyBudget / 288)
-  const countryArmies = (Object.values(armyStore.armies) as any[]).filter(a => a.countryCode === iso)
+  // Division/army system removed
+  const countryArmies: any[] = []
 
   const contracts = (govStore.militaryContracts as any[]).filter(c => c.countryCode === iso)
   const activeContracts = contracts.filter(c => c.status === 'locked')
@@ -204,8 +195,6 @@ export function GovAccountTab() {
       <div className="gov-section gov-section--red">
         <div className="gov-section__title gov-section__title--red" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={14} /> SPENDING</div>
         <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Landmark size={12} color="#ef4444" /> Infrastructure</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>$500K–$1.5M/upgrade</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldHalf size={12} color="#f59e0b" /> Force Vault Transfers</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>${Number(vault.money).toLocaleString()} allocated</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><LayoutGrid size={12} color="#f59e0b" /> Army Salary Pools</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>{countryArmies.length} armies</span></div>
         <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Flame size={12} color="#ef4444" /> Active Wars</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>{activeWars.length} wars</span></div>
       </div>
 
@@ -296,14 +285,14 @@ export function GovWarTab() {
   const player = usePlayerStore()
   const world = useWorldStore()
   const govStore = useGovernmentStore()
-  const armyStore = useArmyStore()
+
   const iso = player.countryCode || 'US'
   const wars = world.wars?.filter(w => (w.attacker === iso || w.defender === iso) && w.status === 'active') || []
   const battles = Object.values(useBattleStore.getState().battles).filter(b => b.attackerId === iso || b.defenderId === iso)
 
   // Autodefense slider state
-  const countryDivs = Object.values(armyStore.divisions).filter((d: any) => d.countryCode === iso && d.status === 'ready')
-  const maxDivs = countryDivs.length
+  // Division system removed — autodefense is no longer division-based
+  const maxDivs = 0
   const currentLimit = govStore.autoDefenseLimit // -1 = all, 0 = off, N = cap
   // Slider value: 0 = off, 1..maxDivs = N, maxDivs+1 = ALL (-1)
   const sliderVal = currentLimit === -1 ? maxDivs + 1 : currentLimit
@@ -317,35 +306,13 @@ export function GovWarTab() {
 
   return (
     <>
-      {/* Country Autodefense Card */}
-      <div className="gov-section gov-section--highlight" style={{ borderLeft: `3px solid ${sliderColor}` }}>
-        <div className="gov-section__title" style={{ color: sliderColor, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Shield size={14} color={sliderColor} /> COUNTRY AUTODEFENSE
+      {/* Country Autodefense — division system removed */}
+      <div className="gov-section gov-section--highlight" style={{ borderLeft: '3px solid #475569' }}>
+        <div className="gov-section__title" style={{ color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Shield size={14} color="#475569" /> COUNTRY AUTODEFENSE
         </div>
         <div style={{ fontSize: '8px', color: '#64748b', marginBottom: '8px' }}>
-          Set how many divisions auto-deploy when your country is attacked. Armed Forces always deploy regardless.
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <input
-            type="range"
-            min={0}
-            max={maxDivs + 1}
-            value={sliderVal}
-            onChange={e => handleSlider(parseInt(e.target.value))}
-            style={{ flex: 1, accentColor: sliderColor, cursor: 'pointer' }}
-          />
-          <div style={{
-            minWidth: '42px', textAlign: 'center', padding: '4px 8px', borderRadius: '4px',
-            fontSize: '11px', fontWeight: 900, letterSpacing: '0.5px',
-            background: `${sliderColor}18`, border: `1px solid ${sliderColor}40`, color: sliderColor,
-          }}>
-            {sliderLabel}
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7px', color: '#475569', marginTop: '3px' }}>
-          <span>OFF</span>
-          <span>{maxDivs} div{maxDivs !== 1 ? 's' : ''} ready</span>
-          <span>ALL</span>
+          Autodefense is managed at the country level. Players auto-defend when logged in and joined to a battle.
         </div>
       </div>
 

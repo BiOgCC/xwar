@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useInventoryStore, TIER_COLORS, TIER_LABELS } from '../../stores/inventoryStore'
-import { ENABLE_DIVISIONS } from '../../config/features'
-import { claimWelcomeKit } from '../../api/client'
+
+import { claimWelcomeKit, isAuthenticated } from '../../api/client'
 import type { EquipTier } from '../../types/inventory.types'
 
 const RESOURCES = [
@@ -28,13 +28,18 @@ export default function WelcomeKitModal() {
   const [animating, setAnimating] = useState(false)
   const [error, setError]       = useState<string | null>(null)
 
-  // On mount: fetch player from API, then show modal only if not yet claimed
+  // On mount: only check welcome kit if player is authenticated
   useEffect(() => {
+    // No token → don't show modal at all
+    if (!isAuthenticated()) return
+
     usePlayerStore.getState().fetchPlayer().then(() => {
       const { welcomeKitClaimed } = usePlayerStore.getState()
       if (!welcomeKitClaimed) {
         setTimeout(() => setShow(true), 1500)
       }
+    }).catch(() => {
+      // Auth failed (expired token, etc.) — silently skip welcome kit
     })
   }, [])
 

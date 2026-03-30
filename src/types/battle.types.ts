@@ -10,21 +10,13 @@ export interface CombatLogEntry {
   timestamp: number
   type: 'damage' | 'critical' | 'retreat' | 'destroyed' | 'air_strike' | 'artillery_barrage' | 'breakthrough' | 'phase_shift' | 'phase_change' | 'reinforcement'
   side: 'attacker' | 'defender'
-  divisionName?: string
-  targetDivisionName?: string
   damage?: number
-  manpowerLost?: number
   message: string
 }
 
 export interface BattleSide {
   countryCode: string
-  divisionIds: string[]
-  engagedDivisionIds: string[]
   damageDealt: number
-  manpowerLost: number
-  divisionsDestroyed: number
-  divisionsRetreated: number
 }
 
 export interface BattleTick {
@@ -89,7 +81,6 @@ export interface Battle {
   attackerDamageDealers: Record<string, number>
   defenderDamageDealers: Record<string, number>
   damageFeed: DamageEvent[]
-  divisionCooldowns: Record<string, number>
   attackerOrder: TacticalOrder
   defenderOrder: TacticalOrder
   orderMessage: string
@@ -102,7 +93,7 @@ export interface Battle {
   playerCrash: Record<string, { until: number }>
   /** Per-player timestamp when adrenaline first hit 100 (for crash timer) */
   playerAdrenalinePeakAt: Record<string, number>
-  /** Per-side Vengeance buff: tracks expiry tick when an allied division is destroyed */
+  /** Per-side Vengeance buff: tracks expiry tick */
   vengeanceBuff: Record<'attacker' | 'defender', number>  // side → tick when buff expires
   /** Active mercenary contracts — funded bounty pools that pay per hit */
   mercenaryContracts: MercenaryContract[]

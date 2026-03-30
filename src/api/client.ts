@@ -269,19 +269,6 @@ export async function setCountryAutoDefense(countryCode: string, limit: number) 
   return api.patch('/gov/autodefense', { countryCode, limit })
 }
 
-export async function setArmyAutoDefense(armyId: string, limit: number) {
-  return api.patch('/army/autodefense', { armyId, limit })
-}
-
-// ── Force Vault API ──────────────────────────────────────────
-
-export async function transferToForceVault(countryCode: string, resource: string, amount: number) {
-  return api.post('/gov/force-vault/transfer', { countryCode, resource, amount })
-}
-
-export async function spendFromForceVault(countryCode: string, resource: string, amount: number) {
-  return api.post('/gov/force-vault/spend', { countryCode, resource, amount })
-}
 
 // ── Government Fund & Law API ────────────────────────────────
 
@@ -479,16 +466,16 @@ export async function battleAdrenaline(battleId: string) {
   return api.get<{ success: boolean; adrenaline: number; isSurging: boolean; isCrashed: boolean }>(`/battle/${battleId}/adrenaline`)
 }
 
-export async function battleDeploy(battleId: string, divisionIds: string[], side: 'attacker' | 'defender') {
-  return api.post(`/battle/${battleId}/deploy`, { divisionIds, side })
-}
-
-export async function battleRecall(battleId: string, divisionId: string, side: 'attacker' | 'defender') {
-  return api.post(`/battle/${battleId}/recall/${divisionId}`, { side })
-}
-
 export async function setBattleOrder(battleId: string, side: 'attacker' | 'defender', order: string) {
   return api.post(`/battle/${battleId}/order`, { side, order })
+}
+
+export async function battleMissile(battleId: string, side: 'attacker' | 'defender') {
+  return api.post<{ success: boolean; message: string; damage?: number }>(`/battle/${battleId}/missile`, { side })
+}
+
+export async function battleMercenary(battleId: string, side: 'attacker' | 'defender', ratePerHit: number, totalPool: number) {
+  return api.post<{ success: boolean; message: string }>(`/battle/${battleId}/mercenary`, { side, ratePerHit, totalPool })
 }
 
 // ── Cyber API ────────────────────────────────────────────────
@@ -545,53 +532,6 @@ export async function sabotageRace(opId: string) {
 // Canonical: getDailyStatus() and claimDailyReward() above.
 export const getDailyStatusApi = getDailyStatus
 export const claimDailyApi = claimDailyReward
-
-// ── Army API ─────────────────────────────────────────────────
-
-export async function armyCreate(name: string, province: string) {
-  return api.post('/army/create', { name, province })
-}
-
-export async function armyEnlist(armyId: string) {
-  return api.post('/army/enlist', { armyId })
-}
-
-export async function armyLeave() {
-  return api.post('/army/leave')
-}
-
-export async function armyPromote(armyId: string, playerId: string, newRole: string) {
-  return api.post('/army/promote', { armyId, playerId, newRole })
-}
-
-export async function armyDeploy(armyId: string, battleId: string) {
-  return api.post('/army/deploy', { armyId, battleId })
-}
-
-export async function armyRecall(armyId: string) {
-  return api.post('/army/recall', { armyId })
-}
-
-export async function armyDeployToRegion(armyId: string, regionCode: string) {
-  return api.post('/army/deploy-region', { armyId, regionCode })
-}
-
-export async function armyRecruit(armyId: string, divisionType: string, name: string) {
-  return api.post('/army/recruit', { armyId, divisionType, name })
-}
-
-export async function armyVaultDeposit(armyId: string, resource: string, amount: number) {
-  return api.post('/army/vault/deposit', { armyId, resource, amount })
-}
-
-export async function armyVaultWithdraw(armyId: string, resource: string, amount: number) {
-  return api.post('/army/vault/withdraw', { armyId, resource, amount })
-}
-
-export async function getArmyInfo(armyId: string) {
-  return api.get<any>(`/army/${armyId}`)
-}
-
 
 
 // ── Prestige API ─────────────────────────────────────────────

@@ -4,7 +4,7 @@ import { useBattleStore } from '../stores/battleStore'
 import { useCompanyStore } from '../stores/companyStore'
 import { usePlayerStore, registerEconFlowHook } from '../stores/playerStore'
 import { useCyberStore } from '../stores/cyberStore'
-import { useArmyStore } from '../stores/army'
+
 import { useGovernmentStore } from '../stores/governmentStore'
 import { useRegionStore } from '../stores/regionStore'
 import { useMarketStore } from '../stores/market'
@@ -64,12 +64,10 @@ export function useGameLoop() {
     }))
 
 
-    // GOVERNMENT (15s) — shop spawn, contract maturity
+    // GOVERNMENT (15s) — contract maturity
     unsubs.push(gameClock.subscribe('government', () => {
       try {
-        const playerCountry = usePlayerStore.getState().countryCode || 'US'
         const govStore = useGovernmentStore.getState()
-        govStore.cleanExpiredListings(playerCountry)
         govStore.processContractMaturity()
       } catch (e) { console.warn('[Government]:', e) }
     }))

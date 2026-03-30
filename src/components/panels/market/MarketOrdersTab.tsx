@@ -39,9 +39,6 @@ export default function MarketOrdersTab({ showFb }: MarketOrdersTabProps) {
                 ? <img src={imgUrl} alt={o.equipSnapshot.name} style={{ width: 28, height: 28, objectFit: 'contain' }} />
                 : <span style={{ fontSize: 22 }}>{SLOT_ICONS[o.equipSnapshot.slot as EquipSlot]}</span>
               itemName = o.equipSnapshot.name
-            } else if (o.itemType === 'division' && o.divSnapshot) {
-              icon = <span style={{ fontSize: 22 }}>🪖</span>
-              itemName = o.divSnapshot.name
             }
 
             return (
@@ -74,7 +71,6 @@ export default function MarketOrdersTab({ showFb }: MarketOrdersTabProps) {
                       {itemName}
                     </span>
                     {o.source === 'country' && <span style={{ fontSize: 10 }}>🏛️</span>}
-                    {o.source === 'force_vault' && <span style={{ fontSize: 10 }}>🏦</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 10, fontSize: 10, fontFamily: 'var(--font-display)' }}>
                     <span style={{ color: '#94a3b8' }}>

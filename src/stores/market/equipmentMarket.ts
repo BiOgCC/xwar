@@ -134,166 +134,20 @@ export function buyEquipment(
   return { success: true, message: `Bought ${order.equipSnapshot?.name} for $${order.totalPrice.toLocaleString()}! (Tax: $${tax})` }
 }
 
-// ── List Equipment from Army Vault for Sale ──
+// ── List Equipment from Army Vault for Sale (DEPRECATED) ──
 export function placeVaultEquipmentSellOrder(
-  set: Set, get: Get,
-  armyId: string, equipItemId: string, price: number
+  _set: Set, _get: Get,
+  _armyId: string, _equipItemId: string, _price: number
 ): { success: boolean; message: string } {
-  const player = usePlayerStore.getState()
-
-  // Check army and rank
-  const { useArmyStore } = require('../army')
-  const armyStore = useArmyStore.getState()
-  const army = armyStore.armies[armyId]
-  if (!army) return { success: false, message: 'Army not found' }
-
-  const member = army.members.find((m: any) => m.playerId === player.name)
-  const isCommander = army.commanderId === player.name
-  const hasControl = isCommander || (member && ['colonel', 'general'].includes(member.role))
-  if (!hasControl) return { success: false, message: 'Only Commander/Colonel can list vault equipment' }
-
-  // Item must be in vault
-  if (!army.vault.equipmentIds.includes(equipItemId))
-    return { success: false, message: 'Item not in vault' }
-
-  const inv = useInventoryStore.getState()
-  const item = inv.items.find(i => i.id === equipItemId)
-  if (!item) return { success: false, message: 'Item not found' }
-
-  // Per-tier minimum price
-  const minPrice = MIN_EQUIP_PRICE[item.tier] || 100
-  if (price < minPrice) return { success: false, message: `Minimum price for ${item.tier.toUpperCase()}: $${minPrice.toLocaleString()}` }
-
-  // Check not already listed
-  if (get().orders.some(o => o.equipItemId === equipItemId && o.status === 'open'))
-    return { success: false, message: 'Item already listed' }
-
-  // 2% listing fee from vault money (non-refundable) → country fund
-  const listingFee = Math.ceil(price * LISTING_FEE_RATE)
-  if (army.vault.money < listingFee)
-    return { success: false, message: `Vault listing fee: $${listingFee.toLocaleString()} (2%) — insufficient vault funds` }
-
-  useArmyStore.setState((s: any) => ({
-    armies: { ...s.armies, [armyId]: {
-      ...s.armies[armyId],
-      vault: {
-        ...s.armies[armyId].vault,
-        money: s.armies[armyId].vault.money - listingFee,
-        equipmentIds: s.armies[armyId].vault.equipmentIds.filter((id: string) => id !== equipItemId),
-      },
-    }},
-  }))
-  useWorldStore.getState().addTreasuryTax(army.countryCode, listingFee)
-
-  // Lock item in market
-  useInventoryStore.setState(s => ({
-    items: s.items.map(i => i.id === equipItemId ? { ...i, location: 'market' as const, equipped: false, vaultArmyId: undefined } : i)
-  }))
-
-  const order: MarketOrder = {
-    id: mkId('veqord'), type: 'sell', itemType: 'equipment',
-    equipItemId, amount: 1, pricePerUnit: price, totalPrice: price,
-    playerId: player.name, countryCode: army.countryCode,
-    source: 'force_vault', armyId,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + ORDER_EXPIRY_MS,
-    status: 'open', filledAmount: 0,
-    listingFee,
-    equipSnapshot: {
-      name: item.name, tier: item.tier, slot: item.slot,
-      category: item.category, stats: { ...item.stats },
-      durability: item.durability, weaponSubtype: item.weaponSubtype,
-      superforged: item.superforged,
-    },
-  }
-
-  set(s => ({ orders: [...s.orders, order] }))
-  return { success: true, message: `Vault listed ${item.name} for $${price.toLocaleString()} (fee: $${listingFee})` }
+  // Army vault system deprecated
+  return { success: false, message: 'Army vault system has been deprecated.' }
 }
 
-// ── Buy Equipment into Army Vault ──
+// ── Buy Equipment into Army Vault (DEPRECATED) ──
 export function buyEquipmentToVault(
-  set: Set, get: Get,
-  armyId: string, orderId: string
+  _set: Set, _get: Get,
+  _armyId: string, _orderId: string
 ): { success: boolean; message: string } {
-  const order = get().orders.find(o => o.id === orderId && o.itemType === 'equipment' && o.status === 'open')
-  if (!order) return { success: false, message: 'Listing not found' }
-
-  const player = usePlayerStore.getState()
-
-  // Check army and rank
-  const { useArmyStore } = require('../army')
-  const armyStore = useArmyStore.getState()
-  const army = armyStore.armies[armyId]
-  if (!army) return { success: false, message: 'Army not found' }
-
-  const member = army.members.find((m: any) => m.playerId === player.name)
-  const isCommander = army.commanderId === player.name
-  const hasControl = isCommander || (member && ['colonel', 'general'].includes(member.role))
-  if (!hasControl) return { success: false, message: 'Only Commander/Colonel can buy equipment to vault' }
-
-  if (order.playerId === player.name && order.source === 'player')
-    return { success: false, message: 'Cannot buy your own item' }
-  if (army.vault.money < order.totalPrice) return { success: false, message: 'Not enough vault funds' }
-
-  // Deduct from vault
-  useArmyStore.setState((s: any) => ({
-    armies: { ...s.armies, [armyId]: {
-      ...s.armies[armyId],
-      vault: { ...s.armies[armyId].vault, money: s.armies[armyId].vault.money - order.totalPrice },
-    }},
-  }))
-
-  // Tax (1% of sale price to army's country)
-  const tax = Math.round(order.totalPrice * TAX_RATE)
-  const sellerGets = order.totalPrice - tax
-
-  // Credit seller
-  if (order.source === 'force_vault' && order.armyId) {
-    useArmyStore.setState((s: any) => {
-      const sellerArmy = s.armies[order.armyId!]
-      if (!sellerArmy) return s
-      return { armies: { ...s.armies, [order.armyId!]: {
-        ...sellerArmy, vault: { ...sellerArmy.vault, money: sellerArmy.vault.money + sellerGets },
-      }}}
-    })
-  } else {
-    usePlayerStore.getState().earnMoney(sellerGets)
-  }
-
-  // Move item into vault
-  if (order.equipItemId) {
-    useInventoryStore.setState(s => ({
-      items: s.items.map(i => i.id === order.equipItemId ? {
-        ...i, location: 'vault' as const, equipped: false, vaultArmyId: armyId,
-      } : i)
-    }))
-    // Add to vault equipmentIds
-    useArmyStore.setState((s: any) => ({
-      armies: { ...s.armies, [armyId]: {
-        ...s.armies[armyId],
-        vault: { ...s.armies[armyId].vault, equipmentIds: [...s.armies[armyId].vault.equipmentIds, order.equipItemId] },
-      }},
-    }))
-  }
-
-  // Tax to army's country
-  useWorldStore.getState().addTreasuryTax(army.countryCode, tax)
-
-  // Record trade
-  const trade: TradeRecord = {
-    id: mkId('tr'), buyOrderId: 'vault_buy', sellOrderId: orderId,
-    itemType: 'equipment', equipItemId: order.equipItemId,
-    amount: 1, pricePerUnit: order.totalPrice, totalPrice: order.totalPrice,
-    tax, buyer: `${army.name} [vault]`, seller: order.playerId,
-    buyerCountry: army.countryCode, sellerCountry: order.countryCode,
-    timestamp: Date.now(),
-  }
-
-  set(s => ({
-    orders: s.orders.map(o => o.id === orderId ? { ...o, status: 'filled' as const, filledAmount: 1 } : o),
-    trades: [trade, ...s.trades].slice(0, 200),
-  }))
-
-  return { success: true, message: `Vault bought ${order.equipSnapshot?.name} for $${order.totalPrice.toLocaleString()}! (Tax: $${tax})` }
+  // Army vault system deprecated
+  return { success: false, message: 'Army vault system has been deprecated.' }
 }

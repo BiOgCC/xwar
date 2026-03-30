@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense } from 'react'
-import { useArmyStore, DIVISION_TEMPLATES, type DivisionType } from '../../../stores/army'
+import type { DivisionType } from '../../../stores/army'
 import { useBattleStore, getCountryName, getPlayerCombatStats, TACTICAL_ORDERS } from '../../../stores/battleStore'
 import type { TacticalOrder } from '../../../stores/battleStore'
 import { usePlayerStore } from '../../../stores/playerStore'
@@ -25,7 +25,7 @@ interface Props {
 
 export default function BattleDetailView({ battleId, onBack }: Props) {
   const battleStore = useBattleStore()
-  const armyStore = useArmyStore()
+
   const player = usePlayerStore()
   const ui = useUIStore()
   const inv = useInventoryStore()
@@ -83,20 +83,8 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
     : v >= 1000 ? `${(v / 1000).toFixed(1)}K`
     : v.toString()
 
-  // Division dominant type
-  const getDominantType = (divIds: string[]): 'infantry' | 'tank' | 'jet' | 'warship' | 'submarine' => {
-    const counts = { infantry: 0, tank: 0, jet: 0, warship: 0, submarine: 0 }
-    divIds.forEach(id => {
-      const d = armyStore.divisions[id]
-      if (!d) return
-      if (['recon', 'assault', 'sniper', 'rpg'].includes(d.type)) counts.infantry++
-      else if (['jeep', 'tank'].includes(d.type)) counts.tank++
-      else if (d.type === 'jet') counts.jet++
-      else if (d.type === 'warship') counts.warship++
-      else if (d.type === 'submarine') counts.submarine++
-    })
-    return (Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'infantry') as any
-  }
+  // Division system removed — always return infantry
+  const getDominantType = (_divIds: string[]): 'infantry' | 'tank' | 'jet' | 'warship' | 'submarine' => 'infantry'
 
   // Oil cost for non-participant countries (everyone can fight, no alliance blocking)
   const evaluateSupportCost = (targetSide: 'attacker' | 'defender'): number => {
@@ -338,8 +326,8 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
               defenderColor={defClr}
               critSide={critSide}
               hitSide={hitSide}
-              atkDominantType={getDominantType(battle.attacker.engagedDivisionIds)}
-              defDominantType={getDominantType(battle.defender.engagedDivisionIds)}
+              atkDominantType={getDominantType([])}
+              defDominantType={getDominantType([])}
               damageRatio={atkPct / 100}
               battleStartedAt={battle.startedAt}
               currentRound={battle.rounds.length}
@@ -683,8 +671,6 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
                 <button key={f.key} className="btl-food-btn" disabled={f.count <= 0}
                   onClick={() => {
                     player.consumeFood(f.key as 'bread' | 'sushi' | 'wagyu')
-                    const result = armyStore.healDivisionsWithFood(f.key as 'bread' | 'sushi' | 'wagyu')
-                    if (result.success) console.log(result.message)
                   }}>
                   <div style={{ fontSize: '14px' }}>{f.icon}</div>
                   <div style={{ fontSize: '9px', fontWeight: 700, color: '#e2e8f0' }}>{f.count}</div>
@@ -893,8 +879,8 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <button onClick={() => {
-                        const result = battleStore.createMercenaryContract(battleId, mercSide, mercRate, mercPool)
+                      <button onClick={async () => {
+                        const result = await battleStore.createMercenaryContract(battleId, mercSide, mercRate, mercPool)
                         if (result.message) ui.addFloatingText(result.message, window.innerWidth / 2, window.innerHeight / 2, result.success ? '#22d38a' : '#ef4444')
                         if (result.success) setMercForm(null)
                       }}

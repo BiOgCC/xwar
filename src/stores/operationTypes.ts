@@ -8,7 +8,7 @@ export type OperationPhase =
   | 'contest'            // Detected → 30-min race (damage or stamina)
   | 'attacker_won'       // Contest resolved: attacker reached threshold
   | 'defender_won'       // Contest resolved: defender reached threshold
-  | 'returning'          // Squad coming back
+  | 'returning'          // Team coming back
 
 export type ContestType = 'damage' | 'stamina'
 

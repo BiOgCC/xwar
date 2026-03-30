@@ -20,6 +20,7 @@ export const countries = pgTable('countries', {
   airportLevel:      integer('airport_level').default(1),
   bunkerLevel:       integer('bunker_level').default(1),
   militaryBaseLevel: integer('military_base_level').default(1),
+  missileLauncherLevel: integer('missile_launcher_level').default(0),
   hasPort:           boolean('has_port').default(true),
   hasAirport:        boolean('has_airport').default(true),
   taxExempt:         boolean('tax_exempt').default(false),

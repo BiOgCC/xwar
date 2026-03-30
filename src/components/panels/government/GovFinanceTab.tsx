@@ -1,7 +1,7 @@
 import { usePlayerStore } from '../../../stores/playerStore'
 import { useGovernmentStore } from '../../../stores/governmentStore'
 import { useWorldStore } from '../../../stores/worldStore'
-import { useArmyStore } from '../../../stores/army'
+
 import { useRegionStore } from '../../../stores/regionStore'
 import ResourceIcon from '../../shared/ResourceIcon'
 import { Download, Factory, Scroll, Store, Pickaxe, Upload, ShieldHalf, LayoutGrid, Flame } from 'lucide-react'
@@ -11,24 +11,21 @@ export default function GovFinanceTab() {
   const player = usePlayerStore()
   const govStore = useGovernmentStore()
   const world = useWorldStore()
-  const armyStore = useArmyStore()
+
   const iso = player.countryCode || 'US'
   const gov = govStore.governments[iso]
   const country = world.getCountry(iso)
 
   const fund = country?.fund ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
-  const vault = country?.forceVault ?? { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }
 
-  const countryDivs = (Object.values(armyStore.divisions) as any[]).filter(d => d.countryCode === iso)
-  const readyDivs = countryDivs.filter(d => d.status === 'ready').length
-  const inCombatDivs = countryDivs.filter(d => d.status === 'in_combat').length
-  const trainingDivs = countryDivs.filter(d => d.status === 'training').length
-  const divsOnSale = gov?.divisionShop?.length || 0
-
-  const budgetPct = gov?.militaryBudgetPercent || 0
-  const dailyBudget = Math.floor(fund.money * (budgetPct / 100))
-  const perTickBudget = Math.floor(dailyBudget / 288)
-  const countryArmies = (Object.values(armyStore.armies) as any[]).filter(a => a.countryCode === iso)
+  // Division/army system removed — zeroed out
+  const countryDivs: any[] = []
+  const readyDivs = 0
+  const inCombatDivs = 0
+  const trainingDivs = 0
+  const divsOnSale = 0
+  const budgetPct = 0
+  const countryArmies: any[] = []
 
   const contracts = (govStore.militaryContracts as any[]).filter(c => c.countryCode === iso)
   const activeContracts = contracts.filter(c => c.status === 'locked')
@@ -96,25 +93,7 @@ export default function GovFinanceTab() {
       <div className="gov-section gov-section--red">
         <div className="gov-section__title gov-section__title--red" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Upload size={14} /> SPENDING</div>
         <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldHalf size={12} color="#ef4444" /> Infrastructure</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>$500K–$1.5M/upgrade</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><ShieldHalf size={12} color="#f59e0b" /> Force Vault Transfers</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>${Number(vault.money).toLocaleString()} allocated</span></div>
-        <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><LayoutGrid size={12} color="#f59e0b" /> Army Salary Pools</span><span className="gov-stat-row__value" style={{ color: '#f59e0b' }}>{countryArmies.length} armies</span></div>
         <div className="gov-stat-row"><span className="gov-stat-row__label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Flame size={12} color="#ef4444" /> Active Wars</span><span className="gov-stat-row__value" style={{ color: '#ef4444' }}>{activeWars.length} wars</span></div>
-      </div>
-
-      {/* Force Vault */}
-      <div className="gov-section gov-section--amber">
-        <div className="gov-section__title gov-section__title--amber" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ResourceIcon resourceKey="money" size={14} /> FORCE VAULT</div>
-        <div className="gov-resource-grid" style={{ gap: '4px' }}>
-          {([['money', 'Money', vault.money], ['oil', 'Oil', vault.oil], ['scrap', 'Scrap', vault.scrap],
-            ['materialX', 'MatX', vault.materialX], ['bitcoin', 'BTC', vault.bitcoin], ['jets', 'Jets', vault.jets],
-          ] as [string, string, number][]).map(([key, label, val]) => (
-            <div key={label} className="gov-resource-cell">
-              <span className="gov-resource-cell__icon" style={{ display: 'flex', marginBottom: '4px' }}><ResourceIcon resourceKey={key} size={20} /></span>
-              <div className="gov-resource-cell__value" style={{ color: '#e2e8f0', fontSize: '10px' }}>{Number(val).toLocaleString()}</div>
-              <div className="gov-resource-cell__label">{label}</div>
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* Military Overview */}
@@ -122,14 +101,8 @@ export default function GovFinanceTab() {
         <div className="gov-section__title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ShieldHalf size={14} color="#e2e8f0" /> MILITARY OVERVIEW</div>
         <div className="gov-stats-grid">
           {([
-            ['Total Divisions', `${countryDivs.length}`, '#e2e8f0'],
-            ['Ready', `${readyDivs}`, '#22d38a'],
-            ['In Combat', `${inCombatDivs}`, '#ef4444'],
-            ['Training', `${trainingDivs}`, '#f59e0b'],
-            ['On Sale', `${divsOnSale}`, '#60a5fa'],
-            ['Budget %', `${budgetPct}%`, '#3b82f6'],
-            ['Armies', `${countryArmies.length}`, '#e2e8f0'],
             ['Contracts', `${contracts.length}`, '#f59e0b'],
+            ['Active Wars', `${activeWars.length}`, '#ef4444'],
           ] as [string, string, string][]).map(([label, val, color]) => (
             <div key={label} className="gov-stat-cell">
               <span className="gov-stat-cell__label">{label}</span>

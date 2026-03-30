@@ -1,14 +1,13 @@
 import { create } from 'zustand'
-import { type DivisionType, type StarQuality, type StatModifiers, DIVISION_TEMPLATES, rollStarQuality, getEffectiveManpower, getEffectiveHealth } from './army'
 import { useWorldStore, type NationalFund, type NationalFundKey } from './worldStore'
 import { usePlayerStore } from './playerStore'
-import { useArmyStore } from './army'
+// useArmyStore removed — division system deprecated
 import { useInventoryStore } from './inventoryStore'
 import { useMarketStore } from './market'
 import { api } from '../api/client'
 
-import type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government, ContributionEntry, CitizenContributions } from '../types/government.types'
-export type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, DivisionListing, MilitaryContract, Government, ContributionEntry, CitizenContributions }
+import type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, MilitaryContract, Government, ContributionEntry, CitizenContributions } from '../types/government.types'
+export type { LawType, LawStatus, Citizen, Law, Candidate, IdeologyType, IdeologyPoints, ContributionMission, MilitaryContract, Government, ContributionEntry, CitizenContributions }
 import { computePoliticalPower, resolveElectionResults, aggregateContributionsSinceJoin, MIN_COALITION_SIZE, PP_ROLLING_WINDOW_MS, type WeightedVote } from '../engine/elections'
 export { computePoliticalPower, resolveElectionResults, MIN_COALITION_SIZE, PP_ROLLING_WINDOW_MS }
 
@@ -42,41 +41,13 @@ export const DEFAULT_IDEOLOGY_POINTS: IdeologyPoints = {
   diplomacyBonus: 0,
 }
 
-const MISSION_DURATION = 7 * 24 * 60 * 60 * 1000 // 1 week
-
-// Random expiry between 10 and 15 hours
-function randomListingDuration(): number {
-  return (10 + Math.random() * 5) * 60 * 60 * 1000
-}
-
-const MAX_DISMISSALS_PER_DAY = 3
-const REROLL_BASE_COST = 500  // scrap
-const REROLL_MULTIPLIER = 3   // 500 → 1500 → 4500 → ...
-
 const CONTRACT_PROFIT_RATE = 0.11
 const CONTRACT_MIN = 100_000
 const CONTRACT_MAX = 1_000_000
 const CONTRACT_LOCK_DURATION = 24 * 60 * 60 * 1000 // 24 hours
+const MISSION_DURATION = 7 * 24 * 60 * 60 * 1000 // 1 week
 
-// Infrastructure → eligible division types
-const INFRA_DIVISION_MAP: Record<string, { types: DivisionType[]; getLevel: (c: { bunkerLevel: number; militaryBaseLevel: number; airportLevel: number; portLevel: number }) => number }> = {
-  infantry: {
-    types: ['recon', 'assault', 'sniper', 'rpg'],
-    getLevel: (c) => c.bunkerLevel + c.militaryBaseLevel,
-  },
-  mechanized: {
-    types: ['jeep', 'tank'],
-    getLevel: (c) => c.militaryBaseLevel,
-  },
-  air: {
-    types: ['jet'],
-    getLevel: (c) => c.airportLevel,
-  },
-  naval: {
-    types: ['warship'],
-    getLevel: (c) => c.portLevel,
-  },
-}
+
 
 export interface GovernmentState {
   /** Country-level autodefense limit: -1 = all divisions, 0 = off, N = max N divisions */
@@ -120,26 +91,13 @@ export interface GovernmentState {
   checkExpiredMissions: () => void
   isMissionCompleted: (opId: string, countryCode: string) => boolean
   getActiveMission: (opId: string, countryCode: string) => ContributionMission | null
-  // Division shop
-  getShopQuota: (countryCode: string) => { category: string; maxSlots: number; currentSlots: number }[]
-  spawnShopDivisions: (countryCode: string) => void
-  buyFromShop: (countryCode: string, listingId: string) => { success: boolean; message: string }
-  cleanExpiredListings: (countryCode: string) => void
-  dismissListing: (countryCode: string, listingId: string, playerId: string) => { success: boolean; message: string }
-  rerollListing: (countryCode: string, listingId: string) => { success: boolean; message: string }
-  getRerollCost: (listing: DivisionListing) => number
-  getDismissalsLeft: (playerId: string) => number
   // Military contracts
   createContract: (countryCode: string, amount: number) => { success: boolean; message: string }
   claimContract: (contractId: string) => { success: boolean; message: string }
   processContractMaturity: () => void
-  spawnInstantDivision: (countryCode: string, investmentAmount?: number) => void
   // Military budget
   setMilitaryBudget: (countryId: string, percent: number) => { success: boolean; message: string }
   processBudgetDistribution: (ticksPerDay: number) => Promise<void>
-  // Armed Forces
-  donateToArmedForces: (countryCode: string, divisionId: string, source: 'player' | 'army', armyId?: string) => { success: boolean; message: string }
-  recruitFreeFromShop: (countryCode: string, listingId: string) => { success: boolean; message: string }
   recruitEquipmentFromMarket: (countryCode: string, orderId: string) => { success: boolean; message: string }
   buyCasesForCountry: (countryCode: string, quantity: number) => { success: boolean; message: string }
   appointRole: (countryCode: string, targetId: string, role: 'vicepresident' | 'minister' | 'congress' | 'citizen') => { success: boolean; message: string }
@@ -188,10 +146,7 @@ function mkGov(code: string, president: string, congress: string[]): Government 
     enrichmentCompletedAt: null,
     nukeReady: false,
     citizens: mockCitizens(code, president, congress),
-    divisionShop: [],
     militaryBudgetPercent: 5,
-    armedForces: [],
-    lastFreeRecruitAt: 0,
     equipmentVault: [],
     embargoes: [],
     conscriptionActive: false,
@@ -263,10 +218,7 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
         enrichmentCompletedAt: raw.enrichmentCompletedAt ?? existing?.enrichmentCompletedAt ?? null,
         nukeReady: existing?.nukeReady ?? false,
         citizens: existing?.citizens ?? [],
-        divisionShop: existing?.divisionShop ?? [],
         militaryBudgetPercent: raw.militaryBudgetPercent ?? raw.military_budget_percent ?? existing?.militaryBudgetPercent ?? 5,
-        armedForces: existing?.armedForces ?? [],
-        lastFreeRecruitAt: existing?.lastFreeRecruitAt ?? 0,
         equipmentVault: existing?.equipmentVault ?? [],
         embargoes: raw.embargoes ?? existing?.embargoes ?? [],
         conscriptionActive: raw.conscriptionActive ?? raw.conscription_active ?? existing?.conscriptionActive ?? false,
@@ -296,8 +248,8 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
               candidates: [], taxRate: 10, swornEnemy: null, alliances: [],
               empireName: null, ideology: null, ideologyPoints: { ...DEFAULT_IDEOLOGY_POINTS },
               nuclearAuthorized: false, enrichmentStartedAt: null, enrichmentCompletedAt: null,
-              nukeReady: false, citizens: [], divisionShop: [], militaryBudgetPercent: 5,
-              armedForces: [], lastFreeRecruitAt: 0, equipmentVault: [],
+              nukeReady: false, citizens: [], militaryBudgetPercent: 5,
+              equipmentVault: [],
               embargoes: [], conscriptionActive: false, importTariff: 0,
               minimumWage: 0, stateMilitaryUnits: [], citizenDividendPercent: 0,
               laws: { proposals: [] },
@@ -754,320 +706,12 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
     ) || null
   },
 
-  // ── Division Shop ──────────────────────────────────────────
-
-  getShopQuota: (countryCode) => {
-    const country = useWorldStore.getState().countries.find(c => c.code === countryCode)
-    const gov = get().governments[countryCode]
-    if (!country || !gov) return []
-
-    const playerCount = (gov.citizens || []).length
-    const halfPlayers = Math.max(1, Math.floor(playerCount / 2))
-
-    return Object.entries(INFRA_DIVISION_MAP).map(([category, info]) => {
-      const infraLevel = info.getLevel(country)
-      const maxSlots = infraLevel * halfPlayers
-      const currentSlots = (gov.divisionShop || []).filter(l => info.types.includes(l.divisionType)).length
-      return { category, maxSlots, currentSlots }
-    })
-  },
-
-  spawnShopDivisions: (countryCode) => {
-    const state = get()
-    const gov = state.governments[countryCode]
-    if (!gov) return
-    const country = useWorldStore.getState().countries.find(c => c.code === countryCode)
-    if (!country) return
-
-    const playerCount = (gov.citizens || []).length
-    const halfPlayers = Math.max(1, Math.floor(playerCount / 2))
-    const now = Date.now()
-    let newListings = [...(gov.divisionShop || [])]
-    let changed = false
-
-    for (const [, info] of Object.entries(INFRA_DIVISION_MAP)) {
-      const infraLevel = info.getLevel(country)
-      const maxSlots = infraLevel * halfPlayers
-      const currentSlots = newListings.filter(l => info.types.includes(l.divisionType)).length
-      const emptySlots = maxSlots - currentSlots
-
-      for (let i = 0; i < emptySlots; i++) {
-        // 2% chance per empty slot per tick
-        if (Math.random() > 0.02) continue
-
-        // Pick random type from this category
-        const divType = info.types[Math.floor(Math.random() * info.types.length)]
-        const template = DIVISION_TEMPLATES[divType]
-        const { star, modifiers } = rollStarQuality()
-        // Price: recruitCost.money × 1.2 × (0.95 to 1.05)
-        const basePrice = template.recruitCost.money * 1.2
-        const price = Math.floor(basePrice * (0.95 + Math.random() * 0.10))
-
-        newListings.push({
-          id: `shop_${countryCode}_${now}_${Math.random().toString(36).substr(2, 6)}`,
-          divisionType: divType,
-          starQuality: star,
-          statModifiers: modifiers,
-          price,
-          listedAt: now,
-          expiresAt: now + randomListingDuration(),
-          rerollCount: 0,
-        })
-        changed = true
-      }
-    }
-
-    if (changed) {
-      set({
-        governments: {
-          ...state.governments,
-          [countryCode]: { ...gov, divisionShop: newListings },
-        },
-      })
-    }
-  },
-
-  buyFromShop: (countryCode, listingId) => {
-    const state = get()
-    const gov = state.governments[countryCode]
-    if (!gov) return { success: false, message: 'Government not found.' }
-
-    const listingIdx = gov.divisionShop.findIndex(l => l.id === listingId)
-    if (listingIdx === -1) return { success: false, message: 'Listing not found.' }
-    const listing = gov.divisionShop[listingIdx]
-
-    // Check if expired
-    if (Date.now() > listing.expiresAt) return { success: false, message: 'Listing expired.' }
-
-    // Check player has money
-    const player = usePlayerStore.getState()
-    if (player.money < listing.price) return { success: false, message: `Not enough money. Need $${listing.price.toLocaleString()}.` }
-
-    // Deduct money from player
-    player.spendMoney(listing.price)
-
-    // Add money to national fund via worldStore
-    useWorldStore.getState().addTreasuryTax(countryCode, listing.price)
-
-    // Remove listing from shop
-    const newShop = [...gov.divisionShop]
-    newShop.splice(listingIdx, 1)
-
-    set({
-      governments: {
-        ...state.governments,
-        [countryCode]: { ...gov, divisionShop: newShop },
-      },
-    })
-
-    // Create division for player via armyStore
-    const template = DIVISION_TEMPLATES[listing.divisionType]
-    const armyStore = useArmyStore.getState()
-    const divId = `div_shop_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
-    const division = {
-      id: divId,
-      type: listing.divisionType,
-      name: `${template.name} (${listing.starQuality}★)`,
-      category: template.category,
-      ownerId: player.name,
-      countryCode,
-      manpower: getEffectiveManpower(template),
-      maxManpower: getEffectiveManpower(template),
-      health: getEffectiveHealth(template),
-      maxHealth: getEffectiveHealth(template),
-      equipment: [] as string[],
-      experience: 0,
-      stance: 'unassigned' as const,
-      autoTrainingEnabled: false,
-      status: 'training' as const,
-      trainingProgress: 0,
-      readyAt: Date.now() + (template.trainingTime * 15_000),
-      reinforcing: false,
-      reinforceProgress: 0,
-      recoveryTicksNeeded: 0,
-      killCount: 0,
-      battlesSurvived: 0,
-      starQuality: listing.starQuality,
-      statModifiers: listing.statModifiers,
-      deployedToPMC: false,
-    }
-
-    useArmyStore.setState(s => ({
-      divisions: { ...s.divisions, [divId]: division },
-    }))
-
-    return { success: true, message: `Purchased ${template.name} (${listing.starQuality}★) for $${listing.price.toLocaleString()}!` }
-  },
-
-  cleanExpiredListings: (countryCode) => {
-    const state = get()
-    const gov = state.governments[countryCode]
-    if (!gov) return
-
-    const now = Date.now()
-    const filtered = (gov.divisionShop || []).filter(l => now < l.expiresAt)
-    if (filtered.length !== (gov.divisionShop || []).length) {
-      set({
-        governments: {
-          ...state.governments,
-          [countryCode]: { ...gov, divisionShop: filtered },
-        },
-      })
-    }
-  },
-
-  getRerollCost: (listing) => {
-    if (listing.rerollCount < 2) return 0  // first 2 rerolls are free
-    return REROLL_BASE_COST * Math.pow(REROLL_MULTIPLIER, listing.rerollCount - 2)
-  },
-
-  getDismissalsLeft: (playerId) => {
-    const state = get()
-    const record = state.playerDismissals[playerId]
-    if (!record || Date.now() > record.resetAt) return MAX_DISMISSALS_PER_DAY
-    return Math.max(0, MAX_DISMISSALS_PER_DAY - record.count)
-  },
-
-  dismissListing: (countryCode, listingId, playerId) => {
-    const state = get()
-    const gov = state.governments[countryCode]
-    if (!gov) return { success: false, message: 'Government not found.' }
-
-    const listingIdx = gov.divisionShop.findIndex(l => l.id === listingId)
-    if (listingIdx === -1) return { success: false, message: 'Listing not found.' }
-
-    // Check daily dismissal limit
-    const now = Date.now()
-    let record = state.playerDismissals[playerId]
-    if (!record || now > record.resetAt) {
-      // Reset — new day window (24h from now)
-      record = { count: 0, resetAt: now + 24 * 60 * 60 * 1000 }
-    }
-    if (record.count >= MAX_DISMISSALS_PER_DAY) {
-      return { success: false, message: `Dismiss limit reached (${MAX_DISMISSALS_PER_DAY}/day). Resets in ${Math.ceil((record.resetAt - now) / 3600000)}h.` }
-    }
-
-    // Remove listing
-    const newShop = [...gov.divisionShop]
-    newShop.splice(listingIdx, 1)
-
-    set({
-      governments: {
-        ...state.governments,
-        [countryCode]: { ...gov, divisionShop: newShop },
-      },
-      playerDismissals: {
-        ...state.playerDismissals,
-        [playerId]: { count: record.count + 1, resetAt: record.resetAt },
-      },
-    })
-
-    const left = MAX_DISMISSALS_PER_DAY - record.count - 1
-    return { success: true, message: `Dismissed! ${left} dismiss${left !== 1 ? 'es' : ''} left today.` }
-  },
-
-  rerollListing: (countryCode, listingId) => {
-    const state = get()
-    const gov = state.governments[countryCode]
-    if (!gov) return { success: false, message: 'Government not found.' }
-
-    const listingIdx = gov.divisionShop.findIndex(l => l.id === listingId)
-    if (listingIdx === -1) return { success: false, message: 'Listing not found.' }
-    const listing = gov.divisionShop[listingIdx]
-
-    // Calculate cost (first 2 are free)
-    const cost = listing.rerollCount < 2 ? 0 : REROLL_BASE_COST * Math.pow(REROLL_MULTIPLIER, listing.rerollCount - 2)
-    const player = usePlayerStore.getState()
-    if (cost > 0 && player.scrap < cost) return { success: false, message: `Not enough scrap. Need ${cost.toLocaleString()}.` }
-
-    // Deduct scrap (only if cost > 0)
-    if (cost > 0) player.spendScrap(cost)
-
-    // Reroll star quality + price
-    const { star, modifiers } = rollStarQuality()
-    const template = DIVISION_TEMPLATES[listing.divisionType]
-    const basePrice = template.recruitCost.money * 1.2
-    const newPrice = Math.floor(basePrice * (0.95 + Math.random() * 0.10))
-    const now = Date.now()
-
-    const newListing: DivisionListing = {
-      ...listing,
-      starQuality: star,
-      statModifiers: modifiers,
-      price: newPrice,
-      listedAt: now,
-      expiresAt: now + randomListingDuration(),
-      rerollCount: listing.rerollCount + 1,
-    }
-
-    const newShop = [...gov.divisionShop]
-    newShop[listingIdx] = newListing
-
-    set({
-      governments: {
-        ...state.governments,
-        [countryCode]: { ...gov, divisionShop: newShop },
-      },
-    })
-
-    const nextCost = REROLL_BASE_COST * Math.pow(REROLL_MULTIPLIER, newListing.rerollCount)
-    return { success: true, message: `Rerolled to ${star}★! Next reroll: ${nextCost.toLocaleString()} scrap.` }
-  },
 
   // ── Military Contracts ───────────────────────────────────────
 
-  spawnInstantDivision: (countryCode, investmentAmount) => {
-    const state = get()
-    const gov = state.governments[countryCode]
-    if (!gov) return
-    const country = useWorldStore.getState().countries.find(c => c.code === countryCode)
-    if (!country) return
 
-    const playerCount = gov.citizens.length
-    const halfPlayers = Math.max(1, Math.floor(playerCount / 2))
 
-    // Find categories with empty slots
-    const candidates: { types: DivisionType[]; emptySlots: number }[] = []
-    for (const [, info] of Object.entries(INFRA_DIVISION_MAP)) {
-      const infraLevel = info.getLevel(country)
-      const maxSlots = infraLevel * halfPlayers
-      const currentSlots = (gov.divisionShop || []).filter(l => info.types.includes(l.divisionType)).length
-      if (currentSlots < maxSlots) {
-        candidates.push({ types: info.types, emptySlots: maxSlots - currentSlots })
-      }
-    }
 
-    // If no room in any category, pick any random type anyway (contract always spawns one)
-    const allTypes: DivisionType[] = Object.values(INFRA_DIVISION_MAP).flatMap(i => i.types)
-    const pool = candidates.length > 0
-      ? candidates[Math.floor(Math.random() * candidates.length)].types
-      : allTypes
-
-    const divType = pool[Math.floor(Math.random() * pool.length)]
-    const template = DIVISION_TEMPLATES[divType]
-    const { star, modifiers } = rollStarQuality(investmentAmount)
-    const basePrice = template.recruitCost.money * 1.2
-    const price = Math.floor(basePrice * (0.95 + Math.random() * 0.10))
-    const now = Date.now()
-
-    const newListing: DivisionListing = {
-      id: `shop_contract_${countryCode}_${now}_${Math.random().toString(36).substr(2, 6)}`,
-      divisionType: divType,
-      starQuality: star,
-      statModifiers: modifiers,
-      price,
-      listedAt: now,
-      expiresAt: now + randomListingDuration(),
-      rerollCount: 0,
-    }
-
-    set({
-      governments: {
-        ...state.governments,
-        [countryCode]: { ...gov, divisionShop: [...gov.divisionShop, newListing] },
-      },
-    })
-  },
 
   createContract: (countryCode, amount) => {
     const player = usePlayerStore.getState()
@@ -1101,11 +745,8 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
       militaryContracts: [...state.militaryContracts, contract],
     })
 
-    // Instantly spawn 1 division
-    get().spawnInstantDivision(countryCode, amount)
-
     const payout = Math.floor(amount * (1 + CONTRACT_PROFIT_RATE))
-    return { success: true, message: `Contract signed! $${amount.toLocaleString()} locked for 24h. Payout: $${payout.toLocaleString()}. A new division has been listed!` }
+    return { success: true, message: `Contract signed! $${amount.toLocaleString()} locked for 24h. Payout: $${payout.toLocaleString()}.` }
   },
 
   claimContract: (contractId) => {
@@ -1267,140 +908,6 @@ export const useGovernmentStore = create<GovernmentState>((set, get) => ({
 
     // Reset all cycle damage for next cycle
     MUStore.getState().resetAllCycleDamage()
-  },
-
-  // ====== ARMED FORCES ======
-
-  donateToArmedForces: (countryCode, divisionId, source, armyId) => {
-    const state = get()
-    const gov = state.governments[countryCode]
-    if (!gov) return { success: false, message: 'Government not found.' }
-    const player = usePlayerStore.getState()
-    const armyStore = useArmyStore.getState()
-    const div = armyStore.divisions[divisionId]
-    if (!div) return { success: false, message: 'Division not found.' }
-    if (div.status === 'in_combat' || div.status === 'destroyed' || div.status === 'listed')
-      return { success: false, message: 'Division is not available for donation.' }
-
-    if (source === 'player') {
-      if (div.ownerId !== player.name) return { success: false, message: 'Not your division.' }
-    } else if (source === 'army') {
-      if (!armyId) return { success: false, message: 'Army ID required.' }
-      const army = armyStore.armies[armyId]
-      if (!army) return { success: false, message: 'Army not found.' }
-      if (army.commanderId !== player.name)
-        return { success: false, message: 'Only the commander can donate army divisions.' }
-      if (!army.divisionIds.includes(divisionId))
-        return { success: false, message: 'Division is not in this army.' }
-      // Remove from army
-      useArmyStore.setState(s => ({
-        armies: { ...s.armies, [armyId]: {
-          ...s.armies[armyId],
-          divisionIds: s.armies[armyId].divisionIds.filter(id => id !== divisionId),
-        }},
-      }))
-    }
-
-    // Transfer division ownership to government
-    useArmyStore.setState(s => ({
-      divisions: { ...s.divisions, [divisionId]: {
-        ...s.divisions[divisionId],
-        ownerId: `GOV_${countryCode}`,
-        countryCode,
-        status: 'ready' as any,
-        equipment: [],
-        stance: 'first_line_defense' as any,
-      }},
-    }))
-
-    // Add to armed forces
-    set(s => ({
-      governments: {
-        ...s.governments,
-        [countryCode]: {
-          ...s.governments[countryCode],
-          armedForces: [...s.governments[countryCode].armedForces, divisionId],
-        },
-      },
-    }))
-
-    return { success: true, message: `Donated ${div.name} to ${countryCode} Armed Forces!` }
-  },
-
-  recruitFreeFromShop: (countryCode, listingId) => {
-    const FREE_RECRUIT_COOLDOWN = 12 * 60 * 60 * 1000  // 12 hours
-    const state = get()
-    const gov = state.governments[countryCode]
-    if (!gov) return { success: false, message: 'Government not found.' }
-
-    const player = usePlayerStore.getState()
-    const isOfficial = gov.president === player.name ||
-      gov.citizens.some(c => c.id === player.name && (c.role === 'vicepresident' || c.role === 'minister'))
-    if (!isOfficial)
-      return { success: false, message: 'Only president, VP, or minister can recruit.' }
-
-    // Cooldown check
-    const now = Date.now()
-    if (now - gov.lastFreeRecruitAt < FREE_RECRUIT_COOLDOWN) {
-      const remainH = Math.ceil((FREE_RECRUIT_COOLDOWN - (now - gov.lastFreeRecruitAt)) / 3600000)
-      return { success: false, message: `Free recruit on cooldown. ${remainH}h remaining.` }
-    }
-
-    const listingIdx = gov.divisionShop.findIndex(l => l.id === listingId)
-    if (listingIdx === -1) return { success: false, message: 'Listing not found in shop.' }
-    const listing = gov.divisionShop[listingIdx]
-
-    // Create division for armed forces
-    const template = DIVISION_TEMPLATES[listing.divisionType]
-    const divId = `af_${countryCode}_${now}_${Math.random().toString(36).substr(2, 6)}`
-    const division = {
-      id: divId,
-      type: listing.divisionType,
-      name: `${template.name} (${listing.starQuality}★)`,
-      category: template.category,
-      ownerId: `GOV_${countryCode}`,
-      countryCode,
-      manpower: getEffectiveManpower(template),
-      maxManpower: getEffectiveManpower(template),
-      health: getEffectiveHealth(template),
-      maxHealth: getEffectiveHealth(template),
-      equipment: [] as string[],
-      experience: 0,
-      stance: 'first_line_defense' as const,
-      autoTrainingEnabled: false,
-      status: 'training' as const,
-      trainingProgress: 0,
-      readyAt: now + (template.trainingTime * 15_000),
-      reinforcing: false,
-      reinforceProgress: 0,
-      recoveryTicksNeeded: 0,
-      killCount: 0,
-      battlesSurvived: 0,
-      starQuality: listing.starQuality,
-      statModifiers: listing.statModifiers,
-      deployedToPMC: false,
-    }
-
-    useArmyStore.setState(s => ({
-      divisions: { ...s.divisions, [divId]: division },
-    }))
-
-    // Remove listing from shop, update cooldown, add to armed forces
-    const newShop = [...gov.divisionShop]
-    newShop.splice(listingIdx, 1)
-    set(s => ({
-      governments: {
-        ...s.governments,
-        [countryCode]: {
-          ...s.governments[countryCode],
-          divisionShop: newShop,
-          lastFreeRecruitAt: now,
-          armedForces: [...s.governments[countryCode].armedForces, divId],
-        },
-      },
-    }))
-
-    return { success: true, message: `Recruited ${template.name} (${listing.starQuality}★) into Armed Forces for free!` }
   },
 
   recruitEquipmentFromMarket: (countryCode, orderId) => {

@@ -1,6 +1,6 @@
 import { useBattleStore } from '../stores/battleStore'
 import { useCyberStore } from '../stores/cyberStore'
-import { useArmyStore, rollStarQuality } from '../stores/army'
+
 import { useCompanyStore } from '../stores/companyStore'
 import { useMarketStore } from '../stores/market'
 import { useStockStore, calculateFundamentals } from '../stores/stockStore'
@@ -160,7 +160,7 @@ export function initMockData() {
     useNewsStore.setState({
       events: [
         { id: 'news_1', category: 'war', message: '🔥 US declares war on Russia — tensions escalated after border incidents', timestamp: now - 7200000, icon: '⚔️', color: '#ef4444' },
-        { id: 'news_2', category: 'combat', message: '⚔️ Battle rages in Eastern Europe — both sides commit armored divisions', timestamp: now - 3600000, icon: '💥', color: '#f97316' },
+        { id: 'news_2', category: 'combat', message: '⚔️ Battle rages in Eastern Europe — both sides commit heavy forces', timestamp: now - 3600000, icon: '💥', color: '#f97316' },
         { id: 'news_3', category: 'economy', message: '📈 US wheat exports surge 40% — farm subsidies drive record production', timestamp: now - 1800000, icon: '💰', color: '#22c55e' },
         { id: 'news_4', category: 'system', message: `🏛️ ${playerName} elected President of USA — landslide victory`, timestamp: now - 900000, icon: '📡', color: '#64748b' },
         { id: 'news_5', category: 'war', message: '🖥️ Cyber attack targets German power grid — investigation ongoing', timestamp: now - 300000, icon: '⚔️', color: '#ef4444' },
@@ -201,10 +201,6 @@ export function initMockData() {
         { id: 'inv_t4_sniper', name: 'Sniper', slot: 'weapon', category: 'weapon', tier: 't4', equipped: false, durability: 100, weaponSubtype: 'sniper', location: 'inventory' as const, stats: { damage: 140, critRate: 19 } },
         { id: 'inv_t2_gun', name: 'Gun', slot: 'weapon', category: 'weapon', tier: 't2', equipped: false, durability: 60, weaponSubtype: 'gun', location: 'inventory' as const, stats: { damage: 68, critRate: 8 } },
         { id: 'inv_t1_helmet', name: 'Common Helmet', slot: 'helmet', category: 'armor', tier: 't1', equipped: false, durability: 100, location: 'inventory' as const, stats: { critDamage: 15 } },
-        // Vault item (army vault)
-        { id: 'vault_t3_chest', name: 'Rare Chestplate', slot: 'chest', category: 'armor', tier: 't3', equipped: false, durability: 100, location: 'vault' as const, vaultArmyId: 'army_us_1', stats: { armor: 13 } },
-        // Division-equipped item
-        { id: 'div_t2_rifle', name: 'Rifle', slot: 'weapon', category: 'weapon', tier: 't2', equipped: false, durability: 75, weaponSubtype: 'rifle', location: 'division' as const, assignedToDivision: 'div_us_0', stats: { damage: 72, critRate: 9 } },
         // Market-listed item
         { id: 'mkt_t5_tank', name: 'Tank', slot: 'weapon', category: 'weapon', tier: 't5', equipped: false, durability: 100, weaponSubtype: 'tank', location: 'market' as const, stats: { damage: 180, critRate: 26 } },
       ] as any,

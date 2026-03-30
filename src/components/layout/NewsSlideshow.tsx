@@ -30,7 +30,7 @@ const SLIDES = [
   { gif: 'https://media.giphy.com/media/l46Cy1rHbQ92uuLXa/giphy.gif',       tag: 'PROPAGANDA',     headline: 'New recruitment campaign launched nationwide' },
   { gif: 'https://media.giphy.com/media/3og0IFrHkIglEOg8Ba/giphy.gif',      tag: 'DEFCON 2',       headline: 'Defense readiness elevated across all sectors' },
   { gif: 'https://media.giphy.com/media/xUPGGDNsLvqsBOhuU0/giphy.gif',      tag: 'CLASSIFIED',     headline: 'Top-secret documents recovered from bunker' },
-  { gif: 'https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif',      tag: 'DISPATCH',       headline: 'Troop movements detected near DMZ' },
+  { gif: 'https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif',      tag: 'DISPATCH',       headline: 'Military movements detected near DMZ' },
   { gif: 'https://media.giphy.com/media/l0HlvtIPdijJCx2qQ/giphy.gif',       tag: 'FRONTLINE',      headline: 'Medics rush to aid wounded at the front' },
 
   // ═══ ADD YOUR OWN GIFS BELOW THIS LINE ═══

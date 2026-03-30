@@ -38,7 +38,6 @@ export interface Country {
   regions: number
   military: number
   fund: NationalFund
-  forceVault: NationalFund   // Military budget — funded from country treasury, finances operations & players
   color: string
   conqueredResources: ConqueredResourceType[]
   activeDepositBonus: { type: DepositType; bonus: number } | null

@@ -708,8 +708,8 @@ export default function RegionPanel() {
                   const isActive = battle.status === 'active'
                   const atkDmg = battle.attacker.damageDealt || 0
                   const defDmg = battle.defender.damageDealt || 0
-                  const atkDivs = battle.attacker.divisionIds.length
-                  const defDivs = battle.defender.divisionIds.length
+                  const atkFighters = Object.keys(battle.attackerDamageDealers || {}).length
+                  const defFighters = Object.keys(battle.defenderDamageDealers || {}).length
 
                   return (
                     <div key={battle.id} style={{
@@ -728,11 +728,11 @@ export default function RegionPanel() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
                         <CountryFlag iso={battle.attackerId} size={14} />
                         <span style={{ fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {atkDivs}
+                          {atkFighters}
                         </span>
                         <span style={{ fontFamily: 'var(--font-display)', fontSize: 8, color: 'var(--text-muted)' }}>🏔️</span>
                         <span style={{ fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {defDivs}
+                          {defFighters}
                         </span>
                         <CountryFlag iso={battle.defenderId} size={14} />
                       </div>

@@ -4,7 +4,7 @@
 // ══════════════════════════════════════════════
 
 import type { NationalFund } from './world.types'
-import type { DivisionType, StarQuality, StatModifiers } from '../stores/army'
+
 
 export type LawType =
   | 'declare_war' | 'propose_peace' | 'impeach_president'
@@ -87,16 +87,6 @@ export interface ContributionMission {
   startedBy: string
 }
 
-export interface DivisionListing {
-  id: string
-  divisionType: DivisionType
-  starQuality: StarQuality
-  statModifiers: StatModifiers
-  price: number
-  listedAt: number
-  expiresAt: number
-  rerollCount: number
-}
 
 export interface MilitaryContract {
   id: string
@@ -128,10 +118,7 @@ export interface Government {
   enrichmentCompletedAt: number | null  // enrichmentStartedAt + 7 days
   nukeReady: boolean                    // true once enrichment countdown completes
   citizens: Citizen[]
-  divisionShop: DivisionListing[]
   militaryBudgetPercent: number
-  armedForces: string[]  // Division IDs owned by the government (defense-only reserve)
-  lastFreeRecruitAt: number  // timestamp of last free 12h recruit
   equipmentVault: string[]   // Item IDs owned by the government (from market purchases)
   // Country policies (set via laws)
   embargoes: string[]          // country codes we're embargoing

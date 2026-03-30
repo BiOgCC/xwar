@@ -86,8 +86,8 @@ export interface MarketTicker {
 }
 
 // ── Order Book ──
-export type OrderItemType = 'resource' | 'equipment' | 'division'
-export type OrderSource = 'player' | 'country' | 'force_vault'
+export type OrderItemType = 'resource' | 'equipment'
+export type OrderSource = 'player' | 'country'
 
 export interface MarketOrder {
   id: string
@@ -95,15 +95,12 @@ export interface MarketOrder {
   itemType: OrderItemType
   resourceId?: ResourceId
   equipItemId?: string
-  divisionId?: string
   amount: number
   pricePerUnit: number
   totalPrice: number
   playerId: string
   countryCode: string
   source: OrderSource
-  armyId?: string            // for force_vault orders — which army's vault
-  divisionSource?: 'player' | 'force_vault' | 'country'  // who owns the listed division
   createdAt: number
   expiresAt: number          // auto-expiry timestamp
   status: 'open' | 'filled' | 'partial' | 'cancelled' | 'expired'
@@ -119,16 +116,7 @@ export interface MarketOrder {
     weaponSubtype?: string
     superforged?: boolean
   }
-  divSnapshot?: {
-    name: string
-    type: string
-    level: number
-    stars: number
-    health: number
-    maxHealth: number
-    manpower: number
-    maxManpower: number
-  }
+
 }
 
 /** Filled trade record */
@@ -139,7 +127,6 @@ export interface TradeRecord {
   itemType: OrderItemType
   resourceId?: ResourceId
   equipItemId?: string
-  divisionId?: string
   amount: number
   pricePerUnit: number
   totalPrice: number
@@ -164,17 +151,6 @@ export interface MarketState {
   // Equipment
   placeEquipmentSellOrder: (equipItemId: string, price: number) => Promise<{ success: boolean; message: string }>
   buyEquipment: (orderId: string) => Promise<{ success: boolean; message: string }>
-  placeVaultEquipmentSellOrder: (armyId: string, equipItemId: string, price: number) => Promise<{ success: boolean; message: string }>
-  buyEquipmentToVault: (armyId: string, orderId: string) => Promise<{ success: boolean; message: string }>
-
-  // Divisions
-  placeDivisionSellOrder: (divisionId: string, price: number) => Promise<{ success: boolean; message: string }>
-  placeVaultDivisionSellOrder: (armyId: string, divisionId: string, price: number) => Promise<{ success: boolean; message: string }>
-  placeCountryDivisionSellOrder: (countryCode: string, divisionId: string, price: number) => Promise<{ success: boolean; message: string }>
-  buyDivision: (orderId: string) => Promise<{ success: boolean; message: string }>
-
-  // Force vault fund
-  placeForceVaultOrder: (armyId: string, type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => Promise<{ success: boolean; message: string }>
 
   // Country fund
   placeCountryOrder: (type: 'buy' | 'sell', resourceId: ResourceId, amount: number, pricePerUnit: number) => Promise<{ success: boolean; message: string }>
@@ -194,7 +170,6 @@ export interface MarketState {
   // Queries
   getOrderBook: (resourceId: ResourceId) => { buys: MarketOrder[]; sells: MarketOrder[] }
   getEquipmentListings: () => MarketOrder[]
-  getDivisionListings: () => MarketOrder[]
   getMyOrders: () => MarketOrder[]
   getRecentTrades: (limit?: number) => TradeRecord[]
 }

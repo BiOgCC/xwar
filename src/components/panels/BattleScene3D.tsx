@@ -665,7 +665,7 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
             ⚔️ {battle.regionName}
           </div>
           <div className="battle-scene-hud__modifiers">
-            {battle.attacker.engagedDivisionIds.length} vs {battle.defender.engagedDivisionIds.length} divs
+            {Object.keys(battle.attackerDamageDealers || {}).length} vs {Object.keys(battle.defenderDamageDealers || {}).length} fighters
           </div>
           <div className="battle-scene-hud__tick">
             {(() => { const s = Math.max(0, Math.floor((Date.now() - battle.startedAt) / 1000)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = s % 60; return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${m}:${String(sec).padStart(2,'0')}` })()} • {battle.status.toUpperCase()}
@@ -693,7 +693,7 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
         </div>
         <div className="battle-scene-stat">
           <span>💀 Lost</span>
-          <span className="battle-scene-stat__val">{battle.attacker.manpowerLost}</span>
+          <span className="battle-scene-stat__val">—</span>
         </div>
         <div className="battle-scene-stat battle-scene-stat--vs">VS</div>
         <div className="battle-scene-stat">
@@ -702,7 +702,7 @@ export default function BattleScene3D({ battle: battleRef, attackerDivisions, de
         </div>
         <div className="battle-scene-stat">
           <span>💀 Lost</span>
-          <span className="battle-scene-stat__val">{battle.defender.manpowerLost}</span>
+          <span className="battle-scene-stat__val">—</span>
         </div>
       </div>
 

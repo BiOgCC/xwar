@@ -11,7 +11,7 @@ import { create } from 'zustand'
 import type { StoreApi } from 'zustand'
 import { usePlayerStore } from '../playerStore'
 import { useInventoryStore } from '../inventoryStore'
-import { useArmyStore } from '../army'
+
 import { useWorldStore } from '../worldStore'
 import { useGovernmentStore } from '../governmentStore'
 import { useMissionStore } from '../missionStore'
@@ -25,14 +25,9 @@ import { mkTicker, mkId } from './helpers'
 // Slice functions
 // NOTE: placeResourceOrder & matchResourceOrders from ./resourceMarket are DEPRECATED
 // (overridden below to use backend API). Import removed to avoid confusion.
-import { placeEquipmentSellOrder, buyEquipment, placeVaultEquipmentSellOrder, buyEquipmentToVault } from './equipmentMarket'
-// Division market removed — stub functions
-const placeDivisionSellOrder = (..._: any[]) => ({ success: false, message: 'Division system removed' })
-const placeVaultDivisionSellOrder = (..._: any[]) => ({ success: false, message: 'Division system removed' })
-const placeCountryDivisionSellOrder = (..._: any[]) => ({ success: false, message: 'Division system removed' })
-const buyDivision = (..._: any[]) => ({ success: false, message: 'Division system removed' })
+import { placeEquipmentSellOrder, buyEquipment } from './equipmentMarket'
 import { tickPrices } from './priceTicker'
-import { placeCountryOrder, placeForceVaultOrder } from './countryTrading'
+import { placeCountryOrder } from './countryTrading'
 
 type Set = StoreApi<MarketState>['setState']
 type Get = () => MarketState
@@ -53,14 +48,6 @@ function cancelOrderFn(
       const gov = useGovernmentStore.getState().governments[order.countryCode]
       if (!gov || gov.president !== player.name)
         return { success: false, message: 'Only the president can cancel country orders' }
-    } else if (order.source === 'force_vault' && order.armyId) {
-      // Only commander/colonel of the army can cancel vault orders
-      const army = useArmyStore.getState().armies[order.armyId]
-      if (!army) return { success: false, message: 'Army not found' }
-      const member = army.members.find(m => m.playerId === player.name)
-      const isCommander = army.commanderId === player.name
-      const hasControl = isCommander || (member && ['colonel', 'general'].includes(member.role))
-      if (!hasControl) return { success: false, message: 'Only Commander/Colonel can cancel vault orders' }
     } else if (order.playerId !== player.name) {
       return { success: false, message: 'Not your order' }
     }
@@ -75,31 +62,12 @@ function cancelOrderFn(
         const refund = remaining * order.pricePerUnit
         if (order.source === 'country') {
           useWorldStore.getState().addTreasuryTax(order.countryCode, refund)
-        } else if (order.source === 'force_vault' && order.armyId) {
-          useArmyStore.setState(s => {
-            const army = s.armies[order.armyId!]
-            if (!army) return s
-            return { armies: { ...s.armies, [order.armyId!]: {
-              ...army, vault: { ...army.vault, money: army.vault.money + refund },
-            }}}
-          })
         } else {
           usePlayerStore.getState().earnMoney(refund)
         }
       } else {
         if (order.source === 'country' && def.fundKey) {
           useWorldStore.getState().addToFund(order.countryCode, def.fundKey, remaining)
-        } else if (order.source === 'force_vault' && order.armyId) {
-          const vaultKey = order.resourceId === 'oil' ? 'oil' : order.resourceId === 'materialX' ? 'materialX' : null
-          if (vaultKey) {
-            useArmyStore.setState(s => {
-              const army = s.armies[order.armyId!]
-              if (!army) return s
-              return { armies: { ...s.armies, [order.armyId!]: {
-                ...army, vault: { ...army.vault, [vaultKey]: (army.vault as any)[vaultKey] + remaining },
-              }}}
-            })
-          }
         } else {
           usePlayerStore.setState(s => ({
             [def.playerKey]: ((s as unknown as Record<string, number>)[def.playerKey] ?? 0) + remaining,
@@ -113,13 +81,6 @@ function cancelOrderFn(
       items: s.items.map(i => i.id === order.equipItemId ? {
         ...i, location: 'inventory' as const, equipped: false,
       } : i)
-    }))
-  } else if (order.itemType === 'division' && order.divisionId) {
-    // Unlock division
-    useArmyStore.setState(s => ({
-      divisions: { ...s.divisions, [order.divisionId!]: {
-        ...s.divisions[order.divisionId!], status: 'ready' as any,
-      }}
     }))
   }
 
@@ -236,28 +197,6 @@ export const useMarketStore = create<MarketState>((set, get) => {
         return { success: true, message: res.message }
       } catch (e: any) { return { success: false, message: e.message } }
     },
-    placeVaultEquipmentSellOrder: async (armyId, equipItemId, price) => placeVaultEquipmentSellOrder(set, get, armyId, equipItemId, price),
-    buyEquipmentToVault: async (armyId, orderId) => buyEquipmentToVault(set, get, armyId, orderId),
-
-    // Divisions
-    placeDivisionSellOrder: async (divisionId, price) => {
-      try {
-        const res: any = await api.post('/market/sell', { itemType: 'division', resourceId: divisionId, amount: 1, pricePerUnit: price })
-        return { success: true, message: res.message }
-      } catch (e: any) { return { success: false, message: e.message } }
-    },
-    placeVaultDivisionSellOrder: async (armyId, divisionId, price) => placeVaultDivisionSellOrder(set, get, armyId, divisionId, price),
-    placeCountryDivisionSellOrder: async (countryCode, divisionId, price) => placeCountryDivisionSellOrder(set, get, countryCode, divisionId, price),
-    buyDivision: async (orderId) => {
-      try {
-        const res: any = await api.post('/market/buy', { orderId })
-        useMissionStore.getState().trackMarket()
-        return { success: true, message: res.message }
-      } catch (e: any) { return { success: false, message: e.message } }
-    },
-
-    // Force vault fund
-    placeForceVaultOrder: async (armyId, type, resourceId, amount, pricePerUnit) => placeForceVaultOrder(set, get, armyId, type, resourceId, amount, pricePerUnit),
 
     // Country fund
     placeCountryOrder: async (type, resourceId, amount, pricePerUnit) => placeCountryOrder(set, get, type, resourceId, amount, pricePerUnit),
@@ -291,8 +230,6 @@ export const useMarketStore = create<MarketState>((set, get) => {
     getEquipmentListings: () =>
       get().orders.filter(o => o.itemType === 'equipment' && o.status === 'open' && o.type === 'sell'),
 
-    getDivisionListings: () =>
-      get().orders.filter(o => o.itemType === 'division' && o.status === 'open' && o.type === 'sell'),
 
     getMyOrders: () => {
       const player = usePlayerStore.getState()

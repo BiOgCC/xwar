@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { useWorldStore } from './worldStore'
 import { usePlayerStore } from './playerStore'
-import { useArmyStore, type Division } from './army'
+// Division type imported for interface compat only
+import type { Division } from './army'
 import { getCountryName } from '../data/countries'
 import { getAirportReachableRegions, getPortReachableRegions } from '../utils/geography'
 
@@ -870,14 +871,7 @@ export const useRegionStore = create<RegionState>((set, get) => ({
         }
       }
 
-      // Return divisions to ready
-      m.divisionIds.forEach(id => {
-        useArmyStore.setState(s => {
-          const div = s.divisions[id]
-          if (!div || div.status !== 'scavenging') return s
-          return { divisions: { ...s.divisions, [id]: { ...div, status: 'ready' } } }
-        })
-      })
+      // Division return removed — division system deprecated
     })
 
     set({ scavengeMissions: remaining })
@@ -886,46 +880,8 @@ export const useRegionStore = create<RegionState>((set, get) => ({
   // ====== NAVAL PATROL ======
 
   startNavalPatrol: (regionId) => {
-    const state = get()
-    const region = state.regions.find(r => r.id === regionId)
-    if (!region) return { success: false, message: 'Region not found.' }
-    if (!region.isOcean) return { success: false, message: 'Can only patrol ocean regions.' }
-
-    const player = usePlayerStore.getState()
-    const armyStore = useArmyStore.getState()
-
-    // Check if already patrolling this region
-    const existing = state.navalPatrols.find(p => p.regionId === regionId && p.playerId === player.name && p.active)
-    if (existing) return { success: false, message: 'Already patrolling this region.' }
-
-    // Find ready naval divisions owned by the player
-    const navalDivs = (Object.values(armyStore.divisions) as Division[]).filter(
-      d => d.ownerId === player.name && d.category === 'naval' && d.status === 'ready' && d.manpower > 0
-    )
-    if (navalDivs.length === 0) return { success: false, message: 'No ready naval divisions available. Recruit warships or submarines first.' }
-
-    const divisionIds = navalDivs.map(d => d.id)
-
-    // Set divisions to patrolling status
-    divisionIds.forEach(id => {
-      useArmyStore.setState(s => ({
-        divisions: { ...s.divisions, [id]: { ...s.divisions[id], status: 'patrolling' } }
-      }))
-    })
-
-    const now = Date.now()
-    set(s => ({
-      navalPatrols: [...s.navalPatrols, {
-        id: `patrol_${now}`,
-        regionId,
-        playerId: player.name,
-        divisionIds,
-        startedAt: now,
-        active: true,
-      }],
-    }))
-
-    return { success: true, message: `⚓ ${divisionIds.length} naval division(s) deployed to patrol ${region.name}! Farming OIL + FISH.` }
+    // Naval patrol disabled — division system deprecated
+    return { success: false, message: 'Naval patrol requires divisions (system deprecated).' }
   },
 
   stopNavalPatrol: (regionId) => {
@@ -934,14 +890,7 @@ export const useRegionStore = create<RegionState>((set, get) => ({
     const patrol = state.navalPatrols.find(p => p.regionId === regionId && p.playerId === player.name && p.active)
     if (!patrol) return { success: false, message: 'No active patrol on this region.' }
 
-    // Return divisions to ready
-    patrol.divisionIds.forEach(id => {
-      useArmyStore.setState(s => {
-        const div = s.divisions[id]
-        if (!div || div.status !== 'patrolling') return s
-        return { divisions: { ...s.divisions, [id]: { ...div, status: 'ready' } } }
-      })
-    })
+    // Division return removed — division system deprecated
 
     set(s => ({
       navalPatrols: s.navalPatrols.map(p =>
@@ -968,43 +917,13 @@ export const useRegionStore = create<RegionState>((set, get) => ({
       const region = state.regions.find(r => r.id === patrol.regionId)
       if (!region || !region.isOcean) return
 
-      // Verify divisions are still alive
-      const armyStore = useArmyStore.getState()
-      const aliveDivs = patrol.divisionIds.filter(id => {
-        const d = armyStore.divisions[id]
-        return d && d.status === 'patrolling' && d.manpower > 0
-      })
-      if (aliveDivs.length === 0) {
-        // Auto-stop patrol if no divisions left
-        set(s => ({
-          navalPatrols: s.navalPatrols.map(p =>
-            p.id === patrol.id ? { ...p, active: false } : p
-          ),
-        }))
-        return
-      }
-
-      // ── Player-level income: OIL + FISH from region yields ──
-      if (patrol.playerId === player.name) {
-        const oilGain = region.oilYield || 0
-        const fishGain = region.fishingBonus || 0
-        if (oilGain > 0 || fishGain > 0) {
-          usePlayerStore.setState(s => ({
-            oil: s.oil + oilGain,
-            fish: s.fish + fishGain,
-          }))
-        }
-      }
-
-      // ── National fund income: OIL 324±54, Money 635±35 ──
-      const vary = (base: number, v: number) => base + Math.floor((Math.random() * 2 - 1) * v)
-      const fundOil = vary(PATROL_OIL_BASE, PATROL_OIL_VARIANCE)
-      const fundMoney = vary(PATROL_MONEY_BASE, PATROL_MONEY_VARIANCE)
-
-      // Add to the controlling country's fund (player's country)
-      const cc = player.countryCode
-      if (fundOil > 0) worldStore.addToFund(cc, 'oil', fundOil)
-      if (fundMoney > 0) worldStore.addToFund(cc, 'money', fundMoney)
+      // Division check removed — division system deprecated
+      // Auto-stop all patrols since no divisions exist
+      set(s => ({
+        navalPatrols: s.navalPatrols.map(p =>
+          p.id === patrol.id ? { ...p, active: false } : p
+        ),
+      }))
     })
   },
 

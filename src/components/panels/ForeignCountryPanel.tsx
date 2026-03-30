@@ -5,7 +5,7 @@ import { usePlayerStore } from '../../stores/playerStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useBattleStore, getCountryName } from '../../stores/battleStore'
 import CountryFlag from '../shared/CountryFlag'
-import { useArmyStore } from '../../stores/army'
+
 
 type Tab = 'overview' | 'intelligence' | 'diplomacy'
 
@@ -236,21 +236,8 @@ export default function ForeignCountryPanel() {
           {stat('Alliance', country.empire || 'None', allianceColor)}
           {stat('Controller', country.controller)}
           {iso === playerIso && (() => {
-            const armyStore = useArmyStore.getState()
-            const popCap = armyStore.getPlayerPopCap()
-            const popPct = popCap.max > 0 ? (popCap.used / popCap.max) * 100 : 0
-            const popColor = popPct >= 90 ? '#ef4444' : popPct >= 60 ? '#f59e0b' : '#22d38a'
-            return (
-              <div style={{ marginTop: '6px', padding: '6px 8px', background: 'rgba(0,0,0,0.3)', borderRadius: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 800, marginBottom: '3px' }}>
-                  <span style={{ color: '#94a3b8' }}>🏠 POP CAP</span>
-                  <span style={{ color: popColor }}>{popCap.used} / {popCap.max}</span>
-                </div>
-                <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${Math.min(100, popPct)}%`, background: popColor, borderRadius: '3px', transition: 'width 0.3s' }} />
-                </div>
-              </div>
-            )
+            // Pop cap: division system removed — show 0/0
+            return null
           })()}
           {occupiedCountries.length > 0 && stat(
             'Occupies',

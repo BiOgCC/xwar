@@ -1,7 +1,7 @@
 import { useWorldStore } from '../../../stores/worldStore'
 import { useGovernmentStore } from '../../../stores/governmentStore'
 import { usePlayerStore } from '../../../stores/playerStore'
-import { useArmyStore } from '../../../stores/army'
+
 import { useBattleStore, getCountryName } from '../../../stores/battleStore'
 import CountryFlag from '../../shared/CountryFlag'
 import {

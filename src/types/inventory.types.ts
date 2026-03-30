@@ -20,7 +20,7 @@ export interface EquipStats {
   precision?: number
 }
 
-export type ItemLocation = 'inventory' | 'vault' | 'division' | 'market' | 'country_vault'
+export type ItemLocation = 'inventory' | 'vault' | 'market' | 'country_vault'
 
 export interface EquipItem {
   id: string
@@ -34,8 +34,7 @@ export interface EquipItem {
   weaponSubtype?: WeaponSubtype
   superforged?: boolean
   location: ItemLocation
-  vaultArmyId?: string
-  assignedToDivision?: string
+
 }
 
 export type LootBoxRewardType = 'item' | 'money' | 'resources'

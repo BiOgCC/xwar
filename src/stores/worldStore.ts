@@ -234,7 +234,7 @@ const DEPOSIT_MIN_BONUS = 25
 const DEPOSIT_MAX_BONUS = 33
 
 const makeCountry = (name: string, code: string, controller: string, empire: string | null, population: number, regions: number, military: number, fundTier: FundTier, color: string, conqueredResources: ConqueredResourceType[] = []): Country => ({
-  name, code, controller, empire, population, regions, military, fund: getFundForTier(fundTier), forceVault: { money: 0, oil: 0, scrap: 0, materialX: 0, bitcoin: 0, jets: 0 }, color, conqueredResources, activeDepositBonus: null, portLevel: 1, airportLevel: 1, bunkerLevel: 1, militaryBaseLevel: 1, hasPort: true, hasAirport: true, taxExempt: false,
+  name, code, controller, empire, population, regions, military, fund: getFundForTier(fundTier), color, conqueredResources, activeDepositBonus: null, portLevel: 1, airportLevel: 1, bunkerLevel: 1, militaryBaseLevel: 1, hasPort: true, hasAirport: true, taxExempt: false,
 })
 
 /** Compute next midnight UTC from now */
@@ -308,8 +308,6 @@ export interface WorldState {
   addTreasuryTax: (countryCode: string, amount: number) => void
   addToFund: (countryCode: string, resource: NationalFundKey, amount: number) => void
   spendFromFund: (countryCode: string, costs: Partial<NationalFund>) => boolean
-  transferToForceVault: (countryCode: string, resource: NationalFundKey, amount: number) => boolean
-  spendFromForceVault: (countryCode: string, costs: Partial<Record<NationalFundKey, number>>) => boolean
   discoverDeposit: (depositId: string, playerName: string) => void
   expireDeposits: () => void
   getActiveDepositsForCountry: (countryCode: string) => RegionalDeposit[]
@@ -567,56 +565,6 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         return { ...c, fund: newFund }
       })
     }))
-    return true
-  },
-
-  transferToForceVault: (countryCode: string, resource: NationalFundKey, amount: number) => {
-    const country = get().countries.find(c => c.code === countryCode)
-    if (!country || amount <= 0) return false
-    if (country.fund[resource] < amount) return false
-    set((s) => ({
-      countries: s.countries.map(c => {
-        if (c.code !== countryCode) return c
-        return {
-          ...c,
-          fund: { ...c.fund, [resource]: c.fund[resource] - amount },
-          forceVault: { ...c.forceVault, [resource]: c.forceVault[resource] + amount },
-        }
-      })
-    }))
-    // Persist to backend (fire-and-forget)
-    import('../api/client').then(({ transferToForceVault: apiTransfer }) => {
-      const fundKey = resource === 'scrap' ? 'scraps' : resource
-      apiTransfer(countryCode, fundKey, amount).catch(() => {})
-    })
-    return true
-  },
-
-  spendFromForceVault: (countryCode: string, costs: Partial<Record<NationalFundKey, number>>) => {
-    const country = get().countries.find(c => c.code === countryCode)
-    if (!country) return false
-    for (const [key, amount] of Object.entries(costs)) {
-      if (amount && country.forceVault[key as NationalFundKey] < amount) return false
-    }
-    set((s) => ({
-      countries: s.countries.map(c => {
-        if (c.code !== countryCode) return c
-        const newVault = { ...c.forceVault }
-        for (const [key, amount] of Object.entries(costs)) {
-          if (amount) newVault[key as NationalFundKey] -= amount
-        }
-        return { ...c, forceVault: newVault }
-      })
-    }))
-    // Persist each resource spend to backend (fire-and-forget)
-    import('../api/client').then(({ spendFromForceVault: apiSpend }) => {
-      for (const [key, amount] of Object.entries(costs)) {
-        if (amount && amount > 0) {
-          const fundKey = key === 'scrap' ? 'scraps' : key
-          apiSpend(countryCode, fundKey, amount).catch(() => {})
-        }
-      }
-    })
     return true
   },
 

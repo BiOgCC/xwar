@@ -155,7 +155,7 @@ export const PLAYER_OPS: TacticalOpDef[] = [
   {
     id: 'war_intel', category: 'player', name: 'War Intel', icon: '🎖️',
     description: 'Scan enemy military infrastructure, vehicles, and combat readiness.',
-    effectDescription: 'Report: Infrastructure levels, divisions, military assets.',
+    effectDescription: 'Report: Infrastructure levels, combat readiness, military assets.',
     cost: { bitcoin: 1, badgesOfHonor: 1 },
     targetType: 'country', baseSuccessChance: 60, durationMs: 0,
     fundingRequired: 0,

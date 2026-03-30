@@ -73,7 +73,7 @@ export const MILITARY_OPERATIONS: MilitaryOperationDef[] = [
     id: 'sabotage', pillar: 'ground',
     name: 'Sabotage', icon: '💣',
     description: 'Covert strike. Disable an enemy company if you win both rounds.',
-    resultDescription: '10-hour duel. If defended and attacker wins → second battle. Win both → disable target company for 48 hours (no division count contribution).',
+    resultDescription: '10-hour duel. If defended and attacker wins → second battle. Win both → disable target company for 48 hours.',
     badgeCost: 1, bitcoinCost: 1, caseReward: 1,
   },
 

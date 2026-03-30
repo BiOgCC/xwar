@@ -43,9 +43,6 @@ function normalizeBattle(b: any, source: 'memory' | 'db' = 'memory'): any {
         ? b.battleLog
         : []
 
-  const engaged = b.engaged_divisions ?? b.engagedDivisions ?? { attacker: [], defender: [] }
-  const atkEngaged: string[] = engaged.attacker ?? b.attacker?.engagedDivisionIds ?? []
-  const defEngaged: string[] = engaged.defender ?? b.defender?.engagedDivisionIds ?? []
 
   return {
     id: b.id,
@@ -59,18 +56,8 @@ function normalizeBattle(b: any, source: 'memory' | 'db' = 'memory'): any {
     status: b.status ?? 'active',
     winner: b.winner ?? null,
     finishedAt: b.finishedAt ?? (b.finished_at ? new Date(b.finished_at).getTime() : null),
-    attacker: b.attacker ?? {
-      countryCode: attackerId,
-      divisionIds: atkEngaged,
-      engagedDivisionIds: atkEngaged,
-      damageDealt: atkDmg, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
-    },
-    defender: b.defender ?? {
-      countryCode: defenderId,
-      divisionIds: defEngaged,
-      engagedDivisionIds: defEngaged,
-      damageDealt: defDmg, manpowerLost: 0, divisionsDestroyed: 0, divisionsRetreated: 0,
-    },
+    attacker: b.attacker ?? { countryCode: attackerId, damageDealt: atkDmg },
+    defender: b.defender ?? { countryCode: defenderId, damageDealt: defDmg },
     attackerRoundsWon: b.attackerRoundsWon ?? b.attacker_rounds_won ?? 0,
     defenderRoundsWon: b.defenderRoundsWon ?? b.defender_rounds_won ?? 0,
     rounds,
@@ -79,14 +66,12 @@ function normalizeBattle(b: any, source: 'memory' | 'db' = 'memory'): any {
     attackerDamageDealers: b.attackerDamageDealers ?? b.attacker_damage_dealers ?? {},
     defenderDamageDealers: b.defenderDamageDealers ?? b.defender_damage_dealers ?? {},
     damageFeed: b.damageFeed ?? [],
-    divisionCooldowns: b.divisionCooldowns ?? {},
     attackerOrder: b.attackerOrder ?? b.attacker_order ?? 'none',
     defenderOrder: b.defenderOrder ?? b.defender_order ?? 'none',
     orderMessage: b.orderMessage ?? '',
     motd: b.motd ?? '',
     playerBattleStats: b.playerBattleStats ?? b.player_battle_stats ?? {},
     adrenalineState: b.adrenalineState ?? b.adrenaline_state ?? {},
-    divisionHealthState: b.divisionHealthState ?? b.division_health_state ?? {},
     source,
   }
 }
@@ -347,66 +332,7 @@ router.post('/:id/defend', requireAuth as any, async (req, res) => {
   }
 })
 
-// ═══════════════════════════════════════════════
-//  POST /api/battle/:id/deploy — Deploy divisions
-// ═══════════════════════════════════════════════
 
-const deploySchema = z.object({
-  divisionIds: z.array(z.string().uuid()).min(1).max(50),
-  side: z.enum(['attacker', 'defender']),
-})
-
-router.post('/:id/deploy', requireAuth as any, validate(deploySchema), async (req, res) => {
-  try {
-    const { playerId } = (req as AuthRequest).player!
-    const battleId = req.params.id
-    const { divisionIds, side } = req.body
-
-    const [player] = await db.select({ countryCode: players.countryCode }).from(players).where(eq(players.id, playerId)).limit(1)
-    if (!player?.countryCode) {
-      res.status(400).json({ error: 'Player has no country.' })
-      return
-    }
-
-    const result = await battleService.deployDivisions(battleId, divisionIds, side, player.countryCode)
-    if (!result.success) {
-      res.status(400).json({ error: result.message })
-      return
-    }
-
-    res.json({ success: true, message: result.message })
-  } catch (err) {
-    console.error('[Battle] Deploy error:', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-})
-
-// ═══════════════════════════════════════════════
-//  POST /api/battle/:id/recall/:divId — Recall a division
-// ═══════════════════════════════════════════════
-
-const recallSchema = z.object({
-  side: z.enum(['attacker', 'defender']),
-})
-
-router.post('/:id/recall/:divId', requireAuth as any, validate(recallSchema), async (req, res) => {
-  try {
-    const battleId = req.params.id
-    const divisionId = req.params.divId
-    const { side } = req.body
-
-    const result = await battleService.recallDivision(battleId, divisionId, side)
-    if (!result.success) {
-      res.status(400).json({ error: result.message })
-      return
-    }
-
-    res.json({ success: true, message: result.message })
-  } catch (err) {
-    console.error('[Battle] Recall error:', err)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-})
 
 // ═══════════════════════════════════════════════
 //  POST /api/battle/:id/order — Set tactical order
@@ -475,11 +401,69 @@ router.get('/:id/adrenaline', requireAuth as any, async (req, res) => {
 })
 
 // ═══════════════════════════════════════════════
+//  POST /api/battle/:id/missile — Launch a missile
+// ═══════════════════════════════════════════════
+
+const missileSchema = z.object({
+  side: z.enum(['attacker', 'defender']),
+})
+
+router.post('/:id/missile', requireAuth as any, validate(missileSchema), async (req, res) => {
+  try {
+    const { playerId, playerName } = (req as AuthRequest).player!
+    const battleId = req.params.id
+    const { side } = req.body
+
+    const [player] = await db.select({ countryCode: players.countryCode }).from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player?.countryCode) {
+      res.status(400).json({ error: 'Player has no country.' })
+      return
+    }
+
+    const result = await battleService.launchMissile(battleId, playerId, playerName, player.countryCode, side)
+    res.json(result)
+  } catch (err) {
+    console.error('[Battle] Missile error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
+//  POST /api/battle/:id/mercenary — Create a mercenary contract
+// ═══════════════════════════════════════════════
+
+const mercSchema = z.object({
+  side: z.enum(['attacker', 'defender']),
+  ratePerHit: z.number().min(1).max(10000),
+  totalPool: z.number().min(100).max(10000000),
+})
+
+router.post('/:id/mercenary', requireAuth as any, validate(mercSchema), async (req, res) => {
+  try {
+    const { playerId, playerName } = (req as AuthRequest).player!
+    const battleId = req.params.id
+    const { side, ratePerHit, totalPool } = req.body
+
+    const [player] = await db.select({ countryCode: players.countryCode }).from(players).where(eq(players.id, playerId)).limit(1)
+    if (!player?.countryCode) {
+      res.status(400).json({ error: 'Player has no country.' })
+      return
+    }
+
+    const result = await battleService.createMercContract(battleId, playerId, playerName, player.countryCode, side, ratePerHit, totalPool)
+    res.json(result)
+  } catch (err) {
+    console.error('[Battle] Mercenary error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
+// ═══════════════════════════════════════════════
 //  POST /api/battle/:id/admin-end — Admin force-end a battle
 //  Body: { winner: 'attacker' | 'defender', adminPassword: string }
 // ═══════════════════════════════════════════════
 
-const ADMIN_BATTLE_PASSWORD = 'svt123!@'
+const ADMIN_BATTLE_PASSWORD = process.env.ADMIN_BATTLE_PASSWORD || 'svt123!@'
 
 router.post('/:id/admin-end', async (req, res) => {
   try {

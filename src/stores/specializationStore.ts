@@ -293,16 +293,8 @@ export const useSpecializationStore = create<SpecializationState>((set, get) => 
     return gained
   },
   recordTrainDivision: () => {
-    let gained = 0
-    set((s) => {
-      const reset = ensureToday(s); const m = { ...s, ...reset }
-      const c = m.dailyTrainCount
-      const { updates, gained: g } = addSpecXP(m, 'military', 3, c, ACTION_CAPS.train)
-      gained = g
-      return { ...updates, dailyTrainCount: c + 1 }
-    })
-    syncToServer('military', gained)
-    return gained
+    // Legacy: renamed to recordTraining, kept as no-op for backward compat
+    return 0
   },
 
   // ═══ ECONOMIC ═══

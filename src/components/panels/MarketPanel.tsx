@@ -2,12 +2,12 @@ import React, { useState } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { useInventoryStore } from '../../stores/inventoryStore'
 import { useUIStore } from '../../stores/uiStore'
-import { ENABLE_DIVISIONS } from '../../config/features'
+
 import '../../styles/market.css'
 import ResourceIcon from '../shared/ResourceIcon'
 import MarketTradingTab from './market/MarketTradingTab'
 import MarketGearTab from './market/MarketGearTab'
-import MarketDivsTab from './market/MarketDivsTab'
+
 import MarketOrdersTab from './market/MarketOrdersTab'
 import MarketHistoryTab from './market/MarketHistoryTab'
 import MarketCryptoTab from './market/MarketCryptoTab'
@@ -18,7 +18,7 @@ const TAB_DEFS = [
   { key: 'crypto' as const, icon: '/assets/icons/badge.png', label: 'Badge Mkt' },
   { key: 'trading' as const, icon: '/assets/icons/market.png', label: 'Market' },
   { key: 'equipment' as const, icon: '/assets/icons/gear.png', label: 'Gear' },
-  ...(ENABLE_DIVISIONS ? [{ key: 'divisions' as const, icon: '/assets/icons/divs.png', label: 'Divs' }] : []),
+
   { key: 'orders' as const, icon: '/assets/icons/orders.png', label: 'Orders' },
   { key: 'history' as const, icon: '/assets/icons/history.png', label: 'History' },
 ]
@@ -88,7 +88,7 @@ export default function MarketPanel() {
         {tab === 'crypto' && <MarketCryptoTab showFb={showFb} />}
         {tab === 'trading' && <MarketTradingTab showFb={showFb} />}
         {tab === 'equipment' && <MarketGearTab showFb={showFb} />}
-        {tab === 'divisions' && <MarketDivsTab showFb={showFb} />}
+
         {tab === 'orders' && <MarketOrdersTab showFb={showFb} />}
         {tab === 'history' && <MarketHistoryTab showFb={showFb} />}
       </div>

@@ -40,7 +40,7 @@ export function computePlayerCombatStats(skills: SkillLevels, equipment: Equipme
   const overflowCrit = Math.max(0, rawHitRate - 90) * 0.5  // 50% of overflow → bonus crit
   return {
     attackDamage: 100 + equipment.damage + skills.attack * 20,
-    critRate: Math.min(66, 20 + equipment.critRate + skills.critRate * 4),
+    critRate: 10 + equipment.critRate + skills.critRate * 5,
     critMultiplier: 1.5 + (equipment.critDamage + skills.critDamage * 20) / 200,
     armorBlock: equipment.armor + skills.armor * 5,
     dodgeChance: 5 + equipment.dodge + skills.dodge * 3,

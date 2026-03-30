@@ -66,7 +66,7 @@ const COUNTER_MIN_DAMAGE = 3000     // min total damage before a player's weapon
 
 // ====== HELPERS ======
 
-const POINTS_TO_WIN_ROUND = 600
+const POINTS_TO_WIN_ROUND = 300
 const ROUNDS_TO_WIN_BATTLE = 2
 
 // Quick battle: lower thresholds for pure PvP
@@ -78,7 +78,9 @@ function getPointIncrement(totalGroundPoints: number): number {
   if (totalGroundPoints < 200) return 2
   if (totalGroundPoints < 300) return 3
   if (totalGroundPoints < 400) return 4
-  return 5
+  if (totalGroundPoints < 500) return 5
+  if (totalGroundPoints < 600) return 6
+  return 6  // cap at +6
 }
 
 // Country data (names, flags, flag URLs) now lives in src/data/countries.ts
@@ -89,10 +91,7 @@ function getPointIncrement(totalGroundPoints: number): number {
 function createEmptyBattleSide(countryCode: string): BattleSide {
   return {
     countryCode,
-    divisionIds: [],
-    engagedDivisionIds: [],
-    damageDealt: 0, manpowerLost: 0,
-    divisionsDestroyed: 0, divisionsRetreated: 0,
+    damageDealt: 0,
   }
 }
 
@@ -120,7 +119,6 @@ function mkBattle(id: string, attackerId: string, defenderId: string, regionName
     playerCrash: {},
     playerAdrenalinePeakAt: {},
     mercenaryContracts: [],
-    divisionCooldowns: {},
     vengeanceBuff: { attacker: 0, defender: 0 },
     weaponPresence: { attacker: {}, defender: {} },
   }
@@ -152,10 +150,10 @@ export interface BattleState {
   setWarMotd: (motd: string) => void
 
   // Mercenary contracts
-  createMercenaryContract: (battleId: string, side: 'attacker' | 'defender', ratePerHit: number, totalPool: number) => { success: boolean; message: string }
+  createMercenaryContract: (battleId: string, side: 'attacker' | 'defender', ratePerHit: number, totalPool: number) => Promise<{ success: boolean; message: string }>
 
   // Missile Launcher
-  launchMissile: (battleId: string, side: 'attacker' | 'defender') => { success: boolean; message: string }
+  launchMissile: (battleId: string, side: 'attacker' | 'defender') => Promise<{ success: boolean; message: string }>
 
   // NPC test battles
   spawnNPCBattles: () => void
@@ -166,42 +164,20 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   warMotd: '',
   setWarMotd: (motd: string) => set({ warMotd: motd.substring(0, 200) }),
 
-  // ====== MERCENARY CONTRACTS ======
-  createMercenaryContract: (battleId, side, ratePerHit, totalPool) => {
+  // ====== MERCENARY CONTRACTS (server-authoritative) ======
+  createMercenaryContract: async (battleId, side, ratePerHit, totalPool) => {
     const state = get()
     const battle = state.battles[battleId]
     if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
     if (ratePerHit <= 0 || totalPool <= 0) return { success: false, message: 'Invalid amounts.' }
 
-    // Only president of the side's country can create
-    const countryCode = side === 'attacker' ? battle.attackerId : battle.defenderId
-    const gov = useGovernmentStore.getState().governments[countryCode]
-    const player = usePlayerStore.getState()
-    if (!gov || gov.president !== player.name) return { success: false, message: 'Only the president can fund mercenary contracts.' }
-
-    // Deduct from country treasury
-    const success = useWorldStore.getState().spendFromFund(countryCode, { money: totalPool })
-    if (!success) return { success: false, message: 'Not enough money in treasury.' }
-
-    const contract: MercenaryContract = {
-      id: `merc_${battleId}_${Date.now()}`,
-      side,
-      ratePerDamage: ratePerHit,
-      totalPool,
-      remaining: totalPool,
-      fundedBy: player.name,
-      countryCode,
-      createdAt: Date.now(),
+    try {
+      const { api } = await import('../api/client')
+      const result: any = await api.post(`/battle/${battleId}/mercenary`, { side, ratePerHit, totalPool })
+      return { success: result.success, message: result.message }
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Mercenary contract failed.' }
     }
-
-    set(s => ({
-      battles: { ...s.battles, [battleId]: {
-        ...s.battles[battleId],
-        mercenaryContracts: [...(s.battles[battleId].mercenaryContracts || []), contract],
-      }}
-    }))
-
-    return { success: true, message: `Mercenary contract funded: ${ratePerHit.toLocaleString()}/dmg, ${totalPool.toLocaleString()} pool` }
   },
 
   // ====== NPC TEST BATTLES ======
@@ -234,86 +210,19 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     return { battles: { ...state.battles, [battleId]: { ...battle, motd: motd.substring(0, 200) } } }
   }),
 
-  // ====== MISSILE LAUNCHER ======
-  launchMissile: (battleId, side) => {
+  // ====== MISSILE LAUNCHER (server-authoritative) ======
+  launchMissile: async (battleId, side) => {
     const state = get()
     const battle = state.battles[battleId]
     if (!battle || battle.status !== 'active') return { success: false, message: 'No active battle.' }
 
-    const player = usePlayerStore.getState()
-    const countryCode = side === 'attacker' ? battle.attackerId : battle.defenderId
-
-    // Only President, VP, and Minister of Defense can launch
-    const gov = useGovernmentStore.getState().governments[countryCode]
-    if (!gov) return { success: false, message: 'No government found.' }
-    const isAuthorized = gov.president === player.name ||
-      (gov.congress.length > 0 && gov.congress[0] === player.name)  // VP = first congress member
-    if (!isAuthorized) {
-      return { success: false, message: 'Only President or Vice President can launch missiles.' }
+    try {
+      const { api } = await import('../api/client')
+      const result: any = await api.post(`/battle/${battleId}/missile`, { side })
+      return { success: result.success, message: result.message }
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Missile launch failed.' }
     }
-
-    // Check missile launcher level on the region
-    const regionStore = useRegionStore.getState()
-    const region = battle.regionId ? regionStore.getRegion(battle.regionId) : null
-    const level = region?.missileLauncherLevel || 0
-    if (level <= 0) {
-      return { success: false, message: 'No Missile Launcher built. Upgrade in region infrastructure.' }
-    }
-
-    // Check cooldown (5 minutes per country per battle)
-    const MISSILE_COOLDOWN = 5 * 60 * 1000
-    const now = Date.now()
-    const lastLaunch = battle.missileCooldowns?.[countryCode] || 0
-    if (now - lastLaunch < MISSILE_COOLDOWN) {
-      const remaining = Math.ceil((MISSILE_COOLDOWN - (now - lastLaunch)) / 1000)
-      return { success: false, message: `Missile on cooldown! ${remaining}s remaining.` }
-    }
-
-    // Oil cost: 50 per launch from national treasury
-    const OIL_COST = 50
-    const spent = useWorldStore.getState().spendFromFund(countryCode, { oil: OIL_COST })
-    if (!spent) {
-      return { success: false, message: `Not enough oil in treasury. Needs ${OIL_COST} 🛢️.` }
-    }
-
-    // Base damage 666,666 — scales with level: level × (666666 / 5) × 1.5 at max
-    // Level 1 = 666,666 | Level 5 = 999,999 (~1M)
-    const BASE_DAMAGE = 666_666
-    const burstDamage = Math.round(BASE_DAMAGE * (1 + (level - 1) * 0.125))
-
-    // Apply damage
-    set(s => ({
-      battles: {
-        ...s.battles,
-        [battleId]: {
-          ...s.battles[battleId],
-          [side]: {
-            ...s.battles[battleId][side],
-            damageDealt: (s.battles[battleId][side].damageDealt || 0) + burstDamage,
-          },
-          missileCooldowns: {
-            ...(s.battles[battleId].missileCooldowns || {}),
-            [countryCode]: now,
-          },
-          combatLog: [
-            ...s.battles[battleId].combatLog,
-            {
-              tick: s.battles[battleId].ticksElapsed,
-              timestamp: now,
-              type: 'damage' as const,
-              side,
-              message: `🚀 MISSILE LAUNCHED by ${player.name}! ${burstDamage.toLocaleString()} burst damage! (Lv.${level})`,
-            },
-          ],
-          damageFeed: [
-            { playerName: player.name, side, amount: burstDamage, isCrit: true, isDodged: false, time: now },
-            ...(s.battles[battleId].damageFeed || []),
-          ].slice(0, 20),
-        },
-      },
-    }))
-
-    return { success: true, message: `🚀 Missile launched! ${burstDamage.toLocaleString()} damage dealt!` }
   },
 
   // ====== BATTLE LAUNCH (server-authoritative) ======
@@ -377,13 +286,6 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const { currentTick, attackerDamageDealers, defenderDamageDealers, damageFeed } = battle
 
     let finalAmount = amount
-
-    // ── Anti-exploit: cap max damage per addDamage call ──
-    const MAX_DAMAGE_PER_CALL = 50000
-    if (finalAmount > MAX_DAMAGE_PER_CALL) {
-      console.warn(`[AntiExploit] addDamage capped: ${finalAmount} → ${MAX_DAMAGE_PER_CALL} for ${playerName}`)
-      finalAmount = MAX_DAMAGE_PER_CALL
-    }
     if (finalAmount <= 0 || !Number.isFinite(finalAmount)) return state
 
     // NOTE: All damage multipliers (tactical orders, military base, tactical ops, ammo,
@@ -400,9 +302,6 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
 
     const newFeed = [{ playerName, side, amount: finalAmount, isCrit, isDodged, time: now }, ...damageFeed].slice(0, 20)
-
-    // NOTE: Splash damage (5% of manual damage hurts opposing divisions) is handled
-    // server-side in battle.service.ts playerAttack(). Removed client-side duplicate.
 
     // --- Quick Battle: award ground points + check victory on every player hit ---
     const updatedBattle = {
@@ -497,7 +396,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
   }),
 
-  // ====== COMBAT TICK PROCESSOR (uses player stats × division multipliers) ======
+  // ====== COMBAT TICK PROCESSOR (player damage only) ======
   // ══ PLAYER COMBAT TICK: Ground-point logic for quick_battle (client-side PvP). ══
   // ══ For regular battles (invasion, occupation, etc.), the server handles ground ══
   // ══ points authoritatively via processCombatTick → battle:state socket push.    ══
@@ -674,8 +573,30 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         return { damage: 0, isCrit: false, message: result.message || 'Attack failed.' }
       }
 
-      // Update local battle state with server-authoritative damage
-      get().addDamage(battleId, result.side, result.damage, result.isCrit, result.isDodged, player.name)
+      // ── Optimistic damageDealt update from HTTP response ──
+      // The server also emits battle:playerHit via socket which increments
+      // damageDealt + updates damageFeed/dealers. If the socket event arrives
+      // first (normal path), that handler adds the same damage. The periodic
+      // battle:state sync uses Math.max() so the total never exceeds the
+      // server's authoritative value — no double-counting risk.
+      set(s => {
+        const b = s.battles[battleId]
+        if (!b) return s
+        const sideKey = result.side || side
+        const sideObj = b[sideKey as 'attacker' | 'defender']
+        return {
+          battles: {
+            ...s.battles,
+            [battleId]: {
+              ...b,
+              [sideKey]: {
+                ...sideObj,
+                damageDealt: (sideObj?.damageDealt || 0) + result.damage,
+              },
+            },
+          },
+        }
+      })
 
       // ── Specialization hooks (military / mercenary / politician) ──
       try {
@@ -811,30 +732,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         usePlayerStore.setState({ stamina: Math.max(0, player.stamina - 3) })
       }
 
-      // Determine side for local UI update
-      const playerCountry = player.countryCode || 'US'
-      const isAttacker = playerCountry === battle.attackerId
-      const enemySide = isAttacker ? 'defenderDamage' : 'attackerDamage'
-      const side: 'attacker' | 'defender' = isAttacker ? 'attacker' : 'defender'
-
-      // Update local battle state: reduce enemy tick damage + add to damageFeed
-      set(s => ({
-        battles: {
-          ...s.battles,
-          [battleId]: {
-            ...battle,
-            currentTick: {
-              ...battle.currentTick,
-              [enemySide]: Math.max(0, battle.currentTick[enemySide] - blocked),
-            },
-            damageFeed: [{
-              playerName: `${player.name} 🛡️`,
-              side,
-              amount: blocked, isCrit: false, isDodged: false, time: Date.now(),
-            }, ...battle.damageFeed].slice(0, 20),
-          },
-        },
-      }))
+      // NOTE: Defend now adds damage to own side via server's addDamage() + battle:playerHit
+      // socket event. No local state mutation needed — the socket handler updates everything.
 
       // Hero buff (UI-only)
       usePlayerStore.setState({ heroBuffTicksLeft: 120, heroBuffBattleId: battleId })
