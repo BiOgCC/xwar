@@ -1,5 +1,4 @@
 import React, { useState, useEffect, Suspense } from 'react'
-import type { DivisionType } from '../../../stores/army'
 import { useBattleStore, getCountryName, getPlayerCombatStats, TACTICAL_ORDERS } from '../../../stores/battleStore'
 import type { TacticalOrder } from '../../../stores/battleStore'
 import { usePlayerStore } from '../../../stores/playerStore'
@@ -48,10 +47,6 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
   const [mercRate, setMercRate] = useState(10)
   const [mercPool, setMercPool] = useState(100000)
   const [pickSlot, setPickSlot] = useState<EquipSlot | 'ammo' | null>(null)
-  const [scene3DBattle, setScene3DBattle] = useState<{
-    atkDivs: { type: DivisionType; name: string; health: number; maxHealth: number }[]
-    defDivs: { type: DivisionType; name: string; health: number; maxHealth: number }[]
-  } | null>(null)
 
   // Combat tick
   const [combatTickLeft, setCombatTickLocal] = useState(() => useBattleStore.getState().combatTickLeft)
@@ -213,6 +208,116 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
 
       <div className="btl-detail__scroll">
 
+        {/* ══ BATTLE SUMMARY — shown when battle has ended ══ */}
+        {battle.status !== 'active' && (() => {
+          const summary = (battle as any).battleSummary
+          const isAtkWin = battle.status === 'attacker_won'
+          const winnerCode = isAtkWin ? battle.attackerId : battle.defenderId
+          const loserCode = isAtkWin ? battle.defenderId : battle.attackerId
+          const winnClr = isAtkWin ? atkClr : defClr
+          const playerParticipated = !!(battle.attackerDamageDealers?.[player.name] || battle.defenderDamageDealers?.[player.name])
+          const playerOnWinnerSide = (iso === battle.attackerId && isAtkWin) || (iso === battle.defenderId && !isAtkWin)
+          const playerOnLoserSide = (iso === battle.attackerId && !isAtkWin) || (iso === battle.defenderId && isAtkWin)
+          // Mercenary check: supported winner side without being a native
+          const myAtkDmg = battle.attackerDamageDealers?.[player.name] || 0
+          const myDefDmg = battle.defenderDamageDealers?.[player.name] || 0
+          const supportedWinner = (!playerOnWinnerSide && !playerOnLoserSide)
+            ? (isAtkWin ? myAtkDmg > 0 : myDefDmg > 0)
+            : playerOnWinnerSide
+          const rewards = summary?.rewards
+          const r = supportedWinner ? rewards?.winnerPlayers : rewards?.loserPlayers
+
+          return (
+            <div className="btl-section" style={{
+              background: `linear-gradient(180deg, ${winnClr}18 0%, rgba(0,0,0,0.6) 100%)`,
+              border: `2px solid ${winnClr}44`,
+              position: 'relative',
+              overflow: 'hidden',
+            }}>
+              {/* Glow effect */}
+              <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at center, ${winnClr}15 0%, transparent 70%)`, pointerEvents: 'none' }} />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                {/* Title */}
+                <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'var(--font-display)', letterSpacing: '2px', color: winnClr, textShadow: `0 0 12px ${winnClr}66`, animation: 'pulse 2s infinite' }}>
+                    {isAtkWin ? '⚔️ ATTACKER VICTORY' : '🛡️ DEFENSE HOLDS'}
+                  </div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', marginTop: '2px' }}>
+                    Battle for {battle.regionName}
+                  </div>
+                </div>
+
+                {/* Winner badge */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <CountryFlag iso={winnerCode} size={28} />
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 900, color: winnClr, fontFamily: 'var(--font-display)' }}>
+                      {getCountryName(winnerCode)}
+                    </div>
+                    <div style={{ fontSize: '8px', color: '#94a3b8' }}>defeated {getCountryName(loserCode)}</div>
+                  </div>
+                  <CountryFlag iso={loserCode} size={20} />
+                </div>
+
+                {/* Score */}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 900, color: atkClr }}>{battle.attackerRoundsWon}</span>
+                  <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 800 }}>ROUNDS</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 900, color: defClr }}>{battle.defenderRoundsWon}</span>
+                </div>
+
+                {/* Damage totals */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(0,0,0,0.3)', borderRadius: '4px', marginBottom: '8px' }}>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: '7px', fontWeight: 800, color: '#64748b', letterSpacing: '0.5px', fontFamily: 'var(--font-display)' }}>ATK DAMAGE</div>
+                    <div style={{ fontSize: '11px', fontWeight: 900, color: atkClr, fontFamily: 'var(--font-mono)' }}>{fmtDmg(atkDmg)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '7px', fontWeight: 800, color: '#64748b', letterSpacing: '0.5px', fontFamily: 'var(--font-display)' }}>DEF DAMAGE</div>
+                    <div style={{ fontSize: '11px', fontWeight: 900, color: defClr, fontFamily: 'var(--font-mono)' }}>{fmtDmg(defDmg)}</div>
+                  </div>
+                </div>
+
+                {/* Territory capture */}
+                {isAtkWin && (
+                  <div style={{ textAlign: 'center', padding: '4px 8px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '4px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '9px', fontWeight: 900, color: '#f59e0b', fontFamily: 'var(--font-display)', letterSpacing: '1px' }}>
+                      🏴 {battle.regionName} CAPTURED BY {getCountryName(winnerCode).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+
+                {/* Player rewards */}
+                {playerParticipated && r && (
+                  <div style={{
+                    padding: '6px 8px', borderRadius: '4px', marginBottom: '4px',
+                    background: supportedWinner ? 'rgba(34,211,138,0.08)' : 'rgba(239,68,68,0.08)',
+                    border: `1px solid ${supportedWinner ? 'rgba(34,211,138,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                  }}>
+                    <div style={{ fontSize: '8px', fontWeight: 900, color: supportedWinner ? '#22d38a' : '#ef4444', fontFamily: 'var(--font-display)', letterSpacing: '1px', marginBottom: '4px' }}>
+                      {supportedWinner ? '🏆 YOUR REWARDS' : '📜 CONSOLATION'}
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#fbbf24' }}>💰 +${r.money}</span>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#3b82f6' }}>✨ +{r.xp} XP</span>
+                      {r.badges > 0 && <span style={{ fontSize: '10px', fontWeight: 800, color: '#f59e0b' }}>🎖️ +{r.badges}</span>}
+                    </div>
+                    <div style={{ fontSize: '7px', color: '#64748b', textAlign: 'center', marginTop: '3px' }}>
+                      Your damage: {fmtDmg(myAtkDmg + myDefDmg)}
+                    </div>
+                  </div>
+                )}
+
+                {!playerParticipated && (
+                  <div style={{ textAlign: 'center', fontSize: '8px', color: '#475569', padding: '4px 0' }}>
+                    You did not participate in this battle.
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
         {/* ══ SECTION 1: Battle Scene — Damage carousel, score, animations, ticker ══ */}
         <div className="btl-section btl-section--transparent">
           {/* Round damage summary — only show completed rounds */}
@@ -279,7 +384,7 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
           {activeRound && (() => {
             const atkPts = activeRound.attackerPoints
             const defPts = activeRound.defenderPoints
-            const maxP = battle.type === 'quick_battle' ? 200 : 600
+            const maxP = battle.type === 'quick_battle' ? 200 : 300
             const atkFill = Math.min(100, (atkPts / maxP) * 100)
             const defFill = Math.min(100, (defPts / maxP) * 100)
             const ptsDelta = atkPts - defPts
@@ -480,51 +585,59 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
         <div className="btl-section">
           {/* Hit Buttons */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-            {/* Attacker Hit */}
-            <button disabled={player.stamina < staCost}
+            {/* Support Attacker */}
+            <button disabled={player.stamina < staCost || battle.status !== 'active'}
               onClick={(e) => { e.stopPropagation(); handleHit('attacker', 'atk', atkClr) }}
               style={{
-                padding: '10px 4px 6px', borderRadius: '8px', cursor: 'pointer',
+                padding: '10px 4px 6px', borderRadius: '8px', cursor: battle.status !== 'active' ? 'not-allowed' : 'pointer',
                 background: `linear-gradient(180deg, ${atkClr}30 0%, ${atkClr}10 100%)`,
                 border: `2px solid ${atkClr}55`, color: atkClr,
-                fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 900,
+                fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900,
                 letterSpacing: '1px',
                 position: 'relative',
                 boxShadow: `0 0 16px ${atkClr}12, inset 0 0 12px ${atkClr}06`,
                 transition: 'all 0.15s',
+                opacity: battle.status !== 'active' ? 0.4 : 1,
               }}>
-              <div style={{ fontSize: '16px', marginBottom: '2px' }}>🛡️</div>
-              <div style={{ textShadow: `0 0 8px ${atkClr}66` }}>DEFEND</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginBottom: '3px' }}>
+                <CountryFlag iso={battle.attackerId} size={18} />
+              </div>
+              <div style={{ textShadow: `0 0 8px ${atkClr}66`, fontSize: '11px' }}>SUPPORT</div>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: `${atkClr}cc`, marginTop: '1px' }}>{getCountryName(battle.attackerId)}</div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '9px', fontWeight: 700, marginTop: '4px' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#ef4444' }}>
+                {atkSupportCost > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#ef4444' }}>
                   <img src="/assets/items/icon_oil.png" alt="oil" style={{ width: '12px', height: '12px' }} />
                   {atkSupportCost}
-                </span>
+                </span>}
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#22d38a' }}>
                   ❤️ {staCost}
                 </span>
               </div>
             </button>
-            {/* Defender Hit */}
-            <button disabled={player.stamina < staCost}
+            {/* Support Defender */}
+            <button disabled={player.stamina < staCost || battle.status !== 'active'}
               onClick={(e) => { e.stopPropagation(); handleHit('defender', 'def', defClr) }}
               style={{
-                padding: '10px 4px 6px', borderRadius: '8px', cursor: 'pointer',
+                padding: '10px 4px 6px', borderRadius: '8px', cursor: battle.status !== 'active' ? 'not-allowed' : 'pointer',
                 background: `linear-gradient(180deg, ${defClr}30 0%, ${defClr}10 100%)`,
                 border: `2px solid ${defClr}55`, color: defClr,
-                fontFamily: 'var(--font-display)', fontSize: '13px', fontWeight: 900,
+                fontFamily: 'var(--font-display)', fontSize: '12px', fontWeight: 900,
                 letterSpacing: '1px',
                 position: 'relative',
                 boxShadow: `0 0 16px ${defClr}12, inset 0 0 12px ${defClr}06`,
                 transition: 'all 0.15s',
+                opacity: battle.status !== 'active' ? 0.4 : 1,
               }}>
-              <div style={{ fontSize: '16px', marginBottom: '2px' }}>⚔️</div>
-              <div style={{ textShadow: `0 0 8px ${defClr}66` }}>RESIST</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginBottom: '3px' }}>
+                <CountryFlag iso={battle.defenderId} size={18} />
+              </div>
+              <div style={{ textShadow: `0 0 8px ${defClr}66`, fontSize: '11px' }}>SUPPORT</div>
+              <div style={{ fontSize: '8px', fontWeight: 700, color: `${defClr}cc`, marginTop: '1px' }}>{getCountryName(battle.defenderId)}</div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '9px', fontWeight: 700, marginTop: '4px' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#ef4444' }}>
+                {defSupportCost > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#ef4444' }}>
                   <img src="/assets/items/icon_oil.png" alt="oil" style={{ width: '12px', height: '12px' }} />
                   {defSupportCost}
-                </span>
+                </span>}
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#22d38a' }}>
                   ❤️ {staCost}
                 </span>

@@ -10,6 +10,8 @@ import { socketManager } from './socket'
 import { usePlayerStore } from '../stores/playerStore'
 import { useBattleStore } from '../stores/battleStore'
 import { useWorldStore } from '../stores/worldStore'
+import { useUIStore } from '../stores/uiStore'
+import { getCountryName } from '../data/countries'
 
 
 let _initialized = false
@@ -165,10 +167,22 @@ export function initSocketHooks() {
   })
 
   socketManager.on('battle:end', (data: {
-    battleId: string; winner: string
+    battleId: string; winner: string; loser?: string
+    type?: string; regionName?: string
+    attackerId?: string; defenderId?: string
+    attackerRoundsWon?: number; defenderRoundsWon?: number
     attackerStats: { damageDealt: number }
     defenderStats: { damageDealt: number }
+    attackerDamageDealers?: Record<string, number>
+    defenderDamageDealers?: Record<string, number>
+    rewards?: {
+      winnerPlayers: { money: number; xp: number; badges: number }
+      loserPlayers: { money: number; xp: number; badges: number }
+      territoryChanged: boolean
+    }
   }) => {
+    const finalStatus = data.winner === (data.attackerId || '') ? 'attacker_won' : 'defender_won'
+
     useBattleStore.setState((s) => {
       const b = s.battles[data.battleId]
       if (!b) return s
@@ -177,13 +191,69 @@ export function initSocketHooks() {
           ...s.battles,
           [data.battleId]: {
             ...b,
-            status: data.winner === b.attackerId ? 'attacker_won' : 'defender_won',
+            status: finalStatus as any,
             attacker: { ...b.attacker, damageDealt: data.attackerStats.damageDealt },
             defender: { ...b.defender, damageDealt: data.defenderStats.damageDealt },
+            attackerRoundsWon: data.attackerRoundsWon ?? b.attackerRoundsWon,
+            defenderRoundsWon: data.defenderRoundsWon ?? b.defenderRoundsWon,
+            attackerDamageDealers: data.attackerDamageDealers ?? b.attackerDamageDealers,
+            defenderDamageDealers: data.defenderDamageDealers ?? b.defenderDamageDealers,
+            // Store battle summary for the BattleDetailView victory screen
+            battleSummary: {
+              winner: data.winner,
+              loser: data.loser || '',
+              regionName: data.regionName || b.regionName || '',
+              rewards: data.rewards,
+              attackerRoundsWon: data.attackerRoundsWon ?? b.attackerRoundsWon ?? 0,
+              defenderRoundsWon: data.defenderRoundsWon ?? b.defenderRoundsWon ?? 0,
+            },
           },
         },
       }
     })
+
+    // ── Fire notification toast for the player ──
+    try {
+      const playerName = usePlayerStore.getState().name
+      const playerCountry = usePlayerStore.getState().countryCode || ''
+      const regionLabel = data.regionName || 'unknown region'
+      const winnerName = getCountryName(data.winner)
+      const isAttackerSide = playerCountry === data.attackerId
+      const isDefenderSide = playerCountry === data.defenderId
+
+      // Check if player participated
+      const atkDealers = data.attackerDamageDealers || {}
+      const defDealers = data.defenderDamageDealers || {}
+      const myDmg = (atkDealers[playerName] || 0) + (defDealers[playerName] || 0)
+
+      if (myDmg > 0) {
+        const playerWon = (isAttackerSide && finalStatus === 'attacker_won') ||
+                          (isDefenderSide && finalStatus === 'defender_won') ||
+                          (!isAttackerSide && !isDefenderSide && atkDealers[playerName] && finalStatus === 'attacker_won') ||
+                          (!isAttackerSide && !isDefenderSide && defDealers[playerName] && finalStatus === 'defender_won')
+
+        const rewards = data.rewards
+        const r = playerWon ? rewards?.winnerPlayers : rewards?.loserPlayers
+
+        const rewardStr = r ? ` → +$${r.money} +${r.xp}XP${r.badges ? ` +${r.badges}🎖️` : ''}` : ''
+        const territoryStr = playerWon && rewards?.territoryChanged ? ` 🏴 ${regionLabel} captured!` : ''
+
+        useUIStore.getState().addNotification({
+          type: playerWon ? 'success' : 'warning',
+          message: playerWon
+            ? `⚔️ VICTORY! ${winnerName} won the battle for ${regionLabel}!${rewardStr}${territoryStr}`
+            : `🛡️ DEFEAT. ${winnerName} won the battle for ${regionLabel}.${rewardStr}`,
+        })
+      } else {
+        // Player didn't participate but receives the notification
+        useUIStore.getState().addNotification({
+          type: 'info',
+          message: `⚔️ Battle ended: ${winnerName} won the battle for ${regionLabel}.`,
+        })
+      }
+    } catch (e) {
+      console.warn('[WS] battle:end notification failed:', e)
+    }
   })
 
   // Territory capture broadcast — updates region counts in worldStore

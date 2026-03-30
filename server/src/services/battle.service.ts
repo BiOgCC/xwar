@@ -1713,13 +1713,26 @@ class BattleService {
       }
     }
 
-    // Broadcast battle end
+    // Broadcast battle end — include full context for client battle summary
     this.emit(battle.id, 'battle:end', {
       battleId: battle.id,
       winner: battle.status === 'attacker_won' ? battle.attackerId : battle.defenderId,
+      loser: battle.status === 'attacker_won' ? battle.defenderId : battle.attackerId,
       type: battle.type,
+      regionName: battle.regionName,
+      attackerId: battle.attackerId,
+      defenderId: battle.defenderId,
+      attackerRoundsWon: battle.attackerRoundsWon,
+      defenderRoundsWon: battle.defenderRoundsWon,
       attackerStats: { damageDealt: battle.attacker.damageDealt },
       defenderStats: { damageDealt: battle.defender.damageDealt },
+      attackerDamageDealers: battle.attackerDamageDealers,
+      defenderDamageDealers: battle.defenderDamageDealers,
+      rewards: {
+        winnerPlayers: { money: battle.status === 'attacker_won' ? 500 : 300, xp: battle.status === 'attacker_won' ? 150 : 100, badges: battle.status === 'attacker_won' ? 2 : 1 },
+        loserPlayers: { money: battle.status === 'attacker_won' ? 100 : 50, xp: battle.status === 'attacker_won' ? 50 : 25, badges: 0 },
+        territoryChanged: battle.status === 'attacker_won',
+      },
     })
 
     logger.info(`[Battle] ${battle.id} ended: ${battle.status} type=${battle.type} (ATK ${battle.attacker.damageDealt} / DEF ${battle.defender.damageDealt})`)
