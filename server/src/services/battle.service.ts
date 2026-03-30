@@ -209,6 +209,8 @@ class BattleService {
   private weaponPresence = new Map<string, Record<'attacker' | 'defender', Record<string, { players: Record<string, { hitCount: number; totalDamage: number }>; expiryTick: number }>>>()
   private io: SocketServer | null = null
   private _migrationRan = false
+  /** Deduplicate concurrent restoreFromDB calls during boot/ghost-detection */
+  private _restorePromise: Promise<void> | null = null
 
   /** Attach Socket.IO server */
   setIO(io: SocketServer): void {
@@ -267,7 +269,7 @@ class BattleService {
     attackerRegionId?: string,
     revoltPressure: number = 0,
   ): Promise<{ success: boolean; message: string; battleId?: string }> {
-    // ── One-battle-per-country-pair check ──
+    // ── One-battle-per-country-pair check (memory first) ──
     for (const b of this.battles.values()) {
       if (b.status === 'active' &&
         ((b.attackerId === attackerCode && b.defenderId === defenderCode) ||
@@ -276,7 +278,26 @@ class BattleService {
       }
     }
 
-    // Check for existing active battle in same region (memory + DB)
+    // ── Also check DB for country-pair duplicates (catches ghost battles after server restart) ──
+    const pairResult = await db.execute(sql`
+      SELECT id FROM battles
+      WHERE status = 'active'
+        AND ((attacker_id = ${attackerCode} AND defender_id = ${defenderCode})
+          OR (attacker_id = ${defenderCode} AND defender_id = ${attackerCode}))
+      LIMIT 1
+    `)
+    const pairRows = Array.isArray(pairResult) ? pairResult : (pairResult as any)?.rows ?? []
+    if (pairRows.length > 0) {
+      const existingId = pairRows[0].id as string
+      // Restore ghost battle into memory so it starts ticking again
+      if (!this.battles.has(existingId)) {
+        logger.warn(`[Battle] Ghost battle detected for ${attackerCode} vs ${defenderCode} (${existingId}) — restoring`)
+        await this.restoreFromDB()
+      }
+      return { success: false, message: 'A battle is already active between these countries.', battleId: existingId }
+    }
+
+    // ── Check for existing active battle in same region (memory) ──
     for (const b of this.battles.values()) {
       if (b.regionName === regionName && b.status === 'active') {
         return { success: false, message: 'Battle already active in this region.', battleId: b.id }
@@ -351,11 +372,25 @@ class BattleService {
 
     this.battles.set(id, battle)
 
-    // Broadcast battle start (matches client socket-hooks.ts 'battle:started' listener)
-    this.emit(id, 'battle:started', {
-      battleId: id, attackerCode, defenderCode,
-      targetRegion: regionName, regionId, type,
-    })
+    // Broadcast battle start GLOBALLY — clients need to hear this to join the room.
+    // battle:started goes to ALL connected sockets (not just battle:id room which they haven't joined yet).
+    if (this.io) {
+      this.io.emit('battle:started', {
+        battleId: id, attackerCode, defenderCode,
+        targetRegion: regionName, regionId, type,
+      })
+    }
+    // Also emit to attacker/defender country rooms so their players get notified
+    if (this.io) {
+      this.io.to(`country:${attackerCode}`).emit('battle:started', {
+        battleId: id, attackerCode, defenderCode,
+        targetRegion: regionName, regionId, type,
+      })
+      this.io.to(`country:${defenderCode}`).emit('battle:started', {
+        battleId: id, attackerCode, defenderCode,
+        targetRegion: regionName, regionId, type,
+      })
+    }
 
     logger.info(`[Battle] Launched & persisted: ${attackerCode} → ${defenderCode} (${regionName}) type=${type} id=${id}`)
     return { success: true, message: `Battle for ${regionName} has begun!`, battleId: id }
@@ -1532,7 +1567,7 @@ class BattleService {
         // 1. Add to conqueror's occupied_regions
         await db.execute(sql`
           UPDATE countries
-          SET occupied_regions = occupied_regions || jsonb_build_object(${regionName}::text, ${originalOwner}::text)
+          SET occupied_regions = COALESCE(occupied_regions, '{}'::jsonb) || jsonb_build_object(${regionName}::text, ${originalOwner}::text)
           WHERE code = ${conquerorCode}
         `)
 
@@ -1612,14 +1647,17 @@ class BattleService {
 
         logger.info(`[Battle] Territory captured: ${conquerorCode} ← ${regionName} (was ${originalOwner}). Fund +$${captureBonus.money} +${captureBonus.oil} oil. ${attackerPlayers.length} attackers awarded.`)
 
-        // 7. Broadcast occupation update to all clients via socket
-        this.emit(battle.id, 'battle:occupationUpdate', {
-          regionName,
-          newController: conquerorCode,
-          prevController: originalOwner,
-          captureBonus,
-          attackerCount: attackerPlayers.length,
-        })
+        // 7. Broadcast occupation update GLOBALLY so all connected clients update the map
+        if (this.io) {
+          this.io.emit('battle:occupationUpdate', {
+            regionName,
+            regionId: battle.regionId,
+            newController: conquerorCode,
+            prevController: originalOwner,
+            captureBonus,
+            attackerCount: attackerPlayers.length,
+          })
+        }
 
       } catch (e) {
         logger.error(e, `[Battle] Territory transfer failed for ${battle.id}`)
@@ -1709,12 +1747,15 @@ class BattleService {
 
           logger.info(`[Battle] REVOLT SUCCEEDED: ${battle.regionName} liberated by ${nativeCountry} from ${occupier}`)
 
-          this.emit(battle.id, 'battle:occupationUpdate', {
-            regionName: battle.regionName,
-            newController: nativeCountry,
-            prevController: occupier,
-            isRevolt: true,
-          })
+          if (this.io) {
+            this.io.emit('battle:occupationUpdate', {
+              regionName: battle.regionName,
+              regionId: battle.regionId,
+              newController: nativeCountry,
+              prevController: occupier,
+              isRevolt: true,
+            })
+          }
         } else {
           // Revolt failed: occupier holds — no territory change
           logger.info(`[Battle] REVOLT FAILED: ${battle.defenderId} retains control of ${battle.regionName}`)
@@ -1742,13 +1783,15 @@ class BattleService {
       }
     }
 
-    // Broadcast battle end — include full context for client battle summary
-    this.emit(battle.id, 'battle:end', {
+    // Broadcast battle end GLOBALLY — all clients need to remove it from their battle list
+    const endPayload = {
       battleId: battle.id,
       winner: battle.status === 'attacker_won' ? battle.attackerId : battle.defenderId,
       loser: battle.status === 'attacker_won' ? battle.defenderId : battle.attackerId,
+      status: battle.status,
       type: battle.type,
       regionName: battle.regionName,
+      regionId: battle.regionId,
       attackerId: battle.attackerId,
       defenderId: battle.defenderId,
       attackerRoundsWon: battle.attackerRoundsWon,
@@ -1762,7 +1805,12 @@ class BattleService {
         loserPlayers: { money: battle.status === 'attacker_won' ? 100 : 50, xp: battle.status === 'attacker_won' ? 50 : 25, badges: 0 },
         territoryChanged: battle.status === 'attacker_won',
       },
-    })
+    }
+    if (this.io) {
+      this.io.emit('battle:end', endPayload)
+    } else {
+      this.emit(battle.id, 'battle:end', endPayload)
+    }
 
     logger.info(`[Battle] ${battle.id} ended: ${battle.status} type=${battle.type} (ATK ${battle.attacker.damageDealt} / DEF ${battle.defender.damageDealt})`)
   }
@@ -1815,6 +1863,13 @@ class BattleService {
    * Restores full JSONB state: rounds, combatLog, damageDealers, adrenaline, orders.
    */
   async restoreFromDB(): Promise<void> {
+    // Deduplicate: if a restore is already in progress, await it instead of starting another
+    if (this._restorePromise) return this._restorePromise
+    this._restorePromise = this._doRestoreFromDB().finally(() => { this._restorePromise = null })
+    return this._restorePromise
+  }
+
+  private async _doRestoreFromDB(): Promise<void> {
     // Run additive migration only once per process lifecycle
     if (!this._migrationRan) {
       this._migrationRan = true

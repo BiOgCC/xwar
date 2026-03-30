@@ -10,6 +10,7 @@ import { socketManager } from './socket'
 import { usePlayerStore } from '../stores/playerStore'
 import { useBattleStore } from '../stores/battleStore'
 import { useWorldStore } from '../stores/worldStore'
+import { useRegionStore } from '../stores/regionStore'
 import { useUIStore } from '../stores/uiStore'
 import { getCountryName } from '../data/countries'
 
@@ -256,16 +257,25 @@ export function initSocketHooks() {
     }
   })
 
-  // Territory capture broadcast — updates region counts in worldStore
+  // Territory capture broadcast — updates region counts in worldStore AND regionStore (for map recoloring)
   socketManager.on('battle:occupationUpdate', (data: {
-    regionName: string; newController: string; prevController: string;
-    captureBonus: { money: number; oil: number; scrap: number };
+    regionName: string; regionId?: string; newController: string; prevController: string;
+    captureBonus?: { money: number; oil: number; scrap: number };
+    isRevolt?: boolean;
   }) => {
-    console.log(`[WS] 🏴 Territory captured: ${data.newController} took ${data.regionName} from ${data.prevController}`)
+    console.log(`[WS] 🏴 Territory transfer: ${data.newController} ← ${data.regionName} (was ${data.prevController})`)
+
+    // Update world store — region counts + conqueror fund bonus
     useWorldStore.setState((s) => ({
       countries: s.countries.map((c: any) => {
         if (c.code === data.newController) {
-          return { ...c, regions: (c.regions || 0) + 1, fund: { ...c.fund, money: (c.fund?.money || 0) + data.captureBonus.money, oil: (c.fund?.oil || 0) + data.captureBonus.oil } }
+          return {
+            ...c,
+            regions: (c.regions || 0) + 1,
+            fund: data.captureBonus
+              ? { ...c.fund, money: (c.fund?.money || 0) + data.captureBonus.money, oil: (c.fund?.oil || 0) + data.captureBonus.oil }
+              : c.fund,
+          }
         }
         if (c.code === data.prevController) {
           return { ...c, regions: Math.max(0, (c.regions || 0) - 1) }
@@ -273,6 +283,37 @@ export function initSocketHooks() {
         return c
       })
     }))
+
+    // ── KEY: Update regionStore.controlledBy so the map recolors the captured region ──
+    // countryCode = permanent native owner (never changes — used as baseline for occupation detection)
+    // controlledBy = current ruler (changes on invasion/liberation)
+    // GameMap shows occupation overlay when controlledBy !== countryCode
+    const isRevolt = !!data.isRevolt
+
+    useRegionStore.setState((s) => ({
+      regions: s.regions.map((r) => {
+        if (r.name !== data.regionName) return r
+        if (isRevolt) {
+          // Revolt succeeded: liberated back to native. controlledBy reset = no more occupation overlay
+          return { ...r, controlledBy: r.countryCode }
+        }
+        // Normal invasion: conqueror controls it. countryCode stays as original owner.
+        return { ...r, controlledBy: data.newController }
+      }),
+    }))
+
+    // Notify UI
+    const regionLabel = data.regionName
+    const newCtrlName = getCountryName(data.newController)
+    const prevCtrlName = getCountryName(data.prevController)
+    try {
+      useUIStore.getState().addNotification({
+        type: isRevolt ? 'success' : 'warning',
+        message: isRevolt
+          ? `🔓 ${regionLabel} liberated! ${newCtrlName} reclaimed their territory.`
+          : `🏴 ${newCtrlName} captured ${regionLabel} from ${prevCtrlName}!`,
+      })
+    } catch (_) {}
   })
 
   socketManager.on('battle:roundEnd', (data: {

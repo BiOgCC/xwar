@@ -1106,10 +1106,32 @@ router.post('/player/:id/ban', async (req, res) => {
 //  BATTLE / WAR CONTROL — list, seed, force-finish
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ── GET /api/admin/battles ───────────────────────────────────────────────────
+// ── GET /api/admin/battles — list active (memory+restore) + recent DB battles ───
 router.get('/battles', async (_req, res) => {
   try {
-    const rows = await db.execute(sql`
+    // In-memory active battles (real-time state)
+    const memBattles = battleService.getActiveBattles()
+    const memIds = new Set(memBattles.map(b => b.id))
+
+    const active = memBattles.map(b => ({
+      id: b.id,
+      attacker_id: b.attackerId,
+      defender_id: b.defenderId,
+      region_name: b.regionName,
+      status: b.status,
+      round: b.rounds.length,
+      max_rounds: 3,
+      attacker_damage: b.attacker.damageDealt,
+      defender_damage: b.defender.damageDealt,
+      attacker_rounds_won: b.attackerRoundsWon,
+      defender_rounds_won: b.defenderRoundsWon,
+      winner: null,
+      started_at: b.startedAt,
+      finished_at: null,
+    }))
+
+    // All battles from DB (active first, then finished)
+    const dbRows = await db.execute(sql`
       SELECT id, attacker_id, defender_id, region_name, status,
              round, max_rounds, attacker_damage, defender_damage,
              attacker_rounds_won, defender_rounds_won,
@@ -1120,7 +1142,29 @@ router.get('/battles', async (_req, res) => {
         started_at DESC
       LIMIT 50
     `) as Record<string, unknown>[]
-    ok(res, rows)
+
+    // Merge: memory (live) first, then all DB rows not already in memory
+    const combined = [
+      ...active,
+      ...(dbRows as any[]).filter(b => !memIds.has(b.id as string)).map(b => ({
+        id: b.id,
+        attacker_id: b.attacker_id,
+        defender_id: b.defender_id,
+        region_name: b.region_name,
+        status: b.status,
+        round: Number(b.attacker_rounds_won ?? 0) + Number(b.defender_rounds_won ?? 0),
+        max_rounds: b.max_rounds ?? 3,
+        attacker_damage: Number(b.attacker_damage ?? 0),
+        defender_damage: Number(b.defender_damage ?? 0),
+        attacker_rounds_won: b.attacker_rounds_won ?? 0,
+        defender_rounds_won: b.defender_rounds_won ?? 0,
+        winner: b.winner,
+        started_at: b.started_at,
+        finished_at: b.finished_at,
+      }))
+    ]
+
+    ok(res, combined)
   } catch (err) {
     res.status(500).json({ error: String(err), code: 'INTERNAL' })
   }
@@ -1143,94 +1187,183 @@ router.get('/wars', async (_req, res) => {
   }
 })
 
-// ── POST /api/admin/seed-battle ─────────────────────────────────────────────
-// Creates a battle row (and optionally a war) between two countries.
-// This is the admin tool to generate initial engagement for alpha testing.
+// ── POST /api/admin/sync-occupation — re-broadcast all occupied regions globally ──
+// Call this to fix map desync (e.g., Cuba won Florida but map still shows US color)
+router.post('/sync-occupation', async (req, res) => {
+  try {
+    const io = req.app.get('io') || (global as any).__xwar_io
+
+    const allOccupied = await db.execute(sql`
+      SELECT code, occupied_regions FROM countries
+      WHERE occupied_regions IS NOT NULL AND occupied_regions != '{}'::jsonb
+    `)
+    const rows = Array.isArray(allOccupied) ? allOccupied : (allOccupied as any)?.rows ?? []
+    let emitCount = 0
+
+    for (const row of rows) {
+      const conquerorCode = row.code as string
+      const occupied = row.occupied_regions as Record<string, string> | null
+      if (!occupied || typeof occupied !== 'object') continue
+      for (const [regionName, originalOwner] of Object.entries(occupied)) {
+        if (io) {
+          io.emit('battle:occupationUpdate', {
+            regionName, newController: conquerorCode,
+            prevController: originalOwner as string,
+          })
+          emitCount++
+        }
+      }
+    }
+    ok(res, { emitted: emitCount, message: `Re-broadcast ${emitCount} occupation(s) to all clients.` })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// ── POST /api/admin/transfer-territory — give a region to any country ──────────
+// Transfer any territory from its current controller to a different country.
+// Works regardless of battle history — direct admin override.
+router.post('/transfer-territory', validate(z.object({
+  regionName: z.string().min(1).max(128),   // e.g. "Florida"
+  toCountry:  z.string().min(2).max(4),      // e.g. "CU"
+  fromCountry: z.string().min(2).max(4).optional(), // optional: auto-detected if omitted
+})), async (req, res) => {
+  try {
+    const { regionName, toCountry } = req.body
+    const toCode = (toCountry as string).toUpperCase()
+
+    // 1. Find who currently controls this region
+    //    Priority: occupied_regions JSONB across all countries
+    let fromCode: string | null = req.body.fromCountry?.toUpperCase() ?? null
+
+    if (!fromCode) {
+      // Scan all countries' occupied_regions to find who holds this region
+      const allCountries = await db.execute(sql`
+        SELECT code, occupied_regions FROM countries
+        WHERE occupied_regions IS NOT NULL AND occupied_regions != '{}'::jsonb
+      `)
+      const countryRows = Array.isArray(allCountries) ? allCountries : (allCountries as any)?.rows ?? []
+      for (const row of countryRows) {
+        const occ = row.occupied_regions as Record<string, string> | null
+        if (occ && typeof occ === 'object' && occ[regionName]) {
+          fromCode = row.code as string
+          break
+        }
+      }
+    }
+
+    // 2. Verify target country exists
+    const [toCountryRow] = await db.execute(sql`SELECT code FROM countries WHERE code = ${toCode} LIMIT 1`) as any[]
+    if (!toCountryRow) {
+      res.status(404).json({ error: `Country '${toCode}' not found` }); return
+    }
+
+    // 3. If fromCode is same as toCode, nothing to do
+    if (fromCode === toCode) {
+      res.status(400).json({ error: `Region '${regionName}' is already controlled by ${toCode}` }); return
+    }
+
+    const io = req.app.get('io') || (global as any).__xwar_io
+
+    // 4. Add region to toCountry's occupied_regions
+    await db.execute(sql`
+      UPDATE countries
+      SET occupied_regions = COALESCE(occupied_regions, '{}'::jsonb) || jsonb_build_object(${regionName}::text, COALESCE(${fromCode ?? toCode}::text, ${toCode}::text))
+      WHERE code = ${toCode}
+    `)
+
+    // 5. Remove from fromCountry's occupied_regions (if we know who holds it)
+    if (fromCode) {
+      await db.execute(sql`
+        UPDATE countries
+        SET occupied_regions = occupied_regions - ${regionName}::text
+        WHERE code = ${fromCode}
+      `)
+    } else {
+      // Don't know specific owner — remove from anyone who has it
+      await db.execute(sql`
+        UPDATE countries
+        SET occupied_regions = occupied_regions - ${regionName}::text
+        WHERE code != ${toCode} AND occupied_regions ? ${regionName}
+      `)
+    }
+
+    // 6. Update region_ownership table if region_id is known
+    //    Try to find region_id from region_ownership by name join isn't possible (no name column),
+    //    so we do a name-based approach via the battles table as a lookup
+    const regionOwnershipRows = await db.execute(sql`
+      SELECT ro.region_id FROM region_ownership ro
+      WHERE ro.region_id IN (
+        SELECT DISTINCT region_id FROM battles WHERE region_name = ${regionName} LIMIT 1
+      )
+      LIMIT 1
+    `)
+    const roRow = (Array.isArray(regionOwnershipRows) ? regionOwnershipRows : (regionOwnershipRows as any)?.rows ?? [])[0]
+    if (roRow?.region_id) {
+      await db.execute(sql`
+        INSERT INTO region_ownership (region_id, country_code, captured_at, updated_at)
+        VALUES (${roRow.region_id}, ${toCode}, NOW(), NOW())
+        ON CONFLICT (region_id) DO UPDATE SET country_code = ${toCode}, updated_at = NOW()
+      `)
+    }
+
+    // 7. Update regions count
+    await db.execute(sql`UPDATE countries SET regions = regions + 1 WHERE code = ${toCode}`)
+    if (fromCode) {
+      await db.execute(sql`UPDATE countries SET regions = GREATEST(0, regions - 1) WHERE code = ${fromCode}`)
+    }
+
+    // 8. Broadcast to ALL clients — map updates instantly
+    if (io) {
+      io.emit('battle:occupationUpdate', {
+        regionName,
+        newController: toCode,
+        prevController: fromCode ?? toCode,
+      })
+    }
+
+    ok(res, {
+      regionName,
+      from: fromCode ?? '(unknown)',
+      to: toCode,
+      message: `✅ ${regionName} transferred → ${toCode}${fromCode ? ` (from ${fromCode})` : ''}`,
+    })
+  } catch (err) {
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// ── POST /api/admin/seed-battle — launch a real battle via battleService ──────
 router.post('/seed-battle', validate(z.object({
   attackerCode: z.string().min(2).max(4),
   defenderCode: z.string().min(2).max(4),
-  regionName:   z.string().max(64).optional(),
-  maxRounds:    z.number().int().min(1).max(15).optional(),
-  createWar:    z.boolean().optional().default(false),
+  regionName:   z.string().max(64).optional().default('Test Region'),
+  createWar:    z.boolean().optional().default(true),
+  maxRounds:    z.number().int().min(1).max(15).optional().default(3),
 })), async (req, res) => {
   try {
-    const { attackerCode, defenderCode, regionName, maxRounds = 3, createWar } = req.body
-    const ac = attackerCode.toUpperCase()
-    const dc = defenderCode.toUpperCase()
-
-    // Verify both countries exist
-    const [a] = await db.select({ code: countries.code }).from(countries).where(eq(countries.code, ac)).limit(1)
-    const [d] = await db.select({ code: countries.code }).from(countries).where(eq(countries.code, dc)).limit(1)
-    if (!a) { res.status(404).json({ error: `Attacker country '${ac}' not found`, code: 'NOT_FOUND' }); return }
-    if (!d) { res.status(404).json({ error: `Defender country '${dc}' not found`, code: 'NOT_FOUND' }); return }
+    const { attackerCode, defenderCode, regionName, createWar } = req.body
+    const atk = attackerCode.toUpperCase()
+    const def = defenderCode.toUpperCase()
 
     let warId: string | null = null
-
-    // Optionally create a war
     if (createWar) {
-      const warRows = await db.insert(wars).values({
-        attackerCode: ac,
-        defenderCode: dc,
-        status: 'active',
-      }).returning({ id: wars.id })
-      warId = warRows[0]?.id ?? null
+      const warResult = await db.execute(sql`
+        INSERT INTO wars (id, attacker_code, defender_code, status, started_at)
+        VALUES (gen_random_uuid(), ${atk}, ${def}, 'active', NOW())
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `)
+      warId = (warResult[0] as any)?.id ?? null
     }
 
-    // Create the battle
-    const battleRows = await db.insert(battles).values({
-      attackerId: ac,
-      defenderId: dc,
-      regionName: regionName || `${ac}-${dc} Alpha Battle`,
-      status: 'active',
-      round: 1,
-      maxRounds,
-      attackerDamage: 0,
-      defenderDamage: 0,
-      attackerRoundsWon: 0,
-      defenderRoundsWon: 0,
-    }).returning({ id: battles.id })
+    // Launch via battleService — registers in memory, starts ticking, emits sockets
+    const result = await battleService.launchBattle(atk, def, regionName ?? 'Test Region', 'invasion')
+    if (!result.success) {
+      res.status(400).json({ error: result.message }); return
+    }
 
-    ok(res, {
-      battleId: battleRows[0]?.id,
-      warId,
-      attacker: ac,
-      defender: dc,
-      regionName: regionName || `${ac}-${dc} Alpha Battle`,
-      maxRounds,
-    })
-  } catch (err) {
-    res.status(500).json({ error: String(err), code: 'INTERNAL' })
-  }
-})
-
-// ── POST /api/admin/end-battle ──────────────────────────────────────────────
-// Force-finish an active battle
-router.post('/end-battle', validate(z.object({
-  battleId: z.string().uuid(),
-  winner:   z.string().min(2).max(4).optional(),
-})), async (req, res) => {
-  try {
-    const { battleId, winner } = req.body
-    await db.update(battles).set({
-      status: 'finished',
-      finishedAt: new Date(),
-      ...(winner ? { winner: winner.toUpperCase() } : {}),
-    }).where(eq(battles.id, battleId))
-    ok(res, { battleId, status: 'finished', winner: winner?.toUpperCase() ?? null })
-  } catch (err) {
-    res.status(500).json({ error: String(err), code: 'INTERNAL' })
-  }
-})
-
-// ── POST /api/admin/end-war ─────────────────────────────────────────────────
-// Force-finish an active war
-router.post('/end-war', validate(z.object({
-  warId: z.string().uuid(),
-})), async (req, res) => {
-  try {
-    const { warId } = req.body
-    await db.update(wars).set({ status: 'finished' }).where(eq(wars.id, warId))
-    ok(res, { warId, status: 'finished' })
+    ok(res, { attacker: atk, defender: def, battleId: result.battleId, warId, message: result.message })
   } catch (err) {
     res.status(500).json({ error: String(err), code: 'INTERNAL' })
   }
@@ -1269,120 +1402,7 @@ router.post('/set-stock-price', validate(z.object({
   }
 })
 
-// ══════════════════════════════════════════════════════════════════════════════
-//  BATTLE & WAR ADMIN ENDPOINTS
-// ══════════════════════════════════════════════════════════════════════════════
-
-// ── GET /api/admin/battles — list all battles (active + recent from DB) ──
-router.get('/battles', async (_req, res) => {
-  try {
-    // In-memory active battles
-    const active = battleService.getActiveBattles().map(b => ({
-      id: b.id,
-      attacker_id: b.attackerId,
-      defender_id: b.defenderId,
-      region_name: b.regionName,
-      status: b.status,
-      round: b.rounds.length,
-      max_rounds: 3,
-      attacker_damage: b.attacker.damageDealt,
-      defender_damage: b.defender.damageDealt,
-      attacker_rounds_won: b.attackerRoundsWon,
-      defender_rounds_won: b.defenderRoundsWon,
-      winner: null,
-      started_at: b.startedAt,
-    }))
-
-    // Recent finished battles from DB
-    const dbBattles = await db.execute(sql`
-      SELECT id, attacker_id, defender_id, region_name, status,
-             attacker_rounds_won, defender_rounds_won, attacker_damage, defender_damage,
-             winner, finished_at, created_at
-      FROM battles
-      ORDER BY created_at DESC
-      LIMIT 30
-    `)
-
-    // Merge: active first (de-dup by id), then DB
-    const activeIds = new Set(active.map(b => b.id))
-    const combined = [
-      ...active,
-      ...(dbBattles as any[]).filter(b => !activeIds.has(b.id)).map(b => ({
-        id: b.id,
-        attacker_id: b.attacker_id,
-        defender_id: b.defender_id,
-        region_name: b.region_name,
-        status: b.status,
-        round: b.attacker_rounds_won + b.defender_rounds_won,
-        max_rounds: 3,
-        attacker_damage: Number(b.attacker_damage ?? 0),
-        defender_damage: Number(b.defender_damage ?? 0),
-        attacker_rounds_won: b.attacker_rounds_won ?? 0,
-        defender_rounds_won: b.defender_rounds_won ?? 0,
-        winner: b.winner,
-        started_at: b.created_at,
-      }))
-    ]
-
-    ok(res, combined)
-  } catch (err) {
-    res.status(500).json({ error: String(err) })
-  }
-})
-
-// ── GET /api/admin/wars — list all wars ──
-router.get('/wars', async (_req, res) => {
-  try {
-    const rows = await db.execute(sql`
-      SELECT id, attacker_code, defender_code, status, started_at, ended_at, reason
-      FROM wars
-      ORDER BY started_at DESC
-      LIMIT 50
-    `)
-    ok(res, rows)
-  } catch (err) {
-    res.status(500).json({ error: String(err) })
-  }
-})
-
-// ── POST /api/admin/seed-battle — create a test battle ──
-router.post('/seed-battle', validate(z.object({
-  attackerCode: z.string().min(2).max(4),
-  defenderCode: z.string().min(2).max(4),
-  regionName:   z.string().optional().default('Test Region'),
-  createWar:    z.boolean().optional().default(true),
-  maxRounds:    z.number().min(1).max(15).optional().default(3),
-})), async (req, res) => {
-  try {
-    const { attackerCode, defenderCode, regionName, createWar } = req.body
-    const atk = attackerCode.toUpperCase()
-    const def = defenderCode.toUpperCase()
-
-    // Optionally create war record
-    let warId: string | null = null
-    if (createWar) {
-      const warResult = await db.execute(sql`
-        INSERT INTO wars (id, attacker_code, defender_code, status, started_at)
-        VALUES (gen_random_uuid(), ${atk}, ${def}, 'active', NOW())
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `)
-      warId = (warResult[0] as any)?.id ?? null
-    }
-
-    const result = await battleService.launchBattle(atk, def, regionName ?? 'Test Region', 'invasion')
-    if (!result.success) {
-      res.status(400).json({ error: result.message }); return
-    }
-
-    ok(res, { attacker: atk, defender: def, battleId: result.battleId, warId, message: result.message })
-  } catch (err) {
-    res.status(500).json({ error: String(err) })
-  }
-})
-
 // ── POST /api/admin/end-battle — force finish a battle with winner selection ──
-const ADMIN_END_PW = 'svt123!@'
 router.post('/end-battle', validate(z.object({
   battleId: z.string(),
   winner:   z.enum(['attacker', 'defender']).optional().default('attacker'),
@@ -1390,28 +1410,107 @@ router.post('/end-battle', validate(z.object({
   try {
     const { battleId, winner } = req.body
 
-    const battle = battleService.getBattle(battleId)
+    let battle = battleService.getBattle(battleId)
+
+    // Ghost battle: in DB as active but not in memory — try to restore first
     if (!battle) {
-      // Battle may already be gone from memory — just mark it done in DB
-      await db.execute(sql`
-        UPDATE battles SET status = 'attacker_won', finished_at = NOW()
-        WHERE id = ${battleId} AND status = 'active'
+      try {
+        await battleService.restoreFromDB()
+        // Give restore a moment to load
+        await new Promise(r => setTimeout(r, 800))
+        battle = battleService.getBattle(battleId)
+      } catch { /* restore failed, continue */ }
+    }
+
+    if (battle) {
+      // ── Battle is in memory: full finalization path ──
+      if (battle.status !== 'active') {
+        res.status(400).json({ error: 'Battle is not active' }); return
+      }
+      await battleService.adminForceEnd(battleId, winner as 'attacker' | 'defender')
+      const winnerCode = winner === 'attacker' ? battle.attackerId : battle.defenderId
+      ok(res, { battleId, winner: winnerCode, status: winner === 'attacker' ? 'attacker_won' : 'defender_won' })
+    } else {
+      // ── Ghost battle: restore failed — do full territory transfer manually ──
+      const statusVal = winner === 'attacker' ? 'attacker_won' : 'defender_won'
+
+      // 1. Read battle row from DB
+      const battleRows = await db.execute(sql`
+        SELECT id, attacker_id, defender_id, region_name, region_id
+        FROM battles WHERE id = ${battleId} AND status = 'active'
+        LIMIT 1
       `)
-      ok(res, { battleId, note: 'Battle not in memory — marked done in DB' }); return
+      const bRow = (battleRows as any[])[0]
+      if (!bRow) {
+        res.status(404).json({ error: 'Battle not found or already finished' }); return
+      }
+
+      const attackerId  = bRow.attacker_id as string
+      const defenderId  = bRow.defender_id as string
+      const regionName  = bRow.region_name as string
+      const regionId    = bRow.region_id   as string | null
+      const conquerorCode = winner === 'attacker' ? attackerId : defenderId
+      const loserCode     = winner === 'attacker' ? defenderId : attackerId
+
+      // 2. Mark battle done
+      await db.execute(sql`
+        UPDATE battles SET status = ${statusVal}, finished_at = NOW()
+        WHERE id = ${battleId}
+      `)
+
+      // 3. Territory transfer (only on attacker win — like finalizeBattle)
+      if (winner === 'attacker') {
+        try {
+          await db.execute(sql`
+            UPDATE countries
+            SET occupied_regions = COALESCE(occupied_regions, '{}'::jsonb) || jsonb_build_object(${regionName}::text, ${loserCode}::text)
+            WHERE code = ${conquerorCode}
+          `)
+          await db.execute(sql`
+            UPDATE countries
+            SET occupied_regions = occupied_regions - ${regionName}::text
+            WHERE code = ${loserCode}
+          `)
+          if (regionId) {
+            await db.execute(sql`
+              INSERT INTO region_ownership (region_id, country_code, captured_at, updated_at)
+              VALUES (${regionId}, ${conquerorCode}, NOW(), NOW())
+              ON CONFLICT (region_id) DO UPDATE SET country_code = ${conquerorCode}, updated_at = NOW()
+            `)
+          }
+          await db.execute(sql`UPDATE countries SET regions = regions + 1 WHERE code = ${conquerorCode}`)
+          await db.execute(sql`UPDATE countries SET regions = GREATEST(0, regions - 1) WHERE code = ${loserCode}`)
+
+          // 4. Broadcast occupation update globally so ALL clients update the map
+          const io = (req as any).app?.get?.('io') || (global as any).__xwar_io
+          if (io) {
+            io.emit('battle:occupationUpdate', {
+              regionName, regionId, newController: conquerorCode, prevController: loserCode,
+              captureBonus: { money: 5000, oil: 50, scrap: 30 },
+            })
+            io.emit('battle:end', {
+              battleId, winner: conquerorCode, loser: loserCode,
+              status: statusVal, regionName, regionId,
+              attackerId, defenderId,
+              rewards: { territoryChanged: true,
+                winnerPlayers: { money: 500, xp: 150, badges: 2 },
+                loserPlayers:  { money: 100, xp:  50, badges: 0 },
+              },
+            })
+          }
+        } catch (transferErr) {
+          console.warn(`[Admin] Ghost territory transfer failed for ${battleId}:`, transferErr)
+        }
+      }
+
+      ok(res, { battleId, winner: conquerorCode, status: statusVal, note: 'Ghost battle — full territory transfer applied' })
     }
-
-    if (battle.status !== 'active') {
-      res.status(400).json({ error: 'Battle is not active' }); return
-    }
-
-    await battleService.adminForceEnd(battleId, winner as 'attacker' | 'defender')
-
-    const winnerCode = winner === 'attacker' ? battle.attackerId : battle.defenderId
-    ok(res, { battleId, winner: winnerCode, status: winner === 'attacker' ? 'attacker_won' : 'defender_won' })
   } catch (err) {
     res.status(500).json({ error: String(err) })
   }
 })
+
+
 
 // ── POST /api/admin/end-war — force finish a war ──
 router.post('/end-war', validate(z.object({

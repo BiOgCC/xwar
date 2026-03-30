@@ -198,6 +198,8 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
   onRegionDoubleClickRef.current = onRegionDoubleClick
   const countriesRef = useRef(countries)
   countriesRef.current = countries
+  // Ref to applyOccupation so it can be called reactively from outside the mapLoaded effect
+  const applyOccupationRef = useRef<(() => void) | null>(null)
 
   const handleRegionClick = useCallback((countryIso2: string, lngLat: [number, number]) => {
     const { regions } = useRegionStore.getState()
@@ -576,8 +578,9 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
     }
 
     // Add the occupation overlay layers (added on top of base fill)
-    const initLayers = () => {
-      if (!m.getSource('xwar-states')) return
+    // Returns true if source was ready and layers are now initialized
+    const initLayers = (): boolean => {
+      if (!m.getSource('xwar-states')) return false
 
       // --- Fill layer: conqueror's color tint ---
       if (!m.getLayer('xwar-occupation-fill')) {
@@ -605,11 +608,16 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
           },
         })
       }
+      return true
     }
 
-    // Apply the current occupation state to layers
+    // Apply the current occupation state to layers.
+    // Self-healing: if layers don't exist yet, tries to create them from current source.
     const applyOccupation = () => {
-      if (!m.getLayer('xwar-occupation-fill')) return
+      if (!m.getLayer('xwar-occupation-fill')) {
+        const ok = initLayers()
+        if (!ok) return // xwar-states source not ready yet — sourcedata listener will retry
+      }
       const { fillColor, fillOpacity, names } = buildOccupationPaint()
 
       const nameFilter: any = names.length > 0
@@ -638,12 +646,25 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
       }
     }
 
-    // Wait for source to be ready, then init layers
+    // Store the function in a ref so the reactive useEffect below can call it
+    applyOccupationRef.current = applyOccupation
+
+    // ── Source readiness: persistent listener, NOT m.once() ──
+    // m.once('sourcedata') fires for ANY source (CartoDB base tiles etc), not specifically
+    // xwar-states. When it misfired, initLayers() returned early and layers were never created.
     if (m.getSource('xwar-states')) {
       initLayers()
       applyOccupation()
     } else {
-      m.once('sourcedata', () => { initLayers(); applyOccupation() })
+      // Persistent handler: checks every sourcedata event until xwar-states is available
+      const onSourceData = () => {
+        if (m.getSource('xwar-states')) {
+          m.off('sourcedata', onSourceData)
+          initLayers()
+          applyOccupation()
+        }
+      }
+      m.on('sourcedata', onSourceData)
     }
 
     // React to any regionStore changes (battle wins, captures, liberations)
@@ -651,6 +672,23 @@ const GameMap = forwardRef<GameMapHandle, GameMapProps>(({ countries, onRegionCl
 
     return () => unsub()
   }, [mapLoaded])
+
+  // ── Reactive occupation fix: re-apply whenever the occupied count changes ──
+  // This catches the case where hydrateGameState() runs BEFORE map loads,
+  // so the subscription above misses the change (layer doesn't exist yet).
+  // When this effect fires (mapLoaded=true AND occupiedCount changed), the layer
+  // exists and applyOccupation() correctly recolors the map.
+  const occupiedCount = useRegionStore(s =>
+    s.regions.filter(r => !r.isOcean && r.controlledBy && r.controlledBy !== r.countryCode).length
+  )
+  useEffect(() => {
+    if (!mapLoaded) return
+    // Retry at 200ms, 600ms, 1500ms — at least one fires after GeoJSON fetch + source add completes
+    const timers = [200, 600, 1500].map(delay =>
+      setTimeout(() => { applyOccupationRef.current?.() }, delay)
+    )
+    return () => timers.forEach(clearTimeout)
+  }, [occupiedCount, mapLoaded])
 
   useImperativeHandle(ref, () => ({
     zoomIn: () => {

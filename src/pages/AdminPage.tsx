@@ -137,7 +137,10 @@ export default function AdminPage() {
   const [battlesLoading, setBattlesLoading] = useState(false)
   const [seedForm, setSeedForm]         = useState({ attackerCode:'', defenderCode:'', regionName:'', createWar:true, maxRounds:3 })
   const [stockForm, setStockForm]       = useState({ countryCode:'', price:'' })
-  const [battleWinners, setBattleWinners] = useState<Record<string,'attacker'|'defender'>>({}) // per-battle winner
+  const [battleWinners, setBattleWinners] = useState<Record<string,'attacker'|'defender'>>({}); // per-battle winner
+  const [transferForm, setTransferForm]   = useState({ regionName:'', toCountry:'', fromCountry:'' })
+  const [transferResult, setTransferResult] = useState<{ok:boolean;msg:string}|null>(null)
+
 
   // ── Economy dashboard state ──
   const [econ, setEcon]                 = useState<any>(null)
@@ -361,6 +364,7 @@ export default function AdminPage() {
     else notify(d.error??'Failed','err')
   }
 
+
   const endWar = async (warId: string) => {
     if (!confirm('Force-finish this war?')) return
     const d = await api('/api/admin/end-war', { method:'POST', body:JSON.stringify({ warId }) })
@@ -373,6 +377,26 @@ export default function AdminPage() {
     const d = await api('/api/admin/set-stock-price', { method:'POST', body:JSON.stringify({ countryCode: stockForm.countryCode, price: Number(stockForm.price) }) })
     if (d.ok) notify(`✓ ${d.result.countryCode} stock → $${d.result.newPrice}`)
     else notify(d.error??'Failed','err')
+  }
+
+  const doTransfer = async () => {
+    const { regionName, toCountry, fromCountry } = transferForm
+    if (!regionName.trim() || !toCountry.trim()) { notify('Region name and target country required','err'); return }
+    setBusy('transfer')
+    setTransferResult(null)
+    try {
+      const body: any = { regionName: regionName.trim(), toCountry: toCountry.trim().toUpperCase() }
+      if (fromCountry.trim()) body.fromCountry = fromCountry.trim().toUpperCase()
+      const d = await api('/api/admin/transfer-territory', { method:'POST', body:JSON.stringify(body) })
+      if (d.ok) {
+        setTransferResult({ ok:true, msg: d.result?.message ?? 'Transfer complete' })
+        notify(`🏴 ${d.result?.message ?? 'Transfer complete'}`)
+      } else {
+        setTransferResult({ ok:false, msg: d.error ?? 'Transfer failed' })
+        notify(d.error??'Transfer failed','err')
+      }
+    } catch { notify('Request failed','err') }
+    setBusy(null)
   }
 
   const saveCountryField = async (code: string, field: string, value: string) => {
@@ -647,6 +671,68 @@ export default function AdminPage() {
                 </div>
                 <button onClick={setStockPrice} style={btn('#22c55e')}><TrendingUp size={13}/>Set Price</button>
               </div>
+
+              {/* Transfer Territory */}
+              <div style={{ ...S.card, border:'1px solid rgba(139,92,246,0.3)', background:'rgba(139,92,246,0.04)' }}>
+                <div style={{ ...S.sectionTitle, color:'#a78bfa' }}><span style={{fontSize:14}}>🏴</span> TRANSFER TERRITORY</div>
+                <p style={{ fontSize:12, color:'#64748b', marginBottom:12, lineHeight:1.7 }}>
+                  Directly give any state or region to another country. The map updates instantly for all players.
+                </p>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+                  <div style={{ gridColumn:'span 2' }}>
+                    <label style={S.label}>Region Name <span style={{color:'#ef4444'}}>*</span></label>
+                    <input
+                      value={transferForm.regionName}
+                      onChange={e=>setTransferForm(f=>({...f,regionName:e.target.value}))}
+                      placeholder='e.g. Florida, Texas, Ontario…'
+                      style={S.input}
+                      onKeyDown={e=>e.key==='Enter'&&doTransfer()}
+                    />
+                  </div>
+                  <div>
+                    <label style={S.label}>Transfer To <span style={{color:'#ef4444'}}>*</span></label>
+                    <input
+                      value={transferForm.toCountry}
+                      onChange={e=>setTransferForm(f=>({...f,toCountry:e.target.value.toUpperCase()}))}
+                      placeholder='e.g. CU'
+                      maxLength={4}
+                      style={{...S.input, borderColor:'rgba(167,139,250,0.4)', textTransform:'uppercase'}}
+                      onKeyDown={e=>e.key==='Enter'&&doTransfer()}
+                    />
+                  </div>
+                  <div>
+                    <label style={S.label}>From Country <span style={{color:'#475569'}}>(auto-detect)</span></label>
+                    <input
+                      value={transferForm.fromCountry}
+                      onChange={e=>setTransferForm(f=>({...f,fromCountry:e.target.value.toUpperCase()}))}
+                      placeholder='Leave blank to auto-detect'
+                      maxLength={4}
+                      style={{...S.input, textTransform:'uppercase'}}
+                      onKeyDown={e=>e.key==='Enter'&&doTransfer()}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={doTransfer}
+                  disabled={busy==='transfer' || !transferForm.regionName.trim() || !transferForm.toCountry.trim()}
+                  style={btn('#8b5cf6', busy==='transfer' || !transferForm.regionName.trim() || !transferForm.toCountry.trim())}
+                >
+                  {busy==='transfer'
+                    ? <><span style={{animation:'spin 0.8s linear infinite',display:'inline-block'}}>⟳</span>Transferring…</>
+                    : <>🏴 Transfer Territory</>
+                  }
+                </button>
+                {transferResult && (
+                  <div style={{ marginTop:10, padding:'7px 12px', borderRadius:6, fontSize:11, fontWeight:600,
+                    background: transferResult.ok ? 'rgba(34,211,138,0.08)' : 'rgba(239,68,68,0.08)',
+                    border: `1px solid ${transferResult.ok ? 'rgba(34,211,138,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                    color: transferResult.ok ? '#22d38a' : '#f87171',
+                  }}>
+                    {transferResult.msg}
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
         )}
@@ -821,48 +907,82 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Battles Table */}
             <div style={S.card}>
-              <div style={S.sectionTitle}><Swords size={14} color="#ef4444"/> ALL BATTLES ({adminBattles.length})</div>
+              <div style={{ ...S.sectionTitle, justifyContent:'space-between' }}>
+                <span style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <Swords size={14} color="#ef4444"/> ALL BATTLES ({adminBattles.length})
+                </span>
+                <div style={{ display:'flex', gap:6 }}>
+                  <button onClick={loadBattlesWars} style={btn('#64748b')} title="Refresh battles">
+                    <RefreshCw size={12}/>
+                  </button>
+                </div>
+              </div>
               {adminBattles.length === 0
                 ? <div style={{ textAlign:'center', padding:40, color:'#475569' }}>No battles found. Use Seed Battle to create one.</div>
                 : <>
-                    <div style={{ display:'grid', gridTemplateColumns:'60px 60px 1fr 60px 100px 100px 80px 1fr', gap:0, marginBottom:8 }}>
-                      {['ATK','DEF','Region','Round','ATK Dmg','DEF Dmg','Status','Action'].map(h=>(
+                    <div style={{ display:'grid', gridTemplateColumns:'55px 55px 1fr 55px 90px 90px 75px 130px 130px 1fr', gap:0, marginBottom:8 }}>
+                      {['ATK','DEF','Region','Round','ATK Dmg','DEF Dmg','Status','Started','Ended','Action'].map(h=>(
                         <div key={h} style={{ fontSize:9, color:'#475569', fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase', padding:'0 6px 6px' }}>{h}</div>
                       ))}
                     </div>
-                    {adminBattles.map((b:any) => (
-                      <div key={b.id} className="hrow" style={{ display:'grid', gridTemplateColumns:'60px 60px 1fr 60px 100px 100px 80px 1fr', gap:0, padding:'7px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', alignItems:'center' }}>
-                        <div style={{ padding:'0 6px', fontSize:12, color:'#ef4444', fontWeight:700, fontFamily:'monospace' }}>{b.attacker_id}</div>
-                        <div style={{ padding:'0 6px', fontSize:12, color:'#60a5fa', fontWeight:700, fontFamily:'monospace' }}>{b.defender_id}</div>
-                        <div style={{ padding:'0 6px', fontSize:11, color:'#94a3b8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.region_name}</div>
-                        <div style={{ padding:'0 6px', fontSize:11, color:'#e2e8f0', fontFamily:'monospace' }}>{b.round}/{b.max_rounds}</div>
-                        <div style={{ padding:'0 6px', fontSize:11, color:'#ef4444', fontFamily:'monospace' }}>{Number(b.attacker_damage).toLocaleString()}</div>
-                        <div style={{ padding:'0 6px', fontSize:11, color:'#60a5fa', fontFamily:'monospace' }}>{Number(b.defender_damage).toLocaleString()}</div>
-                        <div style={{ padding:'0 6px' }}>
-                          <span style={{ fontSize:9, padding:'2px 8px', borderRadius:10, background: b.status==='active'?'rgba(34,211,138,0.12)':'rgba(100,116,139,0.12)', color: b.status==='active'?'#22d38a':'#64748b', fontWeight:700 }}>{b.status}</span>
+                    {adminBattles.map((b:any) => {
+                      const startedAt = b.started_at ? new Date(b.started_at) : null
+                      const finishedAt = b.finished_at ? new Date(b.finished_at) : null
+                      const fmtTime = (d: Date | null) => d ? d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'
+                      const durationMs = startedAt && finishedAt ? finishedAt.getTime() - startedAt.getTime() : null
+                      const fmtDuration = (ms: number | null) => {
+                        if (!ms || ms < 0) return ''
+                        const m = Math.floor(ms / 60000)
+                        const s = Math.floor((ms % 60000) / 1000)
+                        return m > 0 ? ` (${m}m${s}s)` : ` (${s}s)`
+                      }
+                      return (
+                        <div key={b.id} className="hrow" style={{ display:'grid', gridTemplateColumns:'55px 55px 1fr 55px 90px 90px 75px 130px 130px 1fr', gap:0, padding:'7px 0', borderBottom:'1px solid rgba(255,255,255,0.04)', alignItems:'center' }}>
+                          <div style={{ padding:'0 6px', fontSize:12, color:'#ef4444', fontWeight:700, fontFamily:'monospace' }}>{b.attacker_id}</div>
+                          <div style={{ padding:'0 6px', fontSize:12, color:'#60a5fa', fontWeight:700, fontFamily:'monospace' }}>{b.defender_id}</div>
+                          <div style={{ padding:'0 6px', fontSize:11, color:'#94a3b8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.region_name}</div>
+                          <div style={{ padding:'0 6px', fontSize:11, color:'#e2e8f0', fontFamily:'monospace' }}>{b.round}/{b.max_rounds}</div>
+                          <div style={{ padding:'0 6px', fontSize:11, color:'#ef4444', fontFamily:'monospace' }}>{Number(b.attacker_damage).toLocaleString()}</div>
+                          <div style={{ padding:'0 6px', fontSize:11, color:'#60a5fa', fontFamily:'monospace' }}>{Number(b.defender_damage).toLocaleString()}</div>
+                          <div style={{ padding:'0 6px' }}>
+                            <span style={{ fontSize:9, padding:'2px 8px', borderRadius:10, background: b.status==='active'?'rgba(34,211,138,0.12)':'rgba(100,116,139,0.12)', color: b.status==='active'?'#22d38a':'#64748b', fontWeight:700 }}>{b.status}</span>
+                          </div>
+                          {/* Started At */}
+                          <div style={{ padding:'0 6px', fontSize:9, color:'#475569', fontFamily:'monospace', lineHeight:1.4 }}>
+                            {startedAt ? fmtTime(startedAt) : '—'}
+                          </div>
+                          {/* Ended At */}
+                          <div style={{ padding:'0 6px', fontSize:9, lineHeight:1.4 }}>
+                            {finishedAt
+                              ? <><span style={{ color:'#f59e0b', fontFamily:'monospace' }}>{fmtTime(finishedAt)}</span><span style={{ color:'#334155', fontSize:8, display:'block' }}>{fmtDuration(durationMs)}</span></>
+                              : b.status === 'active'
+                                ? <span style={{ color:'#22d38a', fontSize:9, fontWeight:700 }}>⚡ LIVE</span>
+                                : <span style={{ color:'#475569' }}>—</span>
+                            }
+                          </div>
+                          {/* Action */}
+                          <div style={{ padding:'0 6px', display:'flex', gap:5, alignItems:'center' }}>
+                            {b.status==='active' && (
+                              <>
+                                <select
+                                  value={battleWinners[b.id] ?? 'attacker'}
+                                  onChange={e => setBattleWinners(s => ({...s,[b.id]:e.target.value as any}))}
+                                  style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:4, color: battleWinners[b.id]==='defender'?'#60a5fa':'#ef4444', fontSize:9, padding:'2px 5px', cursor:'pointer' }}
+                                >
+                                  <option value="attacker">⚔️ {b.attacker_id}</option>
+                                  <option value="defender">🛡️ {b.defender_id}</option>
+                                </select>
+                                <button onClick={() => endBattle(b.id, b.attacker_id, b.defender_id)} style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#ef4444', cursor:'pointer', padding:'3px 8px', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
+                                  <StopCircle size={11}/>End
+                                </button>
+                              </>
+                            )}
+                            {b.status!=='active' && b.winner && <span style={{ fontSize:10, color:'#f59e0b', fontWeight:700, fontFamily:'monospace' }}>🏆 {b.winner}</span>}
+                          </div>
                         </div>
-                        <div style={{ padding:'0 6px', display:'flex', gap:5, alignItems:'center' }}>
-                          {b.status==='active' && (
-                            <>
-                              <select
-                                value={battleWinners[b.id] ?? 'attacker'}
-                                onChange={e => setBattleWinners(s => ({...s,[b.id]:e.target.value as any}))}
-                                style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:4, color: battleWinners[b.id]==='defender'?'#60a5fa':'#ef4444', fontSize:9, padding:'2px 5px', cursor:'pointer' }}
-                              >
-                                <option value="attacker">⚔️ {b.attacker_id}</option>
-                                <option value="defender">🛡️ {b.defender_id}</option>
-                              </select>
-                              <button onClick={() => endBattle(b.id, b.attacker_id, b.defender_id)} style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:4, color:'#ef4444', cursor:'pointer', padding:'3px 8px', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
-                                <StopCircle size={11}/>End
-                              </button>
-                            </>
-                          )}
-                          {b.status!=='active' && b.winner && <span style={{ fontSize:10, color:'#f59e0b', fontWeight:700, fontFamily:'monospace' }}>🏆 {b.winner}</span>}
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </>
               }
             </div>

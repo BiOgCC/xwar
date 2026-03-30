@@ -22,6 +22,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useGameLoop } from './hooks/useGameLoop'
 import { useAttack } from './hooks/useAttack'
 import { initMockData } from './dev/mockData'
+import { initSocketHooks } from './api/socket-hooks'
 import AuthScreen from './components/auth/AuthScreen'
 import { useCompanyStore } from './stores/companyStore'
 import { useAuthStore } from './stores/authStore'
@@ -72,6 +73,12 @@ function App() {
     if (isAuthenticated) {
       usePlayerStore.getState().fetchPlayer()
       useCompanyStore.getState().fetchAll()
+
+      // ── Init socket hooks (battle:started, battle:state, occupation updates, etc.) ──
+      import('./api/socket').then(({ socketManager }) => {
+        socketManager.connect()
+        initSocketHooks()
+      })
 
       // ── Hydrate active battles from API on every (re)load ──
       Promise.all([

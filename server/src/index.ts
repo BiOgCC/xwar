@@ -106,6 +106,13 @@ if (runApi) {
     battleService.restoreFromDB().catch(err => logger.error(err, '[Boot] Failed to restore battles'))
   })
 
+  // Attach io to app + global so any route handler can emit without circular imports
+  if (io) {
+    app.set('io', io)
+    ;(global as any).__xwar_io = io
+  }
+
+
   // ── Global error handler (must be AFTER routes) ──
   app.use(errorHandler)
 }

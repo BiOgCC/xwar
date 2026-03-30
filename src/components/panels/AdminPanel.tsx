@@ -25,7 +25,7 @@ const ADMIN_PASSWORD = 'svt123!@'
 async function apiFetch(path: string, opts?: RequestInit) {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 12_000) // 12s timeout
+  const timer = setTimeout(() => controller.abort(), 12_000)
   try {
     const res = await fetch(`/api/admin${path}`, {
       ...opts,
@@ -33,12 +33,12 @@ async function apiFetch(path: string, opts?: RequestInit) {
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'x-admin-password': ADMIN_PASSWORD, // always send admin password header
         ...opts?.headers,
       },
     })
     clearTimeout(timer)
     if (res.status === 401 || res.status === 403) throw new Error('UNAUTHORIZED')
-    // Safe parse — 5xx errors may return HTML
     const text = await res.text()
     try { return JSON.parse(text) } catch { return { ok: false, error: `Server error ${res.status}` } }
   } catch (e: any) {
@@ -83,15 +83,19 @@ interface GameStats {
 
 interface ActiveBattle {
   id: string
-  attackerId: string
-  defenderId: string
-  regionName: string
+  attacker_id: string
+  defender_id: string
+  region_name: string
   status: string
-  attackerDamage: number
-  defenderDamage: number
-  attackerRoundsWon: number
-  defenderRoundsWon: number
-  startedAt: number
+  round: number
+  max_rounds: number
+  attacker_damage: number
+  defender_damage: number
+  attacker_rounds_won: number
+  defender_rounds_won: number
+  started_at: string | number | null
+  finished_at: string | null
+  winner: string | null
 }
 
 // ── Archetype style ──────────────────────────────────────────────────────────
@@ -182,6 +186,15 @@ export default function AdminPanel() {
   const [battles,       setBattles]       = useState<ActiveBattle[]>([])
   const [battleWinner,  setBattleWinner]  = useState<Record<string, 'attacker' | 'defender'>>({})
   const [battleBusy,    setBattleBusy]    = useState<Record<string, boolean>>({})
+  const [showSeedForm,  setShowSeedForm]  = useState(false)
+  const [seedBusy,      setSeedBusy]      = useState(false)
+  const [seedForm,      setSeedForm]      = useState({ attackerCode: '', defenderCode: '', regionName: '', createWar: true })
+  // ── Territory Transfer ──
+  const [showTransfer,  setShowTransfer]  = useState(false)
+  const [transferBusy,  setTransferBusy]  = useState(false)
+  const [transferForm,  setTransferForm]  = useState({ regionName: '', toCountry: '', fromCountry: '' })
+  const [transferResult, setTransferResult] = useState<{ ok: boolean; msg: string } | null>(null)
+
 
   // ── notifications ──
   const notify = useCallback((msg: string, type: 'ok'|'err' = 'ok') => {
@@ -211,10 +224,9 @@ export default function AdminPanel() {
 
   const loadBattles = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
-      const res = await fetch('/api/battle/active', { headers: { Authorization: `Bearer ${token}` } })
-      const data = await res.json()
-      if (data.success) setBattles(data.battles ?? [])
+      // Use the admin battles endpoint — returns both active + recent finished battles
+      const data = await apiFetch('/battles')
+      if (data.ok) setBattles(data.result ?? [])
     } catch {}
   }, [])
 
@@ -332,20 +344,17 @@ export default function AdminPanel() {
     (l.countryCode ?? '').toLowerCase().includes(filter.toLowerCase())
   )
 
-  // ── Battle force-end ──
+  // ── Battle force-end via admin API ──
   const forceEndBattle = async (battleId: string) => {
     const winner = battleWinner[battleId] || 'attacker'
     setBattleBusy(s => ({ ...s, [battleId]: true }))
     try {
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
-      const res = await fetch(`/api/battle/${battleId}/admin-end`, {
+      const data = await apiFetch('/end-battle', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ winner, adminPassword: ADMIN_PASSWORD }),
+        body: JSON.stringify({ battleId, winner }),
       })
-      const data = await res.json()
-      if (data.success) {
-        notify(`✓ Battle ended — Winner: ${data.winner}`, 'ok')
+      if (data.ok) {
+        notify(`✓ Battle ended — Winner: ${data.result?.winner ?? winner}`, 'ok')
         await loadBattles()
         await loadStats()
       } else {
@@ -353,6 +362,64 @@ export default function AdminPanel() {
       }
     } catch { notify('Request failed', 'err') }
     setBattleBusy(s => ({ ...s, [battleId]: false }))
+  }
+
+  // ── Seed Battle via admin API ──
+  const seedBattle = async () => {
+    if (!seedForm.attackerCode || !seedForm.defenderCode) { notify('Enter attacker and defender codes', 'err'); return }
+    setSeedBusy(true)
+    try {
+      const data = await apiFetch('/seed-battle', {
+        method: 'POST',
+        body: JSON.stringify({
+          attackerCode: seedForm.attackerCode.toUpperCase(),
+          defenderCode: seedForm.defenderCode.toUpperCase(),
+          regionName: seedForm.regionName || undefined,
+          createWar: seedForm.createWar,
+        }),
+      })
+      if (data.ok) {
+        notify(`✓ Battle launched: ${data.result.attacker} vs ${data.result.defender}${data.result.warId ? ' + war created' : ''}`, 'ok')
+        setSeedForm(f => ({ ...f, attackerCode: '', defenderCode: '', regionName: '' }))
+        setShowSeedForm(false)
+        await loadBattles()
+        await loadStats()
+      } else { notify(data.error ?? 'Seed failed', 'err') }
+    } catch { notify('Seed request failed', 'err') }
+    setSeedBusy(false)
+  }
+
+  // ── Sync occupation map — re-broadcasts all captured territories to all clients ──
+  const syncOccupation = async () => {
+    try {
+      const data = await apiFetch('/sync-occupation', { method: 'POST', body: '{}' })
+      if (data.ok) {
+        notify(`🗺️ ${data.result?.message ?? 'Map synced'}`, 'ok')
+      } else { notify(data.error ?? 'Sync failed', 'err') }
+    } catch { notify('Request failed', 'err') }
+  }
+
+  // ── Territory Transfer ──
+  const doTransfer = async () => {
+    const { regionName, toCountry, fromCountry } = transferForm
+    if (!regionName.trim() || !toCountry.trim()) {
+      notify('Region name and target country are required', 'err'); return
+    }
+    setTransferBusy(true)
+    setTransferResult(null)
+    try {
+      const body: any = { regionName: regionName.trim(), toCountry: toCountry.trim().toUpperCase() }
+      if (fromCountry.trim()) body.fromCountry = fromCountry.trim().toUpperCase()
+      const data = await apiFetch('/transfer-territory', { method: 'POST', body: JSON.stringify(body) })
+      if (data.ok) {
+        setTransferResult({ ok: true, msg: data.result?.message ?? 'Transfer complete' })
+        notify(`🏴 ${data.result?.message ?? 'Transfer complete'}`, 'ok')
+      } else {
+        setTransferResult({ ok: false, msg: data.error ?? 'Transfer failed' })
+        notify(data.error ?? 'Transfer failed', 'err')
+      }
+    } catch { notify('Request failed', 'err') }
+    setTransferBusy(false)
   }
 
   // ── Password gate screen ──
@@ -509,66 +576,146 @@ export default function AdminPanel() {
       {/* ── Battle Control card ── */}
       <div style={{ ...cardStyle, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.03)' }}>
         <div style={{ ...cardHeader, color: '#ef4444' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Swords size={15} color="#ef4444" /> BATTLE CONTROL</span>
-          <button onClick={loadBattles} style={btnStyle('#0f172a', '#ef4444')} title="Refresh battles"><RefreshCw size={12} /></button>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Swords size={15} color="#ef4444" /> BATTLE CONTROL ({battles.filter(b => b.status === 'active').length} active)</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setShowSeedForm(s => !s)} style={btnStyle(showSeedForm ? 'rgba(239,68,68,0.15)' : '#0f172a', '#ef4444')} title="Seed a new battle">
+              <Plus size={12}/> Seed
+            </button>
+            <button onClick={syncOccupation} style={btnStyle('rgba(34,211,138,0.1)', '#22d38a')} title="Re-sync territory colors on map">
+              🗺️ Sync Map
+            </button>
+            <button onClick={loadBattles} style={btnStyle('#0f172a', '#ef4444')} title="Refresh battles"><RefreshCw size={12} /></button>
+          </div>
         </div>
-        {battles.length === 0 ? (
-          <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '16px 0' }}>No active battles.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {battles.map(b => (
-              <div key={b.id} style={{
-                background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(239,68,68,0.2)',
-                borderRadius: 8, padding: '12px 14px',
-              }}>
-                {/* Battle header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#64748b' }}>{b.id.slice(0, 22)}…</span>
-                  <span style={{ flex: 1 }} />
-                  <span style={{ fontSize: 9, background: 'rgba(239,68,68,0.15)', color: '#f87171', padding: '1px 6px', borderRadius: 3, fontFamily: 'monospace' }}>ACTIVE</span>
-                </div>
 
-                {/* ATK vs DEF */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#22d38a', fontFamily: 'Share Tech Mono, monospace' }}>{b.attackerId}</div>
-                    <div style={{ fontSize: 10, color: '#64748b' }}>Attacker · {b.attackerDamage.toLocaleString()} dmg</div>
-                    <div style={{ fontSize: 9, color: '#475569' }}>{b.attackerRoundsWon} rounds won</div>
-                  </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textAlign: 'center' }}>
-                    ⚔️<br/>
-                    <span style={{ fontSize: 9, color: '#475569', fontFamily: 'monospace' }}>{b.regionName}</span>
-                  </div>
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#f87171', fontFamily: 'Share Tech Mono, monospace' }}>{b.defenderId}</div>
-                    <div style={{ fontSize: 10, color: '#64748b' }}>Defender · {b.defenderDamage.toLocaleString()} dmg</div>
-                    <div style={{ fontSize: 9, color: '#475569' }}>{b.defenderRoundsWon} rounds won</div>
-                  </div>
-                </div>
-
-                {/* Winner selector + Force End button */}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>Declare winner:</div>
-                  <select
-                    value={battleWinner[b.id] ?? 'attacker'}
-                    onChange={e => setBattleWinner(s => ({ ...s, [b.id]: e.target.value as 'attacker' | 'defender' }))}
-                    style={{ ...inputStyle, width: 'auto', flex: 1, color: battleWinner[b.id] === 'defender' ? '#f87171' : '#22d38a' }}
-                  >
-                    <option value="attacker">⚔️ {b.attackerId} (Attacker)</option>
-                    <option value="defender">🛡️ {b.defenderId} (Defender)</option>
-                  </select>
-                  <button
-                    onClick={() => forceEndBattle(b.id)}
-                    disabled={battleBusy[b.id]}
-                    style={btnStyle('rgba(239,68,68,0.15)', '#ef4444', battleBusy[b.id])}
-                  >
-                    {battleBusy[b.id] ? <Spinner /> : <><Trophy size={12} /> Force End</>}
-                  </button>
-                </div>
+        {/* Seed Battle Form */}
+        {showSeedForm && (
+          <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 10, letterSpacing: '0.08em' }}>⚔️ LAUNCH BATTLE</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <div>
+                <label style={labelStyle}>Attacker CC</label>
+                <input value={seedForm.attackerCode} onChange={e => setSeedForm(f => ({...f, attackerCode: e.target.value.toUpperCase()}))} placeholder="US" maxLength={4} style={inputStyle}/>
               </div>
-            ))}
+              <div>
+                <label style={labelStyle}>Defender CC</label>
+                <input value={seedForm.defenderCode} onChange={e => setSeedForm(f => ({...f, defenderCode: e.target.value.toUpperCase()}))} placeholder="RU" maxLength={4} style={inputStyle}/>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={labelStyle}>Region Name (optional)</label>
+                <input value={seedForm.regionName} onChange={e => setSeedForm(f => ({...f, regionName: e.target.value}))} placeholder="e.g. Florida" style={inputStyle}/>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#94a3b8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={seedForm.createWar} onChange={e => setSeedForm(f => ({...f, createWar: e.target.checked}))} style={{ accentColor: '#ef4444' }}/>
+                Also declare war
+              </label>
+              <button onClick={seedBattle} disabled={seedBusy || !seedForm.attackerCode || !seedForm.defenderCode} style={btnStyle('rgba(239,68,68,0.15)', '#ef4444', seedBusy || !seedForm.attackerCode || !seedForm.defenderCode)}>
+                {seedBusy ? <Spinner /> : <Swords size={12} />} Launch
+              </button>
+              <button onClick={() => setShowSeedForm(false)} style={btnStyle('transparent', '#64748b')}>Cancel</button>
+            </div>
           </div>
         )}
+
+        {/* Active Battles */}
+        {(() => {
+          const active = battles.filter(b => b.status === 'active')
+          const finished = battles.filter(b => b.status !== 'active').slice(0, 5)
+          return (
+            <>
+              {active.length === 0 ? (
+                <div style={{ fontSize: 11, color: '#475569', textAlign: 'center', padding: '12px 0' }}>No active battles.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: finished.length ? 12 : 0 }}>
+                  {active.map(b => {
+                    const bid = b.id
+                    const atk = b.attacker_id
+                    const def = b.defender_id
+                    const atkDmg = Number(b.attacker_damage)
+                    const defDmg = Number(b.defender_damage)
+                    const atkRounds = b.attacker_rounds_won
+                    const defRounds = b.defender_rounds_won
+                    const startedMs = b.started_at ? (typeof b.started_at === 'number' ? b.started_at : new Date(b.started_at).getTime()) : null
+                    const elapsed = startedMs ? Math.floor((Date.now() - startedMs) / 60000) : null
+                    return (
+                      <div key={bid} style={{
+                        background: 'rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(239,68,68,0.2)',
+                        borderRadius: 8, padding: '12px 14px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                          <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#64748b', flex: 1 }}>{bid.slice(0, 20)}…</span>
+                          {elapsed !== null && <span style={{ fontSize: 9, color: '#475569' }}>⏱ {elapsed}m</span>}
+                          <span style={{ fontSize: 9, background: 'rgba(34,211,138,0.15)', color: '#22d38a', padding: '1px 7px', borderRadius: 3, fontFamily: 'monospace', fontWeight: 700 }}>⚡ ACTIVE</span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#22d38a', fontFamily: 'Share Tech Mono, monospace' }}>{atk}</div>
+                            <div style={{ fontSize: 10, color: '#64748b' }}>Attacker · {atkDmg.toLocaleString()} dmg</div>
+                            <div style={{ fontSize: 9, color: '#475569' }}>{atkRounds} rounds won</div>
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textAlign: 'center' }}>
+                            ⚔️<br/>
+                            <span style={{ fontSize: 9, color: '#475569', fontFamily: 'monospace' }}>{b.region_name}</span>
+                          </div>
+                          <div style={{ textAlign: 'left' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#f87171', fontFamily: 'Share Tech Mono, monospace' }}>{def}</div>
+                            <div style={{ fontSize: 10, color: '#64748b' }}>Defender · {defDmg.toLocaleString()} dmg</div>
+                            <div style={{ fontSize: 9, color: '#475569' }}>{defRounds} rounds won</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>Declare winner:</div>
+                          <select
+                            value={battleWinner[bid] ?? 'attacker'}
+                            onChange={e => setBattleWinner(s => ({ ...s, [bid]: e.target.value as 'attacker' | 'defender' }))}
+                            style={{ ...inputStyle, width: 'auto', flex: 1, color: battleWinner[bid] === 'defender' ? '#f87171' : '#22d38a' }}
+                          >
+                            <option value="attacker">⚔️ {atk} (Attacker)</option>
+                            <option value="defender">🛡️ {def} (Defender)</option>
+                          </select>
+                          <button
+                            onClick={() => forceEndBattle(bid)}
+                            disabled={battleBusy[bid]}
+                            style={btnStyle('rgba(239,68,68,0.15)', '#ef4444', battleBusy[bid])}
+                          >
+                            {battleBusy[bid] ? <Spinner /> : <><Trophy size={12} /> Force End</>}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Recent Finished Battles */}
+              {finished.length > 0 && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10 }}>
+                  <div style={{ fontSize: 9, color: '#475569', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>Recent Finished</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {finished.map(b => {
+                      const finishedMs = b.finished_at ? new Date(b.finished_at).getTime() : null
+                      const startedMs = b.started_at ? (typeof b.started_at === 'number' ? b.started_at : new Date(b.started_at).getTime()) : null
+                      const durationMin = finishedMs && startedMs ? Math.floor((finishedMs - startedMs) / 60000) : null
+                      return (
+                        <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: 6, fontSize: 10 }}>
+                          <span style={{ color: '#ef4444', fontWeight: 700, fontFamily: 'monospace', minWidth: 32 }}>{b.attacker_id}</span>
+                          <span style={{ color: '#475569' }}>vs</span>
+                          <span style={{ color: '#60a5fa', fontWeight: 700, fontFamily: 'monospace', minWidth: 32 }}>{b.defender_id}</span>
+                          <span style={{ color: '#64748b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>— {b.region_name}</span>
+                          {b.winner && <span style={{ fontSize: 9, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', padding: '1px 6px', borderRadius: 3, fontWeight: 700, fontFamily: 'monospace' }}>🏆 {b.winner}</span>}
+                          {durationMin !== null && <span style={{ fontSize: 9, color: '#334155' }}>{durationMin}m</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )
+        })()}
       </div>
 
       {/* ── Country Randomizer card ── */}
@@ -843,6 +990,100 @@ export default function AdminPanel() {
                 </span>
               ))}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Territory Transfer card ── */}
+      <div style={{ ...cardStyle, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.04)', marginTop: 10 }}>
+        <div style={{ ...cardHeader, color: '#a78bfa' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 15 }}>🏴</span> TERRITORY TRANSFER
+          </span>
+          <button
+            onClick={() => { setShowTransfer(s => !s); setTransferResult(null) }}
+            style={btnStyle(showTransfer ? 'rgba(139,92,246,0.2)' : '#0f172a', '#a78bfa')}
+          >
+            {showTransfer ? 'Hide' : 'Open'}
+          </button>
+        </div>
+
+        {showTransfer && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 10, color: '#64748b', lineHeight: 1.5 }}>
+              Directly assign any region to a country. The map updates instantly for all players. <br/>
+              <span style={{ color: '#a78bfa' }}>From Country</span> is auto-detected if left blank.
+            </div>
+
+            {/* Region Name */}
+            <div>
+              <label style={labelStyle}>Region Name <span style={{ color: '#ef4444' }}>*</span></label>
+              <input
+                style={inputStyle}
+                placeholder='e.g. Florida, Texas, Ontario…'
+                value={transferForm.regionName}
+                onChange={e => setTransferForm(f => ({ ...f, regionName: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && doTransfer()}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {/* To Country */}
+              <div>
+                <label style={labelStyle}>Transfer To <span style={{ color: '#ef4444' }}>*</span></label>
+                <input
+                  style={{ ...inputStyle, borderColor: 'rgba(167,139,250,0.35)', textTransform: 'uppercase' }}
+                  placeholder='e.g. CU'
+                  maxLength={4}
+                  value={transferForm.toCountry}
+                  onChange={e => setTransferForm(f => ({ ...f, toCountry: e.target.value.toUpperCase() }))}
+                  onKeyDown={e => e.key === 'Enter' && doTransfer()}
+                />
+              </div>
+
+              {/* From Country (optional) */}
+              <div>
+                <label style={labelStyle}>From Country <span style={{ color: '#64748b' }}>(auto)</span></label>
+                <input
+                  style={{ ...inputStyle, textTransform: 'uppercase' }}
+                  placeholder='Leave blank to auto-detect'
+                  maxLength={4}
+                  value={transferForm.fromCountry}
+                  onChange={e => setTransferForm(f => ({ ...f, fromCountry: e.target.value.toUpperCase() }))}
+                  onKeyDown={e => e.key === 'Enter' && doTransfer()}
+                />
+              </div>
+            </div>
+
+            {/* Transfer Button */}
+            <button
+              onClick={doTransfer}
+              disabled={transferBusy || !transferForm.regionName.trim() || !transferForm.toCountry.trim()}
+              style={{
+                ...btnStyle(
+                  transferBusy ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.2)',
+                  '#a78bfa',
+                  transferBusy || !transferForm.regionName.trim() || !transferForm.toCountry.trim()
+                ),
+                justifyContent: 'center', padding: '10px 20px', fontSize: 12, fontWeight: 700,
+                boxShadow: transferBusy ? 'none' : '0 0 16px rgba(139,92,246,0.25)',
+                transition: 'all 0.2s',
+              }}
+            >
+              {transferBusy ? '⏳ Transferring…' : '🏴 Transfer Territory'}
+            </button>
+
+            {/* Result */}
+            {transferResult && (
+              <div style={{
+                padding: '8px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                background: transferResult.ok ? 'rgba(34,211,138,0.08)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${transferResult.ok ? 'rgba(34,211,138,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                color: transferResult.ok ? '#22d38a' : '#f87171',
+              }}>
+                {transferResult.msg}
+              </div>
+            )}
           </div>
         )}
       </div>
