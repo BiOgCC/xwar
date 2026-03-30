@@ -1394,12 +1394,41 @@ class BattleService {
       const roundDefDmg = activeRound.defenderDmgTotal
 
       if (roundAtkDmg > 0 || roundDefDmg > 0) {
+        // Active combat: side with more accumulated damage gets the point
         if (roundAtkDmg > roundDefDmg) activeRound.attackerPoints += pointIncrement
         else if (roundDefDmg > roundAtkDmg) activeRound.defenderPoints += pointIncrement
         else {
           // Tie: random
           if (Math.random() < 0.5) activeRound.attackerPoints += pointIncrement
           else activeRound.defenderPoints += pointIncrement
+        }
+      } else {
+        // ── ATTRITION: No player damage dealt — battle must still progress ──
+        // Use overall battle damage to determine momentum, or default to defender (home advantage).
+        const totalAtkDmg = battle.attacker.damageDealt
+        const totalDefDmg = battle.defender.damageDealt
+
+        if (totalAtkDmg > totalDefDmg) {
+          // Attacker has momentum from earlier fighting
+          activeRound.attackerPoints += Math.max(1, Math.floor(pointIncrement * 0.5))
+          battle.combatLog.push({
+            tick, timestamp: now, type: 'attrition' as any, side: 'attacker',
+            message: `⏳ Attacker momentum: +${Math.max(1, Math.floor(pointIncrement * 0.5))} ground points (no active combat)`,
+          })
+        } else if (totalDefDmg > totalAtkDmg) {
+          // Defender has momentum
+          activeRound.defenderPoints += Math.max(1, Math.floor(pointIncrement * 0.5))
+          battle.combatLog.push({
+            tick, timestamp: now, type: 'attrition' as any, side: 'defender',
+            message: `⏳ Defender momentum: +${Math.max(1, Math.floor(pointIncrement * 0.5))} ground points (no active combat)`,
+          })
+        } else {
+          // Total tie or zero damage from both sides — defender home advantage
+          activeRound.defenderPoints += 1
+          battle.combatLog.push({
+            tick, timestamp: now, type: 'attrition' as any, side: 'defender',
+            message: `🏠 Defender home advantage: +1 ground point (no active combat)`,
+          })
         }
       }
     }
