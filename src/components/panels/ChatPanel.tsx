@@ -16,21 +16,25 @@ function formatTime(ts: number): string {
 }
 
 export default function ChatPanel() {
-  const { activeChannel, messages, switchChannel, sendMessage } = useChatStore()
+  const { activeChannel, messages, allianceId, isLoading, error, initialize, switchChannel, sendMessage } = useChatStore()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const channelMessages = messages[activeChannel] || []
+
+  useEffect(() => {
+    initialize()
+  }, [initialize])
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [channelMessages.length])
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return
-    sendMessage(input)
-    setInput('')
+    const ok = await sendMessage(input)
+    if (ok) setInput('')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -41,7 +45,7 @@ export default function ChatPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '300px' }}>
+    <div className="chat-panel">
       {/* Channel tabs */}
       <div className="chat-tabs">
         {CHANNELS.map((ch) => (
@@ -49,6 +53,7 @@ export default function ChatPanel() {
             key={ch.id}
             className={`chat-tab ${activeChannel === ch.id ? 'chat-tab--active' : ''}`}
             onClick={() => switchChannel(ch.id)}
+            disabled={ch.id === 'alliance' && !allianceId}
           >
             {ch.icon} {ch.label}
           </button>
@@ -57,10 +62,35 @@ export default function ChatPanel() {
 
       {/* Messages */}
       <div className="chat-messages">
+        {isLoading && <div className="chat-msg"><div className="chat-msg__body"><div className="chat-msg__text">Loading chat...</div></div></div>}
+        {!isLoading && channelMessages.length === 0 && (
+          <div className="chat-msg">
+            <div className="chat-msg__body">
+              <div className="chat-msg__text">
+                {activeChannel === 'alliance' && !allianceId ? 'Join an alliance to unlock alliance chat.' : 'No messages yet.'}
+              </div>
+            </div>
+          </div>
+        )}
         {channelMessages.map((msg) => (
           <div key={msg.id} className="chat-msg">
             <div className="chat-msg__avatar">
-              {msg.isSystem ? '⚙️' : msg.senderCountry ? <CountryFlag iso={msg.senderCountry} size={16} /> : '👤'}
+              {msg.isSystem ? (
+                '⚙️'
+              ) : msg.senderAvatar ? (
+                <>
+                  <img className="chat-msg__avatar-img" src={msg.senderAvatar} alt={msg.sender} />
+                  {msg.senderCountry && (
+                    <span className="chat-msg__flag-badge">
+                      <CountryFlag iso={msg.senderCountry} size={12} />
+                    </span>
+                  )}
+                </>
+              ) : msg.senderCountry ? (
+                <CountryFlag iso={msg.senderCountry} size={16} />
+              ) : (
+                <span className="chat-msg__avatar-fallback">{msg.sender.slice(0, 1).toUpperCase()}</span>
+              )}
             </div>
             <div className="chat-msg__body">
               <div className="chat-msg__header">
@@ -84,9 +114,11 @@ export default function ChatPanel() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           maxLength={500}
+          disabled={isLoading || (activeChannel === 'alliance' && !allianceId) || activeChannel === 'whisper'}
         />
-        <button className="chat-send-btn" onClick={handleSend}>SEND</button>
+        <button className="chat-send-btn" onClick={() => void handleSend()} disabled={isLoading || !input.trim() || (activeChannel === 'alliance' && !allianceId) || activeChannel === 'whisper'}>SEND</button>
       </div>
+      {error && <div className="chat-error">{error}</div>}
     </div>
   )
 }

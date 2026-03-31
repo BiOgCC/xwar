@@ -26,6 +26,7 @@ import { initSocketHooks } from './api/socket-hooks'
 import AuthScreen from './components/auth/AuthScreen'
 import { useCompanyStore } from './stores/companyStore'
 import { useAuthStore } from './stores/authStore'
+import { useChatStore } from './stores/chatStore'
 import ActionBar from './components/layout/ActionBar'
 import NewsSlideshow from './components/layout/NewsSlideshow'
 import WorldNewsWidget from './components/layout/WorldNewsWidget'
@@ -73,6 +74,7 @@ function App() {
     if (isAuthenticated) {
       usePlayerStore.getState().fetchPlayer().catch(() => {})
       useCompanyStore.getState().fetchAll()
+      useChatStore.getState().initialize().catch(() => {})
 
       // ── Init socket hooks (battle:started, battle:state, occupation updates, etc.) ──
       import('./api/socket').then(({ socketManager }) => {
@@ -122,6 +124,9 @@ function App() {
           console.log(`[App] Hydrated ${Object.keys(toAdd).length} active battle(s) on load`)
         }).catch(() => {})
       })
+    }
+    if (!isAuthenticated) {
+      useChatStore.getState().reset()
     }
   }, [isAuthenticated])
 

@@ -117,6 +117,16 @@ export interface AuthResponse {
   player: { id: string; name: string }
 }
 
+export interface ChatMessageDto {
+  id: string
+  channel: 'global' | 'country' | 'alliance' | 'whisper'
+  sender: string
+  senderCountry: string
+  senderAvatar?: string | null
+  content: string
+  timestamp: number
+}
+
 export async function register(name: string, password: string, countryCode: string = 'US'): Promise<AuthResponse> {
   const res = await api.post<AuthResponse>('/auth/register', { name, password, countryCode })
   setAuthToken(res.token)
@@ -127,6 +137,20 @@ export async function login(name: string, password: string): Promise<AuthRespons
   const res = await api.post<AuthResponse>('/auth/login', { name, password })
   setAuthToken(res.token)
   return res
+}
+
+// ── Chat API ─────────────────────────────────────────────────
+
+export async function getChatBootstrap() {
+  return api.get<{
+    success: boolean
+    allianceId: string | null
+    messages: Record<'global' | 'country' | 'alliance' | 'whisper', ChatMessageDto[]>
+  }>('/chat/bootstrap')
+}
+
+export async function sendChatMessage(channel: 'global' | 'country' | 'alliance', content: string) {
+  return api.post<{ success: boolean; message: ChatMessageDto }>('/chat/message', { channel, content })
 }
 
 // ── Player API ───────────────────────────────────────────────

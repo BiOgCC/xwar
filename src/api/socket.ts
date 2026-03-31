@@ -60,6 +60,10 @@ class SocketManager {
     this.socket?.emit('join:country', countryCode)
   }
 
+  joinChat(channel: 'global' | 'country' | 'alliance') {
+    this.socket?.emit('join:chat', channel)
+  }
+
   // Add event listener
   on(event: string, callback: (...args: any[]) => void) {
     if (!this.socket) this.connect()

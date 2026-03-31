@@ -30,11 +30,16 @@ import leyLineRoutes from './routes/leylines.router.js'
 import gameRoutes from './routes/game.routes.js'
 import muRoutes from './routes/mu.routes.js'
 import prestigeRoutes from './routes/prestige.routes.js'
+import chatRoutes from './routes/chat.routes.js'
 
 import { generalLimiter, authLimiter, casinoLimiter } from './middleware/rateLimit.js'
 import { errorHandler } from './middleware/errorHandler.js'
 import { sanitizeInput } from './middleware/sanitize.js'
 import { initCronJobs } from './services/cron.service.js'
+import { verifyToken } from './middleware/auth.js'
+import { db } from './db/connection.js'
+import { players } from './db/schema.js'
+import { eq, sql } from 'drizzle-orm'
 
 // ── Role Management ──
 const args = process.argv.slice(2)
@@ -98,6 +103,7 @@ if (runApi) {
   app.use('/api/game', gameRoutes)
   app.use('/api/mu', muRoutes)
   app.use('/api/prestige', prestigeRoutes)
+  app.use('/api/chat', chatRoutes)
 
   // ── Restore persisted battles into memory on boot & wire Socket.IO ──
   import('./services/battle.service.js').then(({ battleService }) => {
@@ -121,6 +127,16 @@ if (runApi) {
 if (runWs && io) {
   io.on('connection', (socket) => {
     logger.info(`[WS] Client connected: ${socket.id}`)
+    const token = socket.handshake.auth?.token
+    let socketPlayer: { playerId: string; playerName: string } | null = null
+
+    try {
+      if (typeof token === 'string' && token.length > 0) {
+        socketPlayer = verifyToken(token)
+      }
+    } catch {
+      socketPlayer = null
+    }
 
     // Personal room — allows targeted salary:paid, company:disabled events
     socket.on('authenticate', (playerId: string) => {
@@ -143,6 +159,46 @@ if (runWs && io) {
 
     socket.on('join:market', () => {
       socket.join('market')
+    })
+
+    socket.on('join:chat', async (channel: 'global' | 'country' | 'alliance') => {
+      if (channel === 'global') {
+        socket.join('chat:global')
+        return
+      }
+
+      if (!socketPlayer?.playerId) return
+
+      try {
+        if (channel === 'country') {
+          const [player] = await db
+            .select({ countryCode: players.countryCode })
+            .from(players)
+            .where(eq(players.id, socketPlayer.playerId))
+            .limit(1)
+
+          if (player?.countryCode) {
+            socket.join(`chat:country:${player.countryCode}`)
+          }
+          return
+        }
+
+        const allianceResult = await db.execute(sql`
+          SELECT id
+          FROM alliances
+          WHERE leader_id = ${socketPlayer.playerId}
+             OR members @> ${JSON.stringify([{ id: socketPlayer.playerId }])}::jsonb
+          LIMIT 1
+        `)
+        const allianceRows = Array.isArray(allianceResult) ? allianceResult : (allianceResult as any)?.rows ?? []
+        const allianceId = allianceRows[0]?.id
+
+        if (allianceId) {
+          socket.join(`chat:alliance:${allianceId}`)
+        }
+      } catch (err) {
+        logger.warn({ err }, '[WS] Failed to join chat room')
+      }
     })
 
     // Global ley line updates

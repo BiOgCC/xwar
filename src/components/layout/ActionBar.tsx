@@ -15,7 +15,8 @@ import {
   Fish,
   Beef,
   Landmark,
-  Layers
+  Layers,
+  MessageSquare
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { usePlayerStore } from '../../stores/playerStore'
@@ -382,6 +383,19 @@ export default function ActionBar() {
           <span className="action-bar__icon"><Backpack {...ICON_PROPS} /></span>
           <span className="action-bar__label">INVENTORY</span>
           <span className="action-bar__status action-bar__status--neutral">ITEMS</span>
+        </button>
+      </div>
+
+      {/* ═══ CHAT ═══ */}
+      <div className="action-bar__slot">
+        <button
+          className={`action-bar__btn${activePanel === 'chat' ? ' action-bar__btn--active' : ''}`}
+          onClick={() => togglePanel('chat')}
+          title="Chat"
+        >
+          <span className="action-bar__icon"><MessageSquare {...ICON_PROPS} /></span>
+          <span className="action-bar__label">CHAT</span>
+          <span className="action-bar__status action-bar__status--neutral">LIVE</span>
         </button>
       </div>
 

@@ -26,6 +26,7 @@ import SettingsPanel from '../panels/SettingsPanel'
 import HelpPanel from '../panels/HelpPanel'
 import HistoryPanel from '../panels/HistoryPanel'
 import DiplomacyPanel from '../panels/DiplomacyPanel'
+import ChatPanel from '../panels/ChatPanel'
 import RegionPanel from '../panels/RegionPanel'
 import AdminPanel from '../panels/AdminPanel'
 
@@ -33,7 +34,7 @@ import {
   User, Backpack, BarChart2, Factory, CircleDollarSign,
   Gamepad2, Target, TrendingUp, Handshake, Landmark,
   ClipboardList, Swords, Monitor, Shield, Medal, Star, ScrollText,
-  Beer, ChevronLeft, Flag, Zap, ShieldAlert
+  Beer, ChevronLeft, Flag, Zap, ShieldAlert, MessageSquare
 } from 'lucide-react'
 
 const SIDEBAR_ICON_PROPS = { color: '#22d38a', size: 16, strokeWidth: 2 }
@@ -60,6 +61,7 @@ function getSidebarIcon(id: string) {
     case 'mu': return <Flag {...SIDEBAR_ICON_PROPS} />
     case 'prestige': return <Star {...SIDEBAR_ICON_PROPS} />
     case 'diplomacy': return <Handshake {...SIDEBAR_ICON_PROPS} />
+    case 'chat': return <MessageSquare {...SIDEBAR_ICON_PROPS} />
     case 'history': return <ScrollText {...SIDEBAR_ICON_PROPS} />
     case 'region': return <Target {...SIDEBAR_ICON_PROPS} />
     case 'admin': return <ShieldAlert {...SIDEBAR_ICON_PROPS} color="#ef4444" />
@@ -155,6 +157,7 @@ export default function PanelRouter() {
   const player = usePlayerStore()
   const world = useWorldStore()
   const { topItems, bottomItems, moveItem, resetLayout } = useSidebarLayoutStore()
+  const isChatPanel = activePanel === 'chat'
 
   const [navOpen, setNavOpen] = useState(false)
   const [dragState, setDragState] = useState<DragState | null>(null)
@@ -172,6 +175,12 @@ export default function PanelRouter() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [goBack])
+
+  useEffect(() => {
+    if (isChatPanel && navOpen) {
+      setNavOpen(false)
+    }
+  }, [isChatPanel, navOpen])
 
   /* ── drag handlers ── */
   const handleDragStart = useCallback((panel: PanelId, index: number, e: React.DragEvent) => {
@@ -229,7 +238,7 @@ export default function PanelRouter() {
   if (!activePanel) return null
 
   return (
-    <div className="hud-panel-wrap">
+    <div className={`hud-panel-wrap ${isChatPanel ? 'hud-panel-wrap--chat' : ''}`}>
       {/* ── Toggle tab (left edge of nav drawer) ── */}
       <button
         className="hud-panel-nav__toggle"
@@ -269,7 +278,7 @@ export default function PanelRouter() {
       </nav>
 
       {/* ── Main panel ── */}
-      <aside className={`hud-panel ${panelFullscreen ? 'hud-panel--fullscreen' : ''}`}>
+      <aside className={`hud-panel ${isChatPanel ? 'hud-panel--chat' : ''} ${panelFullscreen ? 'hud-panel--fullscreen' : ''}`}>
         <div className="hud-panel__header">
           <h3 className="hud-panel__title">
             {activePanel === 'government'
@@ -286,6 +295,8 @@ export default function PanelRouter() {
               ? '📜 WAR HISTORY'
               : activePanel === 'diplomacy'
               ? '🤝 DIPLOMACY'
+              : activePanel === 'chat'
+              ? '💬 CHAT'
               : activePanel === 'ley_lines'
               ? '⚡ LEY LINE CORRIDORS'
               : activePanel === 'armed_forces'
@@ -324,7 +335,7 @@ export default function PanelRouter() {
           </div>
         </div>
 
-        <div className="hud-panel__body">
+        <div className={`hud-panel__body ${isChatPanel ? 'hud-panel__body--chat' : ''}`}>
           {activePanel === 'profile' && <ProfilePanel />}
           {activePanel === 'military' && <MilitaryPanel />}
           {activePanel === 'mu' && <MUPanel />}
@@ -433,25 +444,28 @@ export default function PanelRouter() {
           {activePanel === 'help' && <HelpPanel />}
           {activePanel === 'history' && <HistoryPanel />}
           {activePanel === 'diplomacy' && <DiplomacyPanel />}
+          {activePanel === 'chat' && <ChatPanel />}
           {activePanel === 'admin' && <AdminPanel />}
 
 
         </div>
 
         {/* ── Quick-access icons at the bottom ── */}
-        <div className="hud-panel__quicknav">
-          {QUICK_NAV.map(q => (
-            <button
-              key={q.id}
-              className={`hud-panel__quicknav-btn ${(q.id === 'profile' || q.id === 'companies' || q.id === 'inventory') ? (activePanel === 'profile' ? 'hud-panel__quicknav-btn--active' : '') : (activePanel === q.id ? 'hud-panel__quicknav-btn--active' : '')}`}
-              onClick={() => handleQuickNav(q.id)}
-              title={q.label}
-            >
-              <span className="hud-panel__quicknav-icon">{getSidebarIcon(q.id)}</span>
-              <span className="hud-panel__quicknav-label">{q.label}</span>
-            </button>
-          ))}
-        </div>
+        {!isChatPanel && (
+          <div className="hud-panel__quicknav">
+            {QUICK_NAV.map(q => (
+              <button
+                key={q.id}
+                className={`hud-panel__quicknav-btn ${(q.id === 'profile' || q.id === 'companies' || q.id === 'inventory') ? (activePanel === 'profile' ? 'hud-panel__quicknav-btn--active' : '') : (activePanel === q.id ? 'hud-panel__quicknav-btn--active' : '')}`}
+                onClick={() => handleQuickNav(q.id)}
+                title={q.label}
+              >
+                <span className="hud-panel__quicknav-icon">{getSidebarIcon(q.id)}</span>
+                <span className="hud-panel__quicknav-label">{q.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
 
       </aside>

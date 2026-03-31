@@ -174,6 +174,25 @@ export const dailyRewards = pgTable('daily_rewards', {
 })
 
 // ═══════════════════════════════════════════════
+//  CHAT MESSAGES
+// ═══════════════════════════════════════════════
+
+export const chatMessages = pgTable('chat_messages', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  channel:       varchar('channel', { length: 16 }).notNull(), // global | country | alliance | whisper
+  scopeId:       varchar('scope_id', { length: 64 }),          // country code / alliance id / target player id
+  senderId:      uuid('sender_id').references(() => players.id, { onDelete: 'cascade' }).notNull(),
+  senderName:    varchar('sender_name', { length: 32 }).notNull(),
+  senderCountry: varchar('sender_country', { length: 4 }).references(() => countries.code),
+  content:       text('content').notNull(),
+  createdAt:     timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  channelIdx: index('idx_chat_messages_channel').on(table.channel),
+  scopeIdx: index('idx_chat_messages_scope').on(table.scopeId),
+  createdAtIdx: index('idx_chat_messages_created_at').on(table.createdAt),
+}))
+
+// ═══════════════════════════════════════════════
 //  ITEMS (single source of truth)
 // ═══════════════════════════════════════════════
 

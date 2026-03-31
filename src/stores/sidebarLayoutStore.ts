@@ -13,6 +13,7 @@ const DEFAULT_TOP: SidebarItem[] = [
   { id: 'inventory', icon: '🎒', label: 'INVENTORY' },
   { id: 'market', icon: '📊', label: 'MARKET' },
   { id: 'companies', icon: '🏭', label: 'COMPANIES' },
+  { id: 'chat', icon: '💬', label: 'CHAT' },
   { id: 'resources', icon: '💰', label: 'RESOURCES' },
   { id: 'casino', icon: '🎰', label: 'CASINO' },
   { id: 'ley_lines', icon: '⚡', label: 'LEY LINES' },
@@ -81,6 +82,10 @@ export const useSidebarLayoutStore = create<SidebarLayoutState>()(
           const removedIds = ['armed_forces']
           state.topItems = state.topItems.filter(i => !removedIds.includes(i.id))
           state.bottomItems = state.bottomItems.filter(i => !removedIds.includes(i.id))
+          const hasChat = state.topItems.some(i => i.id === 'chat') || state.bottomItems.some(i => i.id === 'chat')
+          if (!hasChat) {
+            state.topItems.splice(4, 0, { id: 'chat', icon: '💬', label: 'CHAT' })
+          }
         }
       },
     }

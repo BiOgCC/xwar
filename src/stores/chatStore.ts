@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-
-// ====== TYPES ======
+import { getChatBootstrap, sendChatMessage, type ChatMessageDto } from '../api/client'
+import { socketManager } from '../api/socket'
 
 export type ChatChannel = 'global' | 'alliance' | 'country' | 'whisper'
 
@@ -9,68 +9,153 @@ export interface ChatMsg {
   channel: ChatChannel
   sender: string
   senderCountry: string
+  senderAvatar?: string | null
   content: string
   timestamp: number
   isSystem?: boolean
 }
 
-// ====== STORE ======
+type ChatMessages = Record<ChatChannel, ChatMsg[]>
+
+const EMPTY_MESSAGES: ChatMessages = {
+  global: [],
+  alliance: [],
+  country: [],
+  whisper: [
+    {
+      id: 'whisper-system',
+      channel: 'whisper',
+      sender: 'System',
+      senderCountry: '',
+      content: 'Direct messages are not implemented yet.',
+      timestamp: Date.now(),
+      isSystem: true,
+    },
+  ],
+}
+
+function dedupeMessages(messages: ChatMsg[]): ChatMsg[] {
+  const seen = new Set<string>()
+  return messages.filter((msg) => {
+    if (seen.has(msg.id)) return false
+    seen.add(msg.id)
+    return true
+  })
+}
+
+function normalizeMessage(msg: ChatMessageDto): ChatMsg {
+  return {
+    id: msg.id,
+    channel: msg.channel,
+    sender: msg.sender,
+    senderCountry: msg.senderCountry,
+    senderAvatar: msg.senderAvatar ?? null,
+    content: msg.content,
+    timestamp: msg.timestamp,
+  }
+}
+
+let socketBound = false
 
 export interface ChatState {
   activeChannel: ChatChannel
-  messages: Record<ChatChannel, ChatMsg[]>
+  allianceId: string | null
+  messages: ChatMessages
+  isLoading: boolean
+  error: string | null
+  initialized: boolean
   switchChannel: (channel: ChatChannel) => void
-  sendMessage: (content: string, sender?: string, country?: string) => void
-}
-
-let msgCounter = 0
-
-// Seed messages
-const SEED_MESSAGES: Record<ChatChannel, ChatMsg[]> = {
-  global: [
-    { id: 'g1', channel: 'global', sender: 'System', senderCountry: '', content: '🌍 Welcome to XWAR Global Chat. Be respectful.', timestamp: Date.now() - 600000, isSystem: true },
-    { id: 'g2', channel: 'global', sender: 'IronWolf', senderCountry: 'RU', content: 'Anyone want to trade? Got excess oil', timestamp: Date.now() - 500000 },
-    { id: 'g3', channel: 'global', sender: 'SamuraiX', senderCountry: 'JP', content: 'GG on that last battle, US team put up a fight', timestamp: Date.now() - 400000 },
-    { id: 'g4', channel: 'global', sender: 'ReichGuard', senderCountry: 'DE', content: 'NATO needs more members, join up!', timestamp: Date.now() - 300000 },
-    { id: 'g5', channel: 'global', sender: 'DragonLord', senderCountry: 'CN', content: 'Eastern Bloc rising 🔴', timestamp: Date.now() - 200000 },
-    { id: 'g6', channel: 'global', sender: 'AmazonWarrior', senderCountry: 'BR', content: 'Who controls the Atlantic? Need naval passage', timestamp: Date.now() - 100000 },
-  ],
-  alliance: [
-    { id: 'a1', channel: 'alliance', sender: 'System', senderCountry: '', content: '🤝 Alliance chat — only members can see this', timestamp: Date.now() - 300000, isSystem: true },
-    { id: 'a2', channel: 'alliance', sender: 'EagleEye', senderCountry: 'US', content: 'Coordinating attack on RU Caucasus region, need naval support', timestamp: Date.now() - 200000 },
-    { id: 'a3', channel: 'alliance', sender: 'CrownForce', senderCountry: 'GB', content: 'I can send warships from East Atlantic', timestamp: Date.now() - 150000 },
-  ],
-  country: [
-    { id: 'c1', channel: 'country', sender: 'System', senderCountry: '', content: '🏳️ Country chat — citizens only', timestamp: Date.now() - 200000, isSystem: true },
-    { id: 'c2', channel: 'country', sender: 'Commander', senderCountry: 'US', content: 'Treasury looking good, should we upgrade airport?', timestamp: Date.now() - 100000 },
-  ],
-  whisper: [
-    { id: 'w1', channel: 'whisper', sender: 'System', senderCountry: '', content: '💬 Direct messages — private conversations', timestamp: Date.now() - 100000, isSystem: true },
-  ],
+  initialize: () => Promise<void>
+  sendMessage: (content: string) => Promise<boolean>
+  receiveMessage: (message: ChatMsg) => void
+  reset: () => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   activeChannel: 'global',
-  messages: SEED_MESSAGES,
+  allianceId: null,
+  messages: EMPTY_MESSAGES,
+  isLoading: false,
+  error: null,
+  initialized: false,
 
   switchChannel: (channel) => set({ activeChannel: channel }),
 
-  sendMessage: (content, sender = 'Commander', country = 'US') => {
-    if (!content.trim()) return
-    const { activeChannel } = get()
-    const msg: ChatMsg = {
-      id: `msg-${++msgCounter}-${Date.now()}`,
-      channel: activeChannel,
-      sender,
-      senderCountry: country,
-      content: content.trim(),
-      timestamp: Date.now(),
+  initialize: async () => {
+    if (get().initialized || get().isLoading) return
+
+    set({ isLoading: true, error: null })
+
+    try {
+      socketManager.connect()
+      const res = await getChatBootstrap()
+
+      set({
+        allianceId: res.allianceId,
+        initialized: true,
+        isLoading: false,
+        messages: {
+          global: res.messages.global.map(normalizeMessage),
+          country: res.messages.country.map(normalizeMessage),
+          alliance: res.messages.alliance.map(normalizeMessage),
+          whisper: EMPTY_MESSAGES.whisper,
+        },
+      })
+
+      socketManager.joinChat('global')
+      socketManager.joinChat('country')
+      if (res.allianceId) socketManager.joinChat('alliance')
+
+      if (!socketBound) {
+        socketBound = true
+        socketManager.on('chat:message', (message: ChatMessageDto) => {
+          get().receiveMessage(normalizeMessage(message))
+        })
+      }
+    } catch (err) {
+      set({
+        isLoading: false,
+        error: err instanceof Error ? err.message : 'Failed to initialize chat',
+      })
     }
+  },
+
+  sendMessage: async (content) => {
+    const trimmed = content.trim()
+    const { activeChannel } = get()
+
+    if (!trimmed) return false
+    if (activeChannel === 'whisper') {
+      set({ error: 'Direct messages are not implemented yet.' })
+      return false
+    }
+
+    try {
+      const res = await sendChatMessage(activeChannel as 'global' | 'country' | 'alliance', trimmed)
+      get().receiveMessage(normalizeMessage(res.message))
+      set({ error: null })
+      return true
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to send message' })
+      return false
+    }
+  },
+
+  receiveMessage: (message) => {
     set((state) => ({
       messages: {
         ...state.messages,
-        [activeChannel]: [...state.messages[activeChannel], msg],
+        [message.channel]: dedupeMessages([...state.messages[message.channel], message]).slice(-100),
       },
     }))
   },
+
+  reset: () => set({
+    activeChannel: 'global',
+    allianceId: null,
+    messages: EMPTY_MESSAGES,
+    isLoading: false,
+    error: null,
+    initialized: false,
+  }),
 }))
