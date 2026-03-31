@@ -374,6 +374,36 @@ export async function hydrateGameState(): Promise<boolean> {
       console.log(`[HYDRATE] 🗺️ Restored ${Object.keys(occupationMap).length} occupied region(s) from server`)
     }
 
+    // Hydrate region infrastructure state from server
+    if (state.regionState && Array.isArray(state.regionState) && state.regionState.length > 0) {
+      const { useRegionStore } = await import('../stores/regionStore')
+      const regionState = state.regionState as Array<{
+        regionId: string; countryCode: string | null;
+        bunkerLevel?: number; militaryBaseLevel?: number; portLevel?: number;
+        airportLevel?: number; missileLauncherLevel?: number;
+        infraEnabled?: Record<string, boolean>; revoltPressure?: number;
+      }>
+      useRegionStore.setState(s => ({
+        ...s,
+        regions: s.regions.map(r => {
+          const db = regionState.find(rs => rs.regionId === r.id)
+          if (!db) return r
+          return {
+            ...r,
+            controlledBy: db.countryCode || r.controlledBy || r.countryCode,
+            bunkerLevel: db.bunkerLevel ?? (r as any).bunkerLevel ?? 0,
+            militaryBaseLevel: db.militaryBaseLevel ?? (r as any).militaryBaseLevel ?? 0,
+            portLevel: db.portLevel ?? (r as any).portLevel ?? 0,
+            airportLevel: db.airportLevel ?? (r as any).airportLevel ?? 0,
+            missileLauncherLevel: db.missileLauncherLevel ?? (r as any).missileLauncherLevel ?? 0,
+            infraEnabled: db.infraEnabled ?? (r as any).infraEnabled ?? {},
+            revoltPressure: db.revoltPressure ?? (r as any).revoltPressure ?? 0,
+          }
+        }),
+      }))
+      console.log(`[HYDRATE] 🏗️ Restored infrastructure state for ${regionState.length} region(s)`)
+    }
+
     console.log('[HYDRATE] ✅ Game state synced from server')
     return true
   } catch (error) {

@@ -31,6 +31,7 @@ import gameRoutes from './routes/game.routes.js'
 import muRoutes from './routes/mu.routes.js'
 import prestigeRoutes from './routes/prestige.routes.js'
 import chatRoutes from './routes/chat.routes.js'
+import regionRoutes from './routes/region.routes.js'
 
 import { generalLimiter, authLimiter, casinoLimiter } from './middleware/rateLimit.js'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -104,6 +105,7 @@ if (runApi) {
   app.use('/api/mu', muRoutes)
   app.use('/api/prestige', prestigeRoutes)
   app.use('/api/chat', chatRoutes)
+  app.use('/api/regions', regionRoutes)
 
   // ── Restore persisted battles into memory on boot & wire Socket.IO ──
   import('./services/battle.service.js').then(({ battleService }) => {

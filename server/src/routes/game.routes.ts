@@ -15,7 +15,7 @@ import {
   marketOrders, countryStocks, stockHoldings, bonds,
   bounties, armies, armyMembers, alliances,
   dailyRewards, tradeRouteState, newsEvents,
-  militaryUnits, muMembers, companies,
+  militaryUnits, muMembers, companies, regionOwnership,
 } from '../db/schema.js'
 import { battleService } from '../services/battle.service.js'
 
@@ -157,6 +157,9 @@ router.get('/state', requireAuth as any, async (req, res) => {
       }
     }
 
+    // ── Region Ownership (infrastructure + revolt state) ──
+    const regionState = await db.select().from(regionOwnership)
+
     // ── Assemble Response ──
     res.json({
       player: {
@@ -186,6 +189,7 @@ router.get('/state', requireAuth as any, async (req, res) => {
       tradeRoutes,
       news,
       occupationMap,  // { [regionName]: controllerCode } — used to restore controlledBy on login
+      regionState,     // regionOwnership rows — infrastructure, revolt pressure, etc.
     })
   } catch (err) {
     logger.error(err, '[GAME] State hydration error')

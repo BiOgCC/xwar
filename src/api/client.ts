@@ -621,3 +621,99 @@ export async function getCitizens(countryCode: string) {
 export async function healthCheck() {
   return api.get<{ status: string; timestamp: string }>('/health')
 }
+
+// ── Region API ──────────────────────────────────────────────
+
+export async function getRegions() {
+  return api.get<{ success: boolean; regions: any[] }>('/regions')
+}
+
+export async function transferRegion(regionId: string, targetCountry: string) {
+  return api.post<{ success: boolean; message: string }>(`/regions/${regionId}/transfer`, { targetCountry })
+}
+
+export async function buildRegionInfrastructure(regionId: string, infraKey: string, action: 'build' | 'toggle' = 'build') {
+  return api.post<{ success: boolean; message: string; newLevel?: number; infraEnabled?: Record<string, boolean> }>(
+    `/regions/${regionId}/infrastructure`, { infraKey, action }
+  )
+}
+
+// ── Bounty API ──────────────────────────────────────────────
+
+export async function getActiveBounties() {
+  return api.get<{ success: boolean; bounties: any[] }>('/bounty/active')
+}
+
+export async function placeBounty(targetName: string, reward: number, reason?: string) {
+  return api.post<{ success: boolean; bounty: any; message: string }>('/bounty/place', { targetName, reward, reason })
+}
+
+export async function claimBounty(bountyId: string) {
+  return api.post<{ success: boolean; reward: number; message: string }>('/bounty/claim', { bountyId })
+}
+
+export async function subscribeBounty(bountyId: string) {
+  return api.post<{ success: boolean; message: string }>(`/bounty/subscribe/${bountyId}`, {})
+}
+
+export async function unsubscribeBounty(bountyId: string) {
+  return api.post<{ success: boolean; message: string }>(`/bounty/unsubscribe/${bountyId}`, {})
+}
+
+// ── Trade Route API ─────────────────────────────────────────
+
+export async function getTradeRoutes() {
+  return api.get<{ success: boolean; routes: any[] }>('/trade-routes')
+}
+
+export async function disruptTradeRoute(routeId: string, durationMinutes = 30, reason = 'naval disruption') {
+  return api.post<{ success: boolean; routeId: string; disruptedUntil: string }>('/trade-routes/disrupt', { routeId, durationMinutes, reason })
+}
+
+export async function targetTradeRoute(routeId: string) {
+  return api.post<{ success: boolean; routeId: string; marked: boolean }>('/trade-routes/target', { routeId })
+}
+
+export async function getTradeRouteIncome() {
+  return api.get<{ success: boolean; totalMoney: number; totalOil: number; routes: any[] }>('/trade-routes/income')
+}
+
+// ── Raid API ────────────────────────────────────────────────
+
+export async function getActiveRaid() {
+  return api.get<{ success: boolean; event: any; participants: any[] }>('/raid/active')
+}
+
+export async function raidAttack(eventId: string) {
+  return api.post<{ success: boolean; damage: number; isCrit: boolean; message: string }>('/raid/attack', { eventId })
+}
+
+export async function fundRaid(eventId: string, amount: number) {
+  return api.post<{ success: boolean; funded: number; bossDmg: number; message: string }>('/raid/fund', { eventId, amount })
+}
+
+export async function getRaidHistory() {
+  return api.get<{ success: boolean; events: any[] }>('/raid/history')
+}
+
+// ── Ley Line API ────────────────────────────────────────────
+
+export async function getLeyLines() {
+  return api.get<{ success: boolean; lines: any[] }>('/ley-lines')
+}
+
+export async function getLeyLinesByCountry(countryCode: string) {
+  return api.get<{ success: boolean; lines: any[] }>(`/ley-lines/country/${countryCode}`)
+}
+
+export async function getLeyLinesByRegion(regionId: string) {
+  return api.get<{ success: boolean; lines: any[] }>(`/ley-lines/region/${regionId}`)
+}
+
+export async function getLeyLineDefs() {
+  return api.get<{ success: boolean; defs: any[] }>('/ley-lines/defs')
+}
+
+export async function getLeyLineDetail(lineId: string) {
+  return api.get<{ success: boolean; line: any }>(`/ley-lines/${lineId}`)
+}

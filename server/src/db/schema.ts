@@ -106,6 +106,7 @@ export const players = pgTable('players', {
   totalCasinoLosses: bigint('total_casino_losses', { mode: 'number' }).default(0),
   bankruptcyCount: integer('bankruptcy_count').default(0),
   countrySwitches: integer('country_switches').default(0),
+  lastCountrySwitchAt: timestamp('last_country_switch_at'),
   casinoSpins:     integer('casino_spins').default(0),
   itemsDestroyed:  integer('items_destroyed').default(0),
 
@@ -784,6 +785,15 @@ export const regionOwnership = pgTable('region_ownership', {
   regionId:    varchar('region_id', { length: 16 }).primaryKey(),  // e.g. 'US-CA'
   countryCode: varchar('country_code', { length: 4 }).references(() => countries.code),
   allianceId:  uuid('alliance_id'),
+  // Infrastructure levels (0 = not built)
+  bunkerLevel:          integer('bunker_level').default(0),
+  militaryBaseLevel:    integer('military_base_level').default(0),
+  portLevel:            integer('port_level').default(0),
+  airportLevel:         integer('airport_level').default(0),
+  missileLauncherLevel: integer('missile_launcher_level').default(0),
+  infraEnabled:         jsonb('infra_enabled').default({ bunkerLevel: true, militaryBaseLevel: true, portLevel: true, airportLevel: true, missileLauncherLevel: true }),
+  // Revolt pressure (0–100)
+  revoltPressure:       integer('revolt_pressure').default(0),
   capturedAt:  timestamp('captured_at').defaultNow(),
   updatedAt:   timestamp('updated_at').defaultNow(),
 }, (t) => ({

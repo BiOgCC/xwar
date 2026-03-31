@@ -390,15 +390,31 @@ router.patch('/country', async (req, res) => {
       return
     }
 
+    // Enforce 24h cooldown
+    const [playerRow] = await db.select({
+      lastSwitch: players.lastCountrySwitchAt,
+    }).from(players).where(eq(players.id, playerId)).limit(1)
+
+    if (playerRow?.lastSwitch) {
+      const elapsed = Date.now() - new Date(playerRow.lastSwitch).getTime()
+      const COOLDOWN_MS = 24 * 60 * 60 * 1000
+      if (elapsed < COOLDOWN_MS) {
+        const hoursLeft = Math.ceil((COOLDOWN_MS - elapsed) / 3_600_000)
+        res.status(400).json({ error: `Must wait ${hoursLeft}h before switching countries again.` })
+        return
+      }
+    }
+
     // Verify country exists
     const [country] = await db.execute(sql`SELECT code FROM countries WHERE code = ${countryCode}`)
     if (!country) { res.status(404).json({ error: 'Country not found' }); return }
 
-    // Update country + track switch
+    // Update country + track switch + set cooldown timestamp
     await db.execute(sql`
       UPDATE players SET 
         country_code = ${countryCode},
-        country_switches = country_switches + 1
+        country_switches = country_switches + 1,
+        last_country_switch_at = NOW()
       WHERE id = ${playerId}
     `)
 
