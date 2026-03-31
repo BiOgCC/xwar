@@ -2,11 +2,13 @@
 
 # ⬡ XWAR
 
-**A geopolitical strategy game built with React & MapLibre**
+**A real-time geopolitical strategy MMO built with React, Express & PostgreSQL**
 
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Express](https://img.shields.io/badge/Express-4.21-000000?logo=express&logoColor=white)](https://expressjs.com)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white)](https://neon.tech)
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-4.7-010101?logo=socket.io&logoColor=white)](https://socket.io)
 [![License](https://img.shields.io/badge/License-Private-red)]()
 
 </div>
@@ -15,21 +17,27 @@
 
 ## 🎮 Overview
 
-XWAR is a **real-time geopolitical war game** where players compete for global dominance. Command armies, manage economies, trade resources on a global market, and form empires — all rendered on an interactive dark-themed world map.
-
-This is a **client-side MVP** with mock data — no backend server required. The goal is a stunning, functional UI that demonstrates the full game loop.
+XWAR is a **multiplayer geopolitical war game** where players compete for global dominance. Command armies, manage economies, wage cyber warfare, trade on a global market, and build empires — all rendered on an interactive dark-themed world map with real-time updates via WebSocket.
 
 ---
 
-## ✨ Features
+## ✨ Core Systems
 
-- **🗺️ Interactive World Map** — Full-screen MapLibre GL map with a dark military theme, country markers, and region popups on click
-- **⚔️ Combat System** — Launch attacks against other countries, track battle history, and climb the ranks
-- **📊 Resource Market** — Live market prices for Food, Oil, Material X, and Equipment with price trend indicators
-- **🏭 Companies** — Own and manage companies that produce resources each turn
-- **🏛️ Government** — View active wars, government structure, and political information
-- **💬 AI Advisor** — In-game chat with an AI strategic advisor
-- **🎨 Military HUD** — Dark theme UI with glassmorphism, glow effects, and scanline overlays
+| System | Description |
+|--------|-------------|
+| **🗺️ World Map** | Full-screen MapLibre GL map with region markers, ley line overlays, and trade route visualization |
+| **⚔️ Battle System** | Server-authoritative combat with rounds, divisions, adrenaline, battle orders, and equipment stats |
+| **🌐 Region Ownership** | Server-persisted region state with infrastructure levels, revolt pressure, and government transfers |
+| **📊 Market & Stocks** | Live resource market, country stock exchange, bonds, and trade routes with disruption mechanics |
+| **🏭 Companies** | Player-owned production companies with jobs, maintenance, and oil upkeep |
+| **🏛️ Government** | Elections (PP-weighted), congress, law proposals, tax rates, embargoes, alliances, nuclear authorization |
+| **🎖️ Military Units** | Player-owned and state-owned MUs with vaults, upgrades, contracts, and weekly damage tracking |
+| **🎰 Casino** | Slots, blackjack, and crash — all server-driven with atomic balance operations |
+| **🕵️ Cyber Ops** | Espionage, sabotage, and propaganda missions with a breach minigame |
+| **🚢 Naval & Trade Routes** | Naval operations, trade route disruption, and strategic objectives |
+| **🔮 Ley Lines** | Continental power networks with region-based node control, bonuses, tradeoffs, and resonance |
+| **🎯 Bounties & Raids** | Player bounties with hunter subscriptions; raid boss damage-race events |
+| **💬 Chat** | Global, country, alliance, and whisper channels |
 
 ---
 
@@ -37,12 +45,16 @@ This is a **client-side MVP** with mock data — no backend server required. The
 
 | Layer | Tool |
 |---|---|
-| **Framework** | React 19 + TypeScript |
-| **Bundler** | Vite 8 |
+| **Frontend** | React 19 + TypeScript + Vite |
 | **Map** | MapLibre GL JS |
 | **State** | Zustand |
 | **Animations** | Framer Motion |
 | **Styling** | Vanilla CSS (dark military theme) |
+| **Backend** | Express 4 + TypeScript (tsx) |
+| **Database** | PostgreSQL (Neon) via Drizzle ORM |
+| **Real-time** | Socket.IO |
+| **Auth** | JWT + bcrypt |
+| **Validation** | Zod |
 
 ---
 
@@ -51,7 +63,7 @@ This is a **client-side MVP** with mock data — no backend server required. The
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (v18+)
-- npm or yarn
+- PostgreSQL database (or [Neon](https://neon.tech) serverless)
 
 ### Installation
 
@@ -60,20 +72,40 @@ This is a **client-side MVP** with mock data — no backend server required. The
 git clone https://github.com/AminemlA/xwar.git
 cd xwar
 
-# Install dependencies
+# Install client dependencies
 npm install
 
-# Start the development server
-npm run dev
+# Install server dependencies
+cd server && npm install
 ```
 
-The app will be available at `http://localhost:5173`.
+### Configuration
 
-### Build for Production
+Create `server/.env`:
+
+```env
+DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
+JWT_SECRET=your_jwt_secret
+```
+
+### Database Setup
 
 ```bash
-npm run build
-npm run preview
+# Push schema to database
+cd server && npm run db:push
+
+# Seed initial data
+npm run db:seed
+```
+
+### Running
+
+```bash
+# Terminal 1: Start the server (port 3001)
+cd server && npm run dev
+
+# Terminal 2: Start the client (port 5173)
+npm run dev
 ```
 
 ---
@@ -82,44 +114,58 @@ npm run preview
 
 ```
 xwar/
-├── public/              # Static assets (favicon, icons)
-├── src/
-│   ├── components/
-│   │   └── map/         # GameMap, RegionPopup
-│   ├── stores/          # Zustand state management
-│   │   ├── playerStore  # Player resources, rank, actions
-│   │   ├── worldStore   # Countries, wars, empires
-│   │   ├── marketStore  # Resource prices, order book
-│   │   └── uiStore      # Active panels, modals, notifications
-│   ├── styles/          # CSS design system
-│   │   ├── variables    # Color palette, typography, spacing tokens
-│   │   ├── layout       # Main layout and grid styles
-│   │   ├── components   # Reusable component classes
-│   │   └── map          # Map-specific styles
-│   ├── App.tsx          # Main app shell with HUD layout
-│   └── main.tsx         # Entry point
-├── index.html
-├── vite.config.ts
-├── tsconfig.json
+├── src/                        # Frontend (React)
+│   ├── api/
+│   │   ├── client.ts           # Centralized API client (22+ endpoint wrappers)
+│   │   ├── hydrate.ts          # Server → client state sync on login
+│   │   └── socket.ts           # Socket.IO manager
+│   ├── components/             # UI components (map, panels, HUD)
+│   ├── stores/                 # Zustand stores
+│   │   ├── playerStore.ts      # Player state, resources, skills
+│   │   ├── regionStore.ts      # 293 regions with infrastructure & ownership
+│   │   ├── battleStore.ts      # Battle state & combat log
+│   │   ├── marketStore.ts      # Resource market & orders
+│   │   └── ...                 # 15+ specialized stores
+│   └── styles/                 # CSS design system
+│
+├── server/                     # Backend (Express)
+│   ├── src/
+│   │   ├── db/
+│   │   │   ├── schema.ts       # Drizzle ORM schema (30+ tables)
+│   │   │   ├── connection.ts   # PostgreSQL connection
+│   │   │   └── seed.ts         # Initial data seeding
+│   │   ├── routes/             # 27 route files
+│   │   │   ├── auth.routes.ts
+│   │   │   ├── battle.routes.ts
+│   │   │   ├── region.routes.ts
+│   │   │   ├── gov.routes.ts
+│   │   │   └── ...
+│   │   ├── services/           # Battle service, game logic
+│   │   ├── pipelines/          # Ley line engine, cron jobs
+│   │   └── middleware/         # Auth, rate limit, validation
+│   ├── migrations/             # SQL migration files
+│   └── scripts/                # Utility & seed scripts
+│
 └── package.json
 ```
 
 ---
 
-## 🎯 Roadmap
+## 🔌 API Endpoints (Highlights)
 
-- [x] Project scaffold (React + Vite + TypeScript)
-- [x] Dark military design system
-- [x] Interactive world map with region markers
-- [x] Core game layout (sidebar, map area, panels)
-- [x] Zustand state management (player, world, market, UI)
-- [x] Combat panel with attack flow
-- [x] Market panel with resource prices
-- [ ] Full panel implementations (Companies, Government, Chat)
-- [ ] Attack arc animations on map
-- [ ] Live event feed (ticker / WebSocket)
-- [ ] Backend API integration
-- [ ] Multiplayer support
+| Area | Endpoints |
+|------|-----------|
+| **Auth** | `POST /auth/register`, `POST /auth/login` |
+| **Game** | `GET /game/state` (full hydration payload) |
+| **Regions** | `GET /regions`, `POST /regions/:id/transfer`, `POST /regions/:id/infrastructure` |
+| **Battle** | `GET /battle/active`, `POST /battle/attack`, `POST /battle/order` |
+| **Market** | `GET /market/orders`, `POST /market/buy`, `POST /market/sell` |
+| **Gov** | `POST /gov/set-tax`, `POST /gov/build-infra`, `POST /gov/propose-law`, `POST /gov/vote` |
+| **Player** | `PATCH /player/country` (24h cooldown), `POST /player/consume-bar` |
+| **Bounty** | `POST /bounty/place`, `POST /bounty/claim`, `GET /bounty/active` |
+| **Raids** | `GET /raid/active`, `POST /raid/attack`, `POST /raid/fund` |
+| **Trade Routes** | `GET /trade-routes`, `POST /trade-routes/disrupt` |
+| **Ley Lines** | `GET /ley-lines`, `GET /ley-lines/defs` |
 
 ---
 
@@ -131,6 +177,6 @@ This project is private and proprietary.
 
 <div align="center">
 
-Built with ⚡ by [AminemlA](https://github.com/AminemlA)
+Built with ⚡ by [AminemlA](https://github.com/AminemlA) & [BiOgCC](https://github.com/BiOgCC)
 
 </div>
