@@ -14,7 +14,7 @@ import { logger } from '../utils/logger.js'
 // ═══════════════════════════════════════════════
 
 export type TickPhase =
-  | 'combat'       // Every 15s
+  | 'combat'       // Every 120s (2 min)
   | 'military'     // Every 15s
   | 'cyber'        // Every 15s
   | 'training'     // Every 15s
@@ -29,7 +29,7 @@ const PHASE_ORDER: TickPhase[] = [
 ]
 
 const PHASE_CADENCE: Record<TickPhase, number> = {
-  combat: 15,
+  combat: 120,
   military: 15,
   cyber: 15,
   training: 15,
@@ -68,7 +68,7 @@ class ServerGameClock {
   /** Start the global clock. Call once at server boot. */
   start(): void {
     if (this.intervalId !== null) return
-    logger.info('[GameClock] Server clock started — combat tick every 15s')
+    logger.info('[GameClock] Server clock started — combat tick every 120s (2 min)')
 
     this.intervalId = setInterval(() => {
       this.tickNumber++

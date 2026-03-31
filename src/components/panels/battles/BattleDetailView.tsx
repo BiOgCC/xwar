@@ -448,14 +448,14 @@ export default function BattleDetailView({ battleId, onBack }: Props) {
           {/* Battle Ticker */}
           {battle.status === 'active' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px', marginTop: '4px', background: 'rgba(239,68,68,0.06)', borderRadius: '5px', border: '1px solid rgba(239,68,68,0.15)', boxShadow: '0 0 10px rgba(239,68,68,0.05)' }}>
-              <span style={{ fontSize: '10px', animation: combatTickLeft <= 3 ? 'pulse 0.5s infinite' : 'none' }}>⚡</span>
+              <span style={{ fontSize: '10px', animation: combatTickLeft <= 10 ? 'pulse 0.5s infinite' : 'none' }}>⛰</span>
               <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: combatTickLeft <= 3 ? '#ef4444' : '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
-                  <span>NEXT TICK</span>
-                  <span style={{ fontSize: '10px', color: combatTickLeft <= 3 ? '#ef4444' : '#f87171', textShadow: combatTickLeft <= 3 ? '0 0 8px rgba(239,68,68,0.5)' : 'none' }}>{combatTickLeft}s</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', fontWeight: 700, color: combatTickLeft <= 10 ? '#ef4444' : '#94a3b8', fontFamily: 'var(--font-display)', letterSpacing: '0.5px' }}>
+                  <span>GROUND POINTS</span>
+                  <span style={{ fontSize: '10px', color: combatTickLeft <= 10 ? '#ef4444' : '#f87171', textShadow: combatTickLeft <= 10 ? '0 0 8px rgba(239,68,68,0.5)' : 'none' }}>{Math.floor(combatTickLeft / 60)}:{String(combatTickLeft % 60).padStart(2, '0')}</span>
                 </div>
                 <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden', marginTop: '2px' }}>
-                  <div style={{ width: `${((15 - combatTickLeft) / 15) * 100}%`, height: '100%', background: combatTickLeft <= 3 ? '#ef4444' : 'linear-gradient(90deg, #ef4444, #f87171)', transition: 'width 0.9s linear', borderRadius: '2px', boxShadow: combatTickLeft <= 3 ? '0 0 6px rgba(239,68,68,0.5)' : '0 0 4px rgba(239,68,68,0.3)' }} />
+                  <div style={{ width: `${((120 - combatTickLeft) / 120) * 100}%`, height: '100%', background: combatTickLeft <= 10 ? '#ef4444' : 'linear-gradient(90deg, #ef4444, #f87171)', transition: 'width 0.9s linear', borderRadius: '2px', boxShadow: combatTickLeft <= 10 ? '0 0 6px rgba(239,68,68,0.5)' : '0 0 4px rgba(239,68,68,0.3)' }} />
                 </div>
               </div>
             </div>

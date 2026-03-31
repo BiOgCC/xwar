@@ -191,26 +191,9 @@ router.post('/launch', requireAuth as any, validate(launchSchema), async (req, r
       return
     }
 
-    // ── Authorization: only president, VP, or defense minister can launch ──
-    try {
-      const [gov] = await db.select({
-        president: governments.president,
-        vicePresident: governments.vicePresident,
-        defenseMinister: governments.defenseMinister,
-      }).from(governments).where(eq(governments.countryCode, attackerCode)).limit(1)
-
-      if (gov) {
-        const authorizedIds = [gov.president, gov.vicePresident, gov.defenseMinister].filter(Boolean)
-        if (authorizedIds.length > 0 && !authorizedIds.includes(playerId)) {
-          res.status(403).json({ error: 'Only the President, Vice President, or Minister of Defense can initiate battles.' })
-          return
-        }
-      }
-      // If no government row exists, allow anyone (early game / no government yet)
-    } catch (govErr) {
-      // Government check failed — allow the battle (don't block gameplay)
-      console.warn('[Battle] Government authorization check failed, allowing launch:', govErr)
-    }
+    // ── Authorization: relaxed for alpha — any citizen can launch battles ──
+    // TODO: Re-enable government role gate post-alpha
+    // (Previously restricted to president, VP, or defense minister only)
 
     // ── War prerequisite: check if a 'declare_war' law was passed ──
     try {

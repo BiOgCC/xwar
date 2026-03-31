@@ -52,7 +52,7 @@ export const TACTICAL_ORDERS: Record<TacticalOrder, { label: string; effects: Or
 const POINTS_TO_WIN_ROUND = 300
 const ROUNDS_TO_WIN_BATTLE = 2
 const MAX_ROUNDS = 3
-const TERRAIN_TICK_GATE = 8  // Only award terrain every 8th tick (8 × 15s = 120s)
+const TERRAIN_TICK_GATE = 1  // Every tick = 120s (2 min) — ground points awarded each tick
 
 // Battle Order costs (money)
 const BATTLE_ORDER_COSTS: Record<string, number> = { low: 100, medium: 200, high: 300 }
@@ -1358,7 +1358,7 @@ class BattleService {
 
   /**
    * Process one combat tick for ALL active battles.
-   * Called every 15 seconds by the server GameClock.
+   * Called every 2 minutes (120s) by the cron scheduler.
    */
   async processCombatTick(): Promise<void> {
     const activeBattles = this.getActiveBattles()
@@ -1412,11 +1412,11 @@ class BattleService {
     // Reset per-tick damage counter (player damage accumulates via addDamage() between ticks)
     battle.currentTick = { attackerDamage: 0, defenderDamage: 0 }
 
-    // ── Ground points (gated: only every 8th tick = 120s) ──
+    // ── Ground points (every tick = 120s / 2 min) ──
     const activeRoundIndex = battle.rounds.length - 1
     const activeRound = battle.rounds[activeRoundIndex]
 
-    // Only award terrain points on the 2-minute boundary
+    // Award terrain points every tick (each tick = 2 minutes)
     battle.battleTickCounter = (battle.battleTickCounter || 0) + 1
     const isTerrainTick = battle.battleTickCounter % TERRAIN_TICK_GATE === 0
 
@@ -1940,8 +1940,8 @@ class BattleService {
           regionId: row.region_id || undefined,
           attackerRegionId: row.attacker_region_id || undefined,
           startedAt: new Date(row.started_at).getTime(),
-          ticksElapsed: Math.max(0, Math.floor((now - new Date(row.started_at).getTime()) / 15000)),
-          battleTickCounter: Math.max(0, Math.floor((now - new Date(row.started_at).getTime()) / 15000)) % TERRAIN_TICK_GATE,
+          ticksElapsed: Math.max(0, Math.floor((now - new Date(row.started_at).getTime()) / 120000)),
+          battleTickCounter: Math.max(0, Math.floor((now - new Date(row.started_at).getTime()) / 120000)),
           status: 'active',
           attacker: { countryCode: row.attacker_id, damageDealt: Number(row.attacker_damage ?? 0) },
           defender: { countryCode: row.defender_id, damageDealt: Number(row.defender_damage ?? 0) },

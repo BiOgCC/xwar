@@ -791,6 +791,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set(patch)
     } catch (err) {
       console.error('Failed to fetch player state:', err)
+      throw err
     }
   },
 }))

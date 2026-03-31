@@ -71,7 +71,7 @@ function App() {
   // Sync player data from backend on mount if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      usePlayerStore.getState().fetchPlayer()
+      usePlayerStore.getState().fetchPlayer().catch(() => {})
       useCompanyStore.getState().fetchAll()
 
       // ── Init socket hooks (battle:started, battle:state, occupation updates, etc.) ──

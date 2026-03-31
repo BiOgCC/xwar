@@ -3,7 +3,7 @@
  *
  * 4 independent pipelines, each running at its own cadence:
  *
- *   FAST COMBAT    — every 15s  — training, recovery, (future: battles)
+ *   FAST COMBAT    — every 2m   — battle tick, ground points, training, recovery
  *   MEDIUM SIM     — every 60s  — stock prices, bonds
  *   SLOW ECONOMY   — every 30m  — bars, companies, market, salary
  *   DAILY JOBS     — various    — full refill, income, maintenance, snapshots
@@ -30,9 +30,9 @@ export function initCronJobs() {
   logger.info('[CRON] Initializing tick pipelines...')
 
   // ═══════════════════════════════════════════════
-  //  FAST COMBAT — every 15 seconds
+  //  FAST COMBAT — every 2 minutes (120s)
   // ═══════════════════════════════════════════════
-  cron.schedule('*/15 * * * * *', async () => {
+  cron.schedule('*/2 * * * *', async () => {
     try {
       await runFastCombatPipeline()
     } catch (err) {
@@ -160,7 +160,7 @@ export function initCronJobs() {
   })
 
   logger.info('[CRON] All pipelines initialized:')
-  logger.info('  ⚔️  Fast Combat     — every 15s  (training, recovery)')
+  logger.info('  ⚔️  Fast Combat     — every 2m   (battle tick, ground points)')
   logger.info('  ⚡ Ley Line Engine  — every 30s  (ownership, buffs, activation)')
   logger.info('  📈 Medium Sim      — every 60s  (stocks, bonds)')
   logger.info('  🏭 Slow Economy    — every 30m  (bars, companies, market, salary)')

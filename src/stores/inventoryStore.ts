@@ -141,11 +141,13 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       const res: any = await api.post('/inventory/open-box', { boxType: 'loot' })
       if (!res.success) return null
       
-      const { item, bonusMoney, bonusScrap } = res
+      const { item, bonusMoney, bonusScrap, bonusGreenBullets, bonusBlueBullets } = res
       
       usePlayerStore.getState().removeResource('lootBoxes', 1, 'lootbox_open')
       if (bonusMoney) usePlayerStore.getState().earnMoney(bonusMoney)
       if (bonusScrap) usePlayerStore.getState().addResource('scrap', bonusScrap, 'lootbox_open')
+      if (bonusGreenBullets) usePlayerStore.getState().addResource('greenBullets', bonusGreenBullets, 'lootbox_open')
+      if (bonusBlueBullets) usePlayerStore.getState().addResource('blueBullets', bonusBlueBullets, 'lootbox_open')
 
       if (item) {
         set(s => ({ items: [...s.items, item] }))

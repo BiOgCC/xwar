@@ -74,6 +74,15 @@ async function apiFetch<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+
+    // ── Auto-logout on expired/invalid token ──
+    if (res.status === 401 && authToken) {
+      console.warn('[API] 401 received — clearing stale token')
+      logout()
+      // Lazy-import to avoid circular dep
+      import('../stores/authStore').then(({ useAuthStore }) => useAuthStore.getState().logout())
+    }
+
     throw new ApiError(res.status, body.error || 'Request failed', body.details)
   }
 

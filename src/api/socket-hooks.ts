@@ -353,7 +353,7 @@ export function initSocketHooks() {
   }) => {
     console.log(`[WS] 💰 Salary received: $${data.amount.toLocaleString()} from ${data.armyName}`)
     // Refresh player balance from backend
-    usePlayerStore.getState().fetchPlayer()
+    usePlayerStore.getState().fetchPlayer().catch(() => {})
   })
 
   socketManager.on('fund:update', (data: {

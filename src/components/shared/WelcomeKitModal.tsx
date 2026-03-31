@@ -34,8 +34,9 @@ export default function WelcomeKitModal() {
     if (!isAuthenticated()) return
 
     usePlayerStore.getState().fetchPlayer().then(() => {
-      const { welcomeKitClaimed } = usePlayerStore.getState()
-      if (!welcomeKitClaimed) {
+      const { welcomeKitClaimed, id } = usePlayerStore.getState()
+      // Only show if player data was actually loaded AND kit not claimed
+      if (id && !welcomeKitClaimed) {
         setTimeout(() => setShow(true), 1500)
       }
     }).catch(() => {
@@ -70,6 +71,14 @@ export default function WelcomeKitModal() {
         setAnimating(false)
       }
     } catch (err: any) {
+      // 401 = expired token → force re-login
+      if (err?.status === 401) {
+        import('../../api/client').then(({ logout }) => logout())
+        import('../../stores/authStore').then(({ useAuthStore }) => useAuthStore.getState().logout())
+        setShow(false)
+        setAnimating(false)
+        return
+      }
       // Server returns 400 if already claimed
       const msg = err?.message ?? 'Something went wrong'
       setError(msg)

@@ -27,7 +27,8 @@ wrapStoreWithIntegrityCheck(usePlayerStore, 'player')
  * Game loop hook — subscribes all simulation systems to the unified GameClock.
  * 
  * Phase cadences:
- * - 15s: combat, military, cyber, training, government
+ * - 120s (2 min): combat (ground point awards)
+ * - 15s: military, cyber, training, government
  * - 10s: region capture, stock market
  * - 30min: economy (companies, market prices)
  *

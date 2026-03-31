@@ -9,7 +9,7 @@
  * Within the same second, phases fire in this deterministic order.
  */
 export type TickPhase =
-  | 'combat'       // Every 15s — battle resolution, player combat tick
+  | 'combat'       // Every 120s (2 min) — battle resolution, ground point awards
   | 'military'     // Every 15s — detection windows, stamina contests
   | 'cyber'        // Every 15s — cyber detection, stamina contests
   | 'training'     // Every 15s — army training progress
@@ -26,7 +26,7 @@ const PHASE_ORDER: TickPhase[] = [
 
 /** Cadence in seconds for each phase */
 const PHASE_CADENCE: Record<TickPhase, number> = {
-  combat: 15,
+  combat: 120,
   military: 15,
   cyber: 15,
   training: 15,

@@ -177,24 +177,24 @@ router.post('/open-box', async (req, res) => {
       let rewardType = 'resources'
 
       if (roll < 50) {
-        // 50%: scrap (200-800)
-        const scrap = 200 + Math.floor(Math.random() * 601)
+        // 50%: scrap (2000-8000) [x10]
+        const scrap = 2000 + Math.floor(Math.random() * 6001)
         await db.execute(sql`UPDATE players SET scrap = scrap + ${scrap} WHERE id = ${playerId}`)
         reward = { scrap }
       } else if (roll < 80) {
-        // 30%: random bullets (10-30)
+        // 30%: random bullets (100-300) [x10]
         const bulletFields = ['green_bullets', 'blue_bullets', 'purple_bullets', 'red_bullets'] as const
         const bulletTypes = ['greenBullets', 'blueBullets', 'purpleBullets', 'redBullets'] as const
         const rIdx = Math.floor(Math.random() * bulletFields.length)
-        const amount = 10 + Math.floor(Math.random() * 21)
+        const amount = 100 + Math.floor(Math.random() * 201)
         await db.execute(sql`UPDATE players SET ${sql.raw(bulletFields[rIdx])} = ${sql.raw(bulletFields[rIdx])} + ${amount} WHERE id = ${playerId}`)
         reward = { bulletType: bulletTypes[rIdx], bulletAmount: amount }
         rewardType = 'bullets'
       } else {
-        // 20%: food (50-150)
+        // 20%: food (500-1500) [x10]
         const foodTypes = ['bread', 'sushi', 'wagyu'] as const
         const foodType = foodTypes[Math.floor(Math.random() * foodTypes.length)]
-        const amount = 50 + Math.floor(Math.random() * 101)
+        const amount = 500 + Math.floor(Math.random() * 1001)
         await db.execute(sql`UPDATE players SET ${sql.raw(foodType)} = ${sql.raw(foodType)} + ${amount} WHERE id = ${playerId}`)
         reward = { foodType, foodAmount: amount }
         rewardType = 'food'
@@ -228,13 +228,15 @@ router.post('/open-box', async (req, res) => {
     // Add bonus resources for loot boxes
     let bonusMoney = 0
     let bonusScrap = 0
+    let bonusGreenBullets = 0
+    let bonusBlueBullets = 0
     if (boxType === 'loot') {
       bonusMoney = Math.floor(Math.random() * 300) + 50
       bonusScrap = Math.floor(Math.random() * 180) + 20
-      await db.update(players).set({
-        money: player.money! + bonusMoney,
-        scrap: player.scrap! + bonusScrap,
-      }).where(eq(players.id, playerId))
+      // Civilian boxes grant 9-29 green and 9-29 blue ammo
+      bonusGreenBullets = 9 + Math.floor(Math.random() * 21)
+      bonusBlueBullets = 9 + Math.floor(Math.random() * 21)
+      await db.execute(sql`UPDATE players SET money = money + ${bonusMoney}, scrap = scrap + ${bonusScrap}, green_bullets = green_bullets + ${bonusGreenBullets}, blue_bullets = blue_bullets + ${bonusBlueBullets} WHERE id = ${playerId}`)
     }
 
     res.json({
@@ -242,6 +244,8 @@ router.post('/open-box', async (req, res) => {
       item: insertedItem,
       bonusMoney,
       bonusScrap,
+      bonusGreenBullets,
+      bonusBlueBullets,
     })
   } catch (err) {
     console.error('[INVENTORY] Open box error:', err)

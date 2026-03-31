@@ -60,7 +60,7 @@ const WEAPON_COUNTER_TABLE: Record<string, { counter: string; perPlayer: number 
   warship:   { counter: 'submarine', perPlayer: 0.03 },  // T6 → T7
   submarine: { counter: 'jet',       perPlayer: 0.03 },  // T7 → T6
 }
-const COUNTER_BUFF_TICKS = 20       // 20 ticks × 15s = 5 minutes
+const COUNTER_BUFF_TICKS = 3        // 3 ticks × 120s = 6 minutes
 const COUNTER_MIN_HITS = 5          // min hits before a player's weapon presence counts
 const COUNTER_MIN_DAMAGE = 3000     // min total damage before a player's weapon presence counts
 
@@ -183,7 +183,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   // ====== NPC TEST BATTLES ======
   // NPC battles removed — server-authoritative battles only
   spawnNPCBattles: () => {},
-  combatTickLeft: 15,
+  combatTickLeft: 120,
   setCombatTickLeft: (val: number) => set({ combatTickLeft: val }),
   setBattleOrder: (battleId: string, side: 'attacker' | 'defender', order: TacticalOrder) => {
     set((state) => {
@@ -412,13 +412,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       const atkPlayerDmg = battle.currentTick?.attackerDamage || 0
       const defPlayerDmg = battle.currentTick?.defenderDamage || 0
 
-      // Only process if there's actual player damage this tick
-      if (atkPlayerDmg <= 0 && defPlayerDmg <= 0) return
-
       // ── For regular battles: server handles ground points authoritatively ──
       // We only reset currentTick damage counters; ground points come from battle:state socket events.
       const isQB = battle.type === 'quick_battle'
       if (!isQB) {
+        if (atkPlayerDmg <= 0 && defPlayerDmg <= 0) return
         hasChanges = true
         newBattles[battle.id] = {
           ...battle,
@@ -428,6 +426,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       }
 
       // ── Quick-battle: client-side ground points (lobby PvP, not server-ticked) ──
+      // Uses the SAME resolution logic as the server's processSingleBattleTick().
       hasChanges = true
       const tick = (battle.ticksElapsed || 0) + 1
       const activeRoundIndex = battle.rounds.length - 1
@@ -441,17 +440,33 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       activeRound.attackerRoundDmg = (activeRound.attackerRoundDmg || 0) + atkPlayerDmg
       activeRound.defenderRoundDmg = (activeRound.defenderRoundDmg || 0) + defPlayerDmg
 
-      // Award ground points based on ROUND-LONG damage with 50%+ threshold
-      const totalRoundDmg = (activeRound.attackerRoundDmg || 0) + (activeRound.defenderRoundDmg || 0)
-      if (totalRoundDmg > 0) {
-        const atkRoundPct = (activeRound.attackerRoundDmg || 0) / totalRoundDmg
-        const defRoundPct = (activeRound.defenderRoundDmg || 0) / totalRoundDmg
-        if (atkRoundPct > 0.5) {
-          activeRound.attackerPoints += pointIncrement
-        } else if (defRoundPct > 0.5) {
-          activeRound.defenderPoints += pointIncrement
+      // ── Unified ground-point resolution (matches server battle.service.ts) ──
+      const roundAtkDmg = activeRound.attackerRoundDmg || 0
+      const roundDefDmg = activeRound.defenderRoundDmg || 0
+
+      if (roundAtkDmg > 0 || roundDefDmg > 0) {
+        // Active combat: side with more accumulated damage gets the point
+        if (roundAtkDmg > roundDefDmg) activeRound.attackerPoints += pointIncrement
+        else if (roundDefDmg > roundAtkDmg) activeRound.defenderPoints += pointIncrement
+        else {
+          // Tie: coin flip (same as server)
+          if (Math.random() < 0.5) activeRound.attackerPoints += pointIncrement
+          else activeRound.defenderPoints += pointIncrement
         }
-        // If exactly 50/50, no points awarded (stalemate)
+      } else {
+        // No active combat: attrition fallback (same as server)
+        const totalAtkDmg = battle.attacker.damageDealt
+        const totalDefDmg = battle.defender.damageDealt
+        if (totalAtkDmg > totalDefDmg) {
+          // Attacker momentum
+          activeRound.attackerPoints += Math.max(1, Math.floor(pointIncrement * 0.5))
+        } else if (totalDefDmg > totalAtkDmg) {
+          // Defender momentum
+          activeRound.defenderPoints += Math.max(1, Math.floor(pointIncrement * 0.5))
+        } else {
+          // Total tie — defender home advantage
+          activeRound.defenderPoints += 1
+        }
       }
 
       let newRounds = [...battle.rounds.slice(0, -1), activeRound]
